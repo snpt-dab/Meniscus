@@ -64,12 +64,31 @@ local function create(parent, unit, below)
     -- The small frame (pet / target-of-target) sits tight under the big
     -- one; while it's shown the cast bar drops below it instead.
     local function place()
+        -- Player portrait on the health orb: there is no frame to hang
+        -- under, so the bar sits above the orb.
+        local UF = ns.modules.UnitFrames
+        local O = ns.modules.Orbs
+        if unit == "player" and UF and UF.orbStyleOn and O and O.health then
+            h:ClearAllPoints()
+            local dome, qb = _G.MinimalUI_MinimapDome, _G.MinimalUIQuickBuff
+            if dome and qb then
+                -- Minimap dome layout: above the Quick Buff pill (which
+                -- sits on the dome), whether or not the pill is showing.
+                h:SetPoint("BOTTOM", qb, "TOP", 0, 8)
+            elseif dome then
+                h:SetPoint("BOTTOM", dome, "TOP", 0, 40)
+            else
+                h:SetPoint("BOTTOM", O.health, "TOP", 0, 14)
+            end
+            return
+        end
         local y = -6
         if below and below:IsShown() then y = y - (ns.SMALL_FRAME_GAP or 8) - below:GetHeight() end
         h:ClearAllPoints()
         h:SetPoint("TOP", parent, "BOTTOM", 0, y)
     end
     place()
+    h.place = place
     if below then
         below:HookScript("OnShow", place)
         below:HookScript("OnHide", place)

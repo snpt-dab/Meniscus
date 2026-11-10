@@ -4,6 +4,9 @@ local T = ns.Theme
 -- Restyles Blizzard's own action buttons (so paging/stances keep working) and
 -- lays them out:
 --   [bar 2: 3x4] [health orb] [ main bar: 12 in a row ] [power orb] [bar 3: 3x4]
+-- With the minimap dome on (Minimap.lua) the main bar splits around it:
+--   [health orb] [1 2 3 / 4 5 6] ( dome ) [7 8 9 / 0 - =] [power orb]
+-- (two blocks of 3 x 2: a single split row would not fit between the orbs).
 -- Bar 2 / bar 3 blocks are anchored to the orbs, so they follow when orbs move.
 -- Escape hatch if anything misbehaves: /mui actionbars, then /reload.
 
@@ -235,16 +238,34 @@ local function newAnchor(name, w, h)
     return a
 end
 
+-- Width of the gap the minimap dome needs in the middle of the main bar,
+-- or nil when the dome is off. (Read from the saved settings: this module
+-- starts before the minimap's.)
+local DOME_MARGIN = 14
+function Bars:DomeGap()
+    local mm = ns.modules.Minimap and ns.modules.Minimap.db
+    if not mm then mm = ns.db and ns.db.modules and ns.db.modules.Minimap end
+    if type(mm) ~= "table" or mm.enabled == false or not mm.dome then return nil end
+    return (mm.domeD or 130) + 11 + DOME_MARGIN * 2
+end
+
 function Bars:Arrange()
     if InCombatLockdown() then self.pending = true return end
     self.pending = false
     local db = self.db
     local O = ns.modules.Orbs
     local m, s = db.main, db.small
+    local gap = self:DomeGap()
+    self.split = gap
 
-    -- Main bar: 12 buttons in a row, centered at the bottom.
-    local mainW = 12 * m.size + 11 * m.gap
-    self.main = self.main or newAnchor("MinimalUI_MainBar", mainW, m.size)
+    -- Main bar: 12 buttons in a row, centered at the bottom; or two blocks
+    -- of 3 x 2 either side of the minimap dome.
+    local step = m.size + m.gap
+    local blockW = 3 * m.size + 2 * m.gap
+    local mainW = gap and (2 * blockW + gap) or (12 * m.size + 11 * m.gap)
+    local mainH = gap and (2 * m.size + m.gap) or m.size
+    self.main = self.main or newAnchor("MinimalUI_MainBar", mainW, mainH)
+    self.main:SetSize(mainW, mainH)
     self.main:ClearAllPoints()
     self.main:SetPoint("BOTTOM", UIParent, "BOTTOM", m.x, m.y)
     for i = 1, 12 do
@@ -253,7 +274,14 @@ function Bars:Arrange()
             skin(b, 10, 2)
             safe(function()
                 b:ClearAllPoints()
-                b:SetPoint("BOTTOMLEFT", self.main, "BOTTOMLEFT", (i - 1) * (m.size + m.gap), 0)
+                if gap then
+                    local k = (i - 1) % 6
+                    local x = (k % 3) * step + (i > 6 and (blockW + gap) or 0)
+                    local y = (1 - math.floor(k / 3)) * step
+                    b:SetPoint("BOTTOMLEFT", self.main, "BOTTOMLEFT", x, y)
+                else
+                    b:SetPoint("BOTTOMLEFT", self.main, "BOTTOMLEFT", (i - 1) * step, 0)
+                end
                 b:SetSize(m.size, m.size)
             end)
         end
@@ -301,14 +329,18 @@ function Bars:Arrange()
 
     -- Stance/aura row (left) and pet row (right), small buttons just above the
     -- main bar. Blizzard still shows/hides them (no stances, no pet).
+    -- Split around the dome: two rows of five, so neither row reaches over
+    -- the dome (first five on the lower row).
     local step = s.size + s.gap
     for i = 1, 10 do
+        local col, up = i - 1, 0
+        if gap then col, up = (i - 1) % 5, math.floor((i - 1) / 5) * step end
         local b = _G["StanceButton" .. i]
         if b then
             skin(b, 8, 1.5)
             safe(function()
                 b:ClearAllPoints()
-                b:SetPoint("BOTTOMLEFT", self.main, "TOPLEFT", (i - 1) * step, 8)
+                b:SetPoint("BOTTOMLEFT", self.main, "TOPLEFT", col * step, 8 + up)
                 b:SetSize(s.size, s.size)
             end)
         end
@@ -318,7 +350,11 @@ function Bars:Arrange()
             Bars:SkinPetButton(pb, i)
             safe(function()
                 pb:ClearAllPoints()
-                pb:SetPoint("BOTTOMRIGHT", self.main, "TOPRIGHT", -(10 - i) * step, 8)
+                if gap then
+                    pb:SetPoint("BOTTOMRIGHT", self.main, "TOPRIGHT", -(4 - col) * step, 8 + up)
+                else
+                    pb:SetPoint("BOTTOMRIGHT", self.main, "TOPRIGHT", -(10 - i) * step, 8)
+                end
                 pb:SetSize(s.size, s.size)
             end)
         end

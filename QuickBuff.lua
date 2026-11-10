@@ -447,11 +447,23 @@ local function place()
         -- Above the pet/stance row that sits on top of the main bar.
         local s = B.db and B.db.small
         local row = (s and s.size or 26) + 8
-        btn:SetPoint("BOTTOM", B.main, "TOP", 0, row + 10)
+        local dome = _G.MinimalUI_MinimapDome
+        if B.split and dome then
+            -- Minimap dome in the middle: sit right on top of it.
+            btn:SetPoint("BOTTOM", dome, "TOP", 0, 6)
+        elseif B.split then
+            local m = B.db.main
+            local blockW = 3 * m.size + 2 * m.gap
+            btn:SetPoint("BOTTOM", B.main, "TOPLEFT", blockW / 2, row + 10)
+        else
+            btn:SetPoint("BOTTOM", B.main, "TOP", 0, row + 10)
+        end
     else
         btn:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 110)
     end
 end
+
+QB.Place = place
 
 local shown = {}
 local inEncounter = false

@@ -6,7 +6,8 @@ local T = ns.Theme
 -- zone name in the theme font. The addon compartment, tracking, clock and
 -- mail/queue indicators are left alone.
 
-local MM = ns:NewModule("Minimap", { enabled = true })
+-- dome = true: a round map sitting on the main action bar (see MM:ApplyDome).
+local MM = ns:NewModule("Minimap", { enabled = true, dome = false, domeD = 130 })
 local MEDIA = "Interface/AddOns/MinimalUI/Media/"
 
 -- Blizzard art to remove. Names differ between client generations, so each
@@ -65,6 +66,498 @@ function MM:OnInit(db)
         ns:SetFont(zoneText, size or 12, "")
         zoneText:SetShadowOffset(1, -1)
         zoneText:SetShadowColor(0, 0, 0, 0.8)
+    end
+
+    -- After the other modules (the bar's position decides the default spot).
+    if db.dome then
+        C_Timer.After(0, function() MM:ApplyDome(); MM:ArrangeAround() end)
+        C_Timer.After(3, function() MM:ProbeDome() end)
+    end
+end
+
+-- ── Dome ──────────────────────────────────────────────────────────────────
+-- The map as a third orb in the middle of the main action bar, which splits
+-- into two blocks around it (Bars.lua): same construction as an orb
+-- (hairline ring, dark track, glass glare), standing on the bars' baseline. The map is not
+-- reparented (its cluster is Edit Mode's); it is re-anchored to a holder of
+-- ours, and put back there if Blizzard's layout moves it. The zone name
+-- rides on top of the dome. Tracking, mail, clock and the addon menu stay
+-- where the cluster has them for now.
+-- /mui dome toggles it, /mui dome move shows a drag handle, /mui dome reset
+-- puts it back on the bar. Turning it off takes a reload.
+local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
+local function circleMask(frame, size)
+    local k = frame:CreateMaskTexture()
+    k:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    k:SetPoint("CENTER")
+    k:SetSize(size, size)
+    return k
+end
+
+local function domeDefault()
+    local B = ns.modules.Bars
+    local main = B and B.db and B.db.main
+    return { x = main and main.x or 0, y = main and main.y or 30 }
+end
+
+function MM:PlaceDome()
+    local h = self.domeHolder
+    if not h then return end
+    local pos = self.db.domePos or domeDefault()
+    h:ClearAllPoints()
+    h:SetPoint("BOTTOM", UIParent, "BOTTOM", pos.x, pos.y)
+end
+
+-- The main bar (and what sits on it) makes room for the dome, or closes up.
+function MM:ArrangeAround()
+    local B = ns.modules.Bars
+    if B and B.Arrange and B.db then B:Arrange() end
+    local QB = ns.modules.QuickBuff
+    if QB and QB.Place then pcall(QB.Place) end
+    local AU = ns.modules.Auras
+    if AU and AU.SeatBlizzard and AU.db then AU:SeatBlizzard() end
+    local CB = ns.modules.CastBars
+    if CB and CB.player and CB.player.place and not InCombatLockdown() then CB.player.place() end
+end
+
+function MM:ApplyDome()
+    if not Minimap or self.domeHolder then return end
+    local D = self.db.domeD or 130
+    local RING, INSET = 1.5, 4
+    local outer = D + (RING + INSET) * 2
+
+    local h = CreateFrame("Frame", "MinimalUI_MinimapDome", UIParent)
+    h:SetSize(outer, outer)
+    -- The ring and track sit in the lowest strata; the map keeps whatever
+    -- strata and level Blizzard gave it (changing those was one suspect for
+    -- the map drawing black, and with the bar split nothing has to cover it).
+    h:SetFrameStrata("BACKGROUND")
+    h:SetFrameLevel(0)
+    h:SetClampedToScreen(true)
+    self.domeHolder = h
+    self:PlaceDome()
+
+    local ring = h:CreateTexture(nil, "BACKGROUND", nil, 0)
+    ring:SetAllPoints()
+    ring:SetColorTexture(unpack(T.border))
+    ring:AddMaskTexture(circleMask(h, outer))
+    local track = h:CreateTexture(nil, "BACKGROUND", nil, 1)
+    track:SetPoint("CENTER")
+    track:SetSize(outer - RING * 2, outer - RING * 2)
+    track:SetColorTexture(0.05, 0.05, 0.06, 0.96)
+    track:AddMaskTexture(circleMask(h, outer - RING * 2))
+
+    if self.border then self.border:Hide() end
+    -- Our own disc. On this client the map drew nothing with either of the
+    -- game's round masks (the portrait circle, Textures/MinimapMask); only a
+    -- mask file of ours (white, shape in the alpha) works.
+    Minimap:SetMaskTexture(MEDIA .. "circle.tga")
+    _G.GetMinimapShape = function() return "ROUND" end
+
+    -- A parent that clips its children would hide a map moved outside it
+    -- (the map's own buttons, which belong to other parents, would still
+    -- show: exactly what a black dome with its badges around it looks like).
+    local unclipped = 0
+    local par = Minimap:GetParent()
+    while par and par ~= UIParent do
+        if par.DoesClipChildren and par:DoesClipChildren() then
+            pcall(par.SetClipsChildren, par, false)
+            unclipped = unclipped + 1
+        end
+        par = par:GetParent()
+    end
+    self.domeUnclipped = unclipped
+    local placing = false
+    local function seat()
+        if placing then return end
+        placing = true
+        Minimap:ClearAllPoints()
+        Minimap:SetPoint("CENTER", h, "CENTER")
+        Minimap:SetSize(D, D)
+        placing = false
+    end
+    seat()
+    -- Blizzard's cluster layout re-anchors the map now and then.
+    hooksecurefunc(Minimap, "SetPoint", function(_, _, rel)
+        if not placing and rel ~= h then seat() end
+    end)
+    -- The map only redraws at its new size after a zoom change.
+    pcall(function()
+        local z = Minimap:GetZoom()
+        Minimap:SetZoom(z > 0 and z - 1 or z + 1)
+        Minimap:SetZoom(z)
+    end)
+
+    -- Glass glare, as on the orbs (never takes the mouse).
+    local glass = CreateFrame("Frame", nil, h)
+    glass:SetAllPoints(Minimap)
+    -- One strata above the map, not "a few levels above": opening the addon
+    -- menu raises the whole minimap cluster, which put the map over anything
+    -- that was only a few levels higher.
+    glass:SetFrameStrata("MEDIUM")
+    glass:SetFrameLevel(0)
+    glass:EnableMouse(false)
+    local gloss = glass:CreateTexture(nil, "OVERLAY")
+    gloss:SetAllPoints()
+    gloss:SetTexture(MEDIA .. "orb_glare.tga")
+    gloss:SetAlpha(0.55)
+    gloss:AddMaskTexture(circleMask(glass, D))
+
+    self:BuildZonePill(h)
+end
+
+-- The zone name in a pill on the dome's bottom edge, built like the value
+-- chips on the orbs. Hover: zone, subzone, server time and your coordinates.
+-- Click: world map. Blizzard's own header (gold bar, zone button, clock)
+-- and the coordinates line under the map are faded out; the tracking button
+-- and the addon menu button move to the pill's ends.
+local CHIP_W, CHIP_H = 150, 14 -- a little wider than the dome; the orbs' pill height
+-- Ring color: the orbs' chips take their liquid's color at 80%; the map's
+-- takes a muted gold the same way.
+local GOLD = { 0.80, 0.62, 0.24 }
+local GOLD_HOVER = { 1.00, 0.80, 0.36 }
+local function fadeOut(obj)
+    if not obj then return end
+    pcall(function()
+        obj:SetAlpha(0)
+        if obj.EnableMouse then obj:EnableMouse(false) end
+    end)
+end
+
+function MM:BuildZonePill(h)
+    local chip = CreateFrame("Button", nil, h)
+    chip:SetSize(CHIP_W, CHIP_H)
+    chip:SetPoint("CENTER", h, "BOTTOM", 0, 3.5)
+    chip:SetFrameStrata("MEDIUM") -- see the glass: the cluster gets raised
+    chip:SetFrameLevel(2)
+    -- Drawn with rounded rectangles, not the pill textures: those only come
+    -- in fixed 8:1 / 16:1 shapes, and this pill is wider than 8:1 at the
+    -- orbs' pill height.
+    local paintRing = ns.RoundedRect(chip, -8, 0, CHIP_H / 2, GOLD[1], GOLD[2], GOLD[3], 1)
+    ns.RoundedRect(chip, -7, 1, CHIP_H / 2 - 1, 0.06, 0.06, 0.07, 0.97)
+    local ring = { SetVertexColor = function(_, r, g, b, a) paintRing(r, g, b, a or 1) end }
+    local text = ns:CreateText(chip, 11)
+    -- The left end of the pill is the tracking button (below).
+    text:SetPoint("LEFT", 21, 0); text:SetPoint("RIGHT", -21, 0)
+    text:SetJustifyH("CENTER")
+    text:SetWordWrap(false)
+    text:SetShadowOffset(1, -1)
+    text:SetShadowColor(0, 0, 0, 0.8)
+    self.zonePill = chip
+
+    local function refresh()
+        local z = GetMinimapZoneText and GetMinimapZoneText() or ""
+        text:SetText(type(z) == "string" and z or "")
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", refresh)
+    refresh()
+
+    local function tip(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        local zone, sub = GetRealZoneText and GetRealZoneText() or "", GetMinimapZoneText and GetMinimapZoneText() or ""
+        GameTooltip:SetText(zone ~= "" and zone or sub, 1, 1, 1)
+        if sub ~= "" and sub ~= zone then GameTooltip:AddLine(sub, 0.8, 0.8, 0.85) end
+        local hh, mm = GetGameTime()
+        if type(hh) == "number" then GameTooltip:AddDoubleLine("Server time", string.format("%02d:%02d", hh, mm), 0.6, 0.6, 0.65, 1, 1, 1) end
+        local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+        local ok, pos = pcall(function() return mapID and C_Map.GetPlayerMapPosition(mapID, "player") end)
+        if ok and pos and pos.GetXY then
+            local x, y = pos:GetXY()
+            if type(x) == "number" and not (issecretvalue and issecretvalue(x)) then
+                GameTooltip:AddDoubleLine("Coordinates", string.format("%.1f, %.1f", x * 100, y * 100), 0.6, 0.6, 0.65, 1, 1, 1)
+            end
+        end
+        GameTooltip:Show()
+    end
+    -- Coordinates change as you walk: refresh the tooltip while hovering.
+    local acc = 0
+    chip:SetScript("OnEnter", function(self) acc = 0; tip(self); ring:SetVertexColor(GOLD_HOVER[1], GOLD_HOVER[2], GOLD_HOVER[3], 1) end)
+    chip:SetScript("OnLeave", function() GameTooltip:Hide(); ring:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 1) end)
+    chip:SetScript("OnUpdate", function(self, dt)
+        if not self:IsMouseOver() then return end
+        acc = acc + dt
+        if acc >= 0.5 then acc = 0; if GameTooltip:IsOwned(self) then tip(self) end end
+    end)
+    chip:SetScript("OnClick", function() if not InCombatLockdown() and ToggleWorldMap then ToggleWorldMap() end end)
+
+    -- Blizzard's header pieces.
+    local C = MinimapCluster
+    if not C then return end
+    fadeOut(C.ZoneTextButton)
+    fadeOut(_G.TimeManagerClockButton)
+    fadeOut(C.BorderTop)
+    for _, r in ipairs({ C:GetRegions() }) do pcall(r.SetAlpha, r, 0) end
+    local cont = C.MinimapContainer
+    fadeOut(cont and cont.PlayerCoords)
+    -- The day / night dial (an unnamed ~42 px frame in the map's container)
+    -- stays behind in the corner when the map moves: faded out too. The
+    -- time is in the pill's tooltip.
+    if cont then
+        for _, c in ipairs({ cont:GetChildren() }) do
+            local w = c.GetWidth and c:GetWidth() or 0
+            if c ~= Minimap and c ~= cont.PlayerCoords and w >= 36 and w <= 48 then fadeOut(c) end
+        end
+    end
+    fadeOut(_G.GameTimeFrame)
+    -- Tracking: set into the pill's left end. A magnifier of ours is drawn
+    -- there (a ring and a handle, in the pill's own colors) with a hairline
+    -- divider; Blizzard's button sits invisibly on top of it and still opens
+    -- its own tracking menu.
+    local glyph = CreateFrame("Frame", nil, chip)
+    glyph:SetSize(14, 14)
+    glyph:SetPoint("LEFT", chip, "LEFT", 4, 0)
+    glyph:SetFrameLevel(chip:GetFrameLevel() + 1)
+    local lens = glyph:CreateTexture(nil, "ARTWORK", nil, 0)
+    lens:SetSize(8, 8)
+    lens:SetPoint("CENTER", -1, 1)
+    lens:SetColorTexture(1, 1, 1, 1)
+    local lensMask = circleMask(glyph, 8)
+    lensMask:ClearAllPoints(); lensMask:SetPoint("CENTER", lens, "CENTER")
+    lens:AddMaskTexture(lensMask)
+    local hole = glyph:CreateTexture(nil, "ARTWORK", nil, 1)
+    hole:SetSize(5, 5)
+    hole:SetPoint("CENTER", lens, "CENTER")
+    hole:SetColorTexture(0.06, 0.06, 0.07, 1)
+    local holeMask = circleMask(glyph, 5)
+    holeMask:ClearAllPoints(); holeMask:SetPoint("CENTER", lens, "CENTER")
+    hole:AddMaskTexture(holeMask)
+    local handle = glyph:CreateLine(nil, "ARTWORK", nil, 0)
+    handle:SetThickness(1.6)
+    handle:SetColorTexture(1, 1, 1, 1)
+    handle:SetStartPoint("CENTER", glyph, 1.6, -1.6)
+    handle:SetEndPoint("CENTER", glyph, 4.6, -4.6)
+    local div = chip:CreateTexture(nil, "ARTWORK")
+    div:SetSize(1, 8)
+    div:SetPoint("LEFT", chip, "LEFT", 19, 0)
+    div:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    local function tint(c)
+        lens:SetVertexColor(c[1], c[2], c[3], 1)
+        handle:SetVertexColor(c[1], c[2], c[3], 1)
+    end
+    tint(T.textDim)
+
+    pcall(function()
+        local t = C.Tracking
+        if t then
+            local btn = t.Button
+            t:ClearAllPoints()
+            t:SetPoint("CENTER", glyph, "CENTER")
+            -- Its art goes; the frames stay (and stay clickable).
+            for _, r in ipairs({ t:GetRegions() }) do pcall(r.SetAlpha, r, 0) end
+            if btn then
+                for _, r in ipairs({ btn:GetRegions() }) do pcall(r.SetAlpha, r, 0) end
+                for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
+                    local tex = btn[get] and btn[get](btn)
+                    if tex then pcall(tex.SetAlpha, tex, 0) end
+                end
+                -- Above the pill and the map, and kept there: the cluster
+                -- re-levels its children when it is raised, which left the
+                -- button under the pill with only its edges reachable.
+                btn:SetFrameStrata("MEDIUM")
+                btn:SetFrameLevel(chip:GetFrameLevel() + 3)
+                if btn.SetFixedFrameStrata then pcall(btn.SetFixedFrameStrata, btn, true) end
+                if btn.SetFixedFrameLevel then pcall(btn.SetFixedFrameLevel, btn, true) end
+                -- And the pill itself lets the mouse through at that end, so
+                -- the button is reachable whatever the order ends up being.
+                chip:SetHitRectInsets(21, 21, 0, 0)
+                -- The whole left section of the pill is the button.
+                btn:ClearAllPoints()
+                btn:SetPoint("TOPLEFT", chip, "TOPLEFT", -2, 3)
+                btn:SetPoint("BOTTOMRIGHT", chip, "BOTTOMLEFT", 20, -3)
+                btn:HookScript("OnEnter", function() tint(GOLD_HOVER) end)
+                btn:HookScript("OnLeave", function() tint(T.textDim) end)
+            end
+        end
+    end)
+
+    -- The addon menu button (its count) takes the pill's right end the same
+    -- way: Blizzard's button, art faded, its number restyled, behind a
+    -- divider.
+    local div2 = chip:CreateTexture(nil, "ARTWORK")
+    div2:SetSize(1, 8)
+    div2:SetPoint("RIGHT", chip, "RIGHT", -19, 0)
+    div2:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    pcall(function()
+        local a = _G.AddonCompartmentFrame
+        if not a then div2:Hide() return end
+        for _, r in ipairs({ a:GetRegions() }) do
+            if r:IsObjectType("Texture") then pcall(r.SetAlpha, r, 0) end
+        end
+        for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture" }) do
+            local tex = a[get] and a[get](a)
+            if tex then pcall(tex.SetAlpha, tex, 0) end
+        end
+        local label = a.Text or (a.GetFontString and a:GetFontString())
+        if label then
+            ns:SetFont(label, 10, "")
+            label:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+            label:ClearAllPoints()
+            label:SetPoint("CENTER", a, "CENTER", 0, 0)
+            a:HookScript("OnEnter", function() label:SetTextColor(GOLD_HOVER[1], GOLD_HOVER[2], GOLD_HOVER[3]) end)
+            a:HookScript("OnLeave", function() label:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end)
+        end
+        a:SetFrameStrata("MEDIUM")
+        a:SetFrameLevel(chip:GetFrameLevel() + 3)
+        if a.SetFixedFrameStrata then pcall(a.SetFixedFrameStrata, a, true) end
+        if a.SetFixedFrameLevel then pcall(a.SetFixedFrameLevel, a, true) end
+        a:ClearAllPoints()
+        a:SetPoint("TOPLEFT", chip, "TOPRIGHT", -20, 3)
+        a:SetPoint("BOTTOMRIGHT", chip, "BOTTOMRIGHT", 2, -3)
+    end)
+end
+
+-- What the map looks like to the client right now (MinimalUIDB.domeprobe;
+-- read from the saved variables when the map doesn't draw).
+function MM:ProbeDome()
+    if not MinimalUIDB then return end
+    local out = {}
+    local function f2(v) return type(v) == "number" and string.format("%.2f", v) or tostring(v) end
+    local function describe(tag, fr)
+        local ok, line = pcall(function()
+            local p, rel, rp, x, y = fr:GetPoint(1)
+            return tag .. " shown=" .. tostring(fr:IsShown()) .. " visible=" .. tostring(fr:IsVisible())
+                .. " alpha=" .. f2(fr:GetAlpha()) .. " effAlpha=" .. f2(fr:GetEffectiveAlpha())
+                .. " scale=" .. f2(fr:GetScale()) .. " effScale=" .. f2(fr:GetEffectiveScale())
+                .. " size=" .. f2(fr:GetWidth()) .. "x" .. f2(fr:GetHeight())
+                .. " strata=" .. tostring(fr:GetFrameStrata()) .. " level=" .. tostring(fr:GetFrameLevel())
+                .. " point=" .. tostring(p) .. ">" .. tostring(rel and (rel.GetName and rel:GetName() or "?")) .. " "
+                .. tostring(rp) .. " " .. f2(x) .. "," .. f2(y)
+                .. " left=" .. f2(fr:GetLeft()) .. " bottom=" .. f2(fr:GetBottom())
+        end)
+        out[#out + 1] = ok and line or (tag .. " error: " .. tostring(line))
+    end
+    describe("Minimap", Minimap)
+    local p, depth = Minimap:GetParent(), 1
+    while p and depth <= 4 do
+        describe("parent" .. depth .. " " .. tostring(p.GetName and p:GetName() or "?"), p)
+        p, depth = p:GetParent(), depth + 1
+    end
+    if self.domeHolder then describe("holder", self.domeHolder) end
+    out[#out + 1] = "clipping parents switched off: " .. tostring(self.domeUnclipped)
+    local function tree(fr, key, depth)
+        if depth > 3 or (fr.IsForbidden and fr:IsForbidden()) then return end
+        local ok, line = pcall(function()
+            local p, rel, rp, x, y = fr:GetPoint(1)
+            local txt = ""
+            if fr.GetText then local t = fr:GetText(); if type(t) == "string" then txt = " text=" .. t end end
+            return string.rep("  ", depth) .. key .. " [" .. fr:GetObjectType() .. "] " .. tostring(fr.GetName and fr:GetName() or "?")
+                .. (fr:IsShown() and "" or " hidden") .. " " .. f2(fr:GetWidth()) .. "x" .. f2(fr:GetHeight())
+                .. " @" .. tostring(p) .. ">" .. tostring(rel and (rel.GetName and rel:GetName() or "?")) .. " "
+                .. tostring(rp) .. " " .. f2(x) .. "," .. f2(y)
+                .. (fr.DoesClipChildren and fr:DoesClipChildren() and " CLIPS" or "") .. txt
+        end)
+        out[#out + 1] = ok and line or (string.rep("  ", depth) .. key .. " error: " .. tostring(line))
+        if not fr.GetChildren then return end
+        local names = {}
+        for k, v in pairs(fr) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+        for _, r in ipairs({ fr:GetRegions() }) do
+            if r:IsObjectType("FontString") then
+                local t = r:GetText()
+                out[#out + 1] = string.rep("  ", depth + 1) .. "- " .. tostring(names[r] or r:GetName() or "?")
+                    .. " [FontString]" .. (r:IsShown() and "" or " hidden") .. " text=" .. tostring(type(t) == "string" and t or "?")
+            end
+        end
+        for _, c in ipairs({ fr:GetChildren() }) do
+            if c ~= Minimap then tree(c, names[c] or "#", depth + 1) end
+        end
+    end
+    if MinimapCluster then pcall(tree, MinimapCluster, "MinimapCluster", 0) end
+    out[#out + 1] = "Minimap children:"
+    pcall(function()
+        for _, c in ipairs({ Minimap:GetChildren() }) do tree(c, "#", 1) end
+    end)
+    pcall(function()
+        out[#out + 1] = "zoom=" .. tostring(Minimap:GetZoom()) .. " levels=" .. tostring(Minimap:GetZoomLevels())
+            .. " indoors=" .. tostring(IsIndoors and IsIndoors())
+            .. " rotate=" .. tostring(GetCVar and GetCVar("rotateMinimap"))
+        local kids, regs = { Minimap:GetChildren() }, { Minimap:GetRegions() }
+        out[#out + 1] = "children=" .. #kids .. " regions=" .. #regs
+        for i, r in ipairs(regs) do
+            if i <= 12 then
+                out[#out + 1] = "  region " .. tostring(r:GetObjectType()) .. " shown=" .. tostring(r:IsShown())
+                    .. " layer=" .. tostring(r.GetDrawLayer and r:GetDrawLayer())
+                    .. " tex=" .. tostring(r.GetTexture and r:GetTexture())
+                    .. " size=" .. f2(r:GetWidth()) .. "x" .. f2(r:GetHeight())
+            end
+        end
+        for i, c in ipairs(kids) do
+            if i <= 16 and c:IsShown() then
+                out[#out + 1] = "  child " .. tostring(c:GetObjectType()) .. " " .. tostring(c.GetName and c:GetName() or "?")
+                    .. " level=" .. tostring(c:GetFrameLevel()) .. " alpha=" .. f2(c:GetAlpha())
+                    .. " size=" .. f2(c:GetWidth()) .. "x" .. f2(c:GetHeight())
+            end
+        end
+    end)
+    MinimalUIDB.domeprobe = out
+end
+
+-- Drag handle over the dome (the map itself uses clicks for pings).
+function MM:SetDomeMover(on)
+    local h = self.domeHolder
+    if not h then return end
+    local mv = self.domeMover
+    if not mv then
+        mv = CreateFrame("Frame", nil, UIParent)
+        mv:SetAllPoints(h)
+        mv:SetFrameStrata("DIALOG")
+        mv:EnableMouse(true)
+        mv:RegisterForDrag("LeftButton")
+        local t = mv:CreateTexture(nil, "BACKGROUND")
+        t:SetAllPoints()
+        t:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.25)
+        t:AddMaskTexture(circleMask(mv, h:GetWidth()))
+        local label = ns:CreateText(mv, 11)
+        label:SetPoint("CENTER")
+        label:SetText("Drag  ·  /mui dome move to finish")
+        h:SetMovable(true)
+        mv:SetScript("OnDragStart", function() if not InCombatLockdown() then h:StartMoving() end end)
+        mv:SetScript("OnDragStop", function()
+            h:StopMovingOrSizing()
+            -- Store as an offset from the bottom center of the screen.
+            local cx, by = h:GetCenter(), h:GetBottom()
+            local ux = UIParent:GetWidth() / 2
+            MM.db.domePos = { x = math.floor(cx - ux + 0.5), y = math.floor(by + 0.5) }
+            MM:PlaceDome()
+        end)
+        self.domeMover = mv
+        mv:Hide()
+    end
+    if on == nil then on = not mv:IsShown() end
+    mv:SetShown(on)
+end
+
+ns.commands.dome = function(rest)
+    rest = rest or ""
+    if rest:find("move") then
+        if not MM.domeHolder then return ns:Print("Turn the dome on first: /mui dome") end
+        MM:SetDomeMover()
+        return
+    end
+    if rest:find("probe") then
+        MM:ProbeDome()
+        return ns:Print("Minimap state saved; /reload so it can be read.")
+    end
+    if rest:find("reset") then
+        MM.db.domePos = nil
+        MM:PlaceDome()
+        return ns:Print("Minimap dome back on the action bar.")
+    end
+    if InCombatLockdown() then return ns:Print("Can't rearrange the action bar in combat.") end
+    MM.db.dome = not MM.db.dome
+    if MM.db.dome then
+        MM:ApplyDome()
+        MM:ArrangeAround()
+        C_Timer.After(1, function() MM:ProbeDome() end)
+        ns:Print("Minimap dome on. /mui dome move to drag it, /mui dome reset to put it back on the bar.")
+    else
+        MM:ArrangeAround()
+        if MM.domeMover then MM.domeMover:Hide() end
+        ns.needsReload = true
+        ns:Print("Minimap dome off: /reload to put the minimap back.")
     end
 end
 

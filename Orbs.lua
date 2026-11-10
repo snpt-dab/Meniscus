@@ -2231,11 +2231,161 @@ local function powerPct(ptype)
     return fn
 end
 
+-- ── Portrait at rest ──────────────────────────────────────────────────────
+-- Out of combat at full health the health orb turns into a portrait window:
+-- your portrait fades in, translucent, inside the liquid. The moment a
+-- fight starts or health drops it fades back out, fast, and the orb is a
+-- plain health readout again. On when the player frame style is "rest"
+-- (UnitFrames.lua, /mui restportrait).
+-- The portrait is the flat (2D) one, not a 3D model: a model draws in a
+-- rectangular window that can't be masked, which showed as straight cuts at
+-- the bottom and side. A texture can take a soft round mask, so the face
+-- simply thins out toward the rim with no edge anywhere, and it is drawn
+-- translucent: a likeness seen in the liquid, not a window over it.
+local REST_ALPHA = 0.45
+local SPOT_MASK = MEDIA .. "spot.tga"
+local function buildRestPortrait(f)
+    local inner = f.inner
+    local P = CreateFrame("Frame", nil, f)
+    P:SetAllPoints(f.bar)
+    P:SetFrameLevel(f.bar:GetFrameLevel() + 2) -- over the liquid, under the value chip
+    P:SetAlpha(0)
+    P:Hide()
+    -- Two alphas multiply: P fades with combat (ours to animate), the body
+    -- inside it follows health (possibly a hidden value, set by the engine
+    -- from a curve: 1 at full health, 0 below ~98%).
+    local body = CreateFrame("Frame", nil, P)
+    body:SetAllPoints()
+    P.body = body
+
+    local face = body:CreateTexture(nil, "ARTWORK")
+    face:SetPoint("CENTER", 0, inner * 0.02)
+    face:SetSize(inner * 0.86, inner * 0.86)
+    face:SetVertexColor(1, 1, 1, REST_ALPHA)
+    -- Soft falloff to nothing well inside the liquid's rim.
+    local soft = body:CreateMaskTexture()
+    soft:SetTexture(SPOT_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    soft:SetPoint("CENTER", face, "CENTER")
+    soft:SetSize(inner * 1.05, inner * 1.05)
+    face:AddMaskTexture(soft)
+    face:AddMaskTexture(f.innerMask)
+    P.face = face
+
+    if f.chip then f.chip:SetFrameLevel(P:GetFrameLevel() + 3) end
+
+    P.alpha, P.want, P.dirty = 0, 0, true
+    function P:RefreshModel()
+        self.dirty = false
+        pcall(SetPortraitTexture, face, "player")
+    end
+    local function setAlpha(a)
+        P.alpha = a
+        P:SetAlpha(a)
+    end
+    -- Slow in (a second of calm first), fast out.
+    P:SetScript("OnUpdate", function(self, dt)
+        if self.want > 0 then
+            self.wait = (self.wait or 0) + dt
+            if self.wait < 1 then return end
+            setAlpha(math.min(1, self.alpha + dt / 0.9))
+        else
+            setAlpha(math.max(0, self.alpha - dt / 0.2))
+            if self.alpha <= 0 then self:Hide() end
+        end
+    end)
+    local ev = CreateFrame("Frame")
+    ev:RegisterUnitEvent("UNIT_MODEL_CHANGED", "player")
+    ev:RegisterUnitEvent("UNIT_PORTRAIT_UPDATE", "player")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:SetScript("OnEvent", function()
+        P.dirty = true
+        if P:IsShown() then P:RefreshModel() end
+    end)
+    f.rest = P
+    return P
+end
+
+-- Decide whether the portrait should be showing: out of combat and alive
+-- (ours to know), and at full health. Health is hidden from addons on this
+-- client, so "full" isn't tested here; the body's alpha is set by the engine
+-- from a curve over the health percentage instead.
+local REST_CURVE = { { 0.00, 0 }, { 0.975, 0 }, { 1.00, 1 } }
+local restCurve, restCurveTried
+local function setBodyAlpha(body, pctFn, c) body:SetAlpha(pctFn(c)) end
+local function checkRest(f)
+    if not f then return end
+    local P = f.rest
+    local want = 0
+    if Orbs.restPortrait and not InCombatLockdown() and not UnitAffectingCombat("player")
+        and not UnitIsDeadOrGhost("player") then
+        want = 1
+    end
+    if want == 1 and not P then P = buildRestPortrait(f) end
+    if not P then return end
+    if want == 1 then
+        local cur, max = UnitHealth("player"), UnitHealthMax("player")
+        if not issecretvalue(cur) and not issecretvalue(max) then
+            P.body:SetAlpha((max > 0 and cur >= max) and 1 or 0)
+        else
+            if not restCurveTried then restCurveTried = true; restCurve = floatCurve(REST_CURVE) end
+            if not (restCurve and healthPct and pcall(setBodyAlpha, P.body, healthPct, restCurve)) then
+                P.body:SetAlpha(0)
+            end
+        end
+    end
+    if P.want == want then return end
+    P.want = want
+    if want == 1 then
+        P.wait = 0
+        if P.dirty then P:RefreshModel() end
+        P:Show()
+    end
+end
+
+-- Your level set into the left end of the health orb's value pill, with a
+-- hairline divider (the same arrangement as tracking in the minimap's zone
+-- pill). Used when there is no player frame to carry the level badge.
+function Orbs:SetChipLevel(on)
+    local f = self.health
+    if not f or not f.chip then return end
+    if on and not f.lvl then
+        f.lvl = ns:CreateText(f.chip, 10, T.textDim)
+        f.lvl:SetPoint("CENTER", f.chip, "LEFT", 12, 0)
+        f.lvl:SetShadowOffset(1, -1)
+        f.lvl:SetShadowColor(0, 0, 0, 0.8)
+        f.lvlDiv = f.chip:CreateTexture(nil, "ARTWORK")
+        f.lvlDiv:SetSize(1, 8)
+        f.lvlDiv:SetPoint("LEFT", f.chip, "LEFT", 22, 0)
+        f.lvlDiv:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+        local function refresh(_, _, newLevel)
+            local lvl = type(newLevel) == "number" and newLevel or UnitLevel("player")
+            if lvl == nil or issecretvalue(lvl) then f.lvl:SetText("") else f.lvl:SetText(lvl) end
+        end
+        local ev = CreateFrame("Frame")
+        ev:RegisterEvent("PLAYER_LEVEL_UP")
+        ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+        ev:SetScript("OnEvent", refresh)
+        f.lvlRefresh = refresh
+    end
+    if f.lvl then
+        f.lvl:SetShown(on and true or false)
+        f.lvlDiv:SetShown(on and true or false)
+        if on then f.lvlRefresh() end
+    end
+    -- (The value stays centered on the whole pill, as on the power orb.)
+end
+
+function Orbs:SetRestPortrait(on)
+    self.restPortrait = on and true or false
+    checkRest(self.health)
+end
+
 local function updateHealth(f)
     local cur, max = UnitHealth("player"), UnitHealthMax("player")
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
     setText(f.text, cur)
+    checkRest(f)
     local c = getCurves()
     colorByPercent(f, cur, max, HEALTH_STOPS, HEALTH_FLASH, c.healthColor, c.healthFlash,
         healthPct)
@@ -2668,6 +2818,18 @@ function Orbs:OnInit(db)
         end
     end)
     for _, e in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }) do ev:RegisterUnitEvent(e, "player") end
+    -- Combat start / end decides the portrait-at-rest window.
+    local rest = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_DEAD" }) do
+        rest:RegisterEvent(e)
+    end
+    rest:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_REGEN_DISABLED" and self.health.rest then
+            self.health.rest.want = 0 -- InCombatLockdown isn't true yet during this event
+        else
+            checkRest(self.health)
+        end
+    end)
     for _, e in ipairs({ "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }) do
         ev:RegisterUnitEvent(e, "player")
     end
@@ -2675,6 +2837,9 @@ function Orbs:OnInit(db)
     updateHealth(self.health)
     updatePower(self.power)
     buildCombo(self)
+    -- The player frame can ride on the health orb (playerStyle "orb").
+    local UF = ns.modules.UnitFrames
+    if UF and UF.ApplyPlayerStyle and UF.db then UF:ApplyPlayerStyle() end
 end
 
 -- ── Show/hide and movement ────────────────────────────────────────────────
@@ -2683,6 +2848,8 @@ ns.commands.orbs = function()
     local show = not Orbs.health:IsShown()
     Orbs.health:SetShown(show)
     Orbs.power:SetShown(show)
+    local UF = ns.modules.UnitFrames
+    if UF and UF.ApplyPlayerStyle and UF.db then UF:ApplyPlayerStyle() end
     ns:Print("Orbs", show and "shown" or "hidden")
 end
 

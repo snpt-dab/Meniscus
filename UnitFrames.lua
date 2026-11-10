@@ -5,6 +5,15 @@ local UF = ns:NewModule("UnitFrames", {
     enabled = true,
     hideBlizzard = false,
     player = { x = -180, y = -180 },
+    -- "frame": the usual player frame (avatar + health / power pills).
+    -- "orb": just the avatar, pinned to the 10 o'clock edge of the health
+    -- orb; the orbs already show health and power (/mui orbportrait).
+    -- "none": no player frame and no portrait; your level is set into the
+    -- health orb's value pill and the resting z's rise from the orb's rim
+    -- (/mui noportrait).
+    -- ("rest", a portrait inside the orb, was tried and dropped; a saved
+    -- "rest" is turned into "none".)
+    playerStyle = "frame",
     target = { x = 180, y = -180 },
     focus  = { x = 196, y = -96 },
     -- attach = true stacks party frames directly above the player frame;
@@ -231,6 +240,7 @@ function UF:CreateAvatar(f, unit, side, d, mode)
     av.model = m
 
     local lip = CreateFrame("Frame", nil, av)
+    av.lip = lip
     lip:SetAllPoints(av)
     lip:SetFrameLevel(m:GetFrameLevel() + 1)
     local function layer(file, sub)
@@ -413,6 +423,108 @@ local function place(frame, pos)
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", UIParent, "CENTER", pos.x, pos.y)
 end
+
+-- ── Player on the health orb ──────────────────────────────────────────────
+-- playerStyle "orb": the player frame shrinks to its avatar and sits on the
+-- health orb's rim at 10 o'clock; the pills (and with them name and health
+-- text) are hidden. Everything that hangs off the player frame follows it:
+-- the pet frame moves to the avatar's left, the cast bar goes above the orb
+-- (CastBars.lua asks UF.orbStyleOn), attached party frames stack above.
+-- Falls back to the normal frame while the orbs are hidden.
+local ORB_ANGLE = math.rad(150) -- 10 o'clock
+function UF:ApplyPlayerStyle()
+    local f = self.player
+    if not f then return end
+    if InCombatLockdown() then self.stylePending = true return end
+    self.stylePending = false
+    local O = ns.modules.Orbs
+    local orb = O and O.health
+    if self.db.playerStyle == "rest" then self.db.playerStyle = "none" end
+    local style = self.db.playerStyle
+    local on = (style == "orb" or style == "none") and orb and orb:IsShown() and true or false
+    local bare = on and style == "none"
+    -- "none": the frame stays as an invisible anchor for what hangs off it.
+    f.avatar:SetShown(not bare)
+    f:EnableMouse(not bare)
+    if O and O.SetRestPortrait then O:SetRestPortrait(false) end
+    local s = SIZES.large
+    local av = f.avatar
+    self.orbStyleOn = on
+    self.playerBaseLevel = self.playerBaseLevel or f:GetFrameLevel()
+    f.healthPill:SetShown(not on)
+    f.powerPill:SetShown(not on)
+    f:ClearAllPoints()
+    av:ClearAllPoints()
+    if on then
+        local R = orb:GetWidth() / 2
+        f:SetSize(av.D, av.D)
+        f:SetPoint("CENTER", orb, "CENTER", math.cos(ORB_ANGLE) * R, math.sin(ORB_ANGLE) * R)
+        av:SetPoint("CENTER", f, "CENTER")
+        -- Above the orb and everything drawn on it.
+        f:SetFrameStrata(orb:GetFrameStrata())
+        f:SetFrameLevel(orb:GetFrameLevel() + 40)
+    else
+        f:SetSize(s.W, s.H + s.GAP + s.PH)
+        place(f, self.db.player)
+        av:SetPoint("CENTER", f.healthPill, "LEFT", 0, -2)
+        f:SetFrameLevel(self.playerBaseLevel)
+    end
+    -- Keep the avatar's layers in order whatever the frame level did.
+    local base = f:GetFrameLevel()
+    av:SetFrameLevel(base + 6)
+    if av.model then av.model:SetFrameLevel(base + 7) end
+    if av.lip then av.lip:SetFrameLevel(base + 8) end
+    -- Level badge and resting z's: on the avatar normally. With no portrait
+    -- the level goes into the health orb's value pill (Orbs:SetChipLevel)
+    -- and the z's rise from the orb's rim at 10 o'clock.
+    local badge, zs = f.levelBadge, self.rest
+    if badge then
+        badge:SetParent(av)
+        badge:SetScale(1)
+        badge:ClearAllPoints()
+        badge:SetPoint("CENTER", av, "BOTTOM", 0, 1)
+        badge:SetFrameLevel(base + 11)
+    end
+    if O and O.SetChipLevel then O:SetChipLevel(bare) end
+    if zs then
+        zs:SetParent(bare and f or av)
+        zs:ClearAllPoints()
+        if bare then
+            local R = orb:GetWidth() / 2
+            zs:SetPoint("BOTTOMLEFT", orb, "CENTER", math.cos(ORB_ANGLE) * R - 8, math.sin(ORB_ANGLE) * R - 4)
+        else
+            zs:SetPoint("BOTTOMLEFT", av, "TOPRIGHT", -10, -8)
+        end
+        zs:SetFrameLevel(base + 14)
+    end
+    if self.pet then
+        self.pet:ClearAllPoints()
+        if on then
+            self.pet:SetPoint("RIGHT", f, "LEFT", -10, 0)
+        else
+            self.pet:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -SMALL_FRAME_GAP)
+        end
+    end
+    local CB = ns.modules.CastBars
+    if CB and CB.player and CB.player.place then CB.player.place() end
+    if self.partyAnchor then self:LayoutParty() end
+    local AU = ns.modules.Auras
+    if AU and AU.SeatBlizzard and AU.db then AU:SeatBlizzard() end
+end
+
+local STYLE_NAMES = { frame = "normal frame", orb = "on the health orb's edge", none = "none (level in the health orb's pill)" }
+function UF:SetPlayerStyle(style)
+    if InCombatLockdown() then return ns:Print("Can't change the player frame in combat.") end
+    self.db.playerStyle = STYLE_NAMES[style] and style or "frame"
+    self:ApplyPlayerStyle()
+    if self.db.playerStyle ~= "frame" and not self.orbStyleOn then
+        ns:Print("That player style needs the orbs, which are hidden (/mui orbs).")
+    else
+        ns:Print("Player portrait:", STYLE_NAMES[self.db.playerStyle])
+    end
+end
+ns.commands.orbportrait = function() UF:SetPlayerStyle(UF.db.playerStyle == "orb" and "frame" or "orb") end
+ns.commands.noportrait = function() UF:SetPlayerStyle(UF.db.playerStyle == "none" and "frame" or "none") end
 
 -- ── Party ─────────────────────────────────────────────────────────────────
 function UF:LayoutParty()

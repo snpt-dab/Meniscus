@@ -16,7 +16,10 @@ local T = ns.Theme
 -- Blizzard's own frames can show a buff gained (or cancelled) mid-fight.
 -- playerRows = true: our rows beside the player frame, Blizzard's hidden;
 -- they freeze for the length of a fight.
-local A = ns:NewModule("Auras", { enabled = true, skinBlizzard = true, playerRows = false, playerSide = "left" })
+-- attachBlizz: Blizzard's buff / debuff frames are pinned into our layout
+-- (A:SeatBlizzard) instead of staying where Edit Mode has them.
+local A = ns:NewModule("Auras", { enabled = true, skinBlizzard = true, playerRows = false, playerSide = "left",
+    attachBlizz = true })
 
 local MEDIA = "Interface/AddOns/MinimalUI/Media/"
 local ROUND = MEDIA .. "rounded.tga"
@@ -522,18 +525,36 @@ local function skinAuraButton(b)
     end)
     b.__muiBack:SetShown(hasIcon)
 
-    -- Blizzard may reset fonts on update; reapply every time.
-    if b.Duration then ns:SetFont(b.Duration, 10, "OUTLINE") end
-    if b.Count then ns:SetFont(b.Count, 11, "OUTLINE") end
+    -- Blizzard may reset fonts on update: put ours back, but only when it
+    -- actually changed (this runs on every aura event).
+    local function font(fs, size)
+        if fs and fs.GetFont and fs:GetFont() ~= T.font then ns:SetFont(fs, size, "OUTLINE") end
+    end
+    font(b.Duration, 10)
+    font(b.Count, 11)
 end
 
+-- The frame builds its buttons the first time it has auras to show, which
+-- is after we start: at login there is often no button list yet. (Giving up
+-- when it was missing meant the skin never applied at all.) So: hook the
+-- frame's own refresh if it has one, and also re-check on every aura change
+-- and a few times after login.
 local function skinBlizzardFrame(frame)
-    if not (frame and frame.auraFrames) then return end
+    if not frame then return end
     local function run()
-        for _, b in ipairs(frame.auraFrames) do pcall(skinAuraButton, b) end
+        local list = frame.auraFrames
+        if type(list) ~= "table" then return end
+        for _, b in ipairs(list) do pcall(skinAuraButton, b) end
     end
     run()
-    if frame.UpdateAuraButtons then hooksecurefunc(frame, "UpdateAuraButtons", run) end
+    for _, method in ipairs({ "UpdateAuraButtons", "Update", "UpdateAuras" }) do
+        if type(frame[method]) == "function" then pcall(hooksecurefunc, frame, method, run) end
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterUnitEvent("UNIT_AURA", "player")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:SetScript("OnEvent", function() C_Timer.After(0, run) end)
+    for _, t in ipairs({ 0.5, 2, 5 }) do C_Timer.After(t, run) end
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────
@@ -589,6 +610,158 @@ function A:OnInit(db)
         skinBlizzardFrame(BuffFrame)
         skinBlizzardFrame(DebuffFrame)
     end
+    -- After the bars, orbs and minimap have settled where they are.
+    C_Timer.After(0.5, function() A:SeatBlizzard() end)
+    C_Timer.After(4, function() pcall(A.ProbeBlizzard, A) end)
+end
+
+-- ── Blizzard's buff frames, pinned into our layout ────────────────────────
+-- Only Blizzard's own frames can show auras in combat here, and they belong
+-- to Edit Mode. They are not reparented or resized: each is re-anchored to
+-- a spot in our layout, and re-anchored again whenever Edit Mode's own
+-- layout moves it back (a SetPoint hook, as with the minimap dome). No
+-- fields are written on them, so their own (secure) aura code stays clean.
+--   player frame shown:  left of the avatar, debuffs under the buffs
+--   no player frame:     buffs above the left half of the main action bar,
+--                        debuffs above the right half
+-- /mui buffs attach toggles it (off needs a reload to hand them back).
+local seats, seating, hooked = {}, false, {}
+local function reseat(frame)
+    local s = seats[frame]
+    if not s or seating then return end
+    seating = true
+    pcall(function()
+        frame:ClearAllPoints()
+        frame:SetPoint(s[1], s[2], s[3], s[4], s[5])
+    end)
+    seating = false
+end
+local function seat(frame, point, rel, rp, x, y)
+    if not frame or not rel then return end
+    seats[frame] = { point, rel, rp, x, y }
+    if not hooked[frame] then
+        hooked[frame] = true
+        hooksecurefunc(frame, "SetPoint", function(self, _, r)
+            local s = seats[self]
+            if s and not seating and r ~= s[2] then reseat(self) end
+        end)
+    end
+    reseat(frame)
+end
+
+-- Which corner of its frame Blizzard fills icons from (an Edit Mode choice):
+-- the frame has to be pinned by that corner, or the icons land a frame's
+-- height / width away from where they were meant to be. (Pinned by the top
+-- on a bottom-filling frame, the buffs sat behind the action bar.)
+local function fillCorner(frame)
+    local c = frame.AuraContainer
+    local v, h = "TOP", "RIGHT"
+    pcall(function()
+        if not c then return end
+        local cy, cx = (c:GetTop() + c:GetBottom()) / 2, (c:GetLeft() + c:GetRight()) / 2
+        local s = c:GetEffectiveScale() / frame:GetEffectiveScale()
+        cy, cx = cy * s, cx * s
+        if cy - frame:GetBottom() < frame:GetTop() - cy then v = "BOTTOM" end
+        if cx - frame:GetLeft() < frame:GetRight() - cx then h = "LEFT" end
+    end)
+    return v, h
+end
+
+function A:SeatBlizzard()
+    if not self.db or not self.db.attachBlizz or self.db.playerRows then return end
+    local UF, B = ns.modules.UnitFrames, ns.modules.Bars
+    local pf = UF and UF.player
+    local ROW = 46 -- one row of Blizzard's icons with its timer text
+    if pf and not UF.orbStyleOn and pf.avatar then
+        -- Left of the avatar: buffs level with it, debuffs a row below.
+        for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
+            if fr then
+                local v = fillCorner(fr)
+                local y = (v == "BOTTOM" and -10 or 16) - (i - 1) * 2 * ROW
+                seat(fr, v .. "RIGHT", pf.avatar, "LEFT", -8, y)
+            end
+        end
+    elseif B and B.main and B.db then
+        -- No player frame: buffs over the left half of the main bar,
+        -- debuffs over the right half, just above the stance / pet row.
+        local m, s = B.db.main, B.db.small
+        local base = 8 + (s and s.size or 26) + 8
+        local blockW = B.split and (3 * m.size + 2 * m.gap) or (B.main:GetWidth() / 2 - 110)
+        for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
+            if fr then
+                local v, h = fillCorner(fr)
+                local y = base + (v == "TOP" and ROW or 0)
+                if i == 1 then
+                    seat(fr, v .. h, B.main, "TOPLEFT", h == "RIGHT" and blockW or 0, y)
+                else
+                    seat(fr, v .. h, B.main, "TOPRIGHT", h == "RIGHT" and 0 or -blockW, y)
+                end
+            end
+        end
+    end
+end
+
+-- State of Blizzard's buff frames (MinimalUIDB.buffprobe, and a short
+-- version in chat): for when they are pinned but can't be seen.
+function A:ProbeBlizzard(toChat)
+    local out = {}
+    local function f2(v) return type(v) == "number" and string.format("%.0f", v) or tostring(v) end
+    local function describe(tag, fr)
+        if not fr then out[#out + 1] = tag .. ": missing" return end
+        local ok, line = pcall(function()
+            local p, rel, rp, x, y = fr:GetPoint(1)
+            return tag .. ": shown=" .. tostring(fr:IsShown()) .. " visible=" .. tostring(fr:IsVisible())
+                .. " alpha=" .. string.format("%.2f", fr:GetEffectiveAlpha())
+                .. " scale=" .. string.format("%.2f", fr:GetEffectiveScale())
+                .. " size=" .. f2(fr:GetWidth()) .. "x" .. f2(fr:GetHeight())
+                .. " left=" .. f2(fr:GetLeft()) .. " right=" .. f2(fr:GetRight())
+                .. " bottom=" .. f2(fr:GetBottom()) .. " top=" .. f2(fr:GetTop())
+                .. " strata=" .. tostring(fr:GetFrameStrata())
+                .. " anchor=" .. tostring(p) .. ">" .. tostring(rel and (rel.GetName and rel:GetName() or "?"))
+                .. " " .. tostring(rp) .. " " .. f2(x) .. "," .. f2(y) .. " points=" .. tostring(fr:GetNumPoints())
+        end)
+        out[#out + 1] = ok and line or (tag .. " error: " .. tostring(line))
+    end
+    for _, name in ipairs({ "BuffFrame", "DebuffFrame" }) do
+        local fr = _G[name]
+        describe(name, fr)
+        if fr then
+            describe(name .. ".AuraContainer", fr.AuraContainer)
+            local n, shown = 0, 0
+            for i, b in ipairs(fr.auraFrames or {}) do
+                n = n + 1
+                if b:IsShown() then
+                    shown = shown + 1
+                    if shown <= 2 then describe(name .. " aura" .. i, b) end
+                end
+            end
+            out[#out + 1] = name .. " aura buttons: " .. n .. ", shown: " .. shown
+                .. "  seated=" .. tostring(seats[fr] ~= nil)
+        end
+    end
+    out[#out + 1] = "screen " .. f2(UIParent:GetWidth()) .. "x" .. f2(UIParent:GetHeight())
+        .. " scale " .. string.format("%.2f", UIParent:GetEffectiveScale())
+    if MinimalUIDB then MinimalUIDB.buffprobe = out end
+    if toChat then for _, l in ipairs(out) do ns:Print(l) end end
+end
+
+ns.commands.buffs = function(rest)
+    if rest and rest:find("probe") then
+        A:ProbeBlizzard(true)
+        return
+    end
+    if rest and rest:find("attach") then
+        A.db.attachBlizz = not A.db.attachBlizz
+        if A.db.attachBlizz then
+            A:SeatBlizzard()
+            ns:Print("Buff frames pinned into the layout.")
+        else
+            ns.needsReload = true
+            ns:Print("Buff frames released: /reload to hand them back to Edit Mode.")
+        end
+        return
+    end
+    ns:Print("/mui buffs attach  pin the game's buff frames into the layout (toggle)   /mui buffs probe  where they are")
 end
 
 -- Player rows sit right of the health pill, or left of the avatar growing
