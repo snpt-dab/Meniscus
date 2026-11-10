@@ -10,7 +10,7 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     for root, dirs, files in os.walk('.'):
         dirs[:] = [d for d in dirs if d not in ('dist', '.claude', '.git')]
         for f in files:
-            if f == 'CLAUDE.md' or '.bak' in f or f.endswith('.zip'): continue
+            if f == 'CLAUDE.md' or f.startswith('.') or '.bak' in f or f.endswith('.zip'): continue
             p = os.path.join(root, f)
             z.write(p, 'MinimalUI/' + os.path.relpath(p, '.').replace(os.sep, '/')); n += 1
 print(out, n, 'files', os.path.getsize(out), 'bytes')
