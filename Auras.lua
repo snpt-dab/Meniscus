@@ -1,0 +1,751 @@
+local _, ns = ...
+local T = ns.Theme
+
+-- Buffs/debuffs.
+--  * Target / focus: a row of small rounded icons above the health pill
+--    (debuffs first, then buffs).
+--  * Party: debuffs only, to the right of each party pill.
+--  * Player: Blizzard's own BuffFrame/DebuffFrame are kept (right-click cancel,
+--    weapon enchants, Edit Mode placement) and restyled to match.
+-- Everything that might be secret in combat goes straight into widgets:
+-- icon -> SetTexture, duration -> duration object -> Cooldown swipe,
+-- stacks -> GetAuraApplicationDisplayCount when the count is secret.
+
+-- playerRows = false (default): Blizzard's BuffFrame/DebuffFrame, restyled.
+-- This client blocks addon code from reading any auras in combat, so only
+-- Blizzard's own frames can show a buff gained (or cancelled) mid-fight.
+-- playerRows = true: our rows beside the player frame, Blizzard's hidden;
+-- they freeze for the length of a fight.
+local A = ns:NewModule("Auras", { enabled = true, skinBlizzard = true, playerRows = false, playerSide = "left" })
+
+local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local ROUND = MEDIA .. "rounded.tga"
+local U = C_UnitAuras
+
+local DISPEL = {
+    Magic   = { 0.25, 0.55, 1.00 },
+    Curse   = { 0.65, 0.30, 0.95 },
+    Disease = { 0.75, 0.52, 0.22 },
+    Poison  = { 0.30, 0.80, 0.30 },
+}
+local DEBUFF = { 0.80, 0.26, 0.26 }
+
+local HARMFUL = { filter = "HARMFUL", harmful = true }
+local HELPFUL = { filter = "HELPFUL", harmful = false }
+
+local function mask(owner)
+    local m = owner:CreateMaskTexture()
+    m:SetTexture(ROUND, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    return m
+end
+
+-- ── Icon ──────────────────────────────────────────────────────────────────
+-- secureIndex: make the icon a secure button that cancels HELPFUL aura #index
+-- on right-click (player buffs). Its attributes never change, so the row must
+-- show buffs strictly in index order, and it is never shown/hidden in combat
+-- (protected); empty slots just go transparent.
+local function newIcon(parent, size, secureIndex)
+    local b
+    if secureIndex then
+        b = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate")
+        b:SetAttribute("unit", "player")
+        b:SetAttribute("*type2", "cancelaura")
+        b:SetAttribute("index", secureIndex)
+        b:SetAttribute("filter", "HELPFUL")
+        b:RegisterForClicks("RightButtonDown", "RightButtonUp")
+        b.secure = true
+    else
+        b = CreateFrame("Frame", nil, parent)
+    end
+    b:SetSize(size, size)
+    b:SetFrameLevel(parent:GetFrameLevel() + 8)
+    local inset = 1.5
+
+    local outer = mask(b)
+    outer:SetAllPoints()
+    local inner = mask(b)
+    inner:SetPoint("TOPLEFT", inset, -inset)
+    inner:SetPoint("BOTTOMRIGHT", -inset, inset)
+
+    b.ring = b:CreateTexture(nil, "BACKGROUND")
+    b.ring:SetAllPoints()
+    b.ring:SetColorTexture(unpack(T.border))
+    b.ring:AddMaskTexture(outer)
+
+    -- Player buffs: a gold ring that pulses when one of YOUR buffs is about
+    -- to run out (Quick Buff will offer it; see A:CheckExpiring).
+    if secureIndex then
+        b.warn = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+        b.warn:SetAllPoints()
+        b.warn:SetColorTexture(1.0, 0.80, 0.30, 1)
+        b.warn:AddMaskTexture(outer)
+        b.warn:Hide()
+        local ag = b.warn:CreateAnimationGroup()
+        local a = ag:CreateAnimation("Alpha")
+        a:SetFromAlpha(1); a:SetToAlpha(0.25); a:SetDuration(0.6); a:SetSmoothing("IN_OUT")
+        ag:SetLooping("BOUNCE")
+        b.warnAnim = ag
+    end
+
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetPoint("TOPLEFT", inset, -inset)
+    b.icon:SetPoint("BOTTOMRIGHT", -inset, inset)
+    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    b.icon:AddMaskTexture(inner)
+
+    b.cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+    b.cd:SetPoint("TOPLEFT", inset, -inset)
+    b.cd:SetPoint("BOTTOMRIGHT", -inset, inset)
+    pcall(b.cd.SetSwipeTexture, b.cd, ROUND) -- rounded swipe to match the icon
+    b.cd:SetSwipeColor(0, 0, 0, 0.6)
+    b.cd:SetDrawEdge(false)
+    b.cd:SetHideCountdownNumbers(true)
+    -- Aura convention: start bright, darken as time runs out (the default
+    -- cooldown draws the remaining time dark, so fresh buffs looked grayed).
+    b.cd:SetReverse(true)
+
+    -- Stack count must draw above the cooldown swipe.
+    local top = CreateFrame("Frame", nil, b)
+    top:SetAllPoints()
+    top:SetFrameLevel(b.cd:GetFrameLevel() + 1)
+    b.count = top:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(b.count, math.max(8, math.floor(size * 0.42)), "OUTLINE")
+    b.count:SetPoint("BOTTOMRIGHT", 1, -1)
+
+    -- Hover for the tooltip; clicks pass through (except secure cancel buttons).
+    b:EnableMouse(true)
+    if not b.secure and b.SetMouseClickEnabled then b:SetMouseClickEnabled(false) end
+    b:SetScript("OnEnter", function(self)
+        if not issecretvalue(self.auraID) and not self.auraID then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        pcall(GameTooltip.SetUnitAuraByAuraInstanceID, GameTooltip, self.unit, self.auraID)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", GameTooltip_Hide)
+    if b.secure then
+        b:Show()
+        b:SetAlpha(0)
+    else
+        b:Hide()
+    end
+    return b
+end
+
+local function setVisible(b, on)
+    if b.secure then b:SetAlpha(on and 1 or 0) else b:SetShown(on) end
+end
+
+local function setIcon(b, unit, a, harmful)
+    b.unit, b.auraID = unit, a.auraInstanceID
+    b.harmful = harmful
+    b.icon:SetTexture(a.icon)
+
+    local apps = a.applications
+    if not issecretvalue(apps) then
+        b.count:SetText((apps and apps > 1) and apps or "")
+    elseif U.GetAuraApplicationDisplayCount then
+        local ok, s = pcall(U.GetAuraApplicationDisplayCount, unit, a.auraInstanceID)
+        b.count:SetText(ok and s or "")
+    else
+        b.count:SetText("")
+    end
+
+    if harmful then
+        local d = a.dispelName
+        local c = (type(d) == "string" and not issecretvalue(d) and DISPEL[d]) or DEBUFF
+        b.ring:SetColorTexture(c[1], c[2], c[3], 1)
+    else
+        b.ring:SetColorTexture(unpack(T.border))
+    end
+
+    -- Readable timing: permanent auras (duration 0) get no swipe at all;
+    -- otherwise a normal cooldown. Only fall back to the duration object when
+    -- the values are secret (it filled the whole icon for permanent auras).
+    local d, e = a.duration, a.expirationTime
+    -- Remember what the expiry check needs (player buff icons only).
+    if b.warn then
+        local QB = ns.modules.QuickBuff
+        local mine = QB and QB.db and QB.db.enabled ~= false and QB.IsRebuffable and QB:IsRebuffable(a.name)
+        local readable = not issecretvalue(d) and not issecretvalue(e)
+        b.expiresAt = (mine and readable and d and d > 0) and e or nil
+        b.auraDur = readable and d or nil
+    end
+    if not issecretvalue(d) and not issecretvalue(e) then
+        if d and e and d > 0 then
+            b.cd:SetCooldown(e - d, d)
+        else
+            b.cd:Clear()
+        end
+    else
+        local ok, dur = false, nil
+        if U.GetAuraDuration then ok, dur = pcall(U.GetAuraDuration, unit, a.auraInstanceID) end
+        if ok and dur and b.cd.SetCooldownFromDurationObject then
+            b.cd:SetCooldownFromDurationObject(dur)
+        else
+            b.cd:Clear()
+        end
+    end
+end
+
+-- ── Rows ──────────────────────────────────────────────────────────────────
+-- Reading auras. In combat this client refuses GetAuraDataByIndex from addon
+-- code for auras it treats as secret ("Auras cannot be accessed when secret
+-- while tainted"), e.g. a buff gained mid-fight, and the error used to abort
+-- the whole refresh so nothing changed until combat ended. Now every read is
+-- protected and there are fallbacks, tried in order:
+--   1. by index (the normal way)
+--   2. by slot (GetAuraSlots + GetAuraDataBySlot)
+--   3. GetUnitAuras
+--   4. whatever by-index could read, plus auras announced by UNIT_AURA
+--      itself (the event hands over the new aura data)
+-- Which one worked, and each distinct failure, is noted in
+-- MinimalUIDB.auralog (first 40 notes of the session).
+local function note(key, text)
+    if not MinimalUIDB then return end
+    A.noted = A.noted or {}
+    if A.noted[key] then return end
+    A.noted[key] = true
+    local log = MinimalUIDB.auralog
+    if not log then log = {}; MinimalUIDB.auralog = log end
+    if #log < 40 then log[#log + 1] = date("%H:%M:%S") .. (InCombatLockdown() and " [combat] " or " ") .. text end
+end
+
+local slotBuf = {}
+local function packSlots(ok, token, ...)
+    local n = ok and select("#", ...) or 0
+    for i = 1, n do slotBuf[i] = (select(i, ...)) end
+    for i = n + 1, #slotBuf do slotBuf[i] = nil end
+    return ok, n, (not ok) and token or nil
+end
+
+-- Auras the UNIT_AURA event announced, by unit and instance id: used when
+-- nothing else can read them. Dropped when the event says they are gone, and
+-- wiped out of combat (by then the normal reads work again).
+local announced = {}
+local function remember(unit, info)
+    if type(info) ~= "table" then return end
+    local t = announced[unit]
+    if type(info.addedAuras) == "table" then
+        for _, a in ipairs(info.addedAuras) do
+            local id = type(a) == "table" and a.auraInstanceID
+            if not issecretvalue(id) and id then
+                if not t then t = {}; announced[unit] = t end
+                t[id] = a
+            end
+        end
+    end
+    if t and type(info.removedAuraInstanceIDs) == "table" then
+        for _, id in ipairs(info.removedAuraInstanceIDs) do
+            if not issecretvalue(id) then t[id] = nil end
+        end
+    end
+end
+
+local function isHarmful(a)
+    local h = a.isHarmful
+    if issecretvalue(h) then return nil end
+    return h and true or false
+end
+
+-- Fills buf with the auras of one filter on the unit; returns how many.
+local function listAuras(buf, unit, filter)
+    local tag = unit .. " " .. filter
+    local n, failedAt, failMsg = 0, nil, nil
+    for idx = 1, 40 do
+        local ok, a = pcall(U.GetAuraDataByIndex, unit, idx, filter)
+        if not ok then failedAt, failMsg = idx, a break end
+        if not a then break end
+        n = n + 1; buf[n] = a
+    end
+    if not failedAt then
+        for i = n + 1, #buf do buf[i] = nil end
+        return n
+    end
+    note(tag .. " index", tag .. ": by-index failed at #" .. failedAt .. ": " .. tostring(failMsg))
+    local partial = n
+
+    -- 2. slots
+    if U.GetAuraSlots and U.GetAuraDataBySlot then
+        local ok, count, err = packSlots(pcall(U.GetAuraSlots, unit, filter))
+        if ok then
+            local m, bad = 0, 0
+            for i = 1, count do
+                local ok2, a = pcall(U.GetAuraDataBySlot, unit, slotBuf[i])
+                if ok2 and a then
+                    m = m + 1; buf[m] = a
+                else
+                    bad = bad + 1
+                    if not ok2 then note(tag .. " slotdata", tag .. ": GetAuraDataBySlot failed: " .. tostring(a)) end
+                end
+            end
+            note(tag .. " slots", tag .. ": slots gave " .. m .. " of " .. count .. " (by-index gave " .. partial .. ")")
+            if bad == 0 and m >= math.max(partial, 1) then
+                for i = m + 1, #buf do buf[i] = nil end
+                return m
+            end
+        else
+            note(tag .. " slotserr", tag .. ": GetAuraSlots failed: " .. tostring(err))
+        end
+    end
+
+    -- 3. GetUnitAuras
+    if U.GetUnitAuras then
+        local ok, list = pcall(U.GetUnitAuras, unit, filter)
+        if ok and type(list) == "table" then
+            note(tag .. " unitauras", tag .. ": GetUnitAuras gave " .. #list .. " (by-index gave " .. partial .. ")")
+            if #list >= math.max(partial, 1) then
+                for i = 1, #list do buf[i] = list[i] end
+                for i = #list + 1, #buf do buf[i] = nil end
+                return #list
+            end
+        else
+            note(tag .. " unitauraserr", tag .. ": GetUnitAuras failed: " .. tostring(list))
+        end
+    end
+
+    -- Nothing could list the auras: the caller keeps what it shows.
+    note(tag .. " blind", tag .. ": no way to list auras right now (by-index gave " .. partial .. " before failing)")
+    return 0, true
+end
+
+local function rowAllows(row, harmful)
+    for _, f in ipairs(row.filters) do if f.harmful == harmful then return true end end
+    return false
+end
+
+-- The auras can't be listed (combat): never blank the row because of that.
+-- Keep what is showing, refresh / drop each icon by its aura's own id where
+-- the game allows that, and add auras the UNIT_AURA event announced.
+local function fillBlind(row, unit)
+    local tag = unit .. " blind"
+    for i = 1, #row.icons do
+        local b = row.icons[i]
+        local id = b.auraID
+        if (issecretvalue(id) or id ~= nil) and U.GetAuraDataByAuraInstanceID then
+            local ok, a = pcall(U.GetAuraDataByAuraInstanceID, unit, id)
+            if ok and a == nil then
+                note(tag .. " gone", unit .. ": by-id read works; an aura was dropped that way")
+                setVisible(b, false)
+                b.auraID, b.expiresAt = nil, nil
+            elseif ok then
+                note(tag .. " byid", unit .. ": by-id read works for known auras")
+                pcall(setIcon, b, unit, a, b.harmful and true or false)
+            else
+                note(tag .. " byiderr", unit .. ": by-id read failed: " .. tostring(a))
+            end
+        end
+    end
+    local t = announced[unit]
+    if t then
+        for id, a in pairs(t) do
+            local showing = false
+            for i = 1, #row.icons do
+                local bid = row.icons[i].auraID
+                if not issecretvalue(bid) and bid == id then showing = true break end
+            end
+            if not showing then
+                local h = isHarmful(a)
+                if h == nil then h = false end -- hidden flag: assume a buff
+                local fresh = a
+                if U.GetAuraDataByAuraInstanceID then
+                    local ok, d = pcall(U.GetAuraDataByAuraInstanceID, unit, id)
+                    if ok and d == nil then fresh = nil; t[id] = nil elseif ok then fresh = d end
+                end
+                if fresh and rowAllows(row, h) then
+                    for i = 1, #row.icons do
+                        local b = row.icons[i]
+                        if not issecretvalue(b.auraID) and b.auraID == nil then
+                            pcall(setIcon, b, unit, fresh, h)
+                            setVisible(b, true)
+                            note(tag .. " added", unit .. ": showed an announced aura")
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local last = 0
+    for i = 1, #row.icons do local id = row.icons[i].auraID
+        if issecretvalue(id) or id ~= nil then last = i end end
+    row.shown = last
+end
+
+local function hideFrom(row, i)
+    for j = i, #row.icons do
+        setVisible(row.icons[j], false)
+        row.icons[j].auraID = nil
+        row.icons[j].expiresAt = nil
+    end
+end
+
+-- reset: the unit itself changed (new target, roster change), so icons
+-- showing now belong to someone else and can't be kept.
+local function fill(row, reset)
+    local unit = row.frame.unit
+    local i = 1
+    if UnitExists(unit) then
+        row.buf = row.buf or {}
+        for _, f in ipairs(row.filters) do
+            local n, blind = listAuras(row.buf, unit, f.filter)
+            if blind then
+                if reset then hideFrom(row, 1) end
+                fillBlind(row, unit)
+                return
+            end
+            for k = 1, n do
+                if i > #row.icons then break end
+                -- Protected: a hidden (secret) field tripping one icon must
+                -- not stop the rest of the row from updating.
+                local ok, err = pcall(setIcon, row.icons[i], unit, row.buf[k], f.harmful)
+                if not ok and A.lastError ~= err then
+                    A.lastError = err
+                    note("icon " .. tostring(err), "icon error: " .. tostring(err))
+                    local handler = geterrorhandler()
+                    if handler then handler("Auras icon: " .. tostring(err)) end
+                end
+                setVisible(row.icons[i], true)
+                i = i + 1
+            end
+        end
+    end
+    hideFrom(row, i)
+    row.shown = i - 1
+end
+
+-- Fill a row; failures go to the error recorder (/mui errors) instead of vanishing.
+function A:Fill(row, reset)
+    local ok, err = pcall(fill, row, reset)
+    if not ok then
+        self.lastError = err
+        note("fill " .. tostring(err), "fill error (" .. tostring(row.frame.key) .. "): " .. tostring(err))
+        local handler = geterrorhandler()
+        if handler then handler("Auras fill (" .. tostring(row.frame.key) .. "): " .. tostring(err)) end
+    end
+    if row.onFill then row.onFill(row) end
+end
+
+-- placement(icon, index, size, gap) anchors one icon.
+local function newRow(frame, n, size, gap, filters, placement, events, secure)
+    local row = { frame = frame, icons = {}, filters = filters }
+    for i = 1, n do
+        local b = newIcon(frame, size, secure and i or nil)
+        placement(b, i, size, gap)
+        row.icons[i] = b
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterUnitEvent("UNIT_AURA", frame.realUnit or frame.unit)
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    for _, e in ipairs(events or {}) do ev:RegisterEvent(e) end
+    ev:SetScript("OnEvent", function(_, e, unit, info)
+        if e == "UNIT_AURA" then
+            -- Everything in the event's payload can be secret in combat
+            -- (even isFullUpdate), so it is only looked at under pcall and
+            -- never allowed to stop the refresh below.
+            local u = row.frame.unit
+            local ok, err = pcall(function()
+                if type(info) ~= "table" then return end
+                local full = info.isFullUpdate
+                if issecretvalue(full) then
+                    note("secretfull " .. u, u .. ": UNIT_AURA isFullUpdate is secret")
+                elseif full then
+                    announced[u] = nil
+                end
+                remember(u, info)
+                local list = info.addedAuras
+                if type(list) == "table" and not issecretvalue(list) then
+                    local a = list[1]
+                    if type(a) == "table" then
+                        note("announce " .. u, u .. ": UNIT_AURA announces new auras; icon secret="
+                            .. tostring(issecretvalue(a.icon)) .. " id secret=" .. tostring(issecretvalue(a.auraInstanceID)))
+                    end
+                else
+                    note("noadded " .. u .. tostring(issecretvalue(list)), u .. ": UNIT_AURA addedAuras type="
+                        .. type(list) .. " secret=" .. tostring(issecretvalue(list)))
+                end
+            end)
+            if not ok then note("payload " .. tostring(err), u .. ": UNIT_AURA payload error: " .. tostring(err)) end
+        else
+            -- Target / focus / roster change, zoning: the announced list and
+            -- the icons belong to the old situation.
+            announced[row.frame.unit] = nil
+            A:Fill(row, e ~= "PLAYER_REGEN_ENABLED" and e ~= "PLAYER_REGEN_DISABLED")
+            return
+        end
+        A:Fill(row)
+    end)
+    row.ev = ev
+    A:Fill(row)
+    return row
+end
+
+-- ── Blizzard player buffs ─────────────────────────────────────────────────
+local function skinAuraButton(b)
+    local icon = b.Icon
+    if not icon then return end
+    if not b.__mui then
+        b.__mui = true
+        local back = CreateFrame("Frame", nil, b)
+        back:SetPoint("TOPLEFT", icon, "TOPLEFT", -1.5, 1.5)
+        back:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 1.5, -1.5)
+        back:SetFrameLevel(math.max(b:GetFrameLevel() - 1, 0))
+        local outer = mask(back)
+        outer:SetAllPoints(back)
+        local ring = back:CreateTexture(nil, "BACKGROUND")
+        ring:SetAllPoints()
+        ring:SetColorTexture(unpack(T.border))
+        ring:AddMaskTexture(outer)
+        b.__muiRing = ring
+        b.__muiBack = back
+
+        local inner = mask(b)
+        inner:SetAllPoints(icon)
+        icon:AddMaskTexture(inner)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        -- Debuff type color moves from Blizzard's square border to our ring.
+        if b.DebuffBorder then
+            b.DebuffBorder:SetAlpha(0)
+            hooksecurefunc(b.DebuffBorder, "SetVertexColor", function(_, r, g, bl)
+                ring:SetColorTexture(r, g, bl, 1)
+            end)
+        end
+        if b.TempEnchantBorder then b.TempEnchantBorder:SetAlpha(0) end
+    end
+    -- Our ring is a filled rounded plate behind the icon, so an empty slot
+    -- (shown button, no icon) would read as a solid gray square. Only show it
+    -- when there is actually an icon.
+    local hasIcon = false
+    pcall(function()
+        hasIcon = icon:IsShown() and type(icon:GetTexture()) ~= "nil"
+    end)
+    b.__muiBack:SetShown(hasIcon)
+
+    -- Blizzard may reset fonts on update; reapply every time.
+    if b.Duration then ns:SetFont(b.Duration, 10, "OUTLINE") end
+    if b.Count then ns:SetFont(b.Count, 11, "OUTLINE") end
+end
+
+local function skinBlizzardFrame(frame)
+    if not (frame and frame.auraFrames) then return end
+    local function run()
+        for _, b in ipairs(frame.auraFrames) do pcall(skinAuraButton, b) end
+    end
+    run()
+    if frame.UpdateAuraButtons then hooksecurefunc(frame, "UpdateAuraButtons", run) end
+end
+
+-- ── Init ──────────────────────────────────────────────────────────────────
+function A:OnInit(db)
+    self.db = db
+    if MinimalUIDB then MinimalUIDB.auralog = nil end
+    -- One-time switch for settings saved while our own rows were the default.
+    if not db.blizzBuffsDefault then
+        db.blizzBuffsDefault = true
+        db.playerRows = false
+    end
+    local UF = ns.modules.UnitFrames
+    if not (UF and UF.target) then return end
+    self.rows = {}
+
+    local function above(frame)
+        return function(b, i, size, gap)
+            b:SetPoint("BOTTOMLEFT", frame.healthPill, "TOPLEFT", (i - 1) * (size + gap), 5)
+        end
+    end
+    local function rightOf(frame)
+        return function(b, i, size, gap)
+            b:SetPoint("LEFT", frame.healthPill, "RIGHT", 6 + (i - 1) * (size + gap), 0)
+        end
+    end
+
+    -- Target: 7 icons stop short of the avatar on the pill's right end.
+    table.insert(self.rows, newRow(UF.target, 7, 22, 3, { HARMFUL, HELPFUL }, above(UF.target),
+        { "PLAYER_TARGET_CHANGED" }))
+    if UF.focus then
+        table.insert(self.rows, newRow(UF.focus, 6, 18, 3, { HARMFUL, HELPFUL }, above(UF.focus),
+            { "PLAYER_FOCUS_CHANGED" }))
+    end
+    for _, pf in ipairs(UF.party or {}) do
+        table.insert(self.rows, newRow(pf, 4, 18, 3, { HARMFUL }, rightOf(pf), { "GROUP_ROSTER_UPDATE" }))
+    end
+
+    if db.playerRows and UF.player then
+        local pf = UF.player
+        local noop = function() end
+        -- Buffs: secure, right-click cancels. Debuffs: a second row below.
+        self.playerBuffs = newRow(pf, 12, 22, 3, { HELPFUL }, noop, { "PLAYER_REGEN_ENABLED" }, true)
+        self.playerDebuffs = newRow(pf, 8, 22, 3, { HARMFUL }, noop)
+        table.insert(self.rows, self.playerBuffs)
+        table.insert(self.rows, self.playerDebuffs)
+        local relayout = function() A:LayoutPlayerRows() end
+        self.playerBuffs.onFill, self.playerDebuffs.onFill = relayout, relayout
+        self:LayoutPlayerRows()
+        self:HideBlizzardAuras()
+        -- Time runs out without aura events: check the warning rings each second.
+        C_Timer.NewTicker(1, function() A:CheckExpiring() end)
+    elseif db.skinBlizzard then
+        skinBlizzardFrame(BuffFrame)
+        skinBlizzardFrame(DebuffFrame)
+    end
+end
+
+-- Player rows sit right of the health pill, or left of the avatar growing
+-- leftward (db.playerSide). 6 icons per row; once a block wraps, its icons
+-- shrink. Buff icons are secure, so they only re-layout out of combat (their
+-- grid slots are fixed, so a 7th buff gained in combat still lands in row 2).
+local PER_ROW, BIG, SMALL, GAP = 6, 22, 18, 1.5
+
+local function placeBlock(row, anchor, left, size, y0)
+    for i, b in ipairs(row.icons) do
+        local col, r = (i - 1) % PER_ROW, math.floor((i - 1) / PER_ROW)
+        local x = 8 + col * (size + GAP)
+        local y = y0 - r * (size + GAP)
+        b:ClearAllPoints()
+        b:SetSize(size, size)
+        if left then
+            b:SetPoint("TOPRIGHT", anchor, "LEFT", -x, y)
+        else
+            b:SetPoint("TOPLEFT", anchor, "RIGHT", x, y)
+        end
+    end
+end
+
+function A:LayoutPlayerRows()
+    if not self.playerBuffs then return end
+    local pf = ns.modules.UnitFrames.player
+    local left = self.db.playerSide == "left"
+    local anchor = left and (pf.avatar or pf) or pf.healthPill
+
+    if not InCombatLockdown() then
+        local n = self.playerBuffs.shown or 0
+        local size = n > PER_ROW and SMALL or BIG
+        local key = (left and "L" or "R") .. size
+        if self.buffKey ~= key then
+            placeBlock(self.playerBuffs, anchor, left, size, size / 2)
+            self.buffKey, self.buffSize = key, size
+            self.buffRows = math.ceil(#self.playerBuffs.icons / PER_ROW)
+        end
+        self.buffUsedRows = math.max(1, math.ceil(n / PER_ROW))
+    end
+
+    -- Debuffs aren't secure: always free to move. They sit under the buff rows in use.
+    local bs = self.buffSize or BIG
+    local top = bs / 2 - (self.buffUsedRows or 1) * (bs + GAP)
+    local dn = self.playerDebuffs.shown or 0
+    local dsize = dn > PER_ROW and SMALL or BIG
+    local dkey = (left and "L" or "R") .. dsize .. ":" .. top
+    if self.debuffKey ~= dkey then
+        placeBlock(self.playerDebuffs, anchor, left, dsize, top)
+        self.debuffKey = dkey
+    end
+end
+
+-- Gold pulsing ring on your own buffs that are inside the rebuff window.
+function A:CheckExpiring()
+    local row = self.playerBuffs
+    if not row then return end
+    local QB = ns.modules.QuickBuff
+    local now = GetTime()
+    for _, b in ipairs(row.icons) do
+        local low = false
+        if b.expiresAt and b.auraID and QB and QB.Threshold then
+            low = b.expiresAt - now <= QB:Threshold(b.auraDur)
+        end
+        if low ~= (b.warn:IsShown()) then
+            b.warn:SetShown(low)
+            if low then b.warnAnim:Play() else b.warnAnim:Stop() end
+        end
+    end
+end
+
+function A:SetPlayerSide(side)
+    if InCombatLockdown() then ns:Print("Can't move buff rows in combat.") return end
+    self.db.playerSide = side
+    self.buffKey, self.debuffKey = nil, nil
+    self:LayoutPlayerRows()
+end
+
+-- Blizzard's player aura frames stay in place (Edit Mode owns them) but are
+-- invisible and ignore the mouse. Re-checked twice a second because Blizzard
+-- refreshes them often.
+-- The roots' alpha hides everything under them (alpha multiplies down), so
+-- only the roots need alpha 0; the walk is for the mouse (invisible aura
+-- buttons would still catch it), and runs less often since new buttons
+-- only appear now and then.
+local function quiet(f, depth)
+    if f.EnableMouse then pcall(f.EnableMouse, f, false) end
+    local kids, n = ns.Kids(f, depth)
+    for i = 1, n do quiet(kids[i], depth + 1) end
+end
+
+function A:HideBlizzardAuras()
+    local frames = { BuffFrame, DebuffFrame }
+    local function run(walk)
+        for _, f in ipairs(frames) do
+            if f then
+                f:SetAlpha(0)
+                if walk then pcall(quiet, f, 0) end
+            end
+        end
+    end
+    run(true)
+    local acc, walkAcc = 0, 0
+    local d = CreateFrame("Frame")
+    -- A new buff may mean a new (mouse-catching) button: walk on the next tick.
+    d:RegisterUnitEvent("UNIT_AURA", "player")
+    d:SetScript("OnEvent", function() walkAcc = 3 end)
+    d:SetScript("OnUpdate", function(_, dt)
+        acc, walkAcc = acc + dt, walkAcc + dt
+        if acc < 0.5 then return end
+        acc = 0
+        local walk = walkAcc >= 3
+        if walk then walkAcc = 0 end
+        run(walk)
+    end)
+end
+
+-- Refresh rows now (e.g. after party test mode swaps units).
+function A:RefreshAll()
+    for _, row in ipairs(self.rows or {}) do self:Fill(row) end
+end
+
+-- /mui auralist: what the aura code sees right now, and how many icons each row shows.
+ns.commands.auralist = function()
+    for _, unit in ipairs({ "player", "target", "focus" }) do
+        if UnitExists(unit) then
+            for _, f in ipairs({ HARMFUL, HELPFUL }) do
+                local names = {}
+                for i = 1, 10 do
+                    local a = U.GetAuraDataByIndex(unit, i, f.filter)
+                    if not a then break end
+                    local n = a.name
+                    table.insert(names, issecretvalue(n) and "<secret>" or tostring(n))
+                end
+                ns:Print(unit, f.filter .. ":", #names > 0 and table.concat(names, ", ") or "(none)")
+            end
+        end
+    end
+    for _, row in ipairs(A.rows or {}) do
+        local shown = 0
+        for _, b in ipairs(row.icons) do if b:IsShown() then shown = shown + 1 end end
+        ns:Print("row", tostring(row.frame.key), "unit=" .. tostring(row.frame.unit),
+            "frame shown=" .. tostring(row.frame:IsShown()), "icons shown=" .. shown)
+    end
+    for _, name in ipairs({ "BuffFrame", "DebuffFrame" }) do
+        local fr = _G[name]
+        if fr and fr.auraFrames then
+            local shown, empty = 0, 0
+            for _, b in ipairs(fr.auraFrames) do
+                if b:IsShown() then
+                    shown = shown + 1
+                    local ok, has = pcall(function() return type(b.Icon:GetTexture()) ~= "nil" end)
+                    if not (ok and has) then empty = empty + 1 end
+                end
+            end
+            ns:Print(name, "buttons:", #fr.auraFrames, "shown:", shown, "shown but empty:", empty)
+        end
+    end
+    ns:Print("last aura error:", tostring(A.lastError))
+end

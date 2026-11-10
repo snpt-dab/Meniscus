@@ -1,0 +1,285 @@
+local ADDON, ns = ...
+local T = ns.Theme
+
+-- Resource monitor: how heavy is MinimalUI?
+--   /mui perf          toggle a small live readout (memory, churn, CPU, FPS)
+--   /mui perf report   print a summary + the slowest timed jobs
+--   /mui perf reset    clear the timed-job stats
+--   /mui perf gc       full garbage collect, then show retained memory
+-- A sample is logged every 60s into MinimalUIDB.perf (readable from the
+-- SavedVariables file after /reload or logout), with peaks and job timings.
+--
+-- ns.Timed(label, fn, ...) wraps periodic work (skin passes, menu watchers)
+-- so their cost shows up per job. debugprofilestop is cheap; always on.
+
+local now = debugprofilestop
+local stats = {}
+ns.perfStats = stats
+
+function ns.Timed(label, fn, ...)
+    local t0 = now()
+    local a, b, c = fn(...)
+    local dt = now() - t0
+    local s = stats[label]
+    if not s then s = { n = 0, ms = 0, max = 0 }; stats[label] = s end
+    s.n = s.n + 1
+    s.ms = s.ms + dt
+    if dt > s.max then s.max = dt end
+    return a, b, c
+end
+
+-- ── Measurements ──────────────────────────────────────────────────────────
+local updateMem = _G.UpdateAddOnMemoryUsage or (C_AddOns and C_AddOns.UpdateAddOnMemoryUsage)
+local getMem = _G.GetAddOnMemoryUsage or (C_AddOns and C_AddOns.GetAddOnMemoryUsage)
+
+local function memKB()
+    if not (updateMem and getMem) then return nil end
+    pcall(updateMem)
+    local ok, kb = pcall(getMem, ADDON)
+    if ok and type(kb) == "number" then return kb end
+end
+
+-- CPU, ms per frame. Modern clients have an always-on profiler; older ones
+-- need the scriptProfile CVar (which slows everything, so off by default).
+local P = _G.C_AddOnProfiler
+local M = _G.Enum and _G.Enum.AddOnProfilerMetric
+local function cpu()
+    if P and M and P.GetAddOnMetric and (not P.IsEnabled or P.IsEnabled()) then
+        local ok1, recent = pcall(P.GetAddOnMetric, ADDON, M.RecentAverageTime)
+        local ok2, peak = pcall(P.GetAddOnMetric, ADDON, M.PeakTime)
+        local ok3, all = pcall(P.GetOverallMetric, M.RecentAverageTime)
+        if ok1 and type(recent) == "number" then
+            return recent, ok2 and peak or nil, ok3 and all or nil, "profiler"
+        end
+    end
+    if _G.GetCVar and GetCVar("scriptProfile") == "1" and _G.GetAddOnCPUUsage then
+        pcall(UpdateAddOnCPUUsage)
+        local ok, total = pcall(GetAddOnCPUUsage, ADDON) -- ms since reload
+        if ok and type(total) == "number" then return nil, nil, nil, "scriptProfile", total end
+    end
+    return nil, nil, nil, "none"
+end
+
+local function fmtKB(kb)
+    if not kb then return "?" end
+    if kb >= 1024 then return string.format("%.1f MB", kb / 1024) end
+    return string.format("%d KB", kb)
+end
+
+-- Colors: fine / worth a look / heavy.
+local OK, WARN, BAD = "|cff8fd19e", "|cffe6c26b", "|cffe57373"
+local function grade(v, warn, bad) return (v >= bad and BAD) or (v >= warn and WARN) or OK end
+
+-- ── Log ───────────────────────────────────────────────────────────────────
+local session = { start = GetTime and GetTime() or 0 }
+local lastMem, lastT, churn = nil, nil, 0
+
+local function db()
+    if not MinimalUIDB then return end
+    local p = MinimalUIDB.perf
+    if type(p) ~= "table" or p.session ~= session.id then
+        p = { session = session.id, started = date("%Y-%m-%d %H:%M"), samples = {}, peakMem = 0, peakCPU = 0 }
+        MinimalUIDB.perf = p
+    end
+    return p
+end
+
+local function sample()
+    local kb = memKB()
+    local t = GetTime()
+    if kb and lastMem and t > lastT then
+        local d = (kb - lastMem) / (t - lastT)
+        if d >= 0 then churn = d end -- a drop is the GC; keep the last growth rate
+    end
+    lastMem, lastT = kb, t
+    local recent, peak = cpu()
+    return kb, recent, peak
+end
+
+local function snapshotJobs(p)
+    p.jobs = {}
+    for label, s in pairs(stats) do
+        p.jobs[label] = string.format("%d runs, %.2f ms avg, %.2f ms max, %.0f ms total",
+            s.n, s.ms / math.max(s.n, 1), s.max, s.ms)
+    end
+end
+
+local function logSample()
+    local p = db()
+    if not p then return end
+    local kb, recent, peak = sample()
+    table.insert(p.samples, string.format("%s  mem %s  churn %.1f KB/s  cpu %s ms/frame  fps %.0f",
+        date("%H:%M"), fmtKB(kb), churn, recent and string.format("%.3f", recent) or "n/a", GetFramerate()))
+    while #p.samples > 120 do table.remove(p.samples, 1) end
+    if kb and kb > p.peakMem then p.peakMem = math.floor(kb) end
+    if peak and peak > p.peakCPU then p.peakCPU = peak end
+    snapshotJobs(p)
+end
+
+local boot = CreateFrame("Frame")
+boot:RegisterEvent("PLAYER_LOGIN")
+boot:RegisterEvent("PLAYER_LOGOUT")
+boot:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_LOGIN" then
+        session.id = tostring(time())
+        db()
+        C_Timer.After(5, logSample)
+        C_Timer.NewTicker(60, logSample)
+    else
+        local p = db()
+        if p then snapshotJobs(p) end
+    end
+end)
+
+-- ── Readout ───────────────────────────────────────────────────────────────
+local box
+local function buildBox()
+    box = CreateFrame("Frame", "MinimalUIPerf", UIParent)
+    box:Hide() -- new frames start shown; the toggle below would hide it at once
+    box:SetSize(210, 92)
+    box:SetFrameStrata("HIGH")
+    box:SetClampedToScreen(true)
+    box:SetMovable(true)
+    box:EnableMouse(true)
+    box:RegisterForDrag("LeftButton")
+    box:SetScript("OnDragStart", box.StartMoving)
+    box:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local p, _, rp, x, y = self:GetPoint()
+        MinimalUIDB.perfPos = { p, rp, x, y }
+    end)
+    local pos = MinimalUIDB.perfPos
+    if pos then box:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4]) else box:SetPoint("TOPLEFT", 20, -200) end
+    ns.RoundedRect(box, -8, 0, 8, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(box, -7, 1, 7, 0.06, 0.06, 0.07, 0.95)
+    local title = box:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(title, 11, "", true)
+    title:SetTextColor(unpack(T.textDim))
+    title:SetPoint("TOPLEFT", 10, -8)
+    title:SetText("MinimalUI resources")
+    box.body = box:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(box.body, 11)
+    box.body:SetTextColor(unpack(T.text))
+    box.body:SetPoint("TOPLEFT", 10, -24)
+    box.body:SetJustifyH("LEFT")
+    box.body:SetSpacing(2)
+    local acc = 1
+    box:SetScript("OnUpdate", function(self, dt)
+        acc = acc + dt
+        if acc < 1 then return end
+        acc = 0
+        local kb, recent, peak = sample()
+        local _, _, all, src, total = cpu()
+        local lines = {}
+        lines[1] = "Memory  " .. (kb and grade(kb, 8192, 16384) or "") .. fmtKB(kb) .. "|r"
+        lines[2] = "Churn   " .. grade(churn, 50, 200) .. string.format("%.1f KB/s", churn) .. "|r"
+        if recent then
+            local share = (all and all > 0) and string.format("  (%.0f%% of addons)", recent / all * 100) or ""
+            lines[3] = "CPU     " .. grade(recent, 0.5, 2) .. string.format("%.3f ms/frame", recent) .. "|r" .. share
+            lines[4] = "Peak    " .. (peak and string.format("%.1f ms", peak) or "?")
+        elseif src == "scriptProfile" then
+            lines[3] = string.format("CPU     %.0f ms since reload", total or 0)
+        else
+            lines[3] = "CPU     n/a on this client"
+        end
+        local fps = GetFramerate()
+        table.insert(lines, "FPS     " .. grade(-fps, -50, -25) .. string.format("%.0f", fps) .. "|r")
+        self.body:SetText(table.concat(lines, "\n"))
+        self:SetHeight(32 + #lines * 13)
+        -- Fit the widest line (the CPU line grows with its addon share).
+        self:SetWidth(math.max(210, math.ceil(self.body:GetStringWidth()) + 24))
+    end)
+end
+
+local function report()
+    local kb = memKB()
+    local recent, peak, all, src = cpu()
+    local p = db()
+    ns:Print(string.format("Memory %s (peak %s), churn %.1f KB/s", fmtKB(kb), fmtKB(p and p.peakMem), churn))
+    if recent then
+        ns:Print(string.format("CPU %.3f ms/frame recent, %.1f ms peak%s", recent, peak or 0,
+            (all and all > 0) and string.format(", %.0f%% of all addons", recent / all * 100) or ""))
+    else
+        ns:Print("CPU: " .. (src == "scriptProfile" and "scriptProfile on (see readout)" or "no profiler on this client"))
+    end
+    local list = {}
+    for label, s in pairs(stats) do table.insert(list, { label = label, s = s }) end
+    table.sort(list, function(a, b) return a.s.ms > b.s.ms end)
+    for i = 1, math.min(#list, 8) do
+        local e = list[i]
+        ns:Print(string.format("  %-22s %5d runs  %.2f ms avg  %.2f max", e.label, e.s.n, e.s.ms / e.s.n, e.s.max))
+    end
+    if #list == 0 then ns:Print("  (no timed jobs have run yet)") end
+end
+
+ns.commands.perf = function(rest)
+    rest = rest or ""
+    if rest == "report" then
+        report()
+    elseif rest == "reset" then
+        wipe(stats)
+        ns:Print("Timed-job stats cleared.")
+    elseif rest == "gc" then
+        local before = memKB()
+        pcall(collectgarbage, "collect")
+        local after = memKB()
+        ns:Print(string.format("After a full collect: %s (was %s).", fmtKB(after), fmtKB(before)))
+    else
+        if not box then buildBox() end
+        box:SetShown(not box:IsShown())
+        MinimalUIDB.perfShown = box:IsShown()
+    end
+end
+
+-- Keep the readout open across reloads if it was open.
+local restore = CreateFrame("Frame")
+restore:RegisterEvent("PLAYER_LOGIN")
+restore:SetScript("OnEvent", function()
+    if MinimalUIDB and MinimalUIDB.perfShown then buildBox(); box:Show() end
+end)
+
+-- ── Dev reload pill ───────────────────────────────────────────────────────
+-- Always-on Reload button in the top-left corner while MinimalUI is in
+-- development. /mui reloadbtn hides or shows it (remembered).
+local reloadBtn
+local function buildReload()
+    local b = CreateFrame("Button", "MinimalUIReload", UIParent)
+    b:SetSize(64, 22)
+    b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 8, -8)
+    b:SetFrameStrata("DIALOG")
+    b:SetClampedToScreen(true)
+    b.fs = b:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(b.fs, 11, "", true)
+    b.fs:SetPoint("CENTER")
+    b.fs:SetText("Reload")
+    b.paint = ns.EasePaint(b, ns.RoundedRect(b, -6, 0, 11, 0.13, 0.13, 0.15, 0.95))
+    local function repaint(self)
+        if self.hover then
+            self.paint(0.20, 0.20, 0.23, 1)
+            self.fs:SetTextColor(unpack(T.text))
+        else
+            self.paint(0.13, 0.13, 0.15, 0.95)
+            self.fs:SetTextColor(unpack(T.textDim))
+        end
+    end
+    b:SetScript("OnEnter", function(self) self.hover = true; repaint(self) end)
+    b:SetScript("OnLeave", function(self) self.hover = false; repaint(self) end)
+    b:SetScript("OnClick", function() ReloadUI() end)
+    repaint(b)
+    reloadBtn = b
+end
+
+local reloadBoot = CreateFrame("Frame")
+reloadBoot:RegisterEvent("PLAYER_LOGIN")
+reloadBoot:SetScript("OnEvent", function()
+    buildReload()
+    reloadBtn:SetShown(not (MinimalUIDB and MinimalUIDB.hideReloadBtn))
+end)
+
+ns.commands.reloadbtn = function()
+    if not reloadBtn then return end
+    local show = not reloadBtn:IsShown()
+    reloadBtn:SetShown(show)
+    MinimalUIDB.hideReloadBtn = not show
+    ns:Print("Reload button " .. (show and "shown." or "hidden."))
+end

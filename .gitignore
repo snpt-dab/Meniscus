@@ -1,0 +1,3 @@
+# built tester zips and snapshots (rebuild with: python dist/build.py)
+dist/*.zip
+dist/snapshots/

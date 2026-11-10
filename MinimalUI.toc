@@ -1,0 +1,44 @@
+## Interface: 16001
+## Title: MinimalUI
+## Notes: Clean, minimal, modern UI overhaul for WoW Forever.
+## Author: Andrew
+## Version: 0.1.0
+## SavedVariables: MinimalUIDB
+## IconTexture: Interface\Icons\INV_Misc_Gear_01
+## AddonCompartmentFunc: MinimalUI_OnAddonCompartmentClick
+
+Core.lua
+Theme.lua
+Perf.lua
+Shell.lua
+Snap.lua
+Probe.lua
+UnitFrames.lua
+CastBars.lua
+Auras.lua
+Orbs.lua
+Bars.lua
+XP.lua
+Declutter.lua
+Minimap.lua
+Chat.lua
+Tracker.lua
+Tooltip.lua
+Nameplates.lua
+QuickBuff.lua
+Character.lua
+Bags.lua
+Spellbook.lua
+QuestLog.lua
+Skins.lua
+Dialogs.lua
+Loot.lua
+Merchant.lua
+Trainer.lua
+Professions.lua
+DeathRecap.lua
+ProfessionsBook.lua
+Bank.lua
+Mail.lua
+Inspect.lua
+Panel.lua

@@ -1,0 +1,9 @@
+inter-400.ttf, inter-600.ttf
+  Inter by Rasmus Andersson (https://rsms.me/inter), Latin subset as packaged
+  by Fontsource (https://fontsource.org/fonts/inter).
+  Licensed under the SIL Open Font License 1.1: https://openfontlicense.org
+
+manrope-400.ttf, manrope-500.ttf, manrope-600.ttf, manrope-700.ttf
+  Manrope by Mikhail Sharanda, Latin subset as packaged by Fontsource
+  (https://fontsource.org/fonts/manrope).
+  Licensed under the SIL Open Font License 1.1: https://openfontlicense.org
