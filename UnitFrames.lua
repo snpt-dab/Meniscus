@@ -26,7 +26,7 @@ local UF = ns:NewModule("UnitFrames", {
     -- 3D pop-out avatar camera; tune live with /men portrait <key> <value>
     -- fidget = 0 keeps the plain breathing idle (no yawns/stretches that hit
     -- the model window's edges); 1 allows Blizzard's random idle fidgets.
-    portrait = { zoom = 1.0, dist = 1.0, z = 0, facing = 0, pop = 0.25, fidget = 0 },
+    portrait = { zoom = 1.0, dist = 1.0, z = 0, facing = 0, pop = 0.25, fidget = 0, sdist = 1.5 },
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -487,7 +487,7 @@ function UF:LayoutAvatar(av)
     local p = self.db and self.db.portrait or { pop = 0.25 }
     local d = av.D
     m:ClearAllPoints()
-    m:SetSize(0.8 * d, (0.8 + p.pop) * d)
+    m:SetSize(0.8 * d, (0.8 + (av.bust and 0 or p.pop)) * d)
     m:SetPoint("BOTTOM", av, "CENTER", 0, -0.3 * d)
 end
 
@@ -508,7 +508,10 @@ function UF:RefreshAvatar(av)
         m:ClearModel()
         m:SetUnit(unit)
         pcall(m.SetPortraitZoom, m, p.zoom)
-        pcall(m.SetCamDistanceScale, m, p.dist)
+        -- A "bust" avatar (the target strip's, hanging under the bar) pulls
+        -- the camera back so the whole head and the shoulders fit inside
+        -- the circle, instead of the head rising out of its top.
+        pcall(m.SetCamDistanceScale, m, av.bust and (p.sdist or 1.5) or p.dist)
         -- x nudges the model sideways (negative = left) so the face sits
         -- centered in the circle, clear of the model window's straight edges.
         -- (-0.03 was the first, wrong-way guess: positive y moves the model left.)
@@ -837,6 +840,7 @@ function UF:PlaceTarget()
         hp:SetPoint("BOTTOM", t, "BOTTOM")
         pw:SetPoint("TOP", t, "TOP")
         av:SetPoint("TOP", hp, "BOTTOM", 0, STRIP_OVERLAP)
+        if not av.bust then av.bust = true; self:LayoutAvatar(av); self:RefreshAvatar(av) end
         -- No avatar on the bar's end any more: both texts use the caps' inset.
         t.name:SetPoint("LEFT", hp, "LEFT", s.H / 2, 0)
         t.hpText:SetPoint("RIGHT", hp, "RIGHT", -s.H / 2, 0)
@@ -853,6 +857,7 @@ function UF:PlaceTarget()
         hp:SetPoint("TOP", t, "TOP")
         pw:SetPoint("BOTTOM", t, "BOTTOM")
         av:SetPoint("CENTER", hp, "RIGHT", 0, -2)
+        if av.bust then av.bust = nil; self:LayoutAvatar(av); self:RefreshAvatar(av) end
         local avatarInset = s.D / 2 + 6
         t.name:SetPoint("LEFT", hp, "LEFT", s.H / 2, 0)
         t.hpText:SetPoint("RIGHT", hp, "RIGHT", -avatarInset, 0)
@@ -1600,8 +1605,8 @@ ns.commands.portrait = function(rest)
         p[key] = val
         eachModel(function(av) UF:LayoutAvatar(av); UF:RefreshAvatar(av) end)
     elseif rest and rest ~= "" then
-        ns:Print("usage: /men portrait <zoom|dist|x|z|facing|pop|fidget> <number>  |  /men portrait reset")
+        ns:Print("usage: /men portrait <zoom|dist|sdist|x|z|facing|pop|fidget> <number>  |  /men portrait reset")
     end
-    ns:Print(string.format("portrait zoom %.2f  dist %.2f  x %.2f  z %.2f  facing %.2f  pop %.2f  fidget %d",
-        p.zoom, p.dist, p.x, p.z, p.facing, p.pop, p.fidget))
+    ns:Print(string.format("portrait zoom %.2f  dist %.2f  x %.2f  z %.2f  facing %.2f  pop %.2f  fidget %d  |  target strip dist (sdist) %.2f",
+        p.zoom, p.dist, p.x, p.z, p.facing, p.pop, p.fidget, p.sdist or 1.5))
 end
