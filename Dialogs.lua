@@ -163,7 +163,6 @@ local function paragraph(s, color)
 end
 
 -- Speech bubble with a tail toward the head; the text types itself out.
-local TILE_H = 48 -- reward tiles: icon, name, a comparison line under it
 local typer
 -- Long text scrolls inside the bubble (BUBBLE_MAX tall), so everything below
 -- it (objectives, rewards, buttons) stays in view without scrolling the window.
@@ -318,7 +317,7 @@ local function itemTiles(list)
     for _, it in ipairs(list) do
         local t = take("tile", function()
             local f = CreateFrame("Button", nil, content)
-            f:SetHeight(TILE_H)
+            f:SetHeight(42)
             f.ring = ns.RoundedRect(f, -8, 0, 10, T.border[1], T.border[2], T.border[3], 1)
             f.fill = ns.RoundedRect(f, -7, 1, 9, unpack(CARD))
             local box = CreateFrame("Frame", nil, f)
@@ -334,33 +333,11 @@ local function itemTiles(list)
             f.count = box:CreateFontString(nil, "OVERLAY")
             ns:SetFont(f.count, 10, "OUTLINE", true)
             f.count:SetPoint("BOTTOMRIGHT", -1, 1)
-            -- What a vendor pays for it, on the right (the best of several
-            -- choices is lit, the others dim).
-            f.sell = text(f, 10, false, T.textDim)
-            f.sell:SetPoint("RIGHT", f, "RIGHT", -9, 0)
-            f.sell:SetJustifyH("RIGHT")
             f.name = text(f, 11)
+            f.name:SetPoint("LEFT", box, "RIGHT", 8, 0)
+            f.name:SetPoint("RIGHT", f, "RIGHT", -6, 0)
             f.name:SetJustifyH("LEFT")
-            -- Gear: how it differs from what you wear, under the name.
-            f.cmp = text(f, 10, false, T.textDim)
-            f.cmp:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 8, -3)
-            f.cmp:SetPoint("RIGHT", f, "RIGHT", -8, 0)
-            f.cmp:SetJustifyH("LEFT")
-            f.cmp:SetWordWrap(false)
-            -- With a comparison line the name is one line on top; without,
-            -- it is centered and may wrap.
-            f.layoutText = function(self, two)
-                self.name:ClearAllPoints()
-                if two then
-                    self.name:SetPoint("TOPLEFT", box, "TOPRIGHT", 8, 3)
-                    self.name:SetWordWrap(false)
-                else
-                    self.name:SetPoint("LEFT", box, "RIGHT", 8, 0)
-                    self.name:SetWordWrap(true)
-                end
-                self.name:SetPoint("RIGHT", self.sell, "LEFT", -6, 0)
-            end
-            f:layoutText(false)
+            f.name:SetWordWrap(true)
             f:SetScript("OnEnter", function(self)
                 ns.TipAnchor(self)
                 pcall(GameTooltip.SetQuestItem, GameTooltip, self.kind, self.index)
@@ -371,10 +348,6 @@ local function itemTiles(list)
             return f
         end)
         t.kind, t.index = it.kind, it.index
-        t.sellValue = nil
-        t.sell:SetText("")
-        t.cmp:SetText("")
-        t:layoutText(false)
         t:SetWidth(tw)
         t:SetPoint("TOPLEFT", content, "TOPLEFT", col * (tw + 8), y)
         t.icon:SetTexture(it.tex)
@@ -408,12 +381,37 @@ local function itemTiles(list)
             end
         end)
         col = col + 1
-        if col == 2 then col = 0; y = y - (TILE_H + 6) end
+        if col == 2 then col = 0; y = y - 48 end
     end
-    if col == 1 then y = y - (TILE_H + 6) end
+    if col == 1 then y = y - 48 end
     y = y - 6
-    -- Vendor values. Item data may not have arrived yet for an item never
-    -- seen before, so this is tried again a moment later.
+end
+
+-- Reward cards: one card per reward, up to three across. Each card answers
+-- what you'd ask of a reward at a glance:
+--   top     icon, name (quality colour)
+--   line    what it is ("Wrist · Mail"), or in red why you can't use it
+--   middle  how it differs from what you wear, one stat per row
+--   bottom  what a vendor pays (the best-paying choice is lit)
+-- A choice is picked by clicking its card.
+local RCARD_GEAR, RCARD_PLAIN = 152, 86
+local function rewardCards(list)
+    local n = #list
+    local per = n >= 3 and 3 or 2
+    local cw = (CW - (per - 1) * 8) / per
+    local anyGear = false
+    for _, it in ipairs(list) do
+        it.link = call(_G.GetQuestItemLink, it.kind, it.index)
+        if it.link and C_Item and C_Item.GetItemInfoInstant then
+            local _, typ, sub, loc = call(C_Item.GetItemInfoInstant, it.link)
+            it.typ, it.sub, it.loc = typ, sub, loc
+            it.slotName = type(loc) == "string" and loc ~= "" and _G[loc] or nil
+            if type(it.slotName) ~= "string" then it.slotName = nil end
+            if it.slotName then anyGear = true end
+        end
+    end
+    local ch = anyGear and RCARD_GEAR or RCARD_PLAIN
+
     local function coins(v)
         local g, s, c = math.floor(v / 10000), math.floor(v / 100) % 100, v % 100
         local out = ""
@@ -422,51 +420,151 @@ local function itemTiles(list)
         if c > 0 then out = out .. c .. "|cffc98a52c|r" end
         return out
     end
-    local function sellValues()
-        local best = 0
-        for _, t in ipairs(pools.tile or {}) do
-            if t:IsShown() and t.kind then
-                local link = call(_G.GetQuestItemLink, t.kind, t.index)
-                local price
-                if link and C_Item and C_Item.GetItemInfo then
-                    price = select(11, call(C_Item.GetItemInfo, link))
-                end
-                local _, _, count = call(_G.GetQuestItemInfo, t.kind, t.index)
-                local line = link and ns.CompareLine and call(ns.CompareLine, link)
-                if type(line) == "string" then
-                    t.cmp:SetText(line)
-                    t:layoutText(true)
-                end
-                if type(price) == "number" and not secret(price) then
-                    if type(count) == "number" and not secret(count) and count > 1 then price = price * count end
-                    t.sellValue = price -- 0 = can't be sold
-                    if t.kind == "choice" and price > best then best = price end
-                else
-                    t.sellValue = nil   -- not known yet
-                end
+
+    local cards = {}
+    local col = 0
+    for _, it in ipairs(list) do
+        local t = take("rcard", function()
+            local f = CreateFrame("Button", nil, content)
+            f.ring = ns.RoundedRect(f, -8, 0, 12, T.border[1], T.border[2], T.border[3], 1)
+            f.fill = ns.RoundedRect(f, -7, 1, 11, unpack(CARD))
+            local box = CreateFrame("Frame", nil, f)
+            box:SetSize(36, 36)
+            box:SetPoint("TOPLEFT", 10, -10)
+            local mask = box:CreateMaskTexture()
+            mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetAllPoints()
+            f.icon = box:CreateTexture(nil, "ARTWORK")
+            f.icon:SetAllPoints()
+            f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            f.icon:AddMaskTexture(mask)
+            f.count = box:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(f.count, 10, "OUTLINE", true)
+            f.count:SetPoint("BOTTOMRIGHT", -1, 1)
+            f.name = text(f, 11, true)
+            f.name:SetPoint("TOPLEFT", box, "TOPRIGHT", 8, -1)
+            f.name:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+            f.name:SetJustifyH("LEFT"); f.name:SetJustifyV("TOP")
+            f.name:SetWordWrap(true)
+            if f.name.SetMaxLines then f.name:SetMaxLines(3) end
+            f.what = text(f, 10, false, T.textDim)
+            f.what:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -54)
+            f.what:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+            f.what:SetJustifyH("LEFT")
+            f.what:SetWordWrap(false)
+            f.rows = text(f, 11)
+            f.rows:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -74)
+            f.rows:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+            f.rows:SetJustifyH("LEFT"); f.rows:SetJustifyV("TOP")
+            f.rows:SetSpacing(3)
+            f.rows:SetWordWrap(false)
+            f.sell = text(f, 10, false, T.textDim)
+            f.sell:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+            f:SetScript("OnEnter", function(self)
+                ns.TipAnchor(self)
+                pcall(GameTooltip.SetQuestItem, GameTooltip, self.kind, self.index)
+                GameTooltip:Show()
+            end)
+            f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            return f
+        end)
+        cards[#cards + 1] = t
+        t.kind, t.index, t.it = it.kind, it.index, it
+        t:SetSize(cw, ch)
+        t:SetPoint("TOPLEFT", content, "TOPLEFT", col * (cw + 8), y)
+        t.icon:SetTexture(it.tex)
+        t.count:SetText(type(it.count) == "number" and it.count > 1 and it.count or "")
+        t.name:SetText(it.name)
+        local q = it.quality
+        local c = type(q) == "number" and q >= 2 and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+        t.qc = c
+        local function paintSel()
+            if it.kind == "choice" and selectedChoice == it.index then
+                t.ring(unpack(T.accent)); t.fill(0.10, 0.16, 0.20, 1)
+            elseif c then
+                t.ring(c.r * 0.7, c.g * 0.7, c.b * 0.7, 1); t.fill(unpack(CARD))
+            else
+                t.ring(T.border[1], T.border[2], T.border[3], 1); t.fill(unpack(CARD))
             end
         end
-        local missing = false
-        for _, t in ipairs(pools.tile or {}) do
-            if t:IsShown() and t.kind then
-                local v = t.sellValue
-                if v and v > 0 then
-                    t.sell:SetText(coins(v))
-                    local lit = t.kind == "choice" and v == best
-                    t.sell:SetAlpha(lit and 1 or 0.55)
-                elseif v == 0 then
-                    t.sell:SetText("")
-                else
-                    t.sell:SetText(""); missing = true
-                end
+        t.paintSel = paintSel
+        paintSel()
+        t:SetScript("OnClick", function(self)
+            if IsModifiedClick() then
+                local link = call(_G.GetQuestItemLink, self.kind, self.index)
+                if link and HandleModifiedItemClick then HandleModifiedItemClick(link) end
+                return
+            end
+            if it.kind == "choice" then
+                selectedChoice = it.index
+                for _, other in ipairs(pools.rcard or {}) do if other:IsShown() and other.paintSel then other.paintSel() end end
+                if win.onChoice then win.onChoice() end
+            end
+        end)
+        col = col + 1
+        if col == per then col = 0; y = y - (ch + 8) end
+    end
+    if col > 0 then y = y - (ch + 8) end
+    y = y - 4
+
+    -- The parts that need the item's full data (it can arrive a moment
+    -- after the dialog opens for an item never seen before).
+    local function details()
+        local best, missing = 0, false
+        for _, t in ipairs(cards) do
+            local it = t.it
+            local link = it.link or call(_G.GetQuestItemLink, t.kind, t.index)
+            it.link = link
+            local price
+            if link and C_Item and C_Item.GetItemInfo then price = select(11, call(C_Item.GetItemInfo, link)) end
+            if type(price) == "number" and not secret(price) then
+                if type(it.count) == "number" and not secret(it.count) and it.count > 1 then price = price * it.count end
+                t.price = price
+                if t.kind == "choice" and price > best then best = price end
+            else
+                t.price = nil
+                missing = true
+            end
+        end
+        for _, t in ipairs(cards) do
+            local it = t.it
+            local why = it.link and ns.ItemUnusable and call(ns.ItemUnusable, it.link)
+            local cant = type(why) == "string" or it.usable == false
+            -- What it is, or why it's no use to you.
+            local what = it.slotName and (it.slotName .. ((type(it.sub) == "string" and it.sub ~= "" and it.sub ~= it.slotName)
+                and ("  \194\183  " .. it.sub) or "")) or (type(it.typ) == "string" and it.typ or "")
+            if cant then
+                t.what:SetText("Can't use" .. (type(why) == "string" and ("  \194\183  " .. why) or ""))
+                t.what:SetTextColor(0.90, 0.45, 0.45)
+            else
+                t.what:SetText(what)
+                t.what:SetTextColor(unpack(T.textDim))
+            end
+            t.icon:SetDesaturated(cant)
+            local c = t.qc
+            if cant then t.name:SetTextColor(0.55, 0.55, 0.60)
+            elseif c then t.name:SetTextColor(c.r, c.g, c.b)
+            else t.name:SetTextColor(unpack(T.text)) end
+            -- Against what you wear (skipped for things you can't use).
+            local rows = (not cant) and it.link and ns.CompareRows and call(ns.CompareRows, it.link, 4)
+            t.rows:SetText(type(rows) == "table" and table.concat(rows, "\n") or "")
+            -- Vendor value.
+            local v = t.price
+            if v and v > 0 then
+                t.sell:SetText("Sells for  " .. coins(v))
+                t.sell:SetAlpha((t.kind ~= "choice" or v == best) and 1 or 0.55)
+            elseif v == 0 then
+                t.sell:SetText("No sell value"); t.sell:SetAlpha(0.55)
+            else
+                t.sell:SetText("")
             end
         end
         return missing
     end
-    if sellValues() then
+    if details() then
         local stamp = {}
         win.__sellStamp = stamp
-        C_Timer.After(0.5, function() if win.__sellStamp == stamp and win:IsShown() then sellValues() end end)
+        C_Timer.After(0.5, function() if win.__sellStamp == stamp and win:IsShown() then details() end end)
     end
 end
 
@@ -667,7 +765,7 @@ local function rewardsSection(includeChoices)
     local money, xp = call(_G.GetRewardMoney), call(_G.GetRewardXP)
     if #list == 0 and not (money and money > 0) and not (xp and xp > 0) then return 0 end
     section(choices > 1 and "Rewards  ·  choose one" or "Rewards")
-    if #list > 0 then itemTiles(list) end
+    if #list > 0 then rewardCards(list) end
     moneyLine(money, xp)
     return choices
 end

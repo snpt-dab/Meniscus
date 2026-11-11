@@ -385,6 +385,87 @@ function ns.CompareLine(link)
     return out
 end
 
+-- The comparison as rows for a card: a list of coloured strings, one stat
+-- per row, biggest change first (at most "max"). A single grey row says
+-- when there is nothing to list. nil: not gear, or its data hasn't arrived.
+function ns.CompareRows(link, max)
+    if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return nil end
+    local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
+    local slots = ok and SLOTS[loc]
+    if not slots then return nil end
+    local new = itemStats(link)
+    if not new then return nil end
+    local worn
+    for _, slot in ipairs(slots) do
+        local l = GetInventoryItemLink("player", slot)
+        if l then worn = l break end
+    end
+    if not worn then return { "|cff8fd19eEmpty slot|r" } end
+    if worn == link then return { "|cff9a9aa5Equipped|r" } end
+    local old = itemStats(worn)
+    if not old then return nil end
+    local diffs = {}
+    for k, v in pairs(new) do
+        local d = v - (old[k] or 0)
+        if math.abs(d) > 0.05 then diffs[#diffs + 1] = { k, d } end
+    end
+    for k, v in pairs(old) do
+        if new[k] == nil and v > 0.05 then diffs[#diffs + 1] = { k, -v } end
+    end
+    if #diffs == 0 then return { "|cff9a9aa5No change|r" } end
+    table.sort(diffs, byMagnitude)
+    max = max or 4
+    local rows = {}
+    for i = 1, math.min(#diffs, max) do
+        local d = diffs[i][2]
+        local a = math.abs(d)
+        rows[i] = (d > 0 and "|cff73d980+" or "|cffe57373-")
+            .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
+            .. " " .. statLabel(diffs[i][1]) .. "|r"
+    end
+    if #diffs > max then rows[max] = rows[max] .. "  |cff9a9aa5+" .. (#diffs - max) .. " more|r" end
+    return rows
+end
+
+-- Can this character use the item? The game marks what stops you in red in
+-- the item's tooltip (an armor type you can't wear, a level or class
+-- requirement): returns that red line's text, or nil when nothing is red.
+local scanTip
+local function isRed(r, g, b) return type(r) == "number" and r > 0.9 and g < 0.2 and b < 0.2 end
+function ns.ItemUnusable(link)
+    if type(link) ~= "string" then return nil end
+    local TI = _G.C_TooltipInfo
+    if TI and TI.GetHyperlink then
+        local ok, data = pcall(TI.GetHyperlink, link)
+        if ok and type(data) == "table" and type(data.lines) == "table" then
+            for _, ln in ipairs(data.lines) do
+                local lc, rc = ln.leftColor, ln.rightColor
+                if lc and isRed(lc.r, lc.g, lc.b) and type(ln.leftText) == "string" and ln.leftText ~= "" then return ln.leftText end
+                if rc and isRed(rc.r, rc.g, rc.b) and type(ln.rightText) == "string" and ln.rightText ~= "" then return ln.rightText end
+            end
+            return nil
+        end
+    end
+    if not scanTip then
+        local ok, tip = pcall(CreateFrame, "GameTooltip", "MeniscusItemScan", UIParent, "GameTooltipTemplate")
+        if not ok then return nil end
+        scanTip = tip
+    end
+    scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+    if not pcall(scanTip.SetHyperlink, scanTip, link) then return nil end
+    for i = 2, scanTip:NumLines() do
+        for s = 1, 2 do
+            local fs = _G["MeniscusItemScanText" .. (s == 1 and "Left" or "Right") .. i]
+            if fs then
+                local r, g, b = fs:GetTextColor()
+                local txt = fs:GetText()
+                if isRed(r, g, b) and type(txt) == "string" and not issecretvalue(txt) and txt ~= "" then return txt end
+            end
+        end
+    end
+    return nil
+end
+
 function ns.AddCompare(tip, link)
     if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return end
     local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
