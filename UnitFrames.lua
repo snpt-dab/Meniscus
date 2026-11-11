@@ -498,10 +498,11 @@ function UF:ApplyPlayerStyle()
         badge:ClearAllPoints()
         badge:SetPoint("CENTER", av, "BOTTOM", 0, 1)
         badge:SetFrameLevel(base + 11)
-        -- In the character panel the level is already in the health pill.
+        -- In the character panel the level is on the panel's pill.
         badge:SetShown(not char)
     end
-    if O and O.SetChipLevel then O:SetChipLevel(bare) end
+    -- (With the character panel the level is on its pill instead.)
+    if O and O.SetChipLevel then O:SetChipLevel(bare and not char) end
     if zs then
         zs:SetParent((bare and not char) and f or av)
         zs:ClearAllPoints()

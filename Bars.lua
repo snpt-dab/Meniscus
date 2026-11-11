@@ -657,6 +657,26 @@ function Bars:ApplyCharWell()
         pill:SetScript("OnLeave", function() GameTooltip:Hide() end)
         w.pill = pill
 
+        -- Level at the pill's left end, behind a divider (as on the pet's
+        -- pill); it moved here from the health orb's pill.
+        local lvl = ns:CreateText(pill, 10, T.textDim)
+        lvl:SetPoint("CENTER", pill, "LEFT", 13, 0)
+        lvl:SetShadowOffset(1, -1)
+        lvl:SetShadowColor(0, 0, 0, 0.8)
+        local ldiv = pill:CreateTexture(nil, "ARTWORK")
+        ldiv:SetSize(1, 8)
+        ldiv:SetPoint("LEFT", pill, "LEFT", 25, 0)
+        ldiv:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+        local function refreshLevel(_, _, newLevel)
+            local l = type(newLevel) == "number" and newLevel or UnitLevel("player")
+            if l == nil or (issecretvalue and issecretvalue(l)) then lvl:SetText("") else lvl:SetText(l) end
+        end
+        local lev = CreateFrame("Frame")
+        lev:RegisterEvent("PLAYER_LEVEL_UP")
+        lev:RegisterEvent("PLAYER_ENTERING_WORLD")
+        lev:SetScript("OnEvent", refreshLevel)
+        refreshLevel()
+
         -- XP as a percentage at the pill's right end, behind a divider (the
         -- bar itself stays under the action bars). Blue while rested. Gone
         -- at max level, or when the client hides the numbers.
@@ -678,7 +698,7 @@ function Bars:ApplyCharWell()
             xdiv:SetShown(show and true or false)
             -- The name stays centered on the pill: the same room is kept
             -- clear on both sides.
-            local inset = show and 36 or 10
+            local inset = 36 -- the level's section on the left, XP's (or its mirror) on the right
             name:ClearAllPoints()
             name:SetPoint("LEFT", inset, 0); name:SetPoint("RIGHT", -inset, 0)
             if not show then return end
