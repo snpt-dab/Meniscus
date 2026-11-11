@@ -18,6 +18,8 @@ local Orbs = ns:NewModule("Orbs", {
     size = 120,
     health = { x = DEFAULT.health.x, y = DEFAULT.health.y },
     power  = { x = DEFAULT.power.x,  y = DEFAULT.power.y },
+    -- A small pair of orbs for your pet instead of its frame (/mui petorbs).
+    petOrbs = true,
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -2791,6 +2793,117 @@ ns.commands.combo = function()
     ns:Print("Combo point preview (about 8s).")
 end
 
+-- ── Pet orbs ──────────────────────────────────────────────────────────────
+-- The pet's health and power as a small attached pair, built exactly like
+-- the player's orbs: health at 60% of the player orb's size, power at 40% of
+-- that, sitting on the health orb's rim at about 4 o'clock with the two
+-- bottoms level. No value pills (unreadable at this size). Both are click
+-- targets for the pet and only exist on screen while you have one (secure
+-- unit watch, so they come and go in combat too).
+-- Position: beside the pet's action bar in the console's left slot
+-- (Bars.petSlot), otherwise to the left of the left side bar / health orb.
+local petHealthPct = UnitHealthPercent and function(curve) return UnitHealthPercent("pet", true, curve) end
+local function updatePetHealth(f)
+    if not UnitExists("pet") then return end
+    local cur, max = UnitHealth("pet"), UnitHealthMax("pet")
+    f.bar:SetMinMaxValues(0, max)
+    setValue(f.bar, cur)
+    local c = getCurves()
+    colorByPercent(f, cur, max, HEALTH_STOPS, HEALTH_FLASH, c.healthColor, c.healthFlash, petHealthPct)
+end
+local function updatePetPower(f)
+    if not UnitExists("pet") then return end
+    local ptype = UnitPowerType("pet")
+    local cur, max = UnitPower("pet", ptype), UnitPowerMax("pet", ptype)
+    f.bar:SetMinMaxValues(0, max)
+    setValue(f.bar, cur)
+    local c = POWER[ptype]
+    if not c and PowerBarColor and PowerBarColor[ptype] then
+        local i = PowerBarColor[ptype]
+        c = { i.r, i.g, i.b }
+    end
+    if c then f:SetTint(c[1], c[2], c[3]) end
+end
+
+function Orbs:BuildPet()
+    if self.petHealth or InCombatLockdown() then return end
+    local hs = math.floor(self.db.size * 0.6 + 0.5)
+    local ps = math.floor(hs * 0.4 + 0.5)
+    local h = createOrb("MinimalUI_PetHealthOrb", hs)
+    local p = createOrb("MinimalUI_PetPowerOrb", ps)
+    for _, f in ipairs({ h, p }) do
+        f:SetAttribute("unit", "pet")
+        f.chip:Hide()
+        f.flashHolder:SetAlpha(0)
+        setClearGlass(f, true)
+    end
+    h:SetTint(unpack(HEALTH))
+    h.line:SetColorTexture(1, 1, 1, 0.75)
+    h.flash:SetColorTexture(1, 0.30, 0.25, 1)
+    -- The power orb's center rides on the health orb's rim, low enough that
+    -- the two bottoms are level: that lands at about 4 o'clock.
+    local R, r = hs / 2, ps / 2
+    local dy = -(R - r)
+    local dx = math.sqrt(math.max(R * R - dy * dy, 0))
+    p:SetPoint("CENTER", h, "CENTER", dx, dy)
+    -- One strata apart, so the small orb is always drawn over the big one.
+    h:SetFrameStrata("LOW")
+    p:SetFrameStrata("MEDIUM")
+    self.petHealth, self.petPower = h, p
+
+    local ev = CreateFrame("Frame")
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+            updatePetHealth(h)
+        elseif event == "UNIT_PET" or event == "PLAYER_ENTERING_WORLD" then
+            updatePetHealth(h); updatePetPower(p)
+        else
+            updatePetPower(p)
+        end
+    end)
+    for _, e in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }) do
+        ev:RegisterUnitEvent(e, "pet")
+    end
+    ev:RegisterUnitEvent("UNIT_PET", "player")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    updatePetHealth(h); updatePetPower(p)
+end
+
+-- Show / hide (with the setting) and position. Out of combat only: the orbs
+-- are secure buttons.
+function Orbs:PlacePet()
+    if InCombatLockdown() then return end
+    local on = self.db.petOrbs ~= false and self.health and self.health:IsShown()
+    if on and not self.petHealth then self:BuildPet() end
+    local h, p = self.petHealth, self.petPower
+    if not h then return end
+    if not on then
+        UnregisterUnitWatch(h); UnregisterUnitWatch(p)
+        h:Hide(); p:Hide()
+        self.petOrbsOn = false
+        return
+    end
+    local B = ns.modules.Bars
+    local slot = B and B.petSlot
+    h:ClearAllPoints()
+    if slot and slot.orbs then
+        h:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", slot.orbX, slot.orbBottom)
+    else
+        local anchor = (B and B.block2) or self.health
+        h:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMLEFT", -(p:GetWidth() + 14), 0)
+    end
+    RegisterUnitWatch(h); RegisterUnitWatch(p)
+    self.petOrbsOn = true
+end
+
+ns.commands.petorbs = function()
+    if InCombatLockdown() then return ns:Print("Can't change the pet orbs in combat.") end
+    Orbs.db.petOrbs = Orbs.db.petOrbs == false
+    local MM = ns.modules.Minimap
+    if MM and MM.ArrangeAround then MM:ArrangeAround() else Orbs:PlacePet() end
+    ns:Print("Pet orbs", Orbs.db.petOrbs and "on" or "off (the pet's frame is back)")
+end
+
 function Orbs:OnInit(db)
     self.db = db
     self.health = createOrb("MinimalUI_HealthOrb", db.size)
@@ -2837,6 +2950,9 @@ function Orbs:OnInit(db)
     updateHealth(self.health)
     updatePower(self.power)
     buildCombo(self)
+    -- Pet orbs first: the player-style pass below hides the pet's own frame
+    -- when they are on.
+    pcall(self.PlacePet, self)
     -- The player frame can ride on the health orb (playerStyle "orb").
     local UF = ns.modules.UnitFrames
     if UF and UF.ApplyPlayerStyle and UF.db then UF:ApplyPlayerStyle() end

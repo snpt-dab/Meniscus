@@ -114,6 +114,12 @@ function MM:ArrangeAround()
     if B and B.Arrange and B.db then B:Arrange() end
     local QB = ns.modules.QuickBuff
     if QB and QB.Place then pcall(QB.Place) end
+    local OR = ns.modules.Orbs
+    if OR and OR.PlacePet and OR.db and OR.health then pcall(OR.PlacePet, OR) end
+    -- The player-style pass places the pet frame and the buff frames, both
+    -- of which depend on where the bars just went.
+    local UF = ns.modules.UnitFrames
+    if UF and UF.ApplyPlayerStyle and UF.db and UF.player then UF:ApplyPlayerStyle() end
     local AU = ns.modules.Auras
     if AU and AU.SeatBlizzard and AU.db then AU:SeatBlizzard() end
     local CB = ns.modules.CastBars

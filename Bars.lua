@@ -19,6 +19,11 @@ local Bars = ns:NewModule("Bars", {
     -- A dark rounded plate behind the whole bottom row (side bars, orbs,
     -- main bar, minimap dome), so it reads as one console. /mui console
     plate = true,
+    -- The plate runs the full width of the screen and seats the chat window
+    -- in its left wing and the damage meter in its right. /mui console wings
+    wings = true,
+    wingFill = 0.5, -- share of each wing's width the chat / meter panel takes (outer side)
+    petGrid = true, -- empty pet action slots are drawn too (/mui petgrid)
 })
 
 local function safe(fn, ...)
@@ -290,6 +295,32 @@ function Bars:Arrange()
         end
     end
 
+    -- Split layout: the orbs close in beside the main bar's blocks, as far
+    -- from them as the blocks are from the minimap dome (the side bars are
+    -- anchored to the orbs, so they come along). The orbs' own saved
+    -- positions are left alone and used again when the dome is off.
+    if O and O.health and O.power and O.db then
+        local od = O.db
+        if gap then
+            local x = mainW / 2 + DOME_MARGIN + (od.size or 120) / 2
+            safe(function()
+                O.health:ClearAllPoints()
+                O.health:SetPoint("BOTTOM", UIParent, "BOTTOM", m.x - x, od.health.y)
+                O.power:ClearAllPoints()
+                O.power:SetPoint("BOTTOM", UIParent, "BOTTOM", m.x + x, od.power.y)
+            end)
+            self.orbsMoved = true
+        elseif self.orbsMoved then
+            self.orbsMoved = false
+            safe(function()
+                O.health:ClearAllPoints()
+                O.health:SetPoint("BOTTOM", UIParent, "BOTTOM", od.health.x, od.health.y)
+                O.power:ClearAllPoints()
+                O.power:SetPoint("BOTTOM", UIParent, "BOTTOM", od.power.x, od.power.y)
+            end)
+        end
+    end
+
     -- Bars 2 and 3: blocks of 3 rows x 4 columns outside the orbs.
     local rows = math.ceil(12 / s.cols)
     local blockW = s.cols * s.size + (s.cols - 1) * s.gap
@@ -334,7 +365,37 @@ function Bars:Arrange()
     -- main bar. Blizzard still shows/hides them (no stances, no pet).
     -- Split around the dome: two rows of five, so neither row reaches over
     -- the dome (first five on the lower row).
+    -- With the console's wings on, the pet bar leaves the main bar and sits
+    -- in the plate's left slot (between the chat panel and the side bar),
+    -- under the pet's own frame: one pet unit, seated in the plate.
     local step = s.size + s.gap
+    local slots = self.Slots and self:Slots()
+    local petW = 5 * step - s.gap
+    local PET_PILL = 22 -- the pet frame's height (UnitFrames.lua, "tiny")
+    self.petSlot = nil
+    local slotW = slots and (slots.left.x1 - slots.left.x0) or 0
+    local od = (O and O.db) or (ns.db and ns.db.modules and ns.db.modules.Orbs) or {}
+    local orbD = math.floor((od.size or 120) * 0.6 + 0.5) -- pet health orb (Orbs.lua)
+    local gridH = 2 * s.size + s.gap
+    local orbUnitW = orbD + 8 + 10 + petW -- orb, its power orb's overhang, a gap, the bar
+    if slots and od.petOrbs ~= false and slotW >= orbUnitW + 8 then
+        -- Pet orbs on the left, the pet's action bar to their right, both
+        -- centered on the slot's middle line.
+        -- (A little above the middle: the info pill hangs off the bottom of
+        -- the well that frames them.)
+        local cx, cy = (slots.left.x0 + slots.left.x1) / 2, (slots.y0 + slots.y1) / 2 + 6
+        local x0 = cx - orbUnitW / 2
+        self.petSlot = { orbs = true, orbX = x0, orbBottom = cy - orbD / 2,
+                         x = x0 + orbD + 18, w = petW, gridTop = cy + gridH / 2, top = cy + gridH / 2,
+                         well = { x = x0 - 10, y = cy - orbD / 2 - 8, w = orbUnitW + 20, h = orbD + 16 } }
+    elseif slots and slotW >= petW + 8 then
+        local unitH = PET_PILL + 6 + gridH
+        local top = slots.y1 - math.max(0, ((slots.y1 - slots.y0) - unitH) / 2)
+        local px = (slots.left.x0 + slots.left.x1) / 2 - petW / 2
+        self.petSlot = { x = px, top = top, w = petW, gridTop = top - PET_PILL - 6,
+                         well = { x = px - 16, y = top - unitH - 8, w = petW + 32, h = unitH + 16 } }
+    end
+    local petSlot = self.petSlot
     for i = 1, 10 do
         local col, up = i - 1, 0
         if gap then col, up = (i - 1) % 5, math.floor((i - 1) / 5) * step end
@@ -353,7 +414,10 @@ function Bars:Arrange()
             Bars:SkinPetButton(pb, i)
             safe(function()
                 pb:ClearAllPoints()
-                if gap then
+                if petSlot then
+                    pb:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", petSlot.x + ((i - 1) % 5) * step,
+                        petSlot.gridTop - math.floor((i - 1) / 5) * step)
+                elseif gap then
                     pb:SetPoint("BOTTOMRIGHT", self.main, "TOPRIGHT", -(4 - col) * step, 8 + up)
                 else
                     pb:SetPoint("BOTTOMRIGHT", self.main, "TOPRIGHT", -(10 - i) * step, 8)
@@ -369,19 +433,253 @@ function Bars:Arrange()
             for _, k in ipairs({ "BorderArt", "EndCaps", "Background" }) do killRegion(bar[k]) end
         end
     end
+    self:ApplyPetWell()
     -- Once the anchors above have real positions.
     C_Timer.After(0, function() Bars:ApplyPlate() end)
 end
 
+-- ── Pet area ──────────────────────────────────────────────────────────────
+-- While you have a pet, its part of the console (pet orbs or pet frame, and
+-- the pet action bar) is framed by an inset well, with:
+--   * a plate in every pet action slot, so empty slots show like the other
+--     bars' do (db.petGrid; Blizzard hides its own empty pet buttons, and
+--     those are secure, so the plates are ours, drawn behind them)
+--   * a pill on the well's bottom edge, like the minimap's: level | name |
+--     mood (hunter pets: Happy / Content / Unhappy, which also colors the
+--     pill's ring)
+-- None of it is secure: it is shown and hidden freely, in combat too.
+local MOOD = {
+    { "Unhappy", 0.85, 0.30, 0.25 },
+    { "Content", 0.90, 0.75, 0.30 },
+    { "Happy",   0.35, 0.78, 0.40 },
+}
+function Bars:ApplyPetWell()
+    local slot = self.petSlot
+    local w = self.petWell
+    if not (slot and slot.well) then
+        if w then w.on = false; w:Hide() end
+        return
+    end
+    local s = self.db.small
+    if not w then
+        w = CreateFrame("Frame", "MinimalUI_PetWell", UIParent)
+        w:SetFrameStrata("BACKGROUND")
+        w:SetFrameLevel(2)
+        ns.RoundedRect(w, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(w, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
+        w.plates = {}
+        for i = 1, 10 do
+            local pl = CreateFrame("Frame", nil, w)
+            pl:SetFrameLevel(w:GetFrameLevel() + 1)
+            ns.RoundedRect(pl, -4, 0, 6, T.border[1], T.border[2], T.border[3], 0.7)
+            ns.RoundedRect(pl, -3, 1.5, 5, 0.06, 0.06, 0.07, 0.95)
+            w.plates[i] = pl
+        end
+
+        local pill = CreateFrame("Frame", nil, w)
+        pill:SetHeight(14)
+        pill:SetFrameLevel(w:GetFrameLevel() + 3)
+        pill:EnableMouse(true)
+        local paintRing = ns.RoundedRect(pill, -8, 0, 7, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(pill, -7, 1, 6, 0.06, 0.06, 0.07, 0.97)
+        local lvl = ns:CreateText(pill, 10, T.textDim)
+        lvl:SetPoint("CENTER", pill, "LEFT", 12, 0)
+        local div = pill:CreateTexture(nil, "ARTWORK")
+        div:SetSize(1, 8)
+        div:SetPoint("LEFT", pill, "LEFT", 22, 0)
+        div:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+        local mood = ns:CreateText(pill, 10, T.textDim)
+        mood:SetPoint("RIGHT", pill, "RIGHT", -9, 0)
+        local name = ns:CreateText(pill, 11)
+        name:SetPoint("LEFT", div, "RIGHT", 6, 0)
+        name:SetPoint("RIGHT", mood, "LEFT", -6, 0)
+        name:SetJustifyH("CENTER")
+        name:SetWordWrap(false)
+        for _, fs in ipairs({ lvl, mood, name }) do
+            fs:SetShadowOffset(1, -1)
+            fs:SetShadowColor(0, 0, 0, 0.8)
+        end
+        pill:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            if pcall(GameTooltip.SetUnit, GameTooltip, "pet") then GameTooltip:Show() end
+        end)
+        pill:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        w.pill = pill
+
+        local secret = issecretvalue or function() return false end
+        function w.refresh()
+            local has = UnitExists("pet")
+            if secret(has) then has = true end
+            w:SetShown(w.on and has and true or false)
+            if not (w.on and has) then return end
+            local l = UnitLevel("pet")
+            if l == nil or secret(l) or (type(l) == "number" and l <= 0) then lvl:SetText("") else lvl:SetText(l) end
+            -- The name may be a hidden value in combat: it goes straight to
+            -- the font string.
+            name:SetText((UnitName("pet")))
+            local r, g, bl = T.border[1], T.border[2], T.border[3]
+            mood:SetText("")
+            if GetPetHappiness then
+                local ok, h = pcall(GetPetHappiness)
+                local m = ok and type(h) == "number" and not secret(h) and MOOD[h]
+                if m then
+                    mood:SetText(m[1])
+                    mood:SetTextColor(m[2], m[3], m[4])
+                    r, g, bl = m[2] * 0.8, m[3] * 0.8, m[4] * 0.8
+                end
+            end
+            paintRing(r, g, bl, 1)
+        end
+        local ev = CreateFrame("Frame")
+        for _, e in ipairs({ "PET_BAR_UPDATE", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD" }) do pcall(ev.RegisterEvent, ev, e) end
+        pcall(ev.RegisterUnitEvent, ev, "UNIT_PET", "player")
+        for _, e in ipairs({ "UNIT_LEVEL", "UNIT_NAME_UPDATE", "UNIT_HAPPINESS" }) do pcall(ev.RegisterUnitEvent, ev, e, "pet") end
+        ev:SetScript("OnEvent", function() C_Timer.After(0, w.refresh) end)
+        self.petWell = w
+    end
+    local wl = slot.well
+    w:ClearAllPoints()
+    w:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", wl.x, wl.y)
+    w:SetSize(wl.w, wl.h)
+    w.pill:ClearAllPoints()
+    w.pill:SetPoint("CENTER", w, "BOTTOM", 0, 0)
+    w.pill:SetWidth(math.max(120, wl.w - 44))
+    local step = s.size + s.gap
+    for i, pl in ipairs(w.plates) do
+        pl:ClearAllPoints()
+        pl:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", slot.x + ((i - 1) % 5) * step,
+            slot.gridTop - math.floor((i - 1) / 5) * step)
+        pl:SetSize(s.size, s.size)
+        pl:SetShown(self.db.petGrid ~= false)
+    end
+    w.on = true
+    w.refresh()
+end
+
+ns.commands.petgrid = function()
+    Bars.db.petGrid = Bars.db.petGrid == false
+    Bars:ApplyPetWell()
+    ns:Print("Empty pet action slots", Bars.db.petGrid and "shown" or "hidden")
+end
+
 -- ── Console plate ─────────────────────────────────────────────────────────
 -- One card behind the whole bottom row, in the windows' own language (dark
--- fill, hairline rounded border). It spans from the left side bar to the
--- right one and from the screen's bottom edge to just above the main bar;
--- the orbs and the minimap dome rise out of its top edge. It is placed from
--- measured positions (not anchored to the secure bars), so it never gets in
--- the way of combat restrictions; it follows the layout on the next
--- arrange / reload, not while an orb is being dragged.
-local PLATE_PAD = 14
+-- fill, hairline rounded border), from the screen's bottom edge to just
+-- above the main bar; the orbs and the minimap dome rise out of its top
+-- edge. With wings on it runs the full width of the screen, and the chat
+-- window (left) and the damage meter (right) are seated in it, each in a
+-- slightly darker inset well.
+-- It is placed from measured positions (not anchored to the secure bars),
+-- so it never runs into combat restrictions; it follows the layout on the
+-- next arrange / reload, not while an orb is being dragged.
+--
+-- Seated frames are Blizzard's (Edit Mode's): they are not reparented, only
+-- re-anchored and re-sized, and put back whenever Blizzard's own layout
+-- moves them (hooks on SetPoint / SetSize), as with the minimap dome and the
+-- buff frames.
+local PLATE_PAD, EDGE, WELL_PAD = 14, 8, 10
+local seats, hooked, seating = {}, {}, false
+local function reseat(f)
+    local s = seats[f]
+    if not s or seating then return end
+    seating = true
+    pcall(function()
+        f:ClearAllPoints()
+        f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", s.x, s.y)
+        if s.w and s.h then f:SetSize(s.w, s.h) elseif s.w then f:SetWidth(s.w) end
+    end)
+    seating = false
+end
+local function seat(f, x, y, w, h)
+    if not f then return end
+    seats[f] = { x = x, y = y, w = w, h = h }
+    if not hooked[f] then
+        hooked[f] = true
+        hooksecurefunc(f, "SetPoint", function(self) if not seating then reseat(self) end end)
+        if w then
+            hooksecurefunc(f, "SetSize", function(self) if not seating then reseat(self) end end)
+        end
+    end
+    reseat(f)
+end
+
+-- The console's geometry, worked out from the settings (not measured, so it
+-- is available before anything has been laid out): the vertical range
+-- inside the plate, and the two free slots between the chat / meter panels
+-- and the side bars. nil unless the split bar, the plate and its wings are
+-- all on.
+--   left slot:  the pet (its frame over its action bar)
+--   right slot: buffs over debuffs (Auras.lua)
+function Bars:Slots()
+    local db, gap = self.db, self.split
+    if not (db and gap and db.plate and db.wings) then return nil end
+    local O = ns.modules.Orbs
+    local od = (O and O.db) or (ns.db and ns.db.modules and ns.db.modules.Orbs) or {}
+    local m, s = db.main, db.small
+    local sw = UIParent:GetWidth()
+    local cx = sw / 2 + m.x
+    local blockW = 3 * m.size + 2 * m.gap
+    local mainW, mainH = 2 * blockW + gap, 2 * m.size + m.gap
+    local sideW = s.cols * s.size + (s.cols - 1) * s.gap
+    -- From the center out to a side bar's outer edge.
+    local reach = mainW / 2 + 14 + (od.size or 120) + s.margin + sideW
+    local pl, pr = EDGE, sw - EDGE
+    local bottom, ptop = 2, m.y + mainH + 12
+    local fill = math.max(0.25, math.min(1, db.wingFill or 0.5))
+    local lx0, lxFull = pl + WELL_PAD, cx - reach - PLATE_PAD - WELL_PAD
+    local rxFull, rx1 = cx + reach + PLATE_PAD + WELL_PAD, pr - WELL_PAD
+    return {
+        y0 = bottom + 8, y1 = ptop - 8,
+        left = { x0 = lx0 + (lxFull - lx0) * fill + WELL_PAD, x1 = lxFull },
+        right = { x0 = rxFull, x1 = rx1 - (rx1 - rxFull) * fill - WELL_PAD },
+    }
+end
+
+local function well(plate, key)
+    local wl = plate[key]
+    if not wl then
+        wl = CreateFrame("Frame", nil, plate)
+        wl:SetFrameLevel(plate:GetFrameLevel() + 1)
+        ns.RoundedRect(wl, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(wl, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
+        plate[key] = wl
+    end
+    return wl
+end
+
+-- What the damage meter is on this client (MinimalUIDB.dmseat), for
+-- fitting it to its well properly.
+local function probeMeter(root, wantW, wantH)
+    if not MinimalUIDB then return end
+    local out = {}
+    local function line(tag, f, depth)
+        local ok, s = pcall(function()
+            local p, rel, rp, x, y = f:GetPoint(1)
+            return string.rep("  ", depth) .. tag .. " [" .. f:GetObjectType() .. "] " .. tostring(f:GetName() or "?")
+                .. (f:IsShown() and "" or " hidden")
+                .. string.format(" %.0fx%.0f", f:GetWidth(), f:GetHeight())
+                .. " @" .. tostring(p) .. ">" .. tostring(rel and (rel.GetName and rel:GetName() or "?")) .. " " .. tostring(rp)
+                .. string.format(" %.0f,%.0f", x or 0, y or 0)
+                .. " scale=" .. string.format("%.2f", f:GetScale())
+                .. " resizable=" .. tostring(f.IsResizable and f:IsResizable())
+        end)
+        out[#out + 1] = ok and s or (tag .. " error: " .. tostring(s))
+    end
+    out[1] = string.format("wanted %.0fx%.0f", wantW, wantH)
+    line("DamageMeter", root, 0)
+    local names = {}
+    for k, v in pairs(root) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+    for _, c in ipairs({ root:GetChildren() }) do
+        line(names[c] or "#", c, 1)
+        local n = 0
+        for _, g in ipairs({ c:GetChildren() }) do
+            n = n + 1
+            if n <= 6 then line("#", g, 2) end
+        end
+    end
+    MinimalUIDB.dmseat = out
+end
+
 function Bars:ApplyPlate()
     local p = self.plate
     if not (self.db and self.db.plate) then
@@ -405,16 +703,70 @@ function Bars:ApplyPlate()
         p:EnableMouse(false)
         ns.RoundedRect(p, -8, 0, 16, T.border[1], T.border[2], T.border[3], 1)
         ns.RoundedRect(p, -7, 1, 15, 0.05, 0.05, 0.06, 0.90)
+        -- (The header bands' noise grain was tried on the plate and dropped.)
         self.plate = p
     end
-    local bottom = 2
+    local bottom, ptop = 2, top + 12
+    local wings = self.db.wings
+    local pl, pr = left - PLATE_PAD, right + PLATE_PAD
+    if wings then pl, pr = EDGE, UIParent:GetWidth() - EDGE end
     p:ClearAllPoints()
-    p:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left - PLATE_PAD, bottom)
-    p:SetSize(right - left + PLATE_PAD * 2, top + 12 - bottom)
+    p:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", pl, bottom)
+    p:SetSize(pr - pl, ptop - bottom)
     p:Show()
+
+    -- Wells: the room left between the plate's ends and the side bars.
+    local wy, wh = bottom + 8, (ptop - 8) - (bottom + 8)
+    local lx0, lx1 = pl + WELL_PAD, left - PLATE_PAD - WELL_PAD
+    local rx0, rx1 = right + PLATE_PAD + WELL_PAD, pr - WELL_PAD
+    -- The panels take only part of their wing, hugging the screen edges.
+    local fill = math.max(0.25, math.min(1, self.db.wingFill or 0.5))
+    lx1 = lx0 + (lx1 - lx0) * fill
+    rx0 = rx1 - (rx1 - rx0) * fill
+    local chatOK = wings and (lx1 - lx0) >= 140 and _G.ChatFrame1
+    local meterOK = wings and (rx1 - rx0) >= 120 and _G.DamageMeter
+    if p.chatWell then p.chatWell:SetShown(chatOK and true or false) end
+    if chatOK then
+        local wl = well(p, "chatWell")
+        wl:ClearAllPoints()
+        wl:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", lx0, wy)
+        wl:SetSize(lx1 - lx0, wh)
+        wl:Show()
+        -- The edit box takes the well's bottom strip, the messages the rest.
+        -- (Tabs stay where Blizzard hangs them: on top of the message area,
+        -- which puts them just above the plate's edge; they show on hover.)
+        local EB = 28
+        local cf = _G.ChatFrame1
+        pcall(cf.SetClampRectInsets, cf, 0, 0, 0, 0)
+        pcall(cf.SetClampedToScreen, cf, false)
+        seat(cf, lx0 + 8, wy + EB + 4, (lx1 - lx0) - 16, wh - EB - 10)
+        for i = 1, (NUM_CHAT_WINDOWS or 10) do
+            local eb = _G["ChatFrame" .. i .. "EditBox"]
+            if eb then seat(eb, lx0, wy - 2, lx1 - lx0) end
+        end
+    end
+    if meterOK then
+        -- The meter brings its own card (Skins.lua), so no well is drawn:
+        -- it is the inset.
+        local dm = _G.DamageMeter
+        local w, h = rx1 - rx0, wh
+        seat(dm, rx0, wy, w, h)
+        C_Timer.After(2, function() pcall(probeMeter, dm, w, h) end)
+    end
 end
 
-ns.commands.console = function()
+ns.commands.console = function(rest)
+    if rest and rest:find("wings") then
+        Bars.db.wings = not Bars.db.wings
+        Bars:ApplyPlate()
+        if Bars.db.wings then
+            ns:Print("Console wings on: chat and damage meter seated in the plate.")
+        else
+            ns.needsReload = true
+            ns:Print("Console wings off: /reload to hand chat and the damage meter back to Edit Mode.")
+        end
+        return
+    end
     Bars.db.plate = not Bars.db.plate
     Bars:ApplyPlate()
     ns:Print("Bottom console plate", Bars.db.plate and "on" or "off")

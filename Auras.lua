@@ -708,7 +708,24 @@ function A:SeatBlizzard()
     local UF, B = ns.modules.UnitFrames, ns.modules.Bars
     local pf = UF and UF.player
     local ROW = 46 -- one row of Blizzard's icons with its timer text
-    if pf and not UF.orbStyleOn and pf.avatar then
+    local slots = B and B.Slots and B:Slots()
+    if slots and (slots.right.x1 - slots.right.x0) >= 100 then
+        -- Console layout: seated in the plate's right slot (between the side
+        -- bar and the damage meter), buffs in the upper part, debuffs along
+        -- the bottom. Each frame is pinned by the corner it fills from.
+        local R = slots.right
+        local mid = slots.y0 + 34
+        for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
+            if fr then
+                local v, h = fillCorner(fr)
+                local x = (h == "RIGHT") and R.x1 or R.x0
+                local y
+                if i == 1 then y = (v == "TOP") and (slots.y1 - 4) or (mid + 2)
+                else y = (v == "TOP") and (mid - 2) or (slots.y0 + 2) end
+                seat(fr, v .. h, UIParent, "BOTTOMLEFT", x, y)
+            end
+        end
+    elseif pf and not UF.orbStyleOn and pf.avatar then
         -- Left of the avatar: buffs level with it, debuffs a row below.
         for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
             if fr then

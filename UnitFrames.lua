@@ -498,8 +498,27 @@ function UF:ApplyPlayerStyle()
         zs:SetFrameLevel(base + 14)
     end
     if self.pet then
+        -- Pet orbs (Orbs.lua) replace the pet's frame while they are on.
+        local petOrbs = O and O.petOrbsOn
+        if petOrbs and not self.petHidden then
+            self.petHidden = true
+            UnregisterUnitWatch(self.pet)
+            self.pet:Hide()
+        elseif not petOrbs and self.petHidden then
+            self.petHidden = false
+            RegisterUnitWatch(self.pet)
+        end
         self.pet:ClearAllPoints()
-        if on then
+        local B = ns.modules.Bars
+        local slot = B and B.petSlot
+        if slot and slot.orbs then
+            self.pet:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", slot.x, slot.top + 28)
+        elseif slot then
+            -- Console layout: over the pet's action bar in the plate's left
+            -- slot (Bars.lua), centered on it.
+            local pw = self.pet:GetWidth()
+            self.pet:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", slot.x + (slot.w - pw) / 2 + 6, slot.top)
+        elseif on then
             self.pet:SetPoint("RIGHT", f, "LEFT", -10, 0)
         else
             self.pet:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -SMALL_FRAME_GAP)
