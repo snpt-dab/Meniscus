@@ -383,6 +383,11 @@ local function makeTile(parent, slotName)
         if IsShiftKeyDown() or IsControlKeyDown() then
             local link = GetInventoryItemLink("player", self.slot)
             if link and HandleModifiedItemClick then HandleModifiedItemClick(link) end
+        elseif SpellIsTargeting and SpellIsTargeting() then
+            -- The cursor is waiting for a gear target and this slot isn't a
+            -- valid one (valid slots are covered by a secure button, see
+            -- OnInit). Picking the item up here would be the blocked action.
+            return
         else
             PickupInventoryItem(self.slot)
         end
