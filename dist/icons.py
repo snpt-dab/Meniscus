@@ -80,38 +80,42 @@ class Icon:
 
 
 def icons():
+    # Every icon is drawn inside the same 16 x 16 "live area" in the middle of
+    # the 24 x 24 grid (4..20 on both axes) and with the same stroke, so they
+    # read as one set: equal weight, equal apparent size, equal gaps between
+    # neighbours. The 4-unit margin all round is the breathing room.
     I = {}
     # head and shoulders
-    I['character'] = Icon().ring(12, 7.5, 3.6).arc(12, 22, 7.6, 20, 160)
+    I['character'] = Icon().ring(12, 8.2, 3.2).arc(12, 21.5, 7.0, 25, 155)
     # hammer: a handle and a heavy head set across it
-    I['profession'] = Icon().line([(5.5, 19.5), (13, 12)]).line([(10.5, 6.5), (17.5, 13.5)], w=5.2)
+    I['profession'] = Icon().line([(6.5, 19), (12.5, 13)]).line([(10.5, 7.5), (16.5, 13.5)], w=4.6)
     # open book
-    I['spell'] = Icon().box(3, 5.5, 21, 18.5, rad=2).line([(12, 5.5), (12, 18.5)])
-    # three linked points
-    I['talent'] = (Icon().dot(12, 5.5, 2.6).dot(5, 18, 2.6).dot(19, 18, 2.6)
-                   .line([(12, 5.5), (5, 18), (19, 18)], w=1.5, close=True))
+    I['spell'] = Icon().box(4.5, 6.5, 19.5, 17.5, rad=2).line([(12, 6.5), (12, 17.5)])
+    # three linked points (same stroke as everything else)
+    I['talent'] = (Icon().dot(12, 6.5, 2.7).dot(6.2, 17.3, 2.7).dot(17.8, 17.3, 2.7)
+                   .line([(12, 6.5), (6.2, 17.3), (17.8, 17.3)], close=True))
     # diamond
-    I['achievement'] = Icon().line([(12, 3.5), (20.5, 12), (12, 20.5), (3.5, 12)], close=True)
+    I['achievement'] = Icon().line([(12, 4.8), (19.2, 12), (12, 19.2), (4.8, 12)], close=True)
     # shield
-    I['legacy'] = Icon().line([(5, 4.5), (19, 4.5), (19, 12), (12, 20), (5, 12)], close=True)
+    I['legacy'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True)
     # exclamation mark
-    I['quest'] = Icon().line([(12, 4), (12, 14)], w=3.0).dot(12, 19.2, 1.8)
+    I['quest'] = Icon().line([(12, 5.2), (12, 14)], w=2.8).dot(12, 18.6, 1.7)
     # flag on a pole
-    I['guild'] = Icon().line([(7, 3.5), (7, 20.5)]).line([(7, 4.5), (18, 4.5), (18, 12), (7, 12)])
+    I['guild'] = Icon().line([(8, 4.8), (8, 19.4)]).line([(8, 5.8), (17.4, 5.8), (17.4, 12), (8, 12)])
     # two heads over a line
-    I['group'] = Icon().ring(7.5, 9, 3.1).ring(16.5, 9, 3.1).line([(4, 18.5), (20, 18.5)])
+    I['group'] = Icon().ring(8.2, 9.6, 2.9).ring(15.8, 9.6, 2.9).line([(5.2, 18), (18.8, 18)])
     # four tiles
-    I['collection'] = (Icon().box(4, 4, 10.5, 10.5, 1.6, fill=True).box(13.5, 4, 20, 10.5, 1.6, fill=True)
-                       .box(4, 13.5, 10.5, 20, 1.6, fill=True).box(13.5, 13.5, 20, 20, 1.6, fill=True))
+    I['collection'] = (Icon().box(5, 5, 11, 11, 1.5, fill=True).box(13, 5, 19, 11, 1.5, fill=True)
+                       .box(5, 13, 11, 19, 1.5, fill=True).box(13, 13, 19, 19, 1.5, fill=True))
     # compass
-    I['journal'] = Icon().ring(12, 12, 8.2).line([(9.2, 14.8), (14.8, 9.2)], w=3.2)
+    I['journal'] = Icon().ring(12, 12, 7.0).line([(9.6, 14.4), (14.4, 9.6)], w=3.0)
     # bag with a handle
-    I['store'] = Icon().box(5, 9.5, 19, 20, rad=2.2).arc(12, 9.5, 3.8, 0, 180)
+    I['store'] = Icon().box(6, 10, 18, 19.4, rad=2).arc(12, 10, 3.4, 0, 180)
     # three bars
-    I['mainmenu'] = Icon().line([(5, 6.5), (19, 6.5)]).line([(5, 12), (19, 12)]).line([(5, 17.5), (19, 17.5)])
+    I['mainmenu'] = Icon().line([(6, 7.4), (18, 7.4)]).line([(6, 12), (18, 12)]).line([(6, 16.6), (18, 16.6)])
     # question mark: a hook, a stem, a dot
-    hook = arc_points(12, 8.5, 4.2, 180, -45, 24) + [(12, 14.6)]
-    I['help'] = Icon().line(hook, w=2.6).dot(12, 19.4, 1.8)
+    hook = arc_points(12, 9, 3.8, 180, -45, 24) + [(12, 14.6)]
+    I['help'] = Icon().line(hook, w=2.5).dot(12, 18.8, 1.7)
     return I
 
 

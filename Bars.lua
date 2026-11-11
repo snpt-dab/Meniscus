@@ -789,9 +789,11 @@ local function microGlyph(btn)
     end
     if not file then btn.__muiGlyph = false return false end
     local w, h = btn:GetWidth(), btn:GetHeight()
-    -- Nearly the pill's height: the buttons are scaled so their own height
-    -- slightly exceeds the pill, and the drawings carry their own margin.
-    local S = math.min(h * 0.80, w * 0.98)
+    -- Sized from the button's width, which is also how far apart the
+    -- buttons sit: the drawings fill the middle two thirds of their texture,
+    -- so each icon covers about half its button's width and the gap to the
+    -- next one is about as wide as the icon.
+    local S = w * 0.82
     local f = CreateFrame("Frame", nil, btn)
     f:SetSize(S, S)
     f:SetPoint("CENTER", btn, "CENTER", 0, 0)
