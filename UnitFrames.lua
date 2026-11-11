@@ -309,8 +309,19 @@ local function update(self)
 
     -- Names: always dark (user preference). Health value: adaptive contrast,
     -- dark on light fills (e.g. priest white), light otherwise.
-    self.name:SetTextColor(0.07, 0.07, 0.08, 1)
-    self.name:SetShadowColor(1, 1, 1, 0.25)
+    -- The name splits at the fill edge too: dark over the fill (the user's
+    -- preference for names), light over the empty track, where dark text
+    -- on the dark track could not be read once a bar had drained past it.
+    local nameOver = self.name.dark
+    if nameOver then
+        self.name:SetTextColor(unpack(T.text))
+        self.name:SetShadowColor(0, 0, 0, 0.8)
+        nameOver:SetTextColor(0.07, 0.07, 0.08, 1)
+        nameOver:SetShadowColor(1, 1, 1, 0.25)
+    else
+        self.name:SetTextColor(0.07, 0.07, 0.08, 1)
+        self.name:SetShadowColor(1, 1, 1, 0.25)
+    end
     -- The value splits at the fill edge: light over the empty track always;
     -- over the fill, dark on light fills (e.g. priest white), light otherwise.
     local light = (0.299 * r + 0.587 * g + 0.114 * b) > 0.68
@@ -537,7 +548,7 @@ local function create(unit, label, cfg)
     f.powerPill, f.power = pw, pw.bar
 
     -- Text inset past the rounded caps (radius = H/2) and the avatar.
-    f.name = hp:CreateText(s.font)
+    f.name = hp:CreateText(s.font, nil, true) -- splits at the fill edge, like the value
     ns:SetFont(f.name, s.font, "", true) -- names in the heavier weight
     f.hpText = hp:CreateText(s.font, nil, true) -- splits at the fill edge
     f.name:SetJustifyH("LEFT")

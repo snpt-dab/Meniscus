@@ -56,7 +56,7 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /mui name
 - Leave/back actions (Goodbye, Decline, Back, Close) go on the footer's left. Primary actions go on the right; the main one is light, the others dark.
 - NPC windows color the ring/chip by attitude (`SetAttitude`). Our own windows use an identity color.
 - Pills: hairline ring, eased hover, dark text on light pills. A stateful button names the action it will perform. No accent-fill "on" state.
-- Unit frame names are always dark text.
+- Unit frame names are dark over the bar's fill and light over its empty track (split at the fill edge, like the value).
 - Effects: no glow bleed or halos, and no hard edges (taper or fade instead).
 
 ## Taking over Blizzard windows
