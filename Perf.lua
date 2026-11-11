@@ -16,15 +16,21 @@ local now = debugprofilestop
 local stats = {}
 ns.perfStats = stats
 
+-- Also counts what the job allocated (the Lua heap's growth across the
+-- call; a collection running in the middle shows as a drop and is skipped).
+local gcCount = collectgarbage
 function ns.Timed(label, fn, ...)
+    local k0 = gcCount("count")
     local t0 = now()
     local a, b, c = fn(...)
     local dt = now() - t0
+    local dk = gcCount("count") - k0
     local s = stats[label]
-    if not s then s = { n = 0, ms = 0, max = 0 }; stats[label] = s end
+    if not s then s = { n = 0, ms = 0, max = 0, kb = 0 }; stats[label] = s end
     s.n = s.n + 1
     s.ms = s.ms + dt
     if dt > s.max then s.max = dt end
+    if dk > 0 then s.kb = s.kb + dk end
     return a, b, c
 end
 
@@ -73,6 +79,13 @@ local function grade(v, warn, bad) return (v >= bad and BAD) or (v >= warn and W
 -- ── Log ───────────────────────────────────────────────────────────────────
 local session = { start = GetTime and GetTime() or 0 }
 local lastMem, lastT, churn = nil, nil, 0
+-- Per logged minute: memory grown, the highest one-interval rate, seconds
+-- in combat, and which of our windows were seen open.
+local minute = { grown = 0, peak = 0, t0 = nil, combat = 0, n = 0, wins = {} }
+local WATCH = { "MinimalUIBags", "MinimalUICharacter", "MinimalUISpellbook", "MinimalUIQuestLog", "MinimalUIDialog",
+                "MinimalUIMerchant", "MinimalUITrainer", "MinimalUIProfessions", "MinimalUIProfessionsBook",
+                "MinimalUIBank", "MinimalUIMail", "MinimalUIInspect", "MinimalUILoot", "MinimalUIPanel",
+                "WorldMapFrame", "CollectionsJournal", "SocialUIFrame", "CharacterFrame", "CommunitiesFrame" }
 
 local function db()
     if not MinimalUIDB then return end
@@ -89,9 +102,20 @@ local function sample()
     local t = GetTime()
     if kb and lastMem and t > lastT then
         local d = (kb - lastMem) / (t - lastT)
-        if d >= 0 then churn = d end -- a drop is the GC; keep the last growth rate
+        if d >= 0 then
+            churn = d -- a drop is the GC; keep the last growth rate
+            minute.grown = minute.grown + (kb - lastMem)
+            if d > minute.peak then minute.peak = d end
+        end
     end
     lastMem, lastT = kb, t
+    minute.t0 = minute.t0 or t
+    minute.n = minute.n + 1
+    if InCombatLockdown() then minute.combat = minute.combat + 1 end
+    for i = 1, #WATCH do
+        local f = _G[WATCH[i]]
+        if f and f.IsShown and f:IsShown() and f:GetAlpha() > 0.05 then minute.wins[WATCH[i]] = true end
+    end
     local recent, peak = cpu()
     return kb, recent, peak
 end
@@ -99,8 +123,8 @@ end
 local function snapshotJobs(p)
     p.jobs = {}
     for label, s in pairs(stats) do
-        p.jobs[label] = string.format("%d runs, %.2f ms avg, %.2f ms max, %.0f ms total",
-            s.n, s.ms / math.max(s.n, 1), s.max, s.ms)
+        p.jobs[label] = string.format("%d runs, %.2f ms avg, %.2f ms max, %.0f ms total, %.0f KB allocated (%.1f per run)",
+            s.n, s.ms / math.max(s.n, 1), s.max, s.ms, s.kb or 0, (s.kb or 0) / math.max(s.n, 1))
     end
 end
 
@@ -108,8 +132,19 @@ local function logSample()
     local p = db()
     if not p then return end
     local kb, recent, peak = sample()
-    table.insert(p.samples, string.format("%s  mem %s  churn %.1f KB/s  cpu %s ms/frame  fps %.0f",
-        date("%H:%M"), fmtKB(kb), churn, recent and string.format("%.3f", recent) or "n/a", GetFramerate()))
+    -- Churn: the average over the logged minute and the worst single
+    -- interval in it (1 s while the readout is open, else the whole minute).
+    local span = math.max(1, GetTime() - (minute.t0 or GetTime()))
+    local tags = ""
+    if minute.n > 0 and minute.combat > 0 then
+        tags = tags .. string.format("  combat %.0f%%", minute.combat / minute.n * 100)
+    end
+    for name in pairs(minute.wins) do tags = tags .. "  " .. name:gsub("^MinimalUI", "") end
+    table.insert(p.samples, string.format("%s  mem %s  churn avg %.1f peak %.1f KB/s  cpu %s ms/frame  fps %.0f%s",
+        date("%H:%M"), fmtKB(kb), minute.grown / span, minute.peak,
+        recent and string.format("%.3f", recent) or "n/a", GetFramerate(), tags))
+    minute.grown, minute.peak, minute.t0, minute.combat, minute.n = 0, 0, GetTime(), 0, 0
+    wipe(minute.wins)
     while #p.samples > 120 do table.remove(p.samples, 1) end
     if kb and kb > p.peakMem then p.peakMem = math.floor(kb) end
     if peak and peak > p.peakCPU then p.peakCPU = peak end
@@ -207,7 +242,8 @@ local function report()
     table.sort(list, function(a, b) return a.s.ms > b.s.ms end)
     for i = 1, math.min(#list, 8) do
         local e = list[i]
-        ns:Print(string.format("  %-22s %5d runs  %.2f ms avg  %.2f max", e.label, e.s.n, e.s.ms / e.s.n, e.s.max))
+        ns:Print(string.format("  %-22s %5d runs  %.2f ms avg  %.2f max  %.1f KB/run", e.label, e.s.n, e.s.ms / e.s.n, e.s.max,
+            (e.s.kb or 0) / math.max(e.s.n, 1)))
     end
     if #list == 0 then ns:Print("  (no timed jobs have run yet)") end
 end

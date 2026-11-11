@@ -142,19 +142,34 @@ local craftableCount -- defined after reagents()
 -- The recipe list is read from the client only when it can have changed
 -- (opened, learned a recipe, skill changed): that read makes a table per
 -- recipe. Bag changes and casts only recount what's craftable from it.
+-- baseDirty: true = re-read; "maybe" = the client said the list updated
+-- (it does after every craft), which only matters if the number of recipes
+-- or the skill level (the difficulty colours) changed since the last read.
 local base, baseDirty, baseAt, total = {}, true, 0, 0
+local byId, baseSig = {}, nil
 local function buildBase()
+    local ids = call(TU.GetAllRecipeIDs)
+    if type(ids) ~= "table" then wipe(base); total = 0; baseSig = nil return end
+    local info = call(TU.GetChildProfessionInfo)
+    local lvl = type(info) == "table" and num(info.skillLevel) and info.skillLevel or -1
+    local sig = #ids .. ":" .. lvl
+    if baseDirty == "maybe" and sig == baseSig and total > 0 then return end
+    baseSig = sig
     wipe(base)
     total = 0
-    local ids = call(TU.GetAllRecipeIDs)
-    if type(ids) ~= "table" then return end
     for _, id in ipairs(ids) do
         local r = call(TU.GetRecipeInfo, id)
         if type(r) == "table" and r.learned and str(r.name) and not r.isDummyRecipe and not r.isRecraft then
             total = total + 1
-            base[total] = { id = id, name = r.name, lname = r.name:lower(), icon = r.icon,
-                diff = num(r.relativeDifficulty) and r.relativeDifficulty or 3,
-                cat = catName(r.categoryID), n = 0, info = r }
+            -- One entry per recipe, kept and updated in place.
+            local e = byId[id]
+            if not e then e = { id = id, n = 0 }; byId[id] = e end
+            if e.name ~= r.name then e.name, e.lname = r.name, r.name:lower() end
+            e.icon = r.icon
+            e.diff = num(r.relativeDifficulty) and r.relativeDifficulty or 3
+            e.cat = catName(r.categoryID)
+            e.info = r
+            base[total] = e
         end
     end
 end
@@ -189,12 +204,20 @@ local function recipes()
             g[#g + 1] = e
         end
     end
-    local list = {}
-    for _, cat in ipairs(order) do
+    -- The list and its header entries are reused from one refresh to the next.
+    local list = P.__list or {}
+    P.__list = list
+    local heads = P.__heads or {}
+    P.__heads = heads
+    wipe(list)
+    for ci, cat in ipairs(order) do
         local g = groups[cat]
         table.sort(g, byDiffName)
         local folded = P.db.collapsed[cat] and not q
-        list[#list + 1] = { header = true, name = cat, count = #g, folded = folded }
+        local h = heads[ci]
+        if not h then h = { header = true }; heads[ci] = h end
+        h.name, h.count, h.folded = cat, #g, folded
+        list[#list + 1] = h
         if not folded then for _, e in ipairs(g) do list[#list + 1] = e end end
     end
     return list, total, craftable
@@ -618,7 +641,8 @@ end
 -- The client can fire list updates in bursts, so the list is re-read at
 -- most once a second.
 function P:QueueRefresh(structural)
-    if structural then baseDirty = true end
+    if structural == true then baseDirty = true
+    elseif structural and not baseDirty then baseDirty = "maybe" end
     if queued or not win or not win:IsShown() then return end
     queued = true
     local wait = 0.15
@@ -632,8 +656,8 @@ function P:QueueDetail()
     C_Timer.After(0.1, runDetail)
 end
 function P:ResetData()
-    wipe(schemCache); wipe(catCache); wipe(base)
-    baseDirty, baseAt = true, 0
+    wipe(schemCache); wipe(catCache); wipe(base); wipe(byId)
+    baseDirty, baseAt, baseSig = true, 0, nil
 end
 
 -- ── Build ─────────────────────────────────────────────────────────────────
@@ -873,8 +897,10 @@ function P:OnInit(db)
         elseif e == "TRADE_SKILL_DATA_SOURCE_CHANGED" then
             P:ResetData()
             P:QueueRefresh(true)
-        elseif e == "TRADE_SKILL_LIST_UPDATE" or e == "NEW_RECIPE_LEARNED" or e == "SKILL_LINES_CHANGED" then
+        elseif e == "NEW_RECIPE_LEARNED" or e == "SKILL_LINES_CHANGED" then
             P:QueueRefresh(true)
+        elseif e == "TRADE_SKILL_LIST_UPDATE" then
+            P:QueueRefresh("maybe")
         elseif e == "BAG_UPDATE_DELAYED" or e == "TRADE_SKILL_ITEM_CRAFTED_RESULT" then
             P:QueueRefresh()
         else
