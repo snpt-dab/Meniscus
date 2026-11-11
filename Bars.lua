@@ -926,10 +926,29 @@ function Bars:ApplyPlate()
             label:SetPoint("LEFT", 12, 0)
             label:SetText("Bags")
             local count = ns:CreateText(btn, 11)
-            count:SetPoint("CENTER", 8, 0)
-            for _, fs in ipairs({ label, count }) do
+            count:SetPoint("LEFT", label, "RIGHT", 8, 0)
+            -- Your money on the right: gold / silver / copper, zero parts
+            -- left out, the letters in their coin colors.
+            local coins = ns:CreateText(btn, 11)
+            coins:SetPoint("RIGHT", -12, 0)
+            for _, fs in ipairs({ label, count, coins }) do
                 fs:SetShadowOffset(1, -1); fs:SetShadowColor(0, 0, 0, 0.8)
             end
+            local function refreshMoney()
+                local m = GetMoney and GetMoney() or 0
+                if type(m) ~= "number" or (issecretvalue and issecretvalue(m)) then coins:SetText("") return end
+                local g, s, c = math.floor(m / 10000), math.floor(m / 100) % 100, m % 100
+                local parts = {}
+                if g > 0 then parts[#parts + 1] = (BreakUpLargeNumbers and BreakUpLargeNumbers(g) or g) .. "|cffffd24ag|r" end
+                if s > 0 or g > 0 then parts[#parts + 1] = s .. "|cffc7c7cfs|r" end
+                parts[#parts + 1] = c .. "|cffd98a4cc|r"
+                coins:SetText(table.concat(parts, " "))
+            end
+            local mev = CreateFrame("Frame")
+            mev:RegisterEvent("PLAYER_MONEY")
+            mev:RegisterEvent("PLAYER_ENTERING_WORLD")
+            mev:SetScript("OnEvent", refreshMoney)
+            refreshMoney()
             local function refresh()
                 local free, total = 0, 0
                 local CC = C_Container
