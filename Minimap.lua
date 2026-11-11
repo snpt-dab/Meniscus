@@ -187,12 +187,29 @@ function MM:ApplyDome()
     hooksecurefunc(Minimap, "SetPoint", function(_, _, rel)
         if not placing and rel ~= h then seat() end
     end)
-    -- The map only redraws at its new size after a zoom change.
-    pcall(function()
-        local z = Minimap:GetZoom()
-        Minimap:SetZoom(z > 0 and z - 1 or z + 1)
-        Minimap:SetZoom(z)
-    end)
+    -- The map only takes on its new size, for drawing its markers AND for
+    -- working out which marker the mouse is over, after a zoom change that
+    -- it actually gets to process. Flipping the zoom there and back inside
+    -- one frame (as this did at first) redrew the map but left the hover
+    -- areas at the old size, so tooltips appeared beside the marker they
+    -- belonged to. So: one step now, the step back a moment later, and the
+    -- same again whenever the world is (re)entered.
+    local function settle()
+        local ok, z = pcall(Minimap.GetZoom, Minimap)
+        if not ok or type(z) ~= "number" then return end
+        local other = z > 0 and z - 1 or z + 1
+        pcall(Minimap.SetZoom, Minimap, other)
+        C_Timer.After(0.3, function()
+            -- (Unless you zoomed yourself in the meantime.)
+            local ok2, now = pcall(Minimap.GetZoom, Minimap)
+            if ok2 and now == other then pcall(Minimap.SetZoom, Minimap, z) end
+        end)
+    end
+    C_Timer.After(0.5, settle)
+    local sev = CreateFrame("Frame")
+    sev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    sev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    sev:SetScript("OnEvent", function() C_Timer.After(1, settle) end)
 
     -- Glass glare, as on the orbs (never takes the mouse).
     local glass = CreateFrame("Frame", nil, h)
