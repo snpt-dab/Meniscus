@@ -98,7 +98,7 @@ local function create(parent, unit, below)
             -- bar goes on top of it.
             -- (On the health pill itself: the strip shows no power pill
             -- above it.)
-            h:SetPoint("BOTTOM", parent.healthPill or parent, "TOP", 0, 6)
+            h:SetPoint("BOTTOM", parent.healthPill or parent, "TOP", 0, 3)
         else
             h:SetPoint("TOP", parent, "BOTTOM", 0, y)
         end

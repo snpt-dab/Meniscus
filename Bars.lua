@@ -1003,7 +1003,11 @@ function Bars:ApplyPlate()
                         bt = bt and math.min(bt, bb) or bb
                     end
                     for _, reg in ipairs({ btn:GetRegions() }) do
-                        if reg:IsObjectType("Texture") then pcall(reg.SetDesaturated, reg, true) end
+                        if reg:IsObjectType("Texture") then
+                            pcall(reg.SetDesaturated, reg, true)
+                            -- Lifted toward our text color: plain grey read as disabled.
+                            pcall(reg.SetVertexColor, reg, 1, 1, 1, 1)
+                        end
                     end
                     -- The dark tile behind each icon: the pill is the tile.
                     for _, key in ipairs({ "Background", "PushedBackground" }) do
@@ -1025,7 +1029,9 @@ function Bars:ApplyPlate()
                     local parentScale = es / cur
                     -- Sized to sit inside the pill's height (their art fills
                     -- its box), and never wider than the pill.
-                    local k = math.min((pill:GetWidth() - 14) / (r2 - l), (PILL_H - 1) / (tp - bt))
+                    -- (With their tiles hidden the glyphs are smaller than the
+                    -- buttons, so the buttons may stand a little past the pill.)
+                    local k = math.min((pill:GetWidth() - 14) / (r2 - l), (PILL_H + 5) / (tp - bt))
                     -- Where the buttons' center is relative to the menu's.
                     local mcx, mcy = (mm:GetLeft() + mm:GetRight()) / 2, (mm:GetTop() + mm:GetBottom()) / 2
                     local ox, oy = (l + r2) / 2 - mcx, (tp + bt) / 2 - mcy
