@@ -418,7 +418,8 @@ function Bars:Arrange()
     end
     local petSlot = self.petSlot
     -- Stances / forms / stealth: with the character panel up, a row of
-    -- small buttons centered on the panel's top edge (half in, half out,
+    -- small buttons on the panel's top edge, growing leftwards from its right
+    -- end (half in, half out,
     -- the way the name pill sits on its bottom edge). Things that sit above
     -- the panel (Quick Buff pill, party column) move up by stanceLift.
     local STANCE = 24
@@ -437,8 +438,10 @@ function Bars:Arrange()
                 b:ClearAllPoints()
                 if cs and nForms > 0 then
                     local wl = cs.well
+                    -- From the panel's right end leftwards: the first stance
+                    -- is the rightmost, each further one to its left.
                     b:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
-                        wl.x + (wl.w - stanceW) / 2 + (i - 1) * (STANCE + 4), wl.y + wl.h - STANCE / 2)
+                        wl.x + wl.w - 14 - STANCE - (i - 1) * (STANCE + 4), wl.y + wl.h - STANCE / 2)
                     b:SetSize(STANCE, STANCE)
                 else
                     b:SetPoint("BOTTOMLEFT", self.main, "TOPLEFT", col * step, 8 + up)
