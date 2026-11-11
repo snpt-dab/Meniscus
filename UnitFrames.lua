@@ -335,14 +335,20 @@ local function update(self)
     if c then self.power:SetStatusBarColor(c[1], c[2], c[3]) end
 
     if self.key == "tot" and self.avatar and self.avatar.ring then
-        -- In the strip this frame is just a portrait: its ring says who the
-        -- target is on. Red = you.
-        local onMe = UF.targetStrip and UnitIsUnit(unit, "player")
-        if issecretvalue(onMe) then onMe = false end
-        if onMe then
-            self.avatar.ring:SetColorTexture(0.92, 0.26, 0.22, 1)
-        elseif UF.targetStrip then
-            self.avatar.ring:SetColorTexture(r * 0.85, g * 0.85, b * 0.85, 1)
+        -- In the strip this frame is just a portrait, and its ring is its
+        -- health: a ring-shaped bar that drains from the top down (the
+        -- portrait covers the middle of a round, vertical status bar, so
+        -- hidden health values work). Its color says who the target is on:
+        -- red = you, otherwise their class / reaction color.
+        local ringBar = self.hpRing
+        if UF.targetStrip and ringBar then
+            local onMe = UnitIsUnit(unit, "player")
+            if issecretvalue(onMe) then onMe = false end
+            self.avatar.ring:SetColorTexture(0, 0, 0, 0)
+            ringBar:SetMinMaxValues(0, UnitHealthMax(unit))
+            ringBar:SetValue(UnitHealth(unit))
+            if onMe then ringBar:SetStatusBarColor(0.92, 0.26, 0.22)
+            else ringBar:SetStatusBarColor(r, g, b) end
         else
             self.avatar.ring:SetColorTexture(unpack(T.border))
         end
@@ -777,7 +783,9 @@ function UF:PlaceTarget()
         -- Above the dome: your cast bar's upper half (7), a gap (4), then the
         -- portrait, whose top is STRIP_OVERLAP inside the bar. Offsets are in
         -- the frame's own (scaled) units.
-        local up = 7 + 4 + (av.D - STRIP_OVERLAP) * STRIP_SCALE
+        -- (plus the level badge, which hangs about 11 below the portrait and
+        -- was sitting on your cast bar)
+        local up = 7 + 4 + 13 + (av.D - STRIP_OVERLAP) * STRIP_SCALE
         t:SetPoint("BOTTOM", dome, "TOP", 0, up / STRIP_SCALE)
     else
         t:SetScale(1)
@@ -807,6 +815,24 @@ function UF:PlaceTarget()
             tav:SetScale(d / tav.D)
             tav:SetPoint("CENTER", tot, "CENTER")
             tot:SetPoint("LEFT", hp, "RIGHT", 4, 0)
+            if not tot.hpRing then
+                -- Health ring: a round status bar just behind the portrait,
+                -- a little larger than it, over a dark disc for the part
+                -- that's gone.
+                local rd = d + 3
+                local back = tot:CreateTexture(nil, "BACKGROUND", nil, 0)
+                back:SetPoint("CENTER"); back:SetSize(rd, rd)
+                back:SetColorTexture(0.13, 0.13, 0.15, 1)
+                back:AddMaskTexture(newMask(tot, rd))
+                local rb = CreateFrame("StatusBar", nil, tot)
+                rb:SetPoint("CENTER"); rb:SetSize(rd, rd)
+                rb:SetFrameLevel(math.max(tav:GetFrameLevel() - 1, 0))
+                rb:SetOrientation("VERTICAL")
+                rb:SetStatusBarTexture(T.bar)
+                rb:GetStatusBarTexture():AddMaskTexture(newMask(rb, rd))
+                tot.hpRing, tot.hpRingBack = rb, back
+            end
+            tot.hpRing:Show(); tot.hpRingBack:Show()
             if not tot.__tip then
                 tot.__tip = true
                 tot:HookScript("OnEnter", function(self)
@@ -817,6 +843,7 @@ function UF:PlaceTarget()
                 tot:HookScript("OnLeave", function() GameTooltip:Hide() end)
             end
         else
+            if tot.hpRing then tot.hpRing:Hide(); tot.hpRingBack:Hide() end
             tot:SetScale(1)
             tot:SetSize(st.W, st.H + st.GAP + st.PH)
             tav:SetScale(1)
