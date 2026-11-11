@@ -656,6 +656,47 @@ function Bars:ApplyCharWell()
         end)
         pill:SetScript("OnLeave", function() GameTooltip:Hide() end)
         w.pill = pill
+
+        -- XP as a percentage at the pill's right end, behind a divider (the
+        -- bar itself stays under the action bars). Blue while rested. Gone
+        -- at max level, or when the client hides the numbers.
+        local xp = ns:CreateText(pill, 10, T.textDim)
+        xp:SetPoint("CENTER", pill, "RIGHT", -17, 0)
+        xp:SetShadowOffset(1, -1)
+        xp:SetShadowColor(0, 0, 0, 0.8)
+        local xdiv = pill:CreateTexture(nil, "ARTWORK")
+        xdiv:SetSize(1, 8)
+        xdiv:SetPoint("RIGHT", pill, "RIGHT", -33, 0)
+        xdiv:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+        local function refreshXP()
+            local secret = issecretvalue or function() return false end
+            local cur, max = UnitXP("player"), UnitXPMax("player")
+            local capped = IsPlayerAtEffectiveMaxLevel and IsPlayerAtEffectiveMaxLevel()
+            local show = type(cur) == "number" and type(max) == "number" and not secret(cur) and not secret(max)
+                and max > 0 and not capped
+            xp:SetShown(show and true or false)
+            xdiv:SetShown(show and true or false)
+            -- The name stays centered on the pill: the same room is kept
+            -- clear on both sides.
+            local inset = show and 36 or 10
+            name:ClearAllPoints()
+            name:SetPoint("LEFT", inset, 0); name:SetPoint("RIGHT", -inset, 0)
+            if not show then return end
+            xp:SetText(math.floor(cur / max * 100) .. "%")
+            local rested = GetXPExhaustion and GetXPExhaustion()
+            if type(rested) == "number" and not secret(rested) and rested > 0 then
+                xp:SetTextColor(0.45, 0.65, 1.0)
+            else
+                xp:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+            end
+        end
+        local xev = CreateFrame("Frame")
+        for _, e in ipairs({ "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION", "PLAYER_ENTERING_WORLD" }) do
+            pcall(xev.RegisterEvent, xev, e)
+        end
+        xev:SetScript("OnEvent", function() C_Timer.After(0, refreshXP) end)
+        w.refreshXP = refreshXP
+
         function w.refresh()
             -- First and second name (Character.lua knows where this client
             -- keeps the second one).
@@ -683,6 +724,7 @@ function Bars:ApplyCharWell()
     w.pill:SetWidth(math.max(120, wl.w - 44))
     w:Show()
     w.refresh()
+    w.refreshXP()
 end
 
 ns.commands.petgrid = function()
