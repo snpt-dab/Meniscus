@@ -514,8 +514,8 @@ function UF:ApplyPlayerStyle()
         if slot and slot.orbs then
             self.pet:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", slot.x, slot.top + 28)
         elseif slot then
-            -- Console layout: over the pet's action bar in the plate's left
-            -- slot (Bars.lua), centered on it.
+            -- Console layout: over the pet's action bar in the plate's
+            -- pet slot (Bars.lua), centered on it.
             local pw = self.pet:GetWidth()
             self.pet:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", slot.x + (slot.w - pw) / 2 + 6, slot.top)
         elseif on then

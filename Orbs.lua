@@ -2800,7 +2800,7 @@ end
 -- bottoms level. No value pills (unreadable at this size). Both are click
 -- targets for the pet and only exist on screen while you have one (secure
 -- unit watch, so they come and go in combat too).
--- Position: beside the pet's action bar in the console's left slot
+-- Position: beside the pet's action bar in the console's right slot
 -- (Bars.petSlot), otherwise to the left of the left side bar / health orb.
 local petHealthPct = UnitHealthPercent and function(curve) return UnitHealthPercent("pet", true, curve) end
 local function updatePetHealth(f)

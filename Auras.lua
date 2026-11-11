@@ -709,11 +709,11 @@ function A:SeatBlizzard()
     local pf = UF and UF.player
     local ROW = 46 -- one row of Blizzard's icons with its timer text
     local slots = B and B.Slots and B:Slots()
-    if slots and (slots.right.x1 - slots.right.x0) >= 100 then
-        -- Console layout: seated in the plate's right slot (between the side
-        -- bar and the damage meter), buffs in the upper part, debuffs along
+    if slots and (slots.left.x1 - slots.left.x0) >= 100 then
+        -- Console layout: seated in the plate's left slot (between the chat
+        -- panel and the side bar), buffs in the upper part, debuffs along
         -- the bottom. Each frame is pinned by the corner it fills from.
-        local R = slots.right
+        local R = slots.left
         local mid = slots.y0 + 34
         for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
             if fr then

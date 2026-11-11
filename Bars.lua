@@ -373,7 +373,7 @@ function Bars:Arrange()
     local petW = 5 * step - s.gap
     local PET_PILL = 22 -- the pet frame's height (UnitFrames.lua, "tiny")
     self.petSlot = nil
-    local slotW = slots and (slots.left.x1 - slots.left.x0) or 0
+    local slotW = slots and (slots.right.x1 - slots.right.x0) or 0
     local od = (O and O.db) or (ns.db and ns.db.modules and ns.db.modules.Orbs) or {}
     local orbD = math.floor((od.size or 120) * 0.6 + 0.5) -- pet health orb (Orbs.lua)
     local gridH = 2 * s.size + s.gap
@@ -383,7 +383,7 @@ function Bars:Arrange()
         -- centered on the slot's middle line.
         -- (A little above the middle: the info pill hangs off the bottom of
         -- the well that frames them.)
-        local cx, cy = (slots.left.x0 + slots.left.x1) / 2, (slots.y0 + slots.y1) / 2 + 6
+        local cx, cy = (slots.right.x0 + slots.right.x1) / 2, (slots.y0 + slots.y1) / 2 + 6
         local x0 = cx - orbUnitW / 2
         self.petSlot = { orbs = true, orbX = x0, orbBottom = cy - orbD / 2,
                          x = x0 + orbD + 18, w = petW, gridTop = cy + gridH / 2, top = cy + gridH / 2,
@@ -391,7 +391,7 @@ function Bars:Arrange()
     elseif slots and slotW >= petW + 8 then
         local unitH = PET_PILL + 6 + gridH
         local top = slots.y1 - math.max(0, ((slots.y1 - slots.y0) - unitH) / 2)
-        local px = (slots.left.x0 + slots.left.x1) / 2 - petW / 2
+        local px = (slots.right.x0 + slots.right.x1) / 2 - petW / 2
         self.petSlot = { x = px, top = top, w = petW, gridTop = top - PET_PILL - 6,
                          well = { x = px - 16, y = top - unitH - 8, w = petW + 32, h = unitH + 16 } }
     end
@@ -453,6 +453,46 @@ local MOOD = {
     { "Content", 0.90, 0.75, 0.30 },
     { "Happy",   0.35, 0.78, 0.40 },
 }
+-- The pill's ring color says what the pet is:
+--   hunter pets: their mood (green / yellow / red, as the word beside it)
+--   demons: each kind its own color (imp ember, voidwalker deep blue,
+--           succubus magenta, felhunter fel green, felguard violet, ...)
+--   anything else by creature type, then neutral.
+-- Family names are the English client's; other languages fall back to the
+-- creature-type color.
+local PET_FAMILY = {
+    imp          = { 0.95, 0.50, 0.18 },
+    voidwalker   = { 0.36, 0.40, 0.92 },
+    succubus     = { 0.90, 0.36, 0.66 },
+    incubus      = { 0.90, 0.36, 0.66 },
+    felhunter    = { 0.45, 0.82, 0.25 },
+    felguard     = { 0.62, 0.38, 0.88 },
+    infernal     = { 0.60, 0.85, 0.20 },
+    doomguard    = { 0.82, 0.24, 0.24 },
+    ["water elemental"] = { 0.30, 0.68, 0.95 },
+    ghoul        = { 0.45, 0.72, 0.62 },
+}
+local PET_TYPE = {
+    demon     = { 0.62, 0.38, 0.88 },
+    beast     = { 0.82, 0.62, 0.30 },
+    elemental = { 0.30, 0.68, 0.95 },
+    undead    = { 0.45, 0.72, 0.62 },
+}
+local function petColor()
+    local secret = issecretvalue or function() return false end
+    local fam = UnitCreatureFamily and UnitCreatureFamily("pet")
+    if type(fam) == "string" and not secret(fam) then
+        local c = PET_FAMILY[fam:lower()]
+        if c then return c end
+    end
+    local kind = UnitCreatureType and UnitCreatureType("pet")
+    if type(kind) == "string" and not secret(kind) then
+        local c = PET_TYPE[kind:lower()]
+        if c then return c end
+    end
+    return nil
+end
+
 function Bars:ApplyPetWell()
     local slot = self.petSlot
     local w = self.petWell
@@ -518,6 +558,8 @@ function Bars:ApplyPetWell()
             -- the font string.
             name:SetText((UnitName("pet")))
             local r, g, bl = T.border[1], T.border[2], T.border[3]
+            local okc, pc = pcall(petColor)
+            if okc and pc then r, g, bl = pc[1] * 0.85, pc[2] * 0.85, pc[3] * 0.85 end
             mood:SetText("")
             if GetPetHappiness then
                 local ok, h = pcall(GetPetHappiness)
@@ -608,8 +650,8 @@ end
 -- inside the plate, and the two free slots between the chat / meter panels
 -- and the side bars. nil unless the split bar, the plate and its wings are
 -- all on.
---   left slot:  the pet (its frame over its action bar)
---   right slot: buffs over debuffs (Auras.lua)
+--   left slot:  buffs over debuffs (Auras.lua)
+--   right slot: the pet (its orbs / frame and its action bar)
 function Bars:Slots()
     local db, gap = self.db, self.split
     if not (db and gap and db.plate and db.wings) then return nil end
