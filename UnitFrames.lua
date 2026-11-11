@@ -219,10 +219,14 @@ end
 -- to the left of the health pill, as tall as the pill and with the same
 -- curve as its cap. An ordinary frame, so it can come and go in combat.
 local ORB_GLARE = "Interface/AddOns/MinimalUI/Media/orb_glare.tga"
+-- Built like the player's orbs, at a fraction of the size and with nothing
+-- moving: hairline ring, dark track, the liquid, a bright line on its
+-- surface, depth toward the bottom, glass sheen and glare.
 local function powerOrb(self)
     if self.pOrb then return self.pOrb end
     local hp = self.healthPill
     local d = hp:GetHeight()
+    local RING, TRACK = 1.2, 2.2 -- (the big orbs: 1.5 and 4, at 120 across)
     local o = CreateFrame("Frame", nil, self)
     o:SetSize(d, d)
     o:SetPoint("RIGHT", hp, "LEFT", -4, 0)
@@ -230,21 +234,50 @@ local function powerOrb(self)
     ring:SetAllPoints()
     ring:SetColorTexture(unpack(T.border))
     ring:AddMaskTexture(newMask(o, d))
-    local inner = d - 5
+    local td = d - RING * 2
+    local track = o:CreateTexture(nil, "BACKGROUND", nil, 1)
+    track:SetPoint("CENTER"); track:SetSize(td, td)
+    track:SetColorTexture(0.05, 0.05, 0.06, 0.96)
+    track:AddMaskTexture(newMask(o, td))
+    local inner = d - (RING + TRACK) * 2
     local imask = newMask(o, inner)
-    local bg = o:CreateTexture(nil, "BACKGROUND", nil, 1)
+    local bg = o:CreateTexture(nil, "BACKGROUND", nil, 2)
     bg:SetPoint("CENTER"); bg:SetSize(inner, inner)
-    bg:SetColorTexture(0.04, 0.045, 0.05, 1)
+    bg:SetColorTexture(0.02, 0.025, 0.03, 1)
     bg:AddMaskTexture(imask)
     o.bar = CreateFrame("StatusBar", nil, o)
     o.bar:SetPoint("CENTER"); o.bar:SetSize(inner, inner)
     o.bar:SetOrientation("VERTICAL")
     o.bar:SetStatusBarTexture(T.bar)
-    o.bar:GetStatusBarTexture():AddMaskTexture(imask)
+    local fill = o.bar:GetStatusBarTexture()
+    fill:AddMaskTexture(imask)
+    -- Bright line on the liquid's surface.
+    o.line = o.bar:CreateTexture(nil, "OVERLAY", nil, 0)
+    o.line:SetHeight(1)
+    o.line:SetPoint("BOTTOMLEFT", fill, "TOPLEFT", 0, -1)
+    o.line:SetPoint("BOTTOMRIGHT", fill, "TOPRIGHT", 0, -1)
+    o.line:SetColorTexture(1, 1, 1, 0.7)
+    o.line:AddMaskTexture(imask)
+    -- Darker toward the bottom, a faint sheen toward the top, then the glare.
+    local depth = o.bar:CreateTexture(nil, "OVERLAY", nil, 1)
+    depth:SetAllPoints(o.bar)
+    depth:SetColorTexture(0, 0, 0, 1)
+    pcall(depth.SetGradient, depth, "VERTICAL", CreateColor(0, 0, 0, 0.50), CreateColor(0, 0, 0, 0))
+    depth:AddMaskTexture(imask)
+    local shine = o.bar:CreateTexture(nil, "OVERLAY", nil, 2)
+    shine:SetAllPoints(o.bar)
+    shine:SetColorTexture(1, 1, 1, 1)
+    pcall(shine.SetGradient, shine, "VERTICAL", CreateColor(1, 1, 1, 0), CreateColor(1, 1, 1, 0.05))
+    shine:AddMaskTexture(imask)
     local gloss = o.bar:CreateTexture(nil, "OVERLAY", nil, 3)
     gloss:SetAllPoints(o.bar)
     gloss:SetTexture(ORB_GLARE)
     gloss:AddMaskTexture(imask)
+    function o:SetTint(r, g, b)
+        self.bar:SetStatusBarColor(r, g, b)
+        self.line:SetColorTexture(math.min(r * 1.25 + 0.15, 1), math.min(g * 1.25 + 0.15, 1),
+                                  math.min(b * 1.25 + 0.15, 1), 0.85)
+    end
     self.pOrb = o
     return o
 end
@@ -301,6 +334,19 @@ local function update(self)
     end
     if c then self.power:SetStatusBarColor(c[1], c[2], c[3]) end
 
+    if self.key == "tot" and self.avatar and self.avatar.ring then
+        -- In the strip this frame is just a portrait: its ring says who the
+        -- target is on. Red = you.
+        local onMe = UF.targetStrip and UnitIsUnit(unit, "player")
+        if issecretvalue(onMe) then onMe = false end
+        if onMe then
+            self.avatar.ring:SetColorTexture(0.92, 0.26, 0.22, 1)
+        elseif UF.targetStrip then
+            self.avatar.ring:SetColorTexture(r * 0.85, g * 0.85, b * 0.85, 1)
+        else
+            self.avatar.ring:SetColorTexture(unpack(T.border))
+        end
+    end
     if self.key == "target" then
         pcall(styleClass, self, unit)
         local isPlayer = UnitIsPlayer(unit)
@@ -309,7 +355,7 @@ local function update(self)
             local o = powerOrb(self)
             o.bar:SetMinMaxValues(0, pmax)
             o.bar:SetValue(pcur)
-            if c then o.bar:SetStatusBarColor(c[1], c[2], c[3]) end
+            if c then o:SetTint(c[1], c[2], c[3]) end
             o:Show()
         elseif self.pOrb then
             self.pOrb:Hide()
@@ -745,12 +791,39 @@ function UF:PlaceTarget()
     end
     t.name:SetPoint("RIGHT", t.hpText, "LEFT", -6, 0)
     if tot then
+        -- Strip: the target's target is a round portrait on the bar's right
+        -- end, as tall as the bar (the mirror of a player target's power
+        -- orb on the left end). No bars; hover for who it is.
+        local st = SIZES.tiny
+        local tav = tot.avatar
         tot:ClearAllPoints()
+        tav:ClearAllPoints()
+        tot.healthPill:SetShown(not strip)
+        tot.powerPill:SetShown(not strip)
         if strip then
-            tot:SetPoint("LEFT", t, "RIGHT", 12, 0)
+            local d = s.H
+            tot:SetScale(STRIP_SCALE)
+            tot:SetSize(d, d)
+            tav:SetScale(d / tav.D)
+            tav:SetPoint("CENTER", tot, "CENTER")
+            tot:SetPoint("LEFT", hp, "RIGHT", 4, 0)
+            if not tot.__tip then
+                tot.__tip = true
+                tot:HookScript("OnEnter", function(self)
+                    if not UF.targetStrip then return end
+                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                    if pcall(GameTooltip.SetUnit, GameTooltip, self.unit) then GameTooltip:Show() end
+                end)
+                tot:HookScript("OnLeave", function() GameTooltip:Hide() end)
+            end
         else
+            tot:SetScale(1)
+            tot:SetSize(st.W, st.H + st.GAP + st.PH)
+            tav:SetScale(1)
+            tav:SetPoint("CENTER", tot.healthPill, "RIGHT", 0, -2)
             tot:SetPoint("TOPRIGHT", t, "BOTTOMRIGHT", 0, -SMALL_FRAME_GAP)
         end
+        pcall(update, tot)
     end
     local CB = ns.modules.CastBars
     if CB and CB.target and CB.target.place then CB.target.place() end
