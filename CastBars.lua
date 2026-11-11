@@ -74,9 +74,9 @@ local function create(parent, unit, below)
             local B = ns.modules.Bars
             if dome and B and B.charSlot then
                 -- Quick Buff lives on the character panel and the target's
-                -- portrait stands right above the map: the cast bar
-                -- straddles the dome's top edge, between the two.
-                h:SetPoint("CENTER", dome, "TOP", 0, 0)
+                -- portrait stands above the map: the cast bar sits just
+                -- clear of the dome's top edge, between the two.
+                h:SetPoint("BOTTOM", dome, "TOP", 0, 4)
             elseif dome and qb then
                 -- Minimap dome layout: above the Quick Buff pill (which
                 -- sits on the dome), whether or not the pill is showing.

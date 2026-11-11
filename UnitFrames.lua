@@ -775,7 +775,7 @@ end
 --     health pill         (name / value; no power pill: players get a
 --                          small power orb beside it, NPCs nothing)
 --        ( portrait )     centered under the bar, overlapping its bottom edge
---     -- your cast bar -- straddling the dome's top edge
+--     -- your cast bar -- just above the dome's top edge
 --        (  the map  )
 -- The portrait sits directly above the map dome, circle over circle. The
 -- target's buffs / debuffs go beside the portrait, under the bar (Auras.lua).
@@ -806,12 +806,13 @@ function UF:PlaceTarget()
         -- No avatar on the bar's end any more: both texts use the caps' inset.
         t.name:SetPoint("LEFT", hp, "LEFT", s.H / 2, 0)
         t.hpText:SetPoint("RIGHT", hp, "RIGHT", -s.H / 2, 0)
-        -- Above the dome: your cast bar's upper half (7), a gap (4), then the
+        -- Above the dome: your cast bar (18), a gap (4), then the
         -- portrait, whose top is STRIP_OVERLAP inside the bar. Offsets are in
         -- the frame's own (scaled) units.
         -- (plus the level badge, which hangs about 11 below the portrait and
         -- was sitting on your cast bar)
-        local up = 7 + 4 + 13 + (av.D - STRIP_OVERLAP) * STRIP_SCALE
+        -- (your cast bar: 4 above the dome and 14 tall)
+        local up = 18 + 4 + 13 + (av.D - STRIP_OVERLAP) * STRIP_SCALE
         t:SetPoint("BOTTOM", dome, "TOP", 0, up / STRIP_SCALE)
     else
         t:SetScale(1)
