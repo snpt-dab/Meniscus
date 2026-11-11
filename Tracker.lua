@@ -133,10 +133,22 @@ local function watched(id)
     return false
 end
 
+-- "Working on it right now" floats a quest to the top of the list, under
+-- NOW. A quest is hot when:
+--   * one of its objective counters just went up (for HOT_SECONDS after the
+--     last tick, so it stays up between pulls), or
+--   * your target's name appears in one of its objectives ("0/8 Kul Tiras
+--     Sailor slain" while you target a Kul Tiras Sailor). Names can be
+--     hidden in combat on this client; then only the counters speak.
+local HOT_SECONDS = 90
+local hotUntil, progress = {}, {}
+local targetName
+
 local function gather()
     local tracked, all = {}, {}
     local n = call(QL.GetNumQuestLogEntries) or 0
     local zone = GetRealZoneText and GetRealZoneText()
+    local now = GetTime()
     local header
     for i = 1, (type(n) == "number" and n or 0) do
         local info = call(QL.GetInfo, i)
@@ -144,22 +156,51 @@ local function gather()
             if info.isHeader then
                 header = info.title
             elseif info.questID then
-                local e = { id = info.questID, title = info.title, level = info.level,
+                local id = info.questID
+                local e = { id = id, title = info.title, level = info.level, index = i,
                             here = (header ~= nil and header == zone) or info.isOnMap == true,
-                            complete = call(QL.IsComplete, info.questID) == true }
+                            complete = call(QL.IsComplete, id) == true }
+                -- Objectives: for display, for the progress check and for
+                -- the target match.
+                local objs = QL.GetQuestObjectives and call(QL.GetQuestObjectives, id)
+                e.objs = type(objs) == "table" and objs or nil
+                local sum, hitTarget = 0, false
+                if e.objs then
+                    for _, o in ipairs(e.objs) do
+                        if type(o) == "table" then
+                            local f = o.numFulfilled
+                            if type(f) == "number" and not secretv(f) then sum = sum + f end
+                            if targetName and not o.finished and type(o.text) == "string"
+                                and o.text:lower():find(targetName, 1, true) then
+                                hitTarget = true
+                            end
+                        end
+                    end
+                end
+                local was = progress[id]
+                if was ~= nil and sum > was then hotUntil[id] = now + HOT_SECONDS end
+                progress[id] = sum
+                e.hot = hitTarget or (hotUntil[id] ~= nil and hotUntil[id] > now)
+                -- An item the quest wants you to use (Blizzard's tracker shows
+                -- these as buttons): link and icon.
+                if GetQuestLogSpecialItemInfo then
+                    local link, icon = call(GetQuestLogSpecialItemInfo, i)
+                    if type(link) == "string" and link ~= "" then e.item = { link = link, icon = icon } end
+                end
                 all[#all + 1] = e
-                if watched(e.id) then tracked[#tracked + 1] = e end
+                if watched(id) then tracked[#tracked + 1] = e end
             end
         end
     end
     local list = #tracked > 0 and tracked or all
+    for _, e in ipairs(list) do e.group = e.hot and 1 or (e.here and 2 or 3) end
     table.sort(list, function(a, b)
-        if a.here ~= b.here then return a.here end
+        if a.group ~= b.group then return a.group < b.group end
         local la, lb = type(a.level) == "number" and a.level or 0, type(b.level) == "number" and b.level or 0
         if la ~= lb then return la < lb end
         return tostring(a.title) < tostring(b.title)
     end)
-    return list
+    return list, all
 end
 
 local function diffColor(level)
@@ -277,7 +318,22 @@ function TR:Console(x, y, w, h)
                 fs:SetPoint("TOPLEFT", content, "TOPLEFT", 5 + indent, -yy)
                 yy = yy + (fs:GetStringHeight() or 12) + gap
             end
-            local list = gather()
+            local list, all = gather()
+            -- What is under NOW changed: back to the top so you see it.
+            local sig = ""
+            for _, e in ipairs(list) do if e.hot then sig = sig .. e.id .. "," end end
+            if sig ~= P.hotSig then P.hotSig = sig; P.offset = 0 end
+            -- Come back when the first "hot" quest cools off.
+            local soonest
+            local nowT = GetTime()
+            for _, until_ in pairs(hotUntil) do
+                if until_ > nowT and (not soonest or until_ < soonest) then soonest = until_ end
+            end
+            if soonest and P.again and not P.againPending then
+                P.againPending = true
+                C_Timer.After(soonest - nowT + 0.5, function() P.againPending = false; P.again() end)
+            end
+            pcall(TR.SetQuestItems, TR, all)
             if #list == 0 then
                 local fs = P.take(11)
                 fs:SetText("No quests.")
@@ -286,12 +342,13 @@ function TR:Console(x, y, w, h)
             end
             local section
             for _, e in ipairs(list) do
-                if e.here ~= section then
-                    section = e.here
+                if e.group ~= section then
+                    section = e.group
                     if yy > 4 then yy = yy + 4 end
                     local hs = P.take(9, true)
-                    hs:SetText(section and "THIS ZONE" or "ELSEWHERE")
-                    hs:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+                    hs:SetText(section == 1 and "NOW" or (section == 2 and "THIS ZONE" or "ELSEWHERE"))
+                    if section == 1 then hs:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
+                    else hs:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end
                     put(hs, 0, 3)
                 end
                 local fs = P.take(11, true)
@@ -307,7 +364,7 @@ function TR:Console(x, y, w, h)
                 b:ClearAllPoints()
                 b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
                 b:SetSize(width + 10, yy - top)
-                local objs = QL.GetQuestObjectives and call(QL.GetQuestObjectives, e.id)
+                local objs = e.objs
                 local any = false
                 if type(objs) == "table" then
                     for _, o in ipairs(objs) do
@@ -340,15 +397,40 @@ function TR:Console(x, y, w, h)
             pending = true
             C_Timer.After(0.25, function()
                 pending = false
-                if P.holder:IsShown() then pcall(P.fill) else P.stale = true end
+                if P.holder:IsShown() then
+                    pcall(P.fill)
+                else
+                    -- Hidden (the meter is showing): still read the log, so
+                    -- progress made meanwhile counts as "hot" when the list
+                    -- comes back.
+                    P.stale = true
+                    local ok, _, all = pcall(gather)
+                    if ok then pcall(TR.SetQuestItems, TR, all) end
+                end
             end)
         end
+        P.again = soon
         local ev = CreateFrame("Frame")
         for _, e in ipairs({ "QUEST_LOG_UPDATE", "QUEST_WATCH_LIST_CHANGED", "ZONE_CHANGED_NEW_AREA",
-                             "ZONE_CHANGED", "PLAYER_ENTERING_WORLD", "UNIT_QUEST_LOG_CHANGED" }) do
+                             "ZONE_CHANGED", "PLAYER_ENTERING_WORLD", "UNIT_QUEST_LOG_CHANGED",
+                             "QUEST_WATCH_UPDATE", "PLAYER_TARGET_CHANGED", "PLAYER_REGEN_ENABLED" }) do
             pcall(ev.RegisterEvent, ev, e)
         end
-        ev:SetScript("OnEvent", soon)
+        ev:SetScript("OnEvent", function(_, e)
+            if e == "PLAYER_TARGET_CHANGED" then
+                -- Only things you could be killing or collecting from, and
+                -- only when the name can be read.
+                local nm = UnitExists("target") and UnitName("target") or nil
+                local dead = nm and UnitIsDead("target")
+                if type(nm) == "string" and not secretv(nm) and nm ~= "" and not (secretv(dead) or dead)
+                    and not UnitIsPlayer("target") then
+                    targetName = nm:lower()
+                else
+                    targetName = nil
+                end
+            end
+            soon()
+        end)
         local cv = CreateFrame("Frame")
         cv:RegisterEvent("PLAYER_REGEN_DISABLED")
         cv:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -379,6 +461,70 @@ function TR:Console(x, y, w, h)
     P:SetSize(w, h)
     P:Show()
     self:ApplyConsole()
+end
+
+-- Usable quest items. Blizzard's tracker puts a button beside the quest; a
+-- button that uses an item has to be a secure one, which can't be created,
+-- moved or re-pointed in combat, so they can't ride along inside a list that
+-- scrolls and re-sorts. Instead they sit in a fixed row on the panel's tab
+-- strip, between the tabs and "auto", visible whichever tab is showing:
+-- one small icon per quest item, usable in combat. They are (re)assigned
+-- out of combat only; a change made mid-fight is applied when it ends.
+local MAX_ITEMS, ITEM_SIZE = 6, 18
+function TR:SetQuestItems(all)
+    local P = self.panel
+    if not P or type(all) ~= "table" then return end
+    if InCombatLockdown() then P.itemsStale = true return end
+    P.itemsStale = false
+    P.itemBtns = P.itemBtns or {}
+    local n = 0
+    for _, e in ipairs(all) do
+        if e.item and n < MAX_ITEMS then
+            n = n + 1
+            local b = P.itemBtns[n]
+            if not b then
+                b = CreateFrame("Button", "MinimalUI_QuestItem" .. n, P, "SecureActionButtonTemplate")
+                b:SetSize(ITEM_SIZE, ITEM_SIZE)
+                b:RegisterForClicks("AnyDown", "AnyUp")
+                local mask = b:CreateMaskTexture()
+                mask:SetTexture("Interface/AddOns/Meniscus/Media/rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                mask:SetAllPoints()
+                local ring = b:CreateTexture(nil, "BACKGROUND")
+                ring:SetAllPoints()
+                ring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+                ring:AddMaskTexture(mask)
+                b.ring = ring
+                local imask = b:CreateMaskTexture()
+                imask:SetTexture("Interface/AddOns/Meniscus/Media/rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                imask:SetPoint("TOPLEFT", 1.5, -1.5); imask:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+                b.icon = b:CreateTexture(nil, "ARTWORK")
+                b.icon:SetAllPoints(imask)
+                b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                b.icon:AddMaskTexture(imask)
+                b:SetScript("OnEnter", function(self)
+                    self.ring:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                    if self.link and pcall(GameTooltip.SetHyperlink, GameTooltip, self.link) then
+                        if self.quest then GameTooltip:AddLine(self.quest, T.textDim[1], T.textDim[2], T.textDim[3]) end
+                        GameTooltip:Show()
+                    end
+                end)
+                b:SetScript("OnLeave", function(self)
+                    self.ring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+                    GameTooltip:Hide()
+                end)
+                P.itemBtns[n] = b
+            end
+            b.link, b.quest = e.item.link, e.title
+            b.icon:SetTexture(e.item.icon)
+            b:SetAttribute("type", "item")
+            b:SetAttribute("item", e.item.link)
+            b:ClearAllPoints()
+            b:SetPoint("LEFT", P.tabQuests, "RIGHT", 8 + (n - 1) * (ITEM_SIZE + 3), 0)
+            b:Show()
+        end
+    end
+    for i = n + 1, #P.itemBtns do P.itemBtns[i]:Hide() end
 end
 
 -- Which tab is showing; combatStarting covers the moment the fight begins
