@@ -121,6 +121,11 @@ end
 
 -- ── Body building (pooled, laid out top-down) ─────────────────────────────
 local pools, used = {}, {}
+-- Everything taken for the current page, in the order it was laid out, so
+-- that when something changes height after the fact (the speech bubble
+-- being shortened to fit, a reward card whose data arrived late) all that
+-- comes below it can be moved by the difference.
+local placed, bubbles = {}, {}
 local function take(kind, make)
     pools[kind] = pools[kind] or {}
     used[kind] = (used[kind] or 0) + 1
@@ -128,13 +133,40 @@ local function take(kind, make)
     if not o then o = make(); pools[kind][used[kind]] = o end
     if o.ClearAllPoints then o:ClearAllPoints() end
     o:Show()
+    placed[#placed + 1] = o
     return o
 end
 local function resetPools()
     for k, list in pairs(pools) do for i = 1, #list do list[i]:Hide() end; used[k] = 0 end
+    wipe(placed); wipe(bubbles)
 end
 
 local y, CW
+-- Move everything laid out after the idx-th object up by dy (down if negative).
+local ptBuf = {}
+local function shiftAfter(idx, dy)
+    if dy == 0 then return end
+    for i = idx + 1, #placed do
+        local o = placed[i]
+        local n = o:GetNumPoints()
+        local hit = false
+        for p = 1, n do
+            local a, rel, b, x, yy = o:GetPoint(p)
+            local e = ptBuf[p]
+            if not e then e = {}; ptBuf[p] = e end
+            e[1], e[2], e[3], e[4], e[5] = a, rel, b, x, yy
+            if rel == content then hit = true end
+        end
+        if hit then
+            o:ClearAllPoints()
+            for p = 1, n do
+                local e = ptBuf[p]
+                o:SetPoint(e[1], e[2], e[3], e[4], e[5] + (e[2] == content and dy or 0))
+            end
+        end
+    end
+    y = y + dy
+end
 local function fs(size, bold, color)
     local f = take("fs", function() return content:CreateFontString(nil, "OVERLAY") end)
     ns:SetFont(f, size, "", bold)
@@ -164,9 +196,11 @@ end
 
 -- Speech bubble with a tail toward the head; the text types itself out.
 local typer
--- Long text scrolls inside the bubble (BUBBLE_MAX tall), so everything below
--- it (objectives, rewards, buttons) stays in view without scrolling the window.
-local BUBBLE_MAX = 210
+-- The bubble is as tall as its text. If the whole page would then be taller
+-- than the screen allows, finish() shortens the bubble and its text scrolls
+-- inside it, so everything below (objectives, rewards, buttons) stays in
+-- view without scrolling the window.
+local BUBBLE_MIN = 96
 local function bubble(s)
     if not str(s) then return end
     local b = take("bubble", function()
@@ -222,7 +256,8 @@ local function bubble(s)
     -- The scroll area is the bubble minus 24 of padding: it has to be as
     -- tall as the text's holder (textH + 2), or short text scrolls by the
     -- difference and always shows a sliver of scroll bar.
-    local h = math.min(textH + 26, BUBBLE_MAX)
+    local h = textH + 26
+    bubbles[#bubbles + 1] = { b = b, idx = #placed, h = h }
     b:SetSize(CW, h)
     b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 6)
     b.sf:SetVerticalScroll(0)
@@ -387,30 +422,24 @@ local function itemTiles(list)
     y = y - 6
 end
 
--- Reward cards: one card per reward, up to three across. Each card answers
--- what you'd ask of a reward at a glance:
---   top     icon, name (quality colour)
---   line    what it is ("Wrist · Mail"), or in red why you can't use it
---   middle  how it differs from what you wear, one stat per row
---   bottom  what a vendor pays (the best-paying choice is lit)
+-- Reward cards: one full-width card per reward, stacked, each as tall as
+-- what it has to say:
+--   icon | name (quality colour)                      vendor value
+--        | what it is ("Wrist · Mail"), or in red why you can't use it
+--        | how it differs from what you wear (green gains, red losses)
 -- A choice is picked by clicking its card.
-local RCARD_GEAR, RCARD_PLAIN = 152, 86
 local function rewardCards(list)
-    local n = #list
-    local per = n >= 3 and 3 or 2
-    local cw = (CW - (per - 1) * 8) / per
-    local anyGear = false
     for _, it in ipairs(list) do
         it.link = call(_G.GetQuestItemLink, it.kind, it.index)
         if it.link and C_Item and C_Item.GetItemInfoInstant then
             local _, typ, sub, loc = call(C_Item.GetItemInfoInstant, it.link)
-            it.typ, it.sub, it.loc = typ, sub, loc
-            it.slotName = type(loc) == "string" and loc ~= "" and _G[loc] or nil
-            if type(it.slotName) ~= "string" then it.slotName = nil end
-            if it.slotName then anyGear = true end
+            it.typ, it.sub = typ, sub
+            -- Only real equipment slots count (things you can't equip carry
+            -- a placeholder slot whose name is an empty string).
+            local sn = type(loc) == "string" and loc ~= "" and _G[loc]
+            it.slotName = (type(sn) == "string" and sn ~= "") and sn or nil
         end
     end
-    local ch = anyGear and RCARD_GEAR or RCARD_PLAIN
 
     local function coins(v)
         local g, s, c = math.floor(v / 10000), math.floor(v / 100) % 100, v % 100
@@ -422,9 +451,8 @@ local function rewardCards(list)
     end
 
     local cards = {}
-    local col = 0
     for _, it in ipairs(list) do
-        local t = take("rcard", function()
+        local t = take("rcard2", function()
             local f = CreateFrame("Button", nil, content)
             f.ring = ns.RoundedRect(f, -8, 0, 12, T.border[1], T.border[2], T.border[3], 1)
             f.fill = ns.RoundedRect(f, -7, 1, 11, unpack(CARD))
@@ -441,25 +469,22 @@ local function rewardCards(list)
             f.count = box:CreateFontString(nil, "OVERLAY")
             ns:SetFont(f.count, 10, "OUTLINE", true)
             f.count:SetPoint("BOTTOMRIGHT", -1, 1)
-            f.name = text(f, 11, true)
-            f.name:SetPoint("TOPLEFT", box, "TOPRIGHT", 8, -1)
-            f.name:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+            f.sell = text(f, 10, false, T.textDim)
+            f.sell:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -12)
+            f.sell:SetJustifyH("RIGHT")
+            f.name = text(f, 12, true)
+            f.name:SetPoint("TOPLEFT", box, "TOPRIGHT", 10, 0)
             f.name:SetJustifyH("LEFT"); f.name:SetJustifyV("TOP")
             f.name:SetWordWrap(true)
-            if f.name.SetMaxLines then f.name:SetMaxLines(3) end
             f.what = text(f, 10, false, T.textDim)
-            f.what:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -54)
-            f.what:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+            f.what:SetPoint("TOPLEFT", f.name, "BOTTOMLEFT", 0, -3)
             f.what:SetJustifyH("LEFT")
-            f.what:SetWordWrap(false)
+            f.what:SetWordWrap(true)
             f.rows = text(f, 11)
-            f.rows:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -74)
-            f.rows:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+            f.rows:SetPoint("TOPLEFT", f.what, "BOTTOMLEFT", 0, -6)
             f.rows:SetJustifyH("LEFT"); f.rows:SetJustifyV("TOP")
             f.rows:SetSpacing(3)
-            f.rows:SetWordWrap(false)
-            f.sell = text(f, 10, false, T.textDim)
-            f.sell:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+            f.rows:SetWordWrap(true)
             f:SetScript("OnEnter", function(self)
                 ns.TipAnchor(self)
                 pcall(GameTooltip.SetQuestItem, GameTooltip, self.kind, self.index)
@@ -469,9 +494,11 @@ local function rewardCards(list)
             return f
         end)
         cards[#cards + 1] = t
-        t.kind, t.index, t.it = it.kind, it.index, it
-        t:SetSize(cw, ch)
-        t:SetPoint("TOPLEFT", content, "TOPLEFT", col * (cw + 8), y)
+        t.kind, t.index, t.it, t.idx = it.kind, it.index, it, #placed
+        t.h = 56
+        t:SetSize(CW, t.h)
+        t:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+        y = y - (t.h + 8)
         t.icon:SetTexture(it.tex)
         t.count:SetText(type(it.count) == "number" and it.count > 1 and it.count or "")
         t.name:SetText(it.name)
@@ -497,18 +524,16 @@ local function rewardCards(list)
             end
             if it.kind == "choice" then
                 selectedChoice = it.index
-                for _, other in ipairs(pools.rcard or {}) do if other:IsShown() and other.paintSel then other.paintSel() end end
+                for _, other in ipairs(pools.rcard2 or {}) do if other:IsShown() and other.paintSel then other.paintSel() end end
                 if win.onChoice then win.onChoice() end
             end
         end)
-        col = col + 1
-        if col == per then col = 0; y = y - (ch + 8) end
     end
-    if col > 0 then y = y - (ch + 8) end
     y = y - 4
 
-    -- The parts that need the item's full data (it can arrive a moment
-    -- after the dialog opens for an item never seen before).
+    -- Fill in what needs the item's full data, then give each card the
+    -- height its text needs (moving what's below it). Data for an item
+    -- never seen before can arrive a moment late, so this runs again then.
     local function details()
         local best, missing = 0, false
         for _, t in ipairs(cards) do
@@ -530,9 +555,13 @@ local function rewardCards(list)
             local it = t.it
             local why = it.link and ns.ItemUnusable and call(ns.ItemUnusable, it.link)
             local cant = type(why) == "string" or it.usable == false
-            -- What it is, or why it's no use to you.
-            local what = it.slotName and (it.slotName .. ((type(it.sub) == "string" and it.sub ~= "" and it.sub ~= it.slotName)
-                and ("  \194\183  " .. it.sub) or "")) or (type(it.typ) == "string" and it.typ or "")
+            local what
+            if it.slotName then
+                what = it.slotName
+                if type(it.sub) == "string" and it.sub ~= "" and it.sub ~= it.slotName then what = what .. "  \194\183  " .. it.sub end
+            else
+                what = type(it.typ) == "string" and it.typ or ""
+            end
             if cant then
                 t.what:SetText("Can't use" .. (type(why) == "string" and ("  \194\183  " .. why) or ""))
                 t.what:SetTextColor(0.90, 0.45, 0.45)
@@ -545,18 +574,35 @@ local function rewardCards(list)
             if cant then t.name:SetTextColor(0.55, 0.55, 0.60)
             elseif c then t.name:SetTextColor(c.r, c.g, c.b)
             else t.name:SetTextColor(unpack(T.text)) end
-            -- Against what you wear (skipped for things you can't use).
-            local rows = (not cant) and it.link and ns.CompareRows and call(ns.CompareRows, it.link, 4)
-            t.rows:SetText(type(rows) == "table" and table.concat(rows, "\n") or "")
-            -- Vendor value.
+            local rows = (not cant) and it.link and ns.CompareRows and call(ns.CompareRows, it.link, 6)
+            local rowText = type(rows) == "table" and table.concat(rows, "     ") or ""
+            t.rows:SetText(rowText)
             local v = t.price
             if v and v > 0 then
-                t.sell:SetText("Sells for  " .. coins(v))
+                t.sell:SetText(coins(v))
                 t.sell:SetAlpha((t.kind ~= "choice" or v == best) and 1 or 0.55)
             elseif v == 0 then
                 t.sell:SetText("No sell value"); t.sell:SetAlpha(0.55)
             else
                 t.sell:SetText("")
+            end
+            -- Height: name, the line under it, the comparison, padding.
+            -- (Explicit widths: a string's height can't be measured from
+            -- anchors that haven't been resolved yet.)
+            local textW = CW - 56 - 12
+            t.name:SetWidth(math.max(80, textW - t.sell:GetStringWidth() - 10))
+            t.what:SetWidth(textW)
+            t.rows:SetWidth(textW)
+            local whatText = t.what:GetText()
+            local h = 10 + t.name:GetStringHeight()
+                + ((whatText and whatText ~= "") and (3 + t.what:GetStringHeight()) or 0)
+                + (rowText ~= "" and (6 + t.rows:GetStringHeight()) or 0) + 12
+            h = math.max(56, math.ceil(h))
+            if h ~= t.h then
+                local dy = t.h - h
+                t.h = h
+                t:SetHeight(h)
+                shiftAfter(t.idx, dy)
             end
         end
         return missing
@@ -564,7 +610,12 @@ local function rewardCards(list)
     if details() then
         local stamp = {}
         win.__sellStamp = stamp
-        C_Timer.After(0.5, function() if win.__sellStamp == stamp and win:IsShown() then details() end end)
+        C_Timer.After(0.5, function()
+            if win.__sellStamp == stamp and win:IsShown() then
+                details()
+                if D._finish then D._finish() end
+            end
+        end)
     end
 end
 
@@ -616,17 +667,36 @@ local function begin()
     y = -4
     selectedChoice = nil
     win.onChoice = nil
+    win.__sellStamp = nil -- a late reward-card refill from the previous page no longer applies
 end
 
 local function finish()
+    -- The window grows with its content, up to what fits between the
+    -- console and the top of the screen. Past that, the speech text gives
+    -- way first (it scrolls in its bubble); only if that isn't enough does
+    -- the page itself scroll.
+    local maxBody = math.max(MAX_BODY, UIParent:GetHeight() - 270 - (HEADER_H + 24 + FOOTER_H))
     local h = -y + 4
+    if h > maxBody then
+        local big
+        for _, e in ipairs(bubbles) do if not big or e.h > big.h then big = e end end
+        if big and big.h > BUBBLE_MIN then
+            local cut = math.min(h - maxBody, big.h - BUBBLE_MIN)
+            big.h = big.h - cut
+            big.b:SetHeight(big.h)
+            shiftAfter(big.idx, cut)
+            h = -y + 4
+            C_Timer.After(0, big.b.placeThumb)
+        end
+    end
     content:SetHeight(h)
-    local bodyH = math.min(h, MAX_BODY)
+    local bodyH = math.min(h, maxBody)
     body:SetHeight(bodyH)
     body:SetVerticalScroll(0)
     win:SetHeight(HEADER_H + 14 + bodyH + 10 + FOOTER_H)
-    body.thumb:SetShown(h > MAX_BODY)
+    body.thumb:SetShown(h > maxBody)
 end
+D._finish = finish
 
 -- ── Selecting (adaptive) ──────────────────────────────────────────────────
 -- Clients differ on whether gossip selections take a quest/option ID or a
