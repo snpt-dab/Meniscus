@@ -223,7 +223,8 @@ function M:Refresh()
     sh:SetTitle(name)
     local zone = GetSubZoneText and GetSubZoneText()
     if not zone or zone == "" then zone = GetZoneText and GetZoneText() end
-    sh:SetSubtitle((zone or "") .. "   ·   " .. money(myMoney))
+    sh:SetSubtitle(zone or "")
+    win.money:SetText(money(myMoney))
     local canRepair = call(_G.CanMerchantRepair)
     local cost, need = call(_G.GetRepairAllCost)
     if canRepair and need and num(cost) and cost > 0 then
@@ -296,6 +297,12 @@ local function build()
 
     win.pageText = text(win, 11, true, T.textDim)
     win.pageText:SetPoint("BOTTOM", win, "BOTTOM", 0, 20)
+    -- What you have to spend: bottom left, level with the page controls.
+    local lbl = text(win, 10, false, T.textDim)
+    lbl:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 20, 21)
+    lbl:SetText("YOUR MONEY")
+    win.money = text(win, 12, true)
+    win.money:SetPoint("LEFT", lbl, "RIGHT", 10, 0)
     win.prev = pill(win, "Previous", function() M.page = (M.page or 1) - 1; M:Refresh() end)
     win.prev:SetPoint("RIGHT", win.pageText, "LEFT", -14, 0)
     win.next = pill(win, "Next", function() M.page = (M.page or 1) + 1; M:Refresh() end)

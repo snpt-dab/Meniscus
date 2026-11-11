@@ -14,7 +14,8 @@ local W = 460
 local ROW_H = 44
 local ROWS = 9
 local LIST_TOP = (ns.SHELL_H or 92) + 14
-local H = LIST_TOP + ROWS * ROW_H + 18
+local FOOT_H = 50
+local H = LIST_TOP + ROWS * ROW_H + 18 + FOOT_H
 local FILL = { 0.06, 0.06, 0.07, 0.98 }
 local CARD = { 0.10, 0.10, 0.115, 1 }
 local PILL_OFF = { 0.15, 0.15, 0.17, 1 }
@@ -341,7 +342,8 @@ function TR:Refresh()
     local greet = call(_G.GetTrainerGreetingText)
     local zone = GetSubZoneText and GetSubZoneText()
     if not zone or zone == "" then zone = GetZoneText and GetZoneText() end
-    sh:SetSubtitle((zone or "") .. "   ·   " .. money(GetMoney()))
+    sh:SetSubtitle(zone or "")
+    win.money:SetText(money(GetMoney()))
     -- The count lives on the button; the chip shows the trainer's attitude.
     win.trainAll:SetLabel(avail > 0 and string.format("Train all (%d)", avail) or "Train all")
     win.trainAll:SetEnabled(avail > 0)
@@ -385,14 +387,22 @@ local function build()
 
     win.shell = ns:CreateShell(win)
     win.shell:SetRing({ 0.45, 0.85, 0.50 })
-    win.trainAll = pill(win, "Train all", function() trainingAll = true; TR:Refresh() end)
-    win.trainAll:SetPoint("BOTTOMRIGHT", win.shell.band, "BOTTOMRIGHT", -14, 14)
-    win.unavail = pill(win, "Show unavailable", function(self)
+    -- Footer: what you have to spend on the left, the actions on the right
+    -- (the header keeps to who the trainer is).
+    local foot = ns:CreateFooter(win, FOOT_H)
+    win.foot = foot
+    local lbl = text(foot, 10, false, T.textDim)
+    lbl:SetPoint("LEFT", foot, "LEFT", 20, 0)
+    lbl:SetText("YOUR MONEY")
+    win.money = text(foot, 12, true)
+    win.money:SetPoint("LEFT", lbl, "RIGHT", 10, 0)
+    win.trainAll = pill(foot, "Train all", function() trainingAll = true; TR:Refresh() end)
+    win.trainAll:SetPoint("RIGHT", foot, "RIGHT", -14, 0)
+    win.unavail = pill(foot, "Show unavailable", function(self)
         TR.db.showUnavailable = not TR.db.showUnavailable
         TR:Refresh()
     end)
     win.unavail:SetPoint("RIGHT", win.trainAll, "LEFT", -6, 0)
-    win.shell:Lift(win.trainAll, win.unavail)
 
     for i = 1, ROWS do rows[i] = makeRow(i) end
     win:EnableMouseWheel(true)
