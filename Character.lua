@@ -1337,6 +1337,24 @@ function C:OnInit(db)
     -- window itself stays free to open and close in combat. They can only
     -- be shown out of combat; in combat, use /mui blizzchar.
     local covers = {}
+    -- Can the thing on the cursor go on what is in this slot? Blizzard's own
+    -- test for dimming non-matching items (an armor kit: chest, legs, hands,
+    -- feet). An empty slot never can. If the client doesn't have the test,
+    -- any slot with an item counts.
+    local function validSlot(slot)
+        local id = GetInventoryItemID and GetInventoryItemID("player", slot)
+        if type(id) ~= "number" or id <= 0 then return false end
+        local test = C_Item and C_Item.DoesItemMatchTargetEnchantingSpell
+        if test and ItemLocation and ItemLocation.CreateFromEquipmentSlot then
+            local ok, res = pcall(function()
+                local loc = ItemLocation:CreateFromEquipmentSlot(slot)
+                if C_Item.DoesItemExist and not C_Item.DoesItemExist(loc) then return false end
+                return test(loc)
+            end)
+            if ok and res ~= nil and not (issecretvalue and issecretvalue(res)) then return res and true or false end
+        end
+        return true
+    end
     local function hideCovers()
         if InCombatLockdown() then C.coversStale = true return end
         C.coversStale = false
@@ -1367,7 +1385,7 @@ function C:OnInit(db)
             cv.tile = tile
             local slot = tile.slot
             local l, b = tile:GetLeft(), tile:GetBottom()
-            if slot and l and b and tile:IsVisible() then
+            if slot and l and b and tile:IsVisible() and validSlot(slot) then
                 local k = tile:GetEffectiveScale() / UIParent:GetEffectiveScale()
                 cv:SetAttribute("type", "macro")
                 cv:SetAttribute("macrotext", "/use " .. slot)
