@@ -1317,6 +1317,29 @@ function C:OnInit(db)
     self.db = db
     db.collapsed = db.collapsed or {}
 
+    -- Using something that has to be applied to a piece of gear (an armor
+    -- kit, a sharpening stone, an enchant) turns the cursor into "apply to
+    -- what?". Blizzard's bag buttons open the character window at that
+    -- point; our bag tiles don't run that code, so we do it here: when the
+    -- cursor starts waiting for an item target, open the gear tab. Clicking
+    -- a gear tile then applies it (the tiles already pick the item up,
+    -- which is what "apply" means while the cursor is targeting).
+    local aim = CreateFrame("Frame")
+    for _, e in ipairs({ "CURRENT_SPELL_CAST_CHANGED", "CURSOR_CHANGED" }) do pcall(aim.RegisterEvent, aim, e) end
+    local queued = false
+    aim:SetScript("OnEvent", function()
+        if queued then return end
+        queued = true
+        C_Timer.After(0, function()
+            queued = false
+            if not (SpellIsTargeting and SpellCanTargetItem) then return end
+            local ok, want = pcall(function() return SpellIsTargeting() and SpellCanTargetItem() end)
+            if ok and want and not (win and win:IsShown() and C.tab == "gear") then
+                pcall(C.Open, C, "gear")
+            end
+        end)
+    end)
+
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "ADDON_LOADED", "PLAYER_EQUIPMENT_CHANGED", "UPDATE_INVENTORY_DURABILITY",
                          "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN", "PLAYER_LEVEL_UP", "UPDATE_FACTION",
