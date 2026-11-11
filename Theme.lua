@@ -124,7 +124,7 @@ fontLoader:SetScript("OnEvent", function(self, _, name)
     if db then
         for _, k in ipairs({ "fontPath", "fontBold" }) do
             if type(db[k]) == "string" then
-                db[k] = db[k]:gsub("^Interface[/\]+AddOns[/\]+[^/\]+[/\]+", "Interface/AddOns/" .. ns.name .. "/")
+                db[k] = (db[k]:gsub("^Interface/AddOns/[^/]+/", "Interface/AddOns/" .. ns.name .. "/"))
             end
         end
     end
