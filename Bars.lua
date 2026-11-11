@@ -753,6 +753,130 @@ ns.commands.petgrid = function()
     ns:Print("Empty pet action slots", Bars.db.petGrid and "shown" or "hidden")
 end
 
+-- ── Micro menu glyphs ─────────────────────────────────────────────────────
+-- Our own icons for the micro menu buttons, in the style of the tracking
+-- magnifier on the map pill: thin strokes and small rings in the dim text
+-- color, brightening on hover. Each is drawn on a 16 x 16 grid (x right, y
+-- down) from three primitives:
+--   { "l", x1, y1, x2, y2 [, thickness] }   a stroke
+--   { "o", cx, cy, r }                      a ring
+--   { "d", cx, cy, r }                      a dot
+--   { "t", "?" }                            a character in our font
+-- A button is matched by a word in its name; a button nobody matches keeps
+-- Blizzard's (greyed) art. The buttons underneath are untouched: clicks,
+-- tooltips and key bindings are theirs.
+local MICRO_GLYPHS = {
+    -- a head and shoulders
+    { "character", { { "o", 8, 5, 3 }, { "l", 3, 14, 5, 10 }, { "l", 5, 10, 11, 10 }, { "l", 11, 10, 13, 14 } } },
+    -- a hammer
+    { "profession", { { "l", 3, 13, 9, 7 }, { "l", 7, 3, 13, 9, 3.2 } } },
+    -- an open book
+    { "spell", { { "l", 2, 4, 8, 5 }, { "l", 8, 5, 14, 4 }, { "l", 2, 4, 2, 12 }, { "l", 14, 4, 14, 12 },
+                 { "l", 2, 12, 8, 13 }, { "l", 8, 13, 14, 12 }, { "l", 8, 5, 8, 13 } } },
+    { "talent", { { "o", 8, 3.5, 2 }, { "o", 4, 12, 2 }, { "o", 12, 12, 2 }, { "l", 7, 5.5, 5, 10 }, { "l", 9, 5.5, 11, 10 } } },
+    -- a diamond
+    { "achievement", { { "l", 8, 2, 13, 8 }, { "l", 13, 8, 8, 14 }, { "l", 8, 14, 3, 8 }, { "l", 3, 8, 8, 2 } } },
+    { "quest", { { "t", "!" } } },
+    -- a flag on a pole
+    { "guild", { { "l", 4, 2, 4, 14 }, { "l", 4, 3, 12, 3 }, { "l", 12, 3, 10, 6 }, { "l", 10, 6, 12, 9 }, { "l", 12, 9, 4, 9 } } },
+    -- two heads
+    { "lfd", { { "o", 5, 6, 2.6 }, { "o", 11, 6, 2.6 }, { "l", 2, 13, 8, 13 }, { "l", 8, 13, 14, 13 } } },
+    { "lfg", { { "o", 5, 6, 2.6 }, { "o", 11, 6, 2.6 }, { "l", 2, 13, 8, 13 }, { "l", 8, 13, 14, 13 } } },
+    { "group", { { "o", 5, 6, 2.6 }, { "o", 11, 6, 2.6 }, { "l", 2, 13, 8, 13 }, { "l", 8, 13, 14, 13 } } },
+    -- four tiles
+    { "collection", { { "d", 5, 5, 2.2 }, { "d", 11, 5, 2.2 }, { "d", 5, 11, 2.2 }, { "d", 11, 11, 2.2 } } },
+    -- a compass
+    { "ej", { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } } },
+    { "journal", { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } } },
+    { "adventure", { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } } },
+    -- a bag
+    { "store", { { "l", 3, 6, 13, 6 }, { "l", 3, 6, 4, 14 }, { "l", 13, 6, 12, 14 }, { "l", 4, 14, 12, 14 }, { "o", 8, 5, 2.6 } } },
+    { "shop", { { "l", 3, 6, 13, 6 }, { "l", 3, 6, 4, 14 }, { "l", 13, 6, 12, 14 }, { "l", 4, 14, 12, 14 }, { "o", 8, 5, 2.6 } } },
+    -- three bars
+    { "mainmenu", { { "l", 3, 4, 13, 4 }, { "l", 3, 8, 13, 8 }, { "l", 3, 12, 13, 12 } } },
+    { "help", { { "t", "?" } } },
+}
+local MICRO_BG = { 0.06, 0.06, 0.07 }
+local MICRO_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
+
+local function microGlyph(btn)
+    if btn.__muiGlyph ~= nil then return btn.__muiGlyph end
+    local name = (btn.GetName and btn:GetName() or ""):lower()
+    local spec
+    for _, g in ipairs(MICRO_GLYPHS) do
+        if name:find(g[1], 1, true) then spec = g[2] break end
+    end
+    if not spec then btn.__muiGlyph = false return false end
+    local w, h = btn:GetWidth(), btn:GetHeight()
+    local S = math.min(w, h) * 0.66 -- the glyph's square, in the button's own units
+    local u = S / 16
+    local f = CreateFrame("Frame", nil, btn)
+    f:SetSize(S, S)
+    f:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    f:SetFrameLevel(btn:GetFrameLevel() + 2)
+    local tinted, holes = {}, {}
+    local stroke = math.max(1.8, S / 9)
+    for _, p in ipairs(spec) do
+        if p[1] == "l" then
+            local ln = f:CreateLine(nil, "ARTWORK")
+            ln:SetThickness(p[6] and p[6] * u or stroke)
+            ln:SetColorTexture(1, 1, 1, 1)
+            ln:SetStartPoint("TOPLEFT", f, p[2] * u, -p[3] * u)
+            ln:SetEndPoint("TOPLEFT", f, p[4] * u, -p[5] * u)
+            tinted[#tinted + 1] = ln
+        elseif p[1] == "o" or p[1] == "d" then
+            local d = p[4] * 2 * u
+            local disc = f:CreateTexture(nil, "ARTWORK", nil, 1)
+            disc:SetSize(d, d)
+            disc:SetPoint("CENTER", f, "TOPLEFT", p[2] * u, -p[3] * u)
+            disc:SetColorTexture(1, 1, 1, 1)
+            local mk = f:CreateMaskTexture()
+            mk:SetTexture(MICRO_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mk:SetAllPoints(disc)
+            disc:AddMaskTexture(mk)
+            tinted[#tinted + 1] = disc
+            if p[1] == "o" then
+                -- A ring: the disc with its middle taken back out.
+                local id = math.max(d - stroke * 2, 1)
+                local hole = f:CreateTexture(nil, "ARTWORK", nil, 2)
+                hole:SetSize(id, id)
+                hole:SetPoint("CENTER", disc, "CENTER")
+                hole:SetColorTexture(MICRO_BG[1], MICRO_BG[2], MICRO_BG[3], 1)
+                local hm = f:CreateMaskTexture()
+                hm:SetTexture(MICRO_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                hm:SetAllPoints(hole)
+                hole:AddMaskTexture(hm)
+                holes[#holes + 1] = hole
+            end
+        elseif p[1] == "t" then
+            local fs = f:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(fs, math.floor(S * 1.05 + 0.5), "", true)
+            fs:SetPoint("CENTER", f, "CENTER", 0, 0)
+            fs:SetText(p[2])
+            tinted[#tinted + 1] = fs
+        end
+    end
+    local function tint(c)
+        for _, o in ipairs(tinted) do
+            if o.SetTextColor then o:SetTextColor(c[1], c[2], c[3]) else o:SetVertexColor(c[1], c[2], c[3], 1) end
+        end
+    end
+    tint(T.textDim)
+    btn:HookScript("OnEnter", function() tint(T.text) end)
+    btn:HookScript("OnLeave", function() tint(T.textDim) end)
+    -- Blizzard's art on this button goes (and stays gone: it is re-shown
+    -- on every state change).
+    for _, reg in ipairs({ btn:GetRegions() }) do
+        if reg:IsObjectType("Texture") and not reg.__muiGone then
+            reg.__muiGone = true
+            reg:SetAlpha(0)
+            hooksecurefunc(reg, "SetAlpha", function(self, a) if a ~= 0 then self:SetAlpha(0) end end)
+        end
+    end
+    btn.__muiGlyph = f
+    return f
+end
+
 -- ── Console plate ─────────────────────────────────────────────────────────
 -- One card behind the whole bottom row, in the windows' own language (dark
 -- fill, hairline rounded border), from the screen's bottom edge to just
@@ -1002,11 +1126,19 @@ function Bars:ApplyPlate()
                         tp = tp and math.max(tp, btp) or btp
                         bt = bt and math.min(bt, bb) or bb
                     end
-                    for _, reg in ipairs({ btn:GetRegions() }) do
-                        if reg:IsObjectType("Texture") then
-                            pcall(reg.SetDesaturated, reg, true)
-                            -- Lifted toward our text color: plain grey read as disabled.
-                            pcall(reg.SetVertexColor, reg, 1, 1, 1, 1)
+                    local okg, glyph = pcall(microGlyph, btn)
+                    if MinimalUIDB then
+                        MinimalUIDB.microprobe = MinimalUIDB.microprobe or {}
+                        MinimalUIDB.microprobe[tostring(btn.GetName and btn:GetName() or "?")] =
+                            (okg and glyph) and "drawn" or ("stock (" .. tostring(not okg and glyph or "no match") .. ")")
+                    end
+                    if not (okg and glyph) then
+                        -- No glyph of ours for this one: Blizzard's art, greyed.
+                        for _, reg in ipairs({ btn:GetRegions() }) do
+                            if reg:IsObjectType("Texture") then
+                                pcall(reg.SetDesaturated, reg, true)
+                                pcall(reg.SetVertexColor, reg, 1, 1, 1, 1)
+                            end
                         end
                     end
                     -- The dark tile behind each icon: the pill is the tile.

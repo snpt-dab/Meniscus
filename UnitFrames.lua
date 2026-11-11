@@ -766,8 +766,40 @@ function UF:ApplyPlayerStyle()
     if CB and CB.player and CB.player.place then CB.player.place() end
     if self.partyAnchor then self:LayoutParty() end
     self:PlaceTarget()
+    self:PlaceFocus()
     local AU = ns.modules.Auras
     if AU and AU.SeatBlizzard and AU.db then AU:SeatBlizzard() end
+end
+
+-- Console layout: the focus frame goes on the pet's side. Classes without a
+-- pet have that slot of the plate free, so it sits in it. Classes with a
+-- standing pet (their pet panel is there) get it just above that panel,
+-- rising out of the plate the way the party does on the other side.
+-- (Decided by class, not by whether a pet is out right now: the frame is a
+-- secure one and can't be moved when that changes mid-fight.)
+local PET_CLASSES = { HUNTER = true, WARLOCK = true, DEATHKNIGHT = true }
+function UF:PlaceFocus()
+    local fo = self.focus
+    if not fo or InCombatLockdown() then return end
+    local B = ns.modules.Bars
+    local slots = self.orbStyleOn and B and B.Slots and B:Slots()
+    fo:ClearAllPoints()
+    if slots then
+        local R = slots.right
+        local cx, cy = (R.x0 + R.x1) / 2, (slots.y0 + slots.y1) / 2 + 6
+        local _, class = UnitClass("player")
+        local av = fo.avatar and fo.avatar.D or 40
+        -- (Shifted left by half the portrait that hangs off its right end.)
+        if class and PET_CLASSES[class] then
+            fo:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", cx - av / 4, cy + 44 + 16)
+        else
+            fo:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx - av / 4, cy + 8)
+        end
+    else
+        place(fo, self.db.focus)
+    end
+    local CB = ns.modules.CastBars
+    if CB and CB.focus and CB.focus.place then CB.focus.place() end
 end
 
 -- Console layout (minimap dome + character panel): the target stands over
