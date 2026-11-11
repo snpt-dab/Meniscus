@@ -314,7 +314,9 @@ local function update(self)
         elseif self.pOrb then
             self.pOrb:Hide()
         end
-        self.powerPill:SetShown(not isPlayer)
+        -- In the console's strip there is no power pill at all: players get
+        -- the orb, everything else just the health bar.
+        self.powerPill:SetShown(not isPlayer and not UF.targetStrip)
     end
 end
 
@@ -692,8 +694,8 @@ end
 -- the map, where your eyes are in a fight, 15% larger and turned upside
 -- down so its portrait can hang under the bar:
 --     target's cast bar
---     power pill          (thin, now on top)
---     health pill         (name / value)
+--     health pill         (name / value; no power pill: players get a
+--                          small power orb beside it, NPCs nothing)
 --        ( portrait )     centered under the bar, overlapping its bottom edge
 --     -- your cast bar -- straddling the dome's top edge
 --        (  the map  )
@@ -714,8 +716,10 @@ function UF:PlaceTarget()
     t:ClearAllPoints()
     hp:ClearAllPoints(); pw:ClearAllPoints(); av:ClearAllPoints()
     t.name:ClearAllPoints(); t.hpText:ClearAllPoints()
-    -- In the strip the health pill fills from its right end (see SetReverse).
-    if hp.SetReverse then hp:SetReverse(strip) end
+    -- The health pill fills from the left, like every other bar: as health
+    -- drops, the bar's end moves to the left. (Filling from the right was
+    -- tried here by mistake; pills still support it through SetReverse.)
+    if hp.SetReverse then hp:SetReverse(false) end
     if strip then
         t:SetScale(STRIP_SCALE)
         hp:SetPoint("BOTTOM", t, "BOTTOM")
