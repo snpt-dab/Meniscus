@@ -1342,6 +1342,32 @@ local function deepCheck(f)
     ns.RoundedRect(h, -7, 1, 3, 0.05, 0.05, 0.06, 1)
 end
 
+-- Counters drawn as a bar with an ornate frame ("Total Mounts 2"): the
+-- frame goes, the fill goes flat and quiet, a dark rounded track sits behind.
+local function deepBar(f)
+    local w, h = f:GetWidth(), f:GetHeight()
+    if not (w and h) or issecretvalue(w) or issecretvalue(h) or w < 1 or h < 1 then return end -- not laid out yet
+    f.__muiDeepBar = true
+    if not (w > 60 and h >= 8 and h <= 30) then return end
+    local fill = f:GetStatusBarTexture()
+    for _, r in ipairs({ f:GetRegions() }) do
+        if r:IsObjectType("Texture") and r ~= fill then fade(r) end
+    end
+    for _, k in ipairs({ "border", "Border", "Background", "BG", "bg", "BorderMid", "BorderLeft", "BorderRight" }) do
+        local o = f[k]
+        if o and o ~= f and o.SetAlpha then fade(o) end
+    end
+    if fill then
+        fill:SetTexture(T.bar)
+        fill:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 0.55)
+    end
+    local back = ours(CreateFrame("Frame", nil, f))
+    back:SetPoint("TOPLEFT", -2, 2); back:SetPoint("BOTTOMRIGHT", 2, -2)
+    back:SetFrameLevel(math.max(f:GetFrameLevel() - 1, 0))
+    ns.RoundedRect(back, -8, 0, 6, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(back, -7, 1, 5, 0.06, 0.06, 0.07, 1)
+end
+
 local function isGold(fs)
     local r, g, b = fs:GetTextColor()
     if type(r) ~= "number" or (issecretvalue and issecretvalue(r)) then return false end
@@ -1380,6 +1406,13 @@ local function deepSkin(f, depth)
         if inset and not isButton and f:GetWidth() > 100 and f:GetHeight() > 60 then card(f) end
     end
     if f:IsObjectType("EditBox") then themeFont(f) end
+    if depth > 0 and not f.__muiDeepBar and f:IsObjectType("StatusBar") then pcall(deepBar, f) end
+    -- Previous / next page: our round chevrons.
+    if not f.__muiPaging and f.PrevPageButton and f.NextPageButton then
+        f.__muiPaging = true
+        pcall(arrowButton, f.PrevPageButton, -1)
+        pcall(arrowButton, f.NextPageButton, 1)
+    end
     if not deepScrollBar(f) then
         deepEditBox(f)
         deepDropdown(f)
@@ -1457,6 +1490,11 @@ local OTHERS = {
     LFGParentFrame = { strip = true, big = true, deep = true },    -- group finder (classic layout)
     CollectionsJournal = { strip = true, deep = true },
     PlayerSpellsFrame = {},                                        -- talents (the spellbook tab is ours)
+    SocialUIFrame = { strip = true, deep = true },                 -- friends / ignore / recent allies / raid
+    -- Blizzard's character window. Our own replaces its gear, pet,
+    -- reputation, skills tabs; the ones it still shows itself on Forever
+    -- (PvP, currency, statistics) get the generic treatment.
+    CharacterFrame = { strip = true, big = true, deep = true },
 }
 local function skinOthers()
     for n, opts in pairs(OTHERS) do
@@ -1516,6 +1554,89 @@ local function skinOthers()
             if not ok then ns:Print("Skin " .. n .. ": " .. tostring(err)) end
         end
     end
+end
+
+-- ── World map and quest log ───────────────────────────────────────────────
+-- The map window keeps its frame art on a BorderFrame child (which is why
+-- the plain window skin left it gold), has a breadcrumb bar drawn as red
+-- arrow tabs, and carries the quest log as a side panel. The frame art
+-- goes, the breadcrumbs become plain text, and the rest of the window gets
+-- the generic deep pass. The map canvas itself is fenced off from that pass
+-- (it holds hundreds of pins and the zone lettering, which must not be
+-- restyled or walked every second).
+local function deepMap()
+    local wm = _G.WorldMapFrame
+    if not wm or wm.__muiDeepMap then return end
+    wm.__muiDeepMap = true
+    if wm.ScrollContainer then ours(wm.ScrollContainer) end
+    local bf = wm.BorderFrame
+    if bf then
+        fade(bf.NineSlice)
+        fade(bf.PortraitContainer)
+        fade(bf.Bg)
+        fadeRegions(bf)
+        if bf.TitleContainer then fadeRegions(bf.TitleContainer) end
+        local mm = bf.MaxMinButtonFrame
+        if mm then
+            for _, b in ipairs({ mm:GetChildren() }) do
+                for _, r in ipairs({ b:GetRegions() }) do
+                    if r:IsObjectType("Texture") then r:SetDesaturated(true); r:SetVertexColor(0.7, 0.7, 0.75) end
+                end
+            end
+        end
+    end
+    -- Painted backdrops of the quest log side (not the map canvas).
+    for _, k in ipairs({ "QuestLog", "SidePanelToggle" }) do
+        if wm[k] then stripBigArt(wm[k], 0) end
+    end
+    if _G.QuestMapFrame and _G.QuestMapFrame ~= wm.QuestLog then stripBigArt(_G.QuestMapFrame, 0) end
+    if wm.__muiHolder then ours(wm.__muiHolder) end
+
+    -- Breadcrumbs: every button's art goes (they are created as you move
+    -- between maps, so this is repeated while the window is open).
+    local nb = wm.NavBar
+    local function crumbs()
+        if not nb then return end
+        fadeRegions(nb)
+        if nb.overlay then fadeRegions(nb.overlay) end
+        for _, b in ipairs({ nb:GetChildren() }) do
+            if b:IsObjectType("Button") and not b.__muiCrumb then
+                b.__muiCrumb = true
+                for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
+                    if b[get] then fade(b[get](b)) end
+                end
+                fadeRegions(b)
+                local fs = b.GetFontString and b:GetFontString() or b.text
+                if fs and fs.SetTextColor then
+                    local _, size = fs:GetFont()
+                    ns:SetFont(fs, size or 12, "", true)
+                    fs:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+                    b:HookScript("OnEnter", function() fs:SetTextColor(T.text[1], T.text[2], T.text[3]) end)
+                    b:HookScript("OnLeave", function() fs:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end)
+                end
+                -- The little dropdown arrow beside a crumb: grey.
+                local arrow = b.MenuArrowButton
+                if arrow then
+                    for _, r in ipairs({ arrow:GetRegions() }) do
+                        if r:IsObjectType("Texture") then r:SetDesaturated(true); r:SetVertexColor(0.7, 0.7, 0.75) end
+                    end
+                end
+            end
+        end
+    end
+    local tick = ours(CreateFrame("Frame", nil, wm))
+    tick:SetSize(1, 1)
+    tick:SetPoint("TOPLEFT")
+    local acc = 1
+    tick:SetScript("OnShow", function() acc = 1 end)
+    tick:SetScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc < 0.5 then return end
+        acc = 0
+        pcall(crumbs)
+    end)
+    pcall(crumbs)
+    deepDriver(wm, "WorldMapFrame")
 end
 
 -- ── Damage meter (Blizzard's built-in one) ────────────────────────────────
@@ -1690,13 +1811,13 @@ end)
 local lod = CreateFrame("Frame")
 lod:RegisterEvent("ADDON_LOADED")
 lod:SetScript("OnEvent", function()
-    if S.db and S.db.enabled ~= false then pcall(skinOthers); pcall(skinTabard) end
+    if S.db and S.db.enabled ~= false then pcall(skinOthers); pcall(skinTabard); pcall(deepMap) end
 end)
 
 function S:OnInit(db)
     self.db = db
-    for _, step in ipairs({ skinGameMenu, skinDialogs, skinMerchant, skinMap, skinOthers, skinPopups, skinTabard,
-                            skinMenus }) do
+    for _, step in ipairs({ skinGameMenu, skinDialogs, skinMerchant, skinMap, deepMap, skinOthers, skinPopups,
+                            skinTabard, skinMenus }) do
         local ok, err = pcall(step)
         if not ok then ns:Print("Skins: " .. tostring(err)) end
     end
