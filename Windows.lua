@@ -2,8 +2,9 @@ local _, ns = ...
 -- ── Window docks ──────────────────────────────────────────────────────────
 -- One system for where windows go and how many are open. Two docks sit on
 -- the console: a window opens in the left or the right one, its bottom edge
--- just above the wings. Each dock holds one window: opening another on that
--- side replaces it. The world map is too wide for a dock; it opens centered
+-- just above the wings. Each dock holds one window, so two can be open: a
+-- window takes its usual side if free, else the other; a third replaces the
+-- one open longest. The world map is too wide for a dock; it opens centered
 -- and closes the docked windows (and a docked window closes it).
 -- Dragging a window across the middle of the screen changes its side, which
 -- is remembered; it then settles into that dock. Esc closes our windows one
@@ -115,17 +116,55 @@ local function unstack(f)
     for i = #stack, 1, -1 do if stack[i] == f then table.remove(stack, i) end end
 end
 
--- A window came up: settle it in its dock and clear what it replaces.
-local function opened(f)
+-- A window came up: settle it in a dock and clear what it replaces.
+-- It takes its usual side if that dock is free, otherwise the other dock;
+-- with both in use it replaces whichever window has been open longest.
+-- "forced" is a side the user chose by dragging: the window there moves
+-- across if the other dock is free, and closes otherwise.
+local order, seq = {}, 0
+local function occupant(side, except)
+    for other, oside in pairs(open) do
+        if other ~= except and oside == side and other:IsShown() and real(other) then return other end
+    end
+end
+local function flip(side) return side == "left" and "right" or "left" end
+
+local function opened(f, forced)
     local name = hooked[f]
     if not name or not real(f) then return end
     local side = sideOf(name)
-    for other, oside in pairs(open) do
-        if other ~= f and other:IsShown() and real(other)
-                and (oside == side or side == "center" or oside == "center") then
-            close(other)
+    if side == "center" then
+        for other in pairs(open) do
+            if other ~= f and other:IsShown() and real(other) then close(other) end
+        end
+    else
+        for other, oside in pairs(open) do
+            if other ~= f and oside == "center" and other:IsShown() and real(other) then close(other) end
+        end
+        if forced then
+            side = forced
+            local occ = occupant(side, f)
+            if occ then
+                if occupant(flip(side), f) then close(occ)
+                else open[occ] = flip(side); place(occ, flip(side)) end
+            end
+        elseif open[f] and open[f] ~= "center" then
+            side = open[f]            -- already docked: stay put
+        else
+            local occ = occupant(side, f)
+            if occ then
+                local occ2 = occupant(flip(side), f)
+                if not occ2 then
+                    side = flip(side)
+                else
+                    local victim = ((order[occ] or 0) <= (order[occ2] or 0)) and occ or occ2
+                    side = open[victim]
+                    close(victim)
+                end
+            end
         end
     end
+    if not open[f] then seq = seq + 1; order[f] = seq end
     open[f] = side
     place(f, side)
     if isOurs(name) then unstack(f); stack[#stack + 1] = f end
@@ -166,7 +205,7 @@ local function hook(name, f)
             if not x then return end
             local side = (x * self:GetScale() < UIParent:GetWidth() / 2) and "left" or "right"
             W.db.sides[name] = side
-            C_Timer.After(0, function() if self:IsShown() then opened(self) end end)
+            C_Timer.After(0, function() if self:IsShown() then opened(self, side) end end)
         end)
     else
         -- The panel manager re-centers its windows whenever another opens or
