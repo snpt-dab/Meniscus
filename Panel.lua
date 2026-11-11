@@ -275,38 +275,56 @@ local PAGES = {
             { "Health and power orbs", kind = "switch",
               get = function() local O = ns.modules.Orbs; return O.health and O.health:IsShown() end,
               set = function() cmd("orbs") end },
-            { "Show empty pet action slots", kind = "switch",
-              get = function() return ns.modules.Bars.db.petGrid ~= false end,
-              set = function() cmd("petgrid") end },
-            { "Pet orbs instead of the pet frame", kind = "switch",
-              get = function() return ns.modules.Orbs.db.petOrbs ~= false end,
-              set = function() cmd("petorbs") end },
-            { "Player frame", kind = "dropdown",
-              options = function() return { { key = "frame", label = "Normal frame" },
-                                            { key = "none", label = "None (level in the health pill)" },
-                                            { key = "orb", label = "On the health orb's edge" } } end,
-              get = function() return UF().db.playerStyle or "frame" end,
-              set = function(k) UF():SetPlayerStyle(k) end },
-            { "Plate behind the bottom row", kind = "switch",
-              get = function() return ns.modules.Bars.db.plate end,
-              set = function() cmd("console") end },
-            { "Seat chat and damage meter in the plate", kind = "switch", note = "Turning it off needs a reload",
-              get = function() return ns.modules.Bars.db.wings end,
-              set = function() cmd("console", "wings") end },
-            { "Minimap as a dome on the action bar", kind = "switch", note = "Turning it off needs a reload",
-              get = function() return ns.modules.Minimap.db.dome end,
-              set = function() cmd("dome") end },
             { "XP bar width", kind = "dropdown",
               options = function() return { { key = "orbs", label = "Between the orbs" },
                                             { key = "bars", label = "Across all bars" } } end,
               get = function() return ns.modules.XP.db.span end,
               set = function(k) ns.modules.XP:SetSpan(k) end },
-            { "Fade menu and bag buttons", kind = "switch", note = "They show again on mouseover",
+            { "Fade menu and bag buttons", kind = "switch", note = "They show again on mouseover. Not used with the console's pills",
               get = function() return ns.modules.Declutter.db.fadeMenus end,
               set = function() local D = ns.modules.Declutter; D.db.fadeMenus = not D.db.fadeMenus; D:Refresh() end },
             { "Keep backpack and menu icon visible", kind = "switch",
               get = function() return ns.modules.Declutter.db.keepIcons end,
               set = function() local D = ns.modules.Declutter; D.db.keepIcons = not D.db.keepIcons; D:Refresh() end },
+        } },
+    } },
+    { key = "console", title = "Console", groups = {
+        { title = "Layout", items = {
+            { "Plate behind the bottom row", kind = "switch",
+              get = function() return ns.modules.Bars.db.plate end,
+              set = function() cmd("console") end },
+            { "Chat and context panel in the plate", kind = "switch", note = "Turning it off needs a reload",
+              get = function() return ns.modules.Bars.db.wings end,
+              set = function() cmd("console", "wings") end },
+            { "Minimap between the action bars", kind = "switch", note = "Splits the main bar. Turning it off needs a reload",
+              get = function() return ns.modules.Minimap.db.dome end,
+              set = function() cmd("dome") end },
+            { "Player frame", kind = "dropdown",
+              options = function() return { { key = "frame", label = "Normal frame" },
+                                            { key = "none", label = "Character panel (no frame)" },
+                                            { key = "orb", label = "Portrait on the health orb" } } end,
+              get = function() return UF().db.playerStyle or "frame" end,
+              set = function(k) UF():SetPlayerStyle(k) end },
+        } },
+        { title = "Right panel", items = {
+            { "Shows", kind = "dropdown",
+              options = function() return { { key = "auto", label = "Damage in combat, objectives otherwise" },
+                                            { key = "damage", label = "Damage meter" },
+                                            { key = "quests", label = "Objectives" } } end,
+              get = function() local TRK = ns.modules.Tracker; return TRK.db and TRK.db.wingTab or "auto" end,
+              set = function(k)
+                  local TRK = ns.modules.Tracker
+                  if TRK.db then TRK.db.wingTab = k end
+                  if TRK.ApplyConsole then TRK:ApplyConsole() end
+              end },
+        } },
+        { title = "Pet", items = {
+            { "Pet orbs instead of the pet frame", kind = "switch",
+              get = function() return ns.modules.Orbs.db.petOrbs ~= false end,
+              set = function() cmd("petorbs") end },
+            { "Show empty pet action slots", kind = "switch",
+              get = function() return ns.modules.Bars.db.petGrid ~= false end,
+              set = function() cmd("petgrid") end },
         } },
     } },
     { key = "unitframes", title = "Unit frames", groups = {
@@ -448,10 +466,18 @@ local function showPage(key)
     MinimalUIDB.panelPage = key
 end
 
+-- A page is a clipped viewport with its content inside; when the content is
+-- taller than the window it scrolls with the mouse wheel, and a slim thumb
+-- on the right shows where you are.
 local function buildPage(parent, page)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetPoint("TOPLEFT", parent, "TOPLEFT", CONTENT_X, -PAD - 34)
-    f:SetSize(CONTENT_W, H - PAD * 2 - 34)
+    local view = CreateFrame("Frame", nil, parent)
+    view:SetPoint("TOPLEFT", parent, "TOPLEFT", CONTENT_X, -PAD - 34)
+    local viewH = H - PAD * 2 - 34
+    view:SetSize(CONTENT_W + 10, viewH)
+    view:SetClipsChildren(true)
+    local f = CreateFrame("Frame", nil, view)
+    f:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
+    f:SetSize(CONTENT_W, viewH)
     local y = 0
     for _, g in ipairs(page.groups) do
         local h = text(f, 10, true, T.textDim)
@@ -470,8 +496,32 @@ local function buildPage(parent, page)
         card:SetHeight(-ry)
         y = y + ry - 16
     end
-    f:Hide()
-    return f
+    local total = -y
+    f:SetHeight(math.max(total, viewH))
+    local over = math.max(0, total - viewH)
+    if over > 0 then
+        local thumb = view:CreateTexture(nil, "OVERLAY")
+        thumb:SetWidth(3)
+        thumb:SetColorTexture(T.textDim[1], T.textDim[2], T.textDim[3], 0.55)
+        local th = math.max(24, viewH * viewH / total)
+        thumb:SetHeight(th)
+        local offset = 0
+        local function place()
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", view, "TOPLEFT", 0, offset)
+            thumb:ClearAllPoints()
+            thumb:SetPoint("TOPRIGHT", view, "TOPRIGHT", -1, -(viewH - th) * (offset / over))
+        end
+        view:EnableMouseWheel(true)
+        view:SetScript("OnMouseWheel", function(_, d)
+            closeMenu()
+            offset = math.max(0, math.min(over, offset - d * 40))
+            place()
+        end)
+        place()
+    end
+    view:Hide()
+    return view
 end
 
 local function build()
