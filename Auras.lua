@@ -612,8 +612,10 @@ function A:OnInit(db)
         end
     end
     local function rightOf(frame)
+        -- (Past the power orb, where the frame has one on that end.)
+        local skip = frame.orbSide == "RIGHT" and (frame.healthPill:GetHeight() + 4) or 0
         return function(b, i, size, gap)
-            b:SetPoint("LEFT", frame.healthPill, "RIGHT", 6 + (i - 1) * (size + gap), 0)
+            b:SetPoint("LEFT", frame.healthPill, "RIGHT", 6 + skip + (i - 1) * (size + gap), 0)
         end
     end
 
