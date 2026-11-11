@@ -417,6 +417,16 @@ function Bars:Arrange()
         end
     end
     local petSlot = self.petSlot
+    -- Stances / forms / stealth: with the character panel up, a row of
+    -- small buttons centered on the panel's top edge (half in, half out,
+    -- the way the name pill sits on its bottom edge). Things that sit above
+    -- the panel (Quick Buff pill, party column) move up by stanceLift.
+    local STANCE = 24
+    local nForms = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+    if type(nForms) ~= "number" or issecretvalue(nForms) then nForms = 0 end
+    local cs = self.charSlot
+    local stanceW = nForms * STANCE + math.max(0, nForms - 1) * 4
+    self.stanceLift = (cs and nForms > 0) and (STANCE / 2 + 5) or 0
     for i = 1, 10 do
         local col, up = i - 1, 0
         if gap then col, up = (i - 1) % 5, math.floor((i - 1) / 5) * step end
@@ -425,8 +435,15 @@ function Bars:Arrange()
             skin(b, 8, 1.5)
             safe(function()
                 b:ClearAllPoints()
-                b:SetPoint("BOTTOMLEFT", self.main, "TOPLEFT", col * step, 8 + up)
-                b:SetSize(s.size, s.size)
+                if cs and nForms > 0 then
+                    local wl = cs.well
+                    b:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
+                        wl.x + (wl.w - stanceW) / 2 + (i - 1) * (STANCE + 4), wl.y + wl.h - STANCE / 2)
+                    b:SetSize(STANCE, STANCE)
+                else
+                    b:SetPoint("BOTTOMLEFT", self.main, "TOPLEFT", col * step, 8 + up)
+                    b:SetSize(s.size, s.size)
+                end
             end)
         end
         local pb = _G["PetActionButton" .. i]
@@ -1408,4 +1425,24 @@ end
 
 ns.commands.barerr = function()
     ns:Print("last Bars error:", tostring(Bars.lastError))
+end
+
+-- Stances learned or lost (a new form, a respec): the stance row's width and
+-- the things stacked above it change. Re-arranged out of combat only.
+do
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    local owed, last = false, -1
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "UPDATE_SHAPESHIFT_FORMS" then
+            local n = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+            if n == last then return end
+            last, owed = n, true
+        end
+        if not owed or InCombatLockdown() or not Bars.main then return end
+        owed = false
+        local MM = ns.modules.Minimap
+        if MM and MM.ArrangeAround then pcall(MM.ArrangeAround, MM) else pcall(Bars.Arrange, Bars) end
+    end)
 end

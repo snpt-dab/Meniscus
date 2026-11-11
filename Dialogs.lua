@@ -333,9 +333,14 @@ local function itemTiles(list)
             f.count = box:CreateFontString(nil, "OVERLAY")
             ns:SetFont(f.count, 10, "OUTLINE", true)
             f.count:SetPoint("BOTTOMRIGHT", -1, 1)
+            -- What a vendor pays for it, on the right (the best of several
+            -- choices is lit, the others dim).
+            f.sell = text(f, 10, false, T.textDim)
+            f.sell:SetPoint("RIGHT", f, "RIGHT", -9, 0)
+            f.sell:SetJustifyH("RIGHT")
             f.name = text(f, 11)
             f.name:SetPoint("LEFT", box, "RIGHT", 8, 0)
-            f.name:SetPoint("RIGHT", f, "RIGHT", -6, 0)
+            f.name:SetPoint("RIGHT", f.sell, "LEFT", -6, 0)
             f.name:SetJustifyH("LEFT")
             f.name:SetWordWrap(true)
             f:SetScript("OnEnter", function(self)
@@ -347,6 +352,8 @@ local function itemTiles(list)
             return f
         end)
         t.kind, t.index = it.kind, it.index
+        t.sellValue = nil
+        t.sell:SetText("")
         t:SetWidth(tw)
         t:SetPoint("TOPLEFT", content, "TOPLEFT", col * (tw + 8), y)
         t.icon:SetTexture(it.tex)
@@ -384,6 +391,57 @@ local function itemTiles(list)
     end
     if col == 1 then y = y - 48 end
     y = y - 6
+    -- Vendor values. Item data may not have arrived yet for an item never
+    -- seen before, so this is tried again a moment later.
+    local function coins(v)
+        local g, s, c = math.floor(v / 10000), math.floor(v / 100) % 100, v % 100
+        local out = ""
+        if g > 0 then out = out .. g .. "|cffe6c25ag|r " end
+        if s > 0 then out = out .. s .. "|cffb8bcc6s|r " end
+        if c > 0 then out = out .. c .. "|cffc98a52c|r" end
+        return out
+    end
+    local function sellValues()
+        local best = 0
+        for _, t in ipairs(pools.tile or {}) do
+            if t:IsShown() and t.kind then
+                local link = call(_G.GetQuestItemLink, t.kind, t.index)
+                local price
+                if link and C_Item and C_Item.GetItemInfo then
+                    price = select(11, call(C_Item.GetItemInfo, link))
+                end
+                local _, _, count = call(_G.GetQuestItemInfo, t.kind, t.index)
+                if type(price) == "number" and not secret(price) then
+                    if type(count) == "number" and not secret(count) and count > 1 then price = price * count end
+                    t.sellValue = price -- 0 = can't be sold
+                    if t.kind == "choice" and price > best then best = price end
+                else
+                    t.sellValue = nil   -- not known yet
+                end
+            end
+        end
+        local missing = false
+        for _, t in ipairs(pools.tile or {}) do
+            if t:IsShown() and t.kind then
+                local v = t.sellValue
+                if v and v > 0 then
+                    t.sell:SetText(coins(v))
+                    local lit = t.kind == "choice" and v == best
+                    t.sell:SetAlpha(lit and 1 or 0.55)
+                elseif v == 0 then
+                    t.sell:SetText("")
+                else
+                    t.sell:SetText(""); missing = true
+                end
+            end
+        end
+        return missing
+    end
+    if sellValues() then
+        local stamp = {}
+        win.__sellStamp = stamp
+        C_Timer.After(0.5, function() if win.__sellStamp == stamp and win:IsShown() then sellValues() end end)
+    end
 end
 
 local function moneyLine(copper, xp)

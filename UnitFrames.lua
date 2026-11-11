@@ -964,7 +964,7 @@ function UF:LayoutParty()
         local wl = char.well
         local colW = s.D / 2 + s.W + 4 + s.H
         a:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
-            wl.x + (wl.w - colW) / 2 + s.D / 2, wl.y + wl.h + 3 + 30 + 10)
+            wl.x + (wl.w - colW) / 2 + s.D / 2, wl.y + wl.h + 3 + 30 + 10 + (B.stanceLift or 0))
     elseif self.db.party.attach then
         -- Pill left edges line up with the player's, so avatars form a column.
         a:SetPoint("BOTTOMLEFT", self.player, "TOPLEFT", 0, PARTY_ATTACH_GAP)

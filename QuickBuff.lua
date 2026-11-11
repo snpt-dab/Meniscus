@@ -453,7 +453,7 @@ local function place()
             -- Console: on top of the character panel, where your buffs are
             -- (the name pill is on its bottom edge).
             local wl = char.well
-            btn:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", wl.x + wl.w / 2, wl.y + wl.h + 3)
+            btn:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", wl.x + wl.w / 2, wl.y + wl.h + 3 + (B.stanceLift or 0))
         elseif B.split and dome then
             -- Minimap dome in the middle: sit right on top of it.
             btn:SetPoint("BOTTOM", dome, "TOP", 0, 6)
