@@ -26,7 +26,7 @@ local UF = ns:NewModule("UnitFrames", {
     -- 3D pop-out avatar camera; tune live with /men portrait <key> <value>
     -- fidget = 0 keeps the plain breathing idle (no yawns/stretches that hit
     -- the model window's edges); 1 allows Blizzard's random idle fidgets.
-    portrait = { zoom = 1.0, dist = 1.0, z = 0, facing = 0, pop = 0.25, fidget = 0, sdist = 1.5 },
+    portrait = { zoom = 1.0, dist = 1.0, z = 0, facing = 0, pop = 0.25, fidget = 0, sdist = 1.5, bust3d = 0 },
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -501,8 +501,15 @@ function UF:RefreshAvatar(av)
     local unit = av.unit
     if not UnitExists(unit) then return end
     local m = av.model
-    if m and visible(unit) then
-        local p = self.db.portrait
+    local p = self.db.portrait
+    -- A "bust" avatar (the target strip's) has to stay inside its circle.
+    -- A 3D model can't be masked: a big creature fills the model's whole
+    -- rectangle and its corners show outside the ring. So the bust uses the
+    -- game's own head-and-shoulders portrait, which masks cleanly
+    -- (/men portrait bust3d 1 brings the model back).
+    local flatBust = av.bust and p.bust3d ~= 1
+    if av.lip then av.lip:SetShown(not flatBust) end
+    if m and visible(unit) and not flatBust then
         av.flat:Hide()
         m:Show()
         m:ClearModel()
@@ -1605,7 +1612,7 @@ ns.commands.portrait = function(rest)
         p[key] = val
         eachModel(function(av) UF:LayoutAvatar(av); UF:RefreshAvatar(av) end)
     elseif rest and rest ~= "" then
-        ns:Print("usage: /men portrait <zoom|dist|sdist|x|z|facing|pop|fidget> <number>  |  /men portrait reset")
+        ns:Print("usage: /men portrait <zoom|dist|sdist|bust3d|x|z|facing|pop|fidget> <number>  |  /men portrait reset")
     end
     ns:Print(string.format("portrait zoom %.2f  dist %.2f  x %.2f  z %.2f  facing %.2f  pop %.2f  fidget %d  |  target strip dist (sdist) %.2f",
         p.zoom, p.dist, p.x, p.z, p.facing, p.pop, p.fidget, p.sdist or 1.5))
