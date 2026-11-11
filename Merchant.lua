@@ -124,11 +124,18 @@ local function newCard(i)
         if M.tab == "buyback" then pcall(GameTooltip.SetBuybackItem, GameTooltip, self.index)
         else pcall(GameTooltip.SetMerchantItem, GameTooltip, self.index) end
         GameTooltip:Show()
+        -- The coin "buy" pointer, as the game's own vendor window shows it
+        -- (its functions pick the right one: buy, or greyed when unaffordable).
+        if not CursorHasItem() then
+            local show = (M.tab == "buyback") and _G.ShowBuybackSellCursor or _G.ShowMerchantSellCursor
+            if not (show and pcall(show, self.index)) then pcall(SetCursor, "BUY_CURSOR") end
+        end
     end)
     c:SetScript("OnLeave", function(self)
         self.ring(self.rr or T.border[1], self.rg or T.border[2], self.rb or T.border[3], 1)
         self.fill(unpack(CARD))
         GameTooltip:Hide()
+        if ResetCursor then ResetCursor() end
     end)
     c.SplitStack = function(self, n) if n and n > 0 then call(_G.BuyMerchantItem, self.index, n) end end
     c:SetScript("OnClick", function(self, button)
