@@ -129,6 +129,126 @@ local function setLevel(badge, unit)
     end
 end
 
+local newMask -- (defined with the avatar code below; used by the power orb here)
+
+-- ── Elite / rare / boss ───────────────────────────────────────────────────
+-- Shown on the portrait's ring (and the health pill's hairline):
+--   elite       warm gold ring
+--   rare        cool silver-blue ring
+--   rare elite  gold ring, silver hairline on the bar
+--   boss        the ring turns molten: slow streaks of ember and gold moving
+--               around it, and the portrait grows by a fifth. No glow
+--               outside the ring.
+-- (Boss = a world boss, or anything whose level is hidden: the skull.)
+local GOLD, SILVER, EMBER = { 0.90, 0.72, 0.30 }, { 0.70, 0.78, 0.92 }, { 0.80, 0.22, 0.14 }
+local SWIRL_TEX = "Interface/AddOns/MinimalUI/Media/swirl.tga"
+
+local function classOf(unit)
+    local c = UnitClassification and UnitClassification(unit)
+    if type(c) ~= "string" or issecretvalue(c) then c = "normal" end
+    local lvl = UnitLevel(unit)
+    local skull = type(lvl) == "number" and not issecretvalue(lvl) and lvl < 0
+    local player = UnitIsPlayer(unit)
+    if issecretvalue(player) then player = false end
+    if c == "worldboss" or (skull and not player) then return "boss" end
+    if c == "rareelite" then return "rareelite" end
+    if c == "elite" then return "elite" end
+    if c == "rare" then return "rare" end
+    return "normal"
+end
+
+local function moltenRing(av)
+    if av.molten or not av.lip then return av.molten end
+    local lip = av.lip
+    local fx = lip:CreateTexture(nil, "ARTWORK", nil, 3)
+    fx:SetAllPoints()
+    fx:SetTexture(SWIRL_TEX, "REPEAT", "REPEAT")
+    fx:SetVertexColor(1.0, 0.78, 0.32, 1)
+    -- Only where the ring is: the ring's own texture is the mask.
+    local mask = lip:CreateMaskTexture()
+    mask:SetTexture(MEDIA .. "lip_ring.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints()
+    fx:AddMaskTexture(mask)
+    fx:Hide()
+    local driver = CreateFrame("Frame", nil, lip)
+    driver:Hide()
+    local ph = 0
+    driver:SetScript("OnUpdate", function(_, dt)
+        ph = ph + dt
+        local u, v = ph * 0.11, ph * 0.07
+        fx:SetTexCoord(u, u + 0.9, v, v + 0.9)
+        -- A slow breath between ember and gold underneath the streaks.
+        local k = 0.5 + 0.5 * math.sin(ph * 1.6)
+        av.lipRing:SetVertexColor(EMBER[1] + (GOLD[1] - EMBER[1]) * k, EMBER[2] + (GOLD[2] - EMBER[2]) * k,
+                                  EMBER[3] + (GOLD[3] - EMBER[3]) * k, 1)
+    end)
+    av.molten, av.moltenDriver = fx, driver
+    return fx
+end
+
+local function styleClass(self, unit)
+    local av = self.avatar
+    if not av then return end
+    local kind = classOf(unit)
+    if self.__kind == kind then return end
+    self.__kind = kind
+    local c = T.border
+    if kind == "elite" or kind == "rareelite" then c = GOLD
+    elseif kind == "rare" then c = SILVER
+    elseif kind == "boss" then c = EMBER end
+    if av.ring then av.ring:SetColorTexture(c[1], c[2], c[3], 1) end
+    if av.lipRing then av.lipRing:SetVertexColor(c[1], c[2], c[3], 1) end
+    local bar = (kind == "rareelite") and SILVER or c
+    if self.healthPill and self.healthPill.SetRingColor then self.healthPill:SetRingColor(bar[1], bar[2], bar[3], 1) end
+    local boss = kind == "boss"
+    if boss or av.molten then
+        local fx = moltenRing(av)
+        if fx then
+            fx:SetShown(boss)
+            av.moltenDriver:SetShown(boss)
+        end
+    end
+    -- The portrait's size is a protected matter only for its parent; the
+    -- avatar itself is an ordinary frame, so this is fine in combat.
+    av.kindScale = boss and 1.2 or 1
+    av:SetScale((av.baseScale or 1) * av.kindScale)
+end
+
+-- ── Player targets: a power orb instead of the power pill ─────────────────
+-- For a player (not an NPC) the thin power pill is replaced by a small orb
+-- to the left of the health pill, as tall as the pill and with the same
+-- curve as its cap. An ordinary frame, so it can come and go in combat.
+local ORB_GLARE = "Interface/AddOns/MinimalUI/Media/orb_glare.tga"
+local function powerOrb(self)
+    if self.pOrb then return self.pOrb end
+    local hp = self.healthPill
+    local d = hp:GetHeight()
+    local o = CreateFrame("Frame", nil, self)
+    o:SetSize(d, d)
+    o:SetPoint("RIGHT", hp, "LEFT", -4, 0)
+    local ring = o:CreateTexture(nil, "BACKGROUND", nil, 0)
+    ring:SetAllPoints()
+    ring:SetColorTexture(unpack(T.border))
+    ring:AddMaskTexture(newMask(o, d))
+    local inner = d - 5
+    local imask = newMask(o, inner)
+    local bg = o:CreateTexture(nil, "BACKGROUND", nil, 1)
+    bg:SetPoint("CENTER"); bg:SetSize(inner, inner)
+    bg:SetColorTexture(0.04, 0.045, 0.05, 1)
+    bg:AddMaskTexture(imask)
+    o.bar = CreateFrame("StatusBar", nil, o)
+    o.bar:SetPoint("CENTER"); o.bar:SetSize(inner, inner)
+    o.bar:SetOrientation("VERTICAL")
+    o.bar:SetStatusBarTexture(T.bar)
+    o.bar:GetStatusBarTexture():AddMaskTexture(imask)
+    local gloss = o.bar:CreateTexture(nil, "OVERLAY", nil, 3)
+    gloss:SetAllPoints(o.bar)
+    gloss:SetTexture(ORB_GLARE)
+    gloss:AddMaskTexture(imask)
+    self.pOrb = o
+    return o
+end
+
 local function update(self)
     local unit = self.unit
     if not UnitExists(unit) then return end
@@ -171,14 +291,31 @@ local function update(self)
     if self.levelBadge then setLevel(self.levelBadge, unit) end
     self.hpPath = setHealthText(self, unit)
     local ptype = UnitPowerType(unit)
-    self.power:SetMinMaxValues(0, UnitPowerMax(unit, ptype))
-    self.power:SetValue(UnitPower(unit, ptype))
+    local pmax, pcur = UnitPowerMax(unit, ptype), UnitPower(unit, ptype)
+    self.power:SetMinMaxValues(0, pmax)
+    self.power:SetValue(pcur)
     local c = POWER[ptype]
     if not c and PowerBarColor and PowerBarColor[ptype] then
         local i = PowerBarColor[ptype]
         c = { i.r, i.g, i.b }
     end
     if c then self.power:SetStatusBarColor(c[1], c[2], c[3]) end
+
+    if self.key == "target" then
+        pcall(styleClass, self, unit)
+        local isPlayer = UnitIsPlayer(unit)
+        if issecretvalue(isPlayer) then isPlayer = false end
+        if isPlayer then
+            local o = powerOrb(self)
+            o.bar:SetMinMaxValues(0, pmax)
+            o.bar:SetValue(pcur)
+            if c then o.bar:SetStatusBarColor(c[1], c[2], c[3]) end
+            o:Show()
+        elseif self.pOrb then
+            self.pOrb:Hide()
+        end
+        self.powerPill:SetShown(not isPlayer)
+    end
 end
 
 -- ── Avatars ───────────────────────────────────────────────────────────────
@@ -189,7 +326,7 @@ end
 -- (Looney Tunes hole rim) covers the window's straight edges; the head rises
 -- out of the top of the circle.
 -- "flat": the 2D portrait masked to the circle (cheap; used for party).
-local function newMask(owner, size)
+function newMask(owner, size)
     local m = owner:CreateMaskTexture()
     m:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     m:SetPoint("CENTER", owner, "CENTER")
@@ -208,6 +345,7 @@ function UF:CreateAvatar(f, unit, side, d, mode)
     ring:SetAllPoints()
     ring:SetColorTexture(unpack(T.border))
     ring:AddMaskTexture(newMask(av, d))
+    av.ring = ring
 
     local innerMask = newMask(av, d - 4)
     av.bg = av:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -576,6 +714,8 @@ function UF:PlaceTarget()
     t:ClearAllPoints()
     hp:ClearAllPoints(); pw:ClearAllPoints(); av:ClearAllPoints()
     t.name:ClearAllPoints(); t.hpText:ClearAllPoints()
+    -- In the strip the health pill fills from its right end (see SetReverse).
+    if hp.SetReverse then hp:SetReverse(strip) end
     if strip then
         t:SetScale(STRIP_SCALE)
         hp:SetPoint("BOTTOM", t, "BOTTOM")

@@ -402,6 +402,39 @@ function ns:CreatePillBar(parent, w, h)
 
     function f:SetRingColor(r, g, b, a) self.ring:SetVertexColor(r, g, b, a or 1) end
 
+    -- Fill from the right end instead of the left: what is left of the bar
+    -- stays against the right cap and the empty part grows from the left.
+    -- The bright edge and any split text (below) follow the moving end.
+    function f:SetReverse(on)
+        on = on and true or false
+        if self.reversed == on then return end
+        self.reversed = on
+        self.bar:SetReverseFill(on)
+        local fl = self.bar:GetStatusBarTexture()
+        self.edge:ClearAllPoints()
+        if on then
+            self.edge:SetPoint("TOPLEFT", fl, "TOPLEFT")
+            self.edge:SetPoint("BOTTOMLEFT", fl, "BOTTOMLEFT")
+        else
+            self.edge:SetPoint("TOPRIGHT", fl, "TOPRIGHT")
+            self.edge:SetPoint("BOTTOMRIGHT", fl, "BOTTOMRIGHT")
+        end
+        for _, sp in ipairs(self.bar.__splits or {}) do
+            sp.track:ClearAllPoints(); sp.over:ClearAllPoints()
+            if on then
+                sp.track:SetPoint("TOPLEFT", self.bar, "TOPLEFT")
+                sp.track:SetPoint("BOTTOMRIGHT", fl, "BOTTOMLEFT")
+                sp.over:SetPoint("TOPLEFT", fl, "TOPLEFT")
+                sp.over:SetPoint("BOTTOMRIGHT", self.bar, "BOTTOMRIGHT")
+            else
+                sp.track:SetPoint("TOPLEFT", fl, "TOPRIGHT")
+                sp.track:SetPoint("BOTTOMRIGHT", self.bar, "BOTTOMRIGHT")
+                sp.over:SetPoint("TOPLEFT", self.bar, "TOPLEFT")
+                sp.over:SetPoint("BOTTOMRIGHT", fl, "BOTTOMRIGHT")
+            end
+        end
+    end
+
     -- split = true: the text follows the fill, light over the empty track and
     -- dark where the fill has reached (ns.SplitText).
     function f:CreateText(size, color, split)
@@ -436,6 +469,9 @@ function ns.SplitText(bar, fs)
     over:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT")
     over:SetFrameLevel(level)
     fs:SetParent(track)
+    -- (Remembered so the pill can swap them when its fill is reversed.)
+    bar.__splits = bar.__splits or {}
+    table.insert(bar.__splits, { track = track, over = over })
 
     local dark = over:CreateFontString(nil, "OVERLAY", nil, 7)
     dark:SetAllPoints(fs)
