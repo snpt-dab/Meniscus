@@ -132,7 +132,7 @@ function MM:ApplyDome()
     -- strata and level Blizzard gave it (changing those was one suspect for
     -- the map drawing black, and with the bar split nothing has to cover it).
     h:SetFrameStrata("BACKGROUND")
-    h:SetFrameLevel(0)
+    h:SetFrameLevel(3) -- above the console plate (Bars.lua), which is at 0
     h:SetClampedToScreen(true)
     self.domeHolder = h
     self:PlaceDome()

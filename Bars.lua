@@ -16,6 +16,9 @@ local Bars = ns:NewModule("Bars", {
     enabled = true,
     main  = { size = 44, gap = 4, x = DEFAULT_MAIN.x, y = DEFAULT_MAIN.y },
     small = { size = 26, gap = 3, cols = 4, margin = 14 }, -- ~60% of main
+    -- A dark rounded plate behind the whole bottom row (side bars, orbs,
+    -- main bar, minimap dome), so it reads as one console. /mui console
+    plate = true,
 })
 
 local function safe(fn, ...)
@@ -366,6 +369,55 @@ function Bars:Arrange()
             for _, k in ipairs({ "BorderArt", "EndCaps", "Background" }) do killRegion(bar[k]) end
         end
     end
+    -- Once the anchors above have real positions.
+    C_Timer.After(0, function() Bars:ApplyPlate() end)
+end
+
+-- ── Console plate ─────────────────────────────────────────────────────────
+-- One card behind the whole bottom row, in the windows' own language (dark
+-- fill, hairline rounded border). It spans from the left side bar to the
+-- right one and from the screen's bottom edge to just above the main bar;
+-- the orbs and the minimap dome rise out of its top edge. It is placed from
+-- measured positions (not anchored to the secure bars), so it never gets in
+-- the way of combat restrictions; it follows the layout on the next
+-- arrange / reload, not while an orb is being dragged.
+local PLATE_PAD = 14
+function Bars:ApplyPlate()
+    local p = self.plate
+    if not (self.db and self.db.plate) then
+        if p then p:Hide() end
+        return
+    end
+    local l, r, m = self.block2, self.block3, self.main
+    local left, right, top = l and l:GetLeft(), r and r:GetRight(), m and m:GetTop()
+    if not (left and right and top) then
+        -- Layout not resolved yet (first frame after login).
+        if not self.plateRetry then
+            self.plateRetry = true
+            C_Timer.After(0.5, function() Bars.plateRetry = false; Bars:ApplyPlate() end)
+        end
+        return
+    end
+    if not p then
+        p = CreateFrame("Frame", "MinimalUI_Console", UIParent)
+        p:SetFrameStrata("BACKGROUND")
+        p:SetFrameLevel(0)
+        p:EnableMouse(false)
+        ns.RoundedRect(p, -8, 0, 16, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(p, -7, 1, 15, 0.05, 0.05, 0.06, 0.90)
+        self.plate = p
+    end
+    local bottom = 2
+    p:ClearAllPoints()
+    p:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left - PLATE_PAD, bottom)
+    p:SetSize(right - left + PLATE_PAD * 2, top + 12 - bottom)
+    p:Show()
+end
+
+ns.commands.console = function()
+    Bars.db.plate = not Bars.db.plate
+    Bars:ApplyPlate()
+    ns:Print("Bottom console plate", Bars.db.plate and "on" or "off")
 end
 
 -- Pet buttons: no keybind text (ctrl-1… cluttered the small tiles) and

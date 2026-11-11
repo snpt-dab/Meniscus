@@ -484,6 +484,7 @@ local function newRow(frame, n, size, gap, filters, placement, events, secure)
 end
 
 -- ── Blizzard player buffs ─────────────────────────────────────────────────
+local BLIZZ_ICON = 22 -- our own rows' icon size
 local function skinAuraButton(b)
     local icon = b.Icon
     if not icon then return end
@@ -515,6 +516,36 @@ local function skinAuraButton(b)
             end)
         end
         if b.TempEnchantBorder then b.TempEnchantBorder:SetAlpha(0) end
+
+        -- Same icon size as our own rows (22), whatever Edit Mode's icon
+        -- size slider says: Blizzard sets each button's scale from that
+        -- slider, so ours is put back whenever it does. The buttons' grid
+        -- offsets are in their own scale, so the whole grid scales with it.
+        local w = b:GetWidth()
+        if type(w) == "number" and w > 0 then
+            local want, setting = BLIZZ_ICON / w, false
+            local function fix(self)
+                if setting then return end
+                if math.abs(self:GetScale() - want) > 0.005 then
+                    setting = true
+                    self:SetScale(want)
+                    setting = false
+                end
+            end
+            hooksecurefunc(b, "SetScale", fix)
+            fix(b)
+        end
+    end
+    -- Timer inside the icon's bottom edge and the stack count in its top
+    -- right corner, like a compact version of our own icons (Blizzard hangs
+    -- the timer under the icon and re-anchors it on updates).
+    if b.Duration and b.Duration.ClearAllPoints then
+        b.Duration:ClearAllPoints()
+        b.Duration:SetPoint("BOTTOM", icon, "BOTTOM", 0, 1)
+    end
+    if b.Count and b.Count.ClearAllPoints then
+        b.Count:ClearAllPoints()
+        b.Count:SetPoint("TOPRIGHT", icon, "TOPRIGHT", 1, 0)
     end
     -- Our ring is a filled rounded plate behind the icon, so an empty slot
     -- (shown button, no icon) would read as a solid gray square. Only show it
@@ -530,8 +561,8 @@ local function skinAuraButton(b)
     local function font(fs, size)
         if fs and fs.GetFont and fs:GetFont() ~= T.font then ns:SetFont(fs, size, "OUTLINE") end
     end
-    font(b.Duration, 10)
-    font(b.Count, 11)
+    font(b.Duration, 11)
+    font(b.Count, 12)
 end
 
 -- The frame builds its buttons the first time it has auras to show, which
@@ -541,6 +572,11 @@ end
 -- and a few times after login.
 local function skinBlizzardFrame(frame)
     if not frame then return end
+    -- The gold collapse / expand arrow beside the icons.
+    local arrow = frame.CollapseAndExpandButton
+    if arrow then
+        pcall(function() arrow:SetAlpha(0); arrow:EnableMouse(false) end)
+    end
     local function run()
         local list = frame.auraFrames
         if type(list) ~= "table" then return end
