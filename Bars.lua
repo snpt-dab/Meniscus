@@ -776,6 +776,8 @@ local MICRO_GLYPHS = {
     { "talent", { { "o", 8, 3.5, 2 }, { "o", 4, 12, 2 }, { "o", 12, 12, 2 }, { "l", 7, 5.5, 5, 10 }, { "l", 9, 5.5, 11, 10 } } },
     -- a diamond
     { "achievement", { { "l", 8, 2, 13, 8 }, { "l", 13, 8, 8, 14 }, { "l", 8, 14, 3, 8 }, { "l", 3, 8, 8, 2 } } },
+    -- a shield (Forever's "Legacy" button, where retail has achievements)
+    { "legacy", { { "l", 3, 3, 13, 3 }, { "l", 3, 3, 3, 9 }, { "l", 13, 3, 13, 9 }, { "l", 3, 9, 8, 14 }, { "l", 13, 9, 8, 14 } } },
     { "quest", { { "t", "!" } } },
     -- a flag on a pole
     { "guild", { { "l", 4, 2, 4, 14 }, { "l", 4, 3, 12, 3 }, { "l", 12, 3, 10, 6 }, { "l", 10, 6, 12, 9 }, { "l", 12, 9, 4, 9 } } },
@@ -801,7 +803,11 @@ local MICRO_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 
 local function microGlyph(btn)
     if btn.__muiGlyph ~= nil then return btn.__muiGlyph end
+    -- Matched on the button's name and, failing that, on its tooltip title
+    -- (a button can be named for one thing and labelled another).
     local name = (btn.GetName and btn:GetName() or ""):lower()
+    local tip = rawget(btn, "tooltipText")
+    if type(tip) == "string" then name = name .. " " .. tip:lower() end
     local spec
     for _, g in ipairs(MICRO_GLYPHS) do
         if name:find(g[1], 1, true) then spec = g[2] break end
