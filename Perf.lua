@@ -34,6 +34,53 @@ function ns.Timed(label, fn, ...)
     return a, b, c
 end
 
+-- ── Trace mode ────────────────────────────────────────────────────────────
+-- /men perf trace (then /reload): every OnUpdate and OnEvent handler the
+-- addon sets from then on is wrapped in ns.Timed, labelled with the file
+-- and line that set it ("Orbs.lua:1164 OnUpdate"). The job list then shows
+-- time and memory for each handler, which is how a cost that isn't in any
+-- hand-timed job gets found. It adds a little overhead to everything, so it
+-- is off unless asked for; run it again to turn it off.
+-- (How: a post-hook on SetScript for each kind of frame. It only acts when
+-- the call came from one of our files; everyone else's are left alone.)
+local function installTrace()
+    local wrapping, seen = false, {}
+    local function hook(self, script, handler)
+        if wrapping or type(handler) ~= "function" or (script ~= "OnUpdate" and script ~= "OnEvent") then return end
+        local stack = debugstack(2, 6, 0)
+        if type(stack) ~= "string" then return end
+        local label
+        for file, line in stack:gmatch("Meniscus[/\\]([%w_]+%.lua)[^:]*:(%d+)") do
+            if file ~= "Perf.lua" then label = file .. ":" .. line .. " " .. script break end
+        end
+        if not label then return end
+        wrapping = true
+        pcall(self.SetScript, self, script, function(...) return ns.Timed(label, handler, ...) end)
+        wrapping = false
+    end
+    for _, kind in ipairs({ "Frame", "Button", "StatusBar", "ScrollFrame", "CheckButton", "EditBox", "Slider",
+                            "PlayerModel", "Cooldown" }) do
+        local ok, f = pcall(CreateFrame, kind)
+        local mt = ok and f and getmetatable(f)
+        local idx = mt and mt.__index
+        if type(idx) == "table" and not seen[idx] then
+            seen[idx] = true
+            pcall(hooksecurefunc, idx, "SetScript", hook)
+        end
+    end
+    ns.perfTracing = true
+end
+local traceBoot = CreateFrame("Frame")
+traceBoot:RegisterEvent("ADDON_LOADED")
+traceBoot:SetScript("OnEvent", function(self, _, name)
+    if name ~= ADDON then return end
+    self:UnregisterAllEvents()
+    if MinimalUIDB and MinimalUIDB.perfTrace then
+        local ok, err = pcall(installTrace)
+        if not ok then ns:Print("Perf trace could not start: " .. tostring(err)) end
+    end
+end)
+
 -- ── Measurements ──────────────────────────────────────────────────────────
 local updateMem = _G.UpdateAddOnMemoryUsage or (C_AddOns and C_AddOns.UpdateAddOnMemoryUsage)
 local getMem = _G.GetAddOnMemoryUsage or (C_AddOns and C_AddOns.GetAddOnMemoryUsage)
@@ -91,7 +138,8 @@ local function db()
     if not MinimalUIDB then return end
     local p = MinimalUIDB.perf
     if type(p) ~= "table" or p.session ~= session.id then
-        p = { session = session.id, started = date("%Y-%m-%d %H:%M"), samples = {}, peakMem = 0, peakCPU = 0 }
+        p = { session = session.id, started = date("%Y-%m-%d %H:%M"), samples = {}, peakMem = 0, peakCPU = 0,
+              traced = ns.perfTracing or false }
         MinimalUIDB.perf = p
     end
     return p
@@ -252,6 +300,9 @@ ns.commands.perf = function(rest)
     rest = rest or ""
     if rest == "report" then
         report()
+    elseif rest == "trace" then
+        MinimalUIDB.perfTrace = not MinimalUIDB.perfTrace or nil
+        ns:Print("Handler tracing " .. (MinimalUIDB.perfTrace and "ON" or "off") .. ". /reload to apply.")
     elseif rest == "reset" then
         wipe(stats)
         ns:Print("Timed-job stats cleared.")
