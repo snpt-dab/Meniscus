@@ -591,6 +591,56 @@ local ATTRS = {
     { "SPI", SPELL_STAT5_NAME or "Spirit",    { 0.76, 0.62, 0.96 } },
 }
 
+-- What an attribute is worth to this character right now, as tooltip lines:
+-- { label, value } pairs. Everything comes from the client's own functions
+-- (they already account for class), and a line only appears when its
+-- function exists here and returns a plain positive number, so a class that
+-- gets nothing from a stat simply shows fewer lines.
+local function attrEffects(i, unit, eff)
+    local out = {}
+    if not plain(eff) then return out end
+    local function add(label, v, pattern)
+        if plain(v) and v > 0.005 then out[#out + 1] = { label, string.format(pattern, v) } end
+    end
+    local player = unit == "player"
+    local function ap()
+        if player and GetAttackPowerForStat then return call(GetAttackPowerForStat, i, eff) end
+    end
+    if i == 1 then -- Strength
+        add("Attack power", ap(), "+%d")
+    elseif i == 2 then -- Agility
+        add("Attack power", ap(), "+%d")
+        if GetCritChanceFromAgility then add("Crit chance", call(GetCritChanceFromAgility, unit), "+%.2f%%") end
+        if type(ARMOR_PER_AGILITY) == "number" then add("Armor", eff * ARMOR_PER_AGILITY, "+%d") end
+    elseif i == 3 then -- Stamina
+        local per = type(HEALTH_PER_STAMINA) == "number" and HEALTH_PER_STAMINA
+            or (UnitHPPerStamina and call(UnitHPPerStamina, unit))
+        if plain(per) then
+            -- (The first 20 points give 1 health each on classic rules.)
+            local base = type(HEALTH_PER_STAMINA) == "number" and math.min(20, eff) or 0
+            add("Health", base + (eff - base) * per, "+%d")
+        end
+    elseif i == 4 then -- Intellect
+        local hasMana = call(UnitPowerMax, unit, 0)
+        if type(MANA_PER_INTELLECT) == "number" and plain(hasMana) and hasMana > 0 then
+            local base = math.min(20, eff)
+            add("Mana", base + (eff - base) * MANA_PER_INTELLECT, "+%d")
+        end
+        if GetSpellCritChanceFromIntellect then
+            add("Spell crit chance", call(GetSpellCritChanceFromIntellect, unit), "+%.2f%%")
+        end
+    elseif i == 5 then -- Spirit
+        if GetUnitHealthRegenRateFromSpirit then
+            add("Health regen out of combat", call(GetUnitHealthRegenRateFromSpirit, unit), "%d per tick")
+        end
+        if GetUnitManaRegenRateFromSpirit then
+            local m = call(GetUnitManaRegenRateFromSpirit, unit)
+            if plain(m) then add("Mana regen while not casting", m * 5, "%d per 5s") end
+        end
+    end
+    return out
+end
+
 -- Returns whether the unit reports any attributes (some pets, demons on
 -- this client, report none: their tiles are hidden).
 local function updateAttrs(card, unit)
@@ -598,6 +648,7 @@ local function updateAttrs(card, unit)
     for i, tile in ipairs(card.attrs) do
         local base, eff, pos, neg = call(UnitStat, unit or "player", i)
         tile.base, tile.eff, tile.pos, tile.neg = base, eff, pos, neg
+        tile.unit, tile.index = unit or "player", i
         tile.value:SetText(fmt(eff, "%d") or "0")
         local col = buffColor(pos, neg) or T.text
         tile.value:SetTextColor(col[1], col[2], col[3])
@@ -1073,6 +1124,14 @@ local function makeStatsCard(page, top)
             end
             if plain(self.neg) and self.neg < 0 then
                 GameTooltip:AddDoubleLine("Penalty", string.format("%d", self.neg), 0.6, 0.6, 0.65, RED[1], RED[2], RED[3])
+            end
+            -- What it gives this character.
+            local ok, fx = pcall(attrEffects, self.index or i, self.unit or "player", self.eff)
+            if ok and #fx > 0 then
+                GameTooltip:AddLine(" ")
+                for _, e in ipairs(fx) do
+                    GameTooltip:AddDoubleLine(e[1], e[2], a[3][1], a[3][2], a[3][3], 1, 1, 1)
+                end
             end
             GameTooltip:Show()
         end)
