@@ -241,10 +241,11 @@ function W:OnInit(db)
 
     local driver = CreateFrame("Frame")
     local acc = 0
-    driver:SetScript("OnUpdate", function(_, dt)
+    driver:SetScript("OnUpdate", function(self, dt)
         acc = acc + dt
         if acc < 0.1 then return end
         acc = 0
+        if not next(waiting) then self:SetScript("OnUpdate", nil) return end
         for name in pairs(waiting) do
             local f = _G[name]
             if type(f) == "table" and f.HookScript and not (f.IsForbidden and f:IsForbidden()) then

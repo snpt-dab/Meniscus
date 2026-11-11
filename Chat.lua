@@ -135,10 +135,11 @@ function CH:OnInit(db)
         if bf then table.insert(buttons, bf) end
     end
 
-    local alpha, acc = 0, 0
+    -- 20 Hz while the side buttons are fading, 6 Hz at rest.
+    local alpha, acc, busy = 0, 0, true
     CreateFrame("Frame"):SetScript("OnUpdate", function(_, dt)
         acc = acc + dt
-        if acc < 0.05 then return end
+        if acc < (busy and 0.05 or 0.16) then return end
         local step = math.min(acc * 10, 1)
         acc = 0
         -- Underline the selected tab (new windows get styled as they appear).
@@ -154,8 +155,11 @@ function CH:OnInit(db)
         local over = ChatFrame1 and ChatFrame1:IsMouseOver(20, -20, -40, 20)
         for _, b in ipairs(buttons) do over = over or (b:IsShown() and b:IsMouseOver()) end
         local want = over and 1 or 0
-        alpha = alpha + (want - alpha) * step
-        if math.abs(alpha - want) < 0.02 then alpha = want end
+        busy = alpha ~= want
+        if busy then
+            alpha = alpha + (want - alpha) * step
+            if math.abs(alpha - want) < 0.02 then alpha = want end
+        end
         for _, b in ipairs(buttons) do b:SetAlpha(alpha) end
     end)
 end

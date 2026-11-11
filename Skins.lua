@@ -540,26 +540,32 @@ local function skinMap()
         acc = acc + dt
         if acc < 0.1 then return end
         acc = 0
-        local parts = {}
+        local you, cur
         local mapID = wm.GetMapID and wm:GetMapID()
         if mapID and C_Map and C_Map.GetPlayerMapPosition then
             local ok, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
             if ok and pos and pos.GetXY then
                 local x, y = pos:GetXY()
                 if x and y and not (issecretvalue and (issecretvalue(x) or issecretvalue(y))) and (x > 0 or y > 0) then
-                    table.insert(parts, string.format("You  %.1f, %.1f", x * 100, y * 100))
+                    you = string.format("You  %.1f, %.1f", x * 100, y * 100)
                 end
             end
         end
         if sc and sc.GetNormalizedCursorPosition and sc:IsMouseOver() then
             local ok, x, y = pcall(sc.GetNormalizedCursorPosition, sc)
             if ok and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
-                table.insert(parts, string.format("|cff9a9aa5Cursor|r  %.1f, %.1f", x * 100, y * 100))
+                cur = string.format("|cff9a9aa5Cursor|r  %.1f, %.1f", x * 100, y * 100)
             end
         end
-        fs:SetText(table.concat(parts, "     "))
-        chip:SetShown(#parts > 0)
-        chip:SetWidth(fs:GetStringWidth() + 24)
+        local text = (you and cur) and (you .. "     " .. cur) or you or cur or ""
+        -- (Alpha, not Hide: a hidden frame's OnUpdate stops, and the chip
+        -- would never come back.)
+        chip:SetAlpha(text ~= "" and 1 or 0)
+        if text ~= chip.__text then
+            chip.__text = text
+            fs:SetText(text)
+            chip:SetWidth(fs:GetStringWidth() + 24)
+        end
     end)
 end
 
@@ -1400,10 +1406,13 @@ local SELECT_KEYS = { "selectedTexture", "SelectedTexture", "Selected", "selecte
 local ICON_KEYS = { "icon", "Icon", "IconTexture", "iconTexture" }
 
 local function roundIcon(f)
+    f.__muiIconDone = true
     for i = 1, #ICON_KEYS do
         local ic = rawget(f, ICON_KEYS[i])
         if ic and not ic.__muiRound and ic.IsObjectType and ic:IsObjectType("Texture") and ic.AddMaskTexture then
             local w, h = ic:GetWidth(), ic:GetHeight()
+            -- Not laid out yet: look again on a later pass.
+            if not (w and h) or issecretvalue(w) or issecretvalue(h) or w < 1 then f.__muiIconDone = nil end
             if w and h and not issecretvalue(w) and not issecretvalue(h) and w >= 18 and w <= 110
                     and h >= 18 and math.abs(w - h) <= 4 then
                 ic.__muiRound = true
@@ -1526,7 +1535,7 @@ local function deepSkin(f, depth)
         end
     end
     if depth > 0 then
-        pcall(roundIcon, f)
+        if not f.__muiIconDone then pcall(roundIcon, f) end
         if isButton and not f.__muiRow and not f.__muiSkin and not f.__muiDeepDD and not f.__muiDeepTab
                 and not (f.Arrow and f.Text) then
             pcall(deepRow, f)
@@ -1582,13 +1591,14 @@ local function deepDriver(f, name)
     d:SetPoint("TOPLEFT")
     local acc, errShown = 1, false
     local soon = 0 -- extra quick passes still owed after a click
+    local calm = 0 -- seconds since the window was shown or clicked
     local function run(all)
         deepVisibleOnly = not all
         local ok, err = ns.Timed(all and ("deep:" .. name .. " (full)") or ("deep:" .. name), pcall, deepSkin, f, 0)
         deepVisibleOnly = false
         if not ok and not errShown then errShown = true; ns:Print("Skin " .. name .. ": " .. tostring(err)) end
     end
-    d:SetScript("OnShow", function() acc = 0; run(true) end)
+    d:SetScript("OnShow", function() acc, calm = 0, 0; run(true) end)
     d:SetScript("OnUpdate", function(_, dt)
         acc = acc + dt
         if soon > 0 then
@@ -1597,12 +1607,15 @@ local function deepDriver(f, name)
             if soon == 2 or acc >= 0.25 then soon = soon - 1; acc = 0; run() end
             return
         end
-        if acc < 1 then return end
+        -- Once a second while the window is fresh; every 3 s after it has
+        -- sat untouched for a while (a click brings the quick passes back).
+        calm = calm + dt
+        if acc < (calm > 6 and 3 or 1) then return end
         acc = 0
         run()
     end)
     if pcall(d.RegisterEvent, d, "GLOBAL_MOUSE_UP") then
-        d:SetScript("OnEvent", function() if f:IsVisible() and f:IsMouseOver() then soon = 2 end end)
+        d:SetScript("OnEvent", function() if f:IsVisible() and f:IsMouseOver() then soon, calm = 2, 0 end end)
     end
 end
 
@@ -1715,8 +1728,12 @@ local function deepMap()
     -- Breadcrumbs: every button's art goes (they are created as you move
     -- between maps, so this is repeated while the window is open).
     local nb = wm.NavBar
+    local crumbCount = -1
     local function crumbs()
         if not nb then return end
+        local n = nb:GetNumChildren()
+        if n == crumbCount then return end
+        crumbCount = n
         fadeRegions(nb)
         if nb.overlay then fadeRegions(nb.overlay) end
         for _, b in ipairs({ nb:GetChildren() }) do
@@ -1921,7 +1938,10 @@ dmDriver:RegisterEvent("PLAYER_ENTERING_WORLD")
 dmDriver:RegisterEvent("ADDON_LOADED")
 dmDriver:SetScript("OnEvent", function(_, e)
     dmAcc = 99
-    if e == "PLAYER_ENTERING_WORLD" or e == "ADDON_LOADED" then dmBurst = 2.5 end
+    -- (Every addon that loads fires ADDON_LOADED; once the meter is hooked
+    -- its own OnShow starts the burst.)
+    local root = _G.DamageMeter
+    if e == "PLAYER_ENTERING_WORLD" or (e == "ADDON_LOADED" and not (root and root.__muiDMShow)) then dmBurst = 2.5 end
 end)
 dmDriver:SetScript("OnUpdate", function(_, dt)
     dmAcc = dmAcc + dt

@@ -109,11 +109,14 @@ function DC:OnInit(db)
     end
     self.groups = list
 
-    local acc, rescan = 0, 0
+    -- Runs at 30 Hz while something is fading, 8 Hz while everything is at
+    -- rest (enough to notice the mouse arriving and to re-assert alphas).
+    local acc, rescan, busy = 0, 0, true
     local driver = CreateFrame("Frame")
     driver:SetScript("OnUpdate", function(_, dt)
         acc, rescan = acc + dt, rescan + dt
-        if acc < 0.03 then return end
+        if acc < (busy and 0.03 or 0.12) then return end
+        busy = false
         local step = math.min(acc * SPEED, 1)
         acc = 0
         local doRescan = rescan > 1
@@ -131,6 +134,7 @@ function DC:OnInit(db)
                 local a = g.alpha < 0 and want or g.alpha + (want - g.alpha) * step
                 if math.abs(a - want) < 0.02 then a = want end
                 g.alpha = a
+                busy = true
             end
             -- Apply every tick: Blizzard resets some of these (e.g. the keyring)
             -- to full alpha on its own updates.
