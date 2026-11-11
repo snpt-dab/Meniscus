@@ -765,35 +765,37 @@ end
 -- A button is matched by a word in its name; a button nobody matches keeps
 -- Blizzard's (greyed) art. The buttons underneath are untouched: clicks,
 -- tooltips and key bindings are theirs.
+-- (Second pass: strokes kept to horizontals, verticals and 45 degrees where
+-- possible, since those are the angles a 14 px icon can draw cleanly; every
+-- stroke gets round ends, which also rounds the corners where two meet.)
+local GROUP = { { "o", 5, 6, 2.5 }, { "o", 11, 6, 2.5 }, { "l", 3, 12, 13, 12 } }
+local COMPASS = { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } }
+local BAG = { { "l", 3, 7, 13, 7 }, { "l", 3, 7, 3, 14 }, { "l", 13, 7, 13, 14 }, { "l", 3, 14, 13, 14 }, { "o", 8, 6, 2.6 } }
 local MICRO_GLYPHS = {
     -- a head and shoulders
-    { "character", { { "o", 8, 5, 3 }, { "l", 3, 14, 5, 10 }, { "l", 5, 10, 11, 10 }, { "l", 11, 10, 13, 14 } } },
+    { "character", { { "o", 8, 5, 2.8 }, { "l", 3, 14, 6, 11 }, { "l", 6, 11, 10, 11 }, { "l", 10, 11, 13, 14 } } },
     -- a hammer
-    { "profession", { { "l", 3, 13, 9, 7 }, { "l", 7, 3, 13, 9, 3.2 } } },
+    { "profession", { { "l", 4, 13, 9, 8 }, { "l", 7, 4, 12, 9, 3.4 } } },
     -- an open book
-    { "spell", { { "l", 2, 4, 8, 5 }, { "l", 8, 5, 14, 4 }, { "l", 2, 4, 2, 12 }, { "l", 14, 4, 14, 12 },
-                 { "l", 2, 12, 8, 13 }, { "l", 8, 13, 14, 12 }, { "l", 8, 5, 8, 13 } } },
-    { "talent", { { "o", 8, 3.5, 2 }, { "o", 4, 12, 2 }, { "o", 12, 12, 2 }, { "l", 7, 5.5, 5, 10 }, { "l", 9, 5.5, 11, 10 } } },
+    { "spell", { { "l", 2, 4, 14, 4 }, { "l", 2, 12, 14, 12 }, { "l", 2, 4, 2, 12 }, { "l", 14, 4, 14, 12 }, { "l", 8, 4, 8, 12 } } },
+    -- three linked points
+    { "talent", { { "d", 8, 4, 2 }, { "d", 4, 12, 2 }, { "d", 12, 12, 2 }, { "l", 8, 4, 4, 12, 1.2 }, { "l", 8, 4, 12, 12, 1.2 },
+                  { "l", 4, 12, 12, 12, 1.2 } } },
     -- a diamond
-    { "achievement", { { "l", 8, 2, 13, 8 }, { "l", 13, 8, 8, 14 }, { "l", 8, 14, 3, 8 }, { "l", 3, 8, 8, 2 } } },
+    { "achievement", { { "l", 8, 2, 14, 8 }, { "l", 14, 8, 8, 14 }, { "l", 8, 14, 2, 8 }, { "l", 2, 8, 8, 2 } } },
     -- a shield (Forever's "Legacy" button, where retail has achievements)
-    { "legacy", { { "l", 3, 3, 13, 3 }, { "l", 3, 3, 3, 9 }, { "l", 13, 3, 13, 9 }, { "l", 3, 9, 8, 14 }, { "l", 13, 9, 8, 14 } } },
+    { "legacy", { { "l", 3, 3, 13, 3 }, { "l", 3, 3, 3, 8 }, { "l", 13, 3, 13, 8 }, { "l", 3, 8, 8, 13 }, { "l", 13, 8, 8, 13 } } },
     { "quest", { { "t", "!" } } },
     -- a flag on a pole
-    { "guild", { { "l", 4, 2, 4, 14 }, { "l", 4, 3, 12, 3 }, { "l", 12, 3, 10, 6 }, { "l", 10, 6, 12, 9 }, { "l", 12, 9, 4, 9 } } },
+    { "guild", { { "l", 4, 2, 4, 14 }, { "l", 4, 3, 12, 3 }, { "l", 12, 3, 12, 8 }, { "l", 12, 8, 4, 8 } } },
     -- two heads
-    { "lfd", { { "o", 5, 6, 2.6 }, { "o", 11, 6, 2.6 }, { "l", 2, 13, 8, 13 }, { "l", 8, 13, 14, 13 } } },
-    { "lfg", { { "o", 5, 6, 2.6 }, { "o", 11, 6, 2.6 }, { "l", 2, 13, 8, 13 }, { "l", 8, 13, 14, 13 } } },
-    { "group", { { "o", 5, 6, 2.6 }, { "o", 11, 6, 2.6 }, { "l", 2, 13, 8, 13 }, { "l", 8, 13, 14, 13 } } },
+    { "lfd", GROUP }, { "lfg", GROUP }, { "group", GROUP },
     -- four tiles
     { "collection", { { "d", 5, 5, 2.2 }, { "d", 11, 5, 2.2 }, { "d", 5, 11, 2.2 }, { "d", 11, 11, 2.2 } } },
     -- a compass
-    { "ej", { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } } },
-    { "journal", { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } } },
-    { "adventure", { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } } },
+    { "ej", COMPASS }, { "journal", COMPASS }, { "adventure", COMPASS },
     -- a bag
-    { "store", { { "l", 3, 6, 13, 6 }, { "l", 3, 6, 4, 14 }, { "l", 13, 6, 12, 14 }, { "l", 4, 14, 12, 14 }, { "o", 8, 5, 2.6 } } },
-    { "shop", { { "l", 3, 6, 13, 6 }, { "l", 3, 6, 4, 14 }, { "l", 13, 6, 12, 14 }, { "l", 4, 14, 12, 14 }, { "o", 8, 5, 2.6 } } },
+    { "store", BAG }, { "shop", BAG },
     -- three bars
     { "mainmenu", { { "l", 3, 4, 13, 4 }, { "l", 3, 8, 13, 8 }, { "l", 3, 12, 13, 12 } } },
     { "help", { { "t", "?" } } },
@@ -814,14 +816,14 @@ local function microGlyph(btn)
     end
     if not spec then btn.__muiGlyph = false return false end
     local w, h = btn:GetWidth(), btn:GetHeight()
-    local S = math.min(w, h) * 0.66 -- the glyph's square, in the button's own units
+    local S = math.min(w, h) * 0.72 -- the glyph's square, in the button's own units
     local u = S / 16
     local f = CreateFrame("Frame", nil, btn)
     f:SetSize(S, S)
     f:SetPoint("CENTER", btn, "CENTER", 0, 0)
     f:SetFrameLevel(btn:GetFrameLevel() + 2)
     local tinted, holes = {}, {}
-    local stroke = math.max(1.8, S / 9)
+    local stroke = math.max(1.8, S / 10)
     -- Center every glyph on the grid's middle, whatever box its strokes
     -- happen to cover as drawn (a flag from 2 to 14 and three bars from 4
     -- to 12 otherwise sit at different heights in the row).
@@ -851,6 +853,21 @@ local function microGlyph(btn)
             ln:SetStartPoint("TOPLEFT", f, p[2] * u, -p[3] * u)
             ln:SetEndPoint("TOPLEFT", f, p[4] * u, -p[5] * u)
             tinted[#tinted + 1] = ln
+            -- Round ends: a dot the stroke's own width on each end. Where
+            -- two strokes meet, the dots make the corner round instead of
+            -- leaving a notch.
+            local th = p[6] and p[6] * u or stroke
+            for e = 0, 1 do
+                local cap = f:CreateTexture(nil, "ARTWORK")
+                cap:SetSize(th, th)
+                cap:SetPoint("CENTER", f, "TOPLEFT", p[2 + e * 2] * u, -p[3 + e * 2] * u)
+                cap:SetColorTexture(1, 1, 1, 1)
+                local cm = f:CreateMaskTexture()
+                cm:SetTexture(MICRO_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                cm:SetAllPoints(cap)
+                cap:AddMaskTexture(cm)
+                tinted[#tinted + 1] = cap
+            end
         elseif p[1] == "o" or p[1] == "d" then
             local d = p[4] * 2 * u
             local disc = f:CreateTexture(nil, "ARTWORK", nil, 1)
