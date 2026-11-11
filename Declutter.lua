@@ -92,8 +92,11 @@ local function apply(g, a)
     busy = true
     for _, item in ipairs(g.items) do setA(item, a) end
     busy = false
-    for _, r in ipairs(g.art) do r:SetAlpha(a) end
-    if g.keep then g.keep:SetAlpha(DC.db.keepIcons and 1 or a) end
+    -- Seated in the console's pill, the menu keeps its buttons but not the
+    -- ornate box Blizzard draws around them.
+    local artA = (ns.consoleMenus and g.holder ~= BagsBar) and 0 or a
+    for _, r in ipairs(g.art) do r:SetAlpha(artA) end
+    if g.keep then g.keep:SetAlpha((DC.db.keepIcons and not ns.consoleMenus) and 1 or a) end
 end
 
 function DC:OnInit(db)
@@ -121,6 +124,9 @@ function DC:OnInit(db)
             local over = g.hover:IsMouseOver()
             for _, f in ipairs(g.extraHover or EMPTY) do over = over or f:IsMouseOver() end
             local want = (not DC.db.fadeMenus or over) and 1 or 0
+            -- In the console (Bars.lua) the micro menu sits in a pill and is
+            -- always visible; the bag bar is replaced by the bag pill.
+            if ns.consoleMenus then want = (g.holder == BagsBar) and 0 or 1 end
             if g.alpha ~= want then
                 local a = g.alpha < 0 and want or g.alpha + (want - g.alpha) * step
                 if math.abs(a - want) < 0.02 then a = want end

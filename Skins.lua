@@ -1543,6 +1543,7 @@ local function dmOrnate(r)
 end
 
 local function dmCard(f)
+    if ns.dmNoCard then return end -- seated in the console's wing (Bars.lua)
     if f.__muiDMCard then return end
     local holder = CreateFrame("Frame", nil, f)
     holder.__muiDMOurs = true

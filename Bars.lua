@@ -627,10 +627,26 @@ local function reseat(f)
     seating = true
     pcall(function()
         f:ClearAllPoints()
-        f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", s.x, s.y)
-        if s.w and s.h then f:SetSize(s.w, s.h) elseif s.w then f:SetWidth(s.w) end
+        if s.rel then
+            if s.scale then f:SetScale(s.scale) end
+            -- (ox / oy are in the frame's own units, as SetPoint expects.)
+            f:SetPoint("CENTER", s.rel, "CENTER", s.ox or 0, s.oy or 0)
+        else
+            f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", s.x, s.y)
+            if s.w and s.h then f:SetSize(s.w, s.h) elseif s.w then f:SetWidth(s.w) end
+        end
     end)
     seating = false
+end
+-- Centered on one of our own frames, at a scale of our choosing.
+local function seatOn(f, rel, scale)
+    if not f then return end
+    seats[f] = { rel = rel, scale = scale }
+    if not hooked[f] then
+        hooked[f] = true
+        hooksecurefunc(f, "SetPoint", function(self) if not seating then reseat(self) end end)
+    end
+    reseat(f)
 end
 local function seat(f, x, y, w, h)
     if not f then return end
@@ -723,6 +739,9 @@ local function probeMeter(root, wantW, wantH)
 end
 
 function Bars:ApplyPlate()
+    -- (The bag pill is a secure button: nothing here runs in combat; the
+    -- next arrange after the fight catches up.)
+    if InCombatLockdown() then self.pending = true return end
     local p = self.plate
     if not (self.db and self.db.plate) then
         if p then p:Hide() end
@@ -757,8 +776,12 @@ function Bars:ApplyPlate()
     p:SetSize(pr - pl, ptop - bottom)
     p:Show()
 
-    -- Wells: the room left between the plate's ends and the side bars.
-    local wy, wh = bottom + 8, (ptop - 8) - (bottom + 8)
+    -- Wings: a rounded panel at each end of the plate, taller than the plate
+    -- so it rises out of its top edge the way the orbs do. Chat sits in the
+    -- left one, the damage meter in the right one, and each has a pill on
+    -- its bottom edge: the micro menu (left) and the bags (right).
+    local WING_H, PILL_H = 210, 22
+    local wy = bottom + 12 -- room for the pill's lower half above the screen edge
     local lx0, lx1 = pl + WELL_PAD, left - PLATE_PAD - WELL_PAD
     local rx0, rx1 = right + PLATE_PAD + WELL_PAD, pr - WELL_PAD
     -- The panels take only part of their wing, hugging the screen edges.
@@ -767,34 +790,231 @@ function Bars:ApplyPlate()
     rx0 = rx1 - (rx1 - rx0) * fill
     local chatOK = wings and (lx1 - lx0) >= 140 and _G.ChatFrame1
     local meterOK = wings and (rx1 - rx0) >= 120 and _G.DamageMeter
+    ns.consoleMenus = (chatOK or meterOK) and true or false -- Declutter.lua stops fading them
     if p.chatWell then p.chatWell:SetShown(chatOK and true or false) end
+    if p.meterWell then p.meterWell:SetShown(meterOK and true or false) end
+
+    local function pillOn(wl, key)
+        local pill = wl[key]
+        if not pill then
+            pill = CreateFrame("Frame", nil, wl)
+            pill:SetFrameLevel(wl:GetFrameLevel() + 2)
+            pill.paintRing = ns.RoundedRect(pill, -8, 0, PILL_H / 2, T.border[1], T.border[2], T.border[3], 1)
+            ns.RoundedRect(pill, -7, 1, PILL_H / 2 - 1, 0.06, 0.06, 0.07, 0.97)
+            wl[key] = pill
+        end
+        pill:ClearAllPoints()
+        pill:SetPoint("CENTER", wl, "BOTTOM", 0, 0)
+        pill:SetSize(math.max(100, wl:GetWidth() - 28), PILL_H)
+        return pill
+    end
+
     if chatOK then
         local wl = well(p, "chatWell")
         wl:ClearAllPoints()
         wl:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", lx0, wy)
-        wl:SetSize(lx1 - lx0, wh)
+        wl:SetSize(lx1 - lx0, WING_H)
         wl:Show()
-        -- The edit box takes the well's bottom strip, the messages the rest.
-        -- (Tabs stay where Blizzard hangs them: on top of the message area,
-        -- which puts them just above the plate's edge; they show on hover.)
-        local EB = 28
+        -- From the bottom up: the pill's upper half, the edit box strip, the
+        -- messages, then the tabs, which Blizzard hangs on top of the
+        -- message area (so they end up just inside the wing's top edge).
+        local EB, TABS = 28, 24
+        local base = wy + PILL_H / 2 + 2
         local cf = _G.ChatFrame1
         pcall(cf.SetClampRectInsets, cf, 0, 0, 0, 0)
         pcall(cf.SetClampedToScreen, cf, false)
-        seat(cf, lx0 + 8, wy + EB + 4, (lx1 - lx0) - 16, wh - EB - 10)
+        seat(cf, lx0 + 8, base + EB + 2, (lx1 - lx0) - 16, (wy + WING_H - 8 - TABS) - (base + EB + 2))
         for i = 1, (NUM_CHAT_WINDOWS or 10) do
             local eb = _G["ChatFrame" .. i .. "EditBox"]
-            if eb then seat(eb, lx0, wy - 2, lx1 - lx0) end
+            if eb then seat(eb, lx0, base - 2, lx1 - lx0) end
+        end
+        -- The wing is the chat's background now: Blizzard's own (which also
+        -- shades a strip beside the window on hover) is switched off.
+        local CHm = ns.modules.Chat
+        if CHm and CHm.Seated then pcall(CHm.Seated, CHm) end
+
+        -- Micro menu: Blizzard's own buttons, scaled to the pill and held on
+        -- it, in grey (their art is recolored, not replaced).
+        local pill = pillOn(wl, "menuPill")
+        local mm = _G.MicroMenu
+        if mm then
+            pcall(function()
+                -- Measured from the buttons themselves: the menu frame's own
+                -- box is larger than what they cover and not centered on
+                -- them, which left the row small and low in the pill.
+                local l, r2, tp, bt
+                local es = mm:GetEffectiveScale()
+                for _, btn in ipairs({ mm:GetChildren() }) do
+                    if btn:IsShown() and btn:GetLeft() then
+                        local k = btn:GetEffectiveScale() / es
+                        local bl, br, btp, bb = btn:GetLeft() * k, btn:GetRight() * k, btn:GetTop() * k, btn:GetBottom() * k
+                        l = l and math.min(l, bl) or bl
+                        r2 = r2 and math.max(r2, br) or br
+                        tp = tp and math.max(tp, btp) or btp
+                        bt = bt and math.min(bt, bb) or bb
+                    end
+                    for _, reg in ipairs({ btn:GetRegions() }) do
+                        if reg:IsObjectType("Texture") then pcall(reg.SetDesaturated, reg, true) end
+                    end
+                    -- The dark tile behind each icon: the pill is the tile.
+                    for _, key in ipairs({ "Background", "PushedBackground" }) do
+                        local tile = btn[key]
+                        if tile and tile.SetAlpha and not tile.__muiGone then
+                            tile.__muiGone = true
+                            tile:SetAlpha(0)
+                            hooksecurefunc(tile, "SetAlpha", function(self, a) if a ~= 0 then self:SetAlpha(0) end end)
+                        end
+                    end
+                end
+                for _, holder in ipairs({ mm, _G.MicroMenuContainer }) do
+                    if holder then
+                        for _, reg in ipairs({ holder:GetRegions() }) do pcall(reg.SetAlpha, reg, 0) end
+                    end
+                end
+                if l and (r2 - l) > 0 and (tp - bt) > 0 then
+                    local cur = mm:GetScale()
+                    local parentScale = es / cur
+                    -- Sized to sit inside the pill's height (their art fills
+                    -- its box), and never wider than the pill.
+                    local k = math.min((pill:GetWidth() - 14) / (r2 - l), (PILL_H - 1) / (tp - bt))
+                    -- Where the buttons' center is relative to the menu's.
+                    local mcx, mcy = (mm:GetLeft() + mm:GetRight()) / 2, (mm:GetTop() + mm:GetBottom()) / 2
+                    local ox, oy = (l + r2) / 2 - mcx, (tp + bt) / 2 - mcy
+                    local _ = parentScale
+                    seats[mm] = { rel = pill, scale = k, ox = -ox, oy = -oy }
+                    if not hooked[mm] then
+                        hooked[mm] = true
+                        hooksecurefunc(mm, "SetPoint", function(self) if not seating then reseat(self) end end)
+                    end
+                    reseat(mm)
+                end
+            end)
         end
     end
+
     if meterOK then
-        -- The meter brings its own card (Skins.lua), so no well is drawn:
-        -- it is the inset.
+        local wl = well(p, "meterWell")
+        wl:ClearAllPoints()
+        wl:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", rx0, wy)
+        wl:SetSize(rx1 - rx0, WING_H)
+        wl:Show()
+        -- The meter fills the wing above the pill. Its own card is switched
+        -- off while it is seated (ns.dmNoCard, Skins.lua): the wing is its
+        -- frame.
         local dm = _G.DamageMeter
-        local w, h = rx1 - rx0, wh
-        seat(dm, rx0, wy, w, h)
-        C_Timer.After(2, function() pcall(probeMeter, dm, w, h) end)
+        local base = wy + PILL_H / 2 + 4
+        local w, h = (rx1 - rx0) - 12, (wy + WING_H - 6) - base
+        -- The wing is a context panel (Tracker.lua): a tab strip on top, and
+        -- under it either the meter or our objectives list.
+        local TRK = ns.modules.Tracker
+        local tabs = (TRK and TRK.Console and TRK.db) and 24 or 0
+        seat(dm, rx0 + 6, base, w, h - tabs)
+        if tabs > 0 then pcall(TRK.Console, TRK, rx0 + 6, base, w, h) end
+
+        -- Bags: free / total slots; a click opens our bags (through the
+        -- secure toggle, so it works in combat). Blizzard's bag bar is moved
+        -- off screen while this is on.
+        local pill = pillOn(wl, "bagPill")
+        local btn = pill.btn
+        if not btn then
+            btn = CreateFrame("Button", "MinimalUI_BagPill", pill, "SecureActionButtonTemplate")
+            btn:SetAllPoints(pill)
+            btn:SetAttribute("type", "click")
+            btn:SetAttribute("clickbutton", _G.MinimalUIBagsToggle)
+            btn:RegisterForClicks("AnyDown", "AnyUp")
+            local label = ns:CreateText(btn, 10, T.textDim)
+            label:SetPoint("LEFT", 12, 0)
+            label:SetText("Bags")
+            local count = ns:CreateText(btn, 11)
+            count:SetPoint("CENTER", 8, 0)
+            for _, fs in ipairs({ label, count }) do
+                fs:SetShadowOffset(1, -1); fs:SetShadowColor(0, 0, 0, 0.8)
+            end
+            local function refresh()
+                local free, total = 0, 0
+                local CC = C_Container
+                if CC and CC.GetContainerNumSlots then
+                    for bag = 0, (NUM_BAG_SLOTS or 4) do
+                        local n = CC.GetContainerNumSlots(bag) or 0
+                        total = total + n
+                        if n > 0 then free = free + (CC.GetContainerNumFreeSlots(bag) or 0) end
+                    end
+                end
+                count:SetText(free .. " / " .. total)
+                if total > 0 and free == 0 then count:SetTextColor(0.90, 0.35, 0.30)
+                elseif total > 0 and free <= 3 then count:SetTextColor(0.92, 0.76, 0.32)
+                else count:SetTextColor(T.text[1], T.text[2], T.text[3]) end
+            end
+            local ev = CreateFrame("Frame")
+            ev:RegisterEvent("BAG_UPDATE_DELAYED")
+            ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+            ev:SetScript("OnEvent", refresh)
+            refresh()
+            btn:SetScript("OnEnter", function() pill.paintRing(0.42, 0.42, 0.47, 1) end)
+            btn:SetScript("OnLeave", function() pill.paintRing(T.border[1], T.border[2], T.border[3], 1) end)
+            pill.btn = btn
+        end
+        if _G.BagsBar then
+            pcall(_G.BagsBar.SetClampedToScreen, _G.BagsBar, false)
+            seat(_G.BagsBar, -3000, -3000)
+        end
     end
+
+    if not self.trackerProbed then
+        self.trackerProbed = true
+        C_Timer.After(4, function() pcall(Bars.ProbeTracker, Bars) end)
+    end
+end
+
+-- What the quest tracker is on this client (MinimalUIDB.trackerprobe), for
+-- seating it in the right wing as an "Objectives" tab.
+function Bars:ProbeTracker()
+    if not MinimalUIDB then return end
+    local out = {}
+    local tr = _G.ObjectiveTrackerFrame
+    if not tr then MinimalUIDB.trackerprobe = { "ObjectiveTrackerFrame missing" } return end
+    local function line(tag, f, depth)
+        local ok, s = pcall(function()
+            local p, rel, rp, x, y = f:GetPoint(1)
+            local prot = f.IsProtected and select(1, f:IsProtected())
+            return string.rep("  ", depth) .. tag .. " [" .. f:GetObjectType() .. "] " .. tostring(f:GetName() or "?")
+                .. (f:IsShown() and "" or " hidden")
+                .. string.format(" %.0fx%.0f", f:GetWidth(), f:GetHeight())
+                .. " @" .. tostring(p) .. ">" .. tostring(rel and (rel.GetName and rel:GetName() or "?")) .. " " .. tostring(rp)
+                .. string.format(" %.0f,%.0f", x or 0, y or 0)
+                .. " scale=" .. string.format("%.2f", f:GetScale())
+                .. " strata=" .. tostring(f:GetFrameStrata())
+                .. " protected=" .. tostring(prot) .. " points=" .. tostring(f:GetNumPoints())
+        end)
+        out[#out + 1] = ok and s or (tag .. " error: " .. tostring(s))
+    end
+    line("ObjectiveTrackerFrame", tr, 0)
+    local keys = {}
+    for k, v in pairs(tr) do
+        local t = type(v)
+        if type(k) == "string" and (t == "number" or t == "boolean" or t == "string") then
+            keys[#keys + 1] = k .. "=" .. tostring(v)
+        end
+    end
+    table.sort(keys)
+    out[#out + 1] = "fields: " .. table.concat(keys, ", ")
+    local names = {}
+    for k, v in pairs(tr) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+    for _, c in ipairs({ tr:GetChildren() }) do
+        line(names[c] or "#", c, 1)
+        local n = 0
+        for _, g in ipairs({ c:GetChildren() }) do
+            n = n + 1
+            if n <= 5 then line("#", g, 2) end
+        end
+    end
+    local methods = {}
+    for _, mname in ipairs({ "SetHeight", "UpdateHeight", "Update", "SetCollapsed", "GetAvailableHeight", "UpdateSystem" }) do
+        methods[#methods + 1] = mname .. "=" .. tostring(type(tr[mname]) == "function")
+    end
+    out[#out + 1] = "methods: " .. table.concat(methods, ", ")
+    out[#out + 1] = string.format("screen %.0fx%.0f", UIParent:GetWidth(), UIParent:GetHeight())
+    MinimalUIDB.trackerprobe = out
 end
 
 ns.commands.console = function(rest)
@@ -856,6 +1076,9 @@ end
 
 function Bars:OnInit(db)
     self.db = db
+    -- Seated in a wing, the damage meter doesn't draw its own card. Decided
+    -- before its first styling pass (Skins.lua).
+    ns.dmNoCard = (db.plate and db.wings) and true or false
     self:Arrange()
     local pev = CreateFrame("Frame")
     for _, e in ipairs({ "PET_BAR_UPDATE", "UNIT_PET", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD",

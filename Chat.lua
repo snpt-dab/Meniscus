@@ -51,6 +51,19 @@ local function styleEditBox(i)
     ns.RoundedRect(eb, 1, inset + 1, 7, 0.06, 0.06, 0.07, 0.95)
 end
 
+-- Seated in the console's wing (Bars.lua): the wing draws the background, so
+-- Blizzard's chat background and border go, and with them the shaded strip
+-- its button column draws beside the window when you hover the chat.
+function CH:Seated()
+    if self.seated then return end
+    self.seated = true
+    for i = 1, (NUM_CHAT_WINDOWS or 10) do
+        local cf, bf = _G["ChatFrame" .. i], _G["ChatFrame" .. i .. "ButtonFrame"]
+        if cf then pcall(hideTextures, cf) end
+        if bf then pcall(hideTextures, bf) end
+    end
+end
+
 local function selectedFrame()
     if FCFDock_GetSelectedWindow and GENERAL_CHAT_DOCK then
         local ok, f = pcall(FCFDock_GetSelectedWindow, GENERAL_CHAT_DOCK)
