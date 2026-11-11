@@ -397,15 +397,31 @@ function MM:BuildZonePill(h)
             local tex = a[get] and a[get](a)
             if tex then pcall(tex.SetAlpha, tex, 0) end
         end
-        local label = a.Text or (a.GetFontString and a:GetFontString())
-        if label then
-            ns:SetFont(label, 10, "")
-            label:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
-            label:ClearAllPoints()
-            label:SetPoint("CENTER", a, "CENTER", 0, 0)
-            a:HookScript("OnEnter", function() label:SetTextColor(GOLD_HOVER[1], GOLD_HOVER[2], GOLD_HOVER[3]) end)
-            a:HookScript("OnLeave", function() label:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end)
+        -- The count is drawn by us, on the pill: restyling Blizzard's own
+        -- label in place left it invisible. Theirs is faded out and read
+        -- for its number.
+        local theirs = a.Text or (a.GetFontString and a:GetFontString())
+        if theirs then pcall(theirs.SetAlpha, theirs, 0) end
+        local count = ns:CreateText(chip, 10, T.textDim)
+        count:SetPoint("CENTER", chip, "RIGHT", -10, 0)
+        count:SetShadowOffset(1, -1)
+        count:SetShadowColor(0, 0, 0, 0.8)
+        local function refreshCount()
+            local t = theirs and theirs.GetText and theirs:GetText()
+            if type(t) ~= "string" or t == "" then
+                local list = a.registeredAddons
+                t = type(list) == "table" and tostring(#list) or ""
+            end
+            count:SetText(t)
         end
+        if theirs then hooksecurefunc(theirs, "SetText", function() C_Timer.After(0, refreshCount) end) end
+        for _, method in ipairs({ "UpdateDisplay", "RegisterAddon" }) do
+            if type(a[method]) == "function" then pcall(hooksecurefunc, a, method, function() C_Timer.After(0, refreshCount) end) end
+        end
+        refreshCount()
+        C_Timer.After(2, refreshCount)
+        a:HookScript("OnEnter", function() count:SetTextColor(GOLD_HOVER[1], GOLD_HOVER[2], GOLD_HOVER[3]) end)
+        a:HookScript("OnLeave", function() count:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end)
         a:SetFrameStrata("MEDIUM")
         a:SetFrameLevel(chip:GetFrameLevel() + 3)
         if a.SetFixedFrameStrata then pcall(a.SetFixedFrameStrata, a, true) end
