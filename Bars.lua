@@ -660,8 +660,9 @@ function Bars:ApplyCharWell()
             -- First and second name (Character.lua knows where this client
             -- keeps the second one).
             local CM = ns.modules.Character
-            local full = CM and CM.FullName and select(2, pcall(CM.FullName, "player"))
-            if type(full) ~= "string" then full = (UnitName("player")) end
+            local ok, full
+            if CM and CM.FullName then ok, full = pcall(CM.FullName, "player") end
+            if not ok or type(full) ~= "string" then full = (UnitName("player")) end
             name:SetText(full)
             local _, class = UnitClass("player")
             local c = class and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[class]
