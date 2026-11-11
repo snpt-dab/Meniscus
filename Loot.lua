@@ -11,7 +11,7 @@ local T = ns.Theme
 -- hidden as they appear. Blizzard's confirmation popups (bind on pickup,
 -- etc.) still show as usual.
 
-local L = ns:NewModule("Loot", { enabled = true })
+local L = ns:NewModule("Loot", { enabled = true, linger = 1.5 })
 
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -246,16 +246,42 @@ local function openLoot(autoLoot)
             win:Show()
         end
     end
-    -- With auto-loot the window usually empties at once; don't flash it.
-    if autoLoot then C_Timer.After(0.25, function() if L.lootOpen then show() end end) else show() end
+    -- With auto-loot the game empties the corpse at once. The list is
+    -- shown anyway, as it was when it opened, and stays up for a moment
+    -- after the loot is taken (see lingerThenClose), so there is time to
+    -- glance at what you got. "glance": the rows are a record, not a live
+    -- list; they aren't removed as the slots clear.
+    L.glance = autoLoot and (L.db.linger or 0) > 0 or false
+    win:SetAlpha(1)
+    show()
 end
 
 local function closeLootWindow()
+    L.lingerToken = (L.lingerToken or 0) + 1 -- cancels a pending linger
     if win and win:IsShown() then
         closing = true
         win:Hide()
         closing = false
     end
+    if win then win:SetAlpha(1) end
+end
+
+-- Auto-loot has taken everything: keep the list on screen for L.db.linger
+-- seconds, fade it out, then close. Anything that closes or reopens the
+-- window in the meantime cancels this.
+local function lingerThenClose()
+    local token = (L.lingerToken or 0) + 1
+    L.lingerToken = token
+    C_Timer.After(L.db.linger or 1.5, function()
+        if L.lingerToken ~= token or not (win and win:IsShown()) then return end
+        local step = 0
+        C_Timer.NewTicker(0.03, function()
+            if L.lingerToken ~= token then return end
+            step = step + 1
+            win:SetAlpha(math.max(0, 1 - step / 8))
+            if step >= 8 then closeLootWindow() end
+        end, 8)
+    end)
 end
 
 -- ── Group loot rolls ──────────────────────────────────────────────────────
@@ -392,15 +418,22 @@ function L:OnInit(db)
     end
     ev:SetScript("OnEvent", function(_, e, a1, a2)
         if e == "LOOT_OPENED" then
+            -- A list still lingering from the last corpse makes way.
+            closeLootWindow()
             L.lootOpen = true
             openLoot(a1)
         elseif e == "LOOT_SLOT_CLEARED" or e == "LOOT_SLOT_CHANGED" then
-            if win and win:IsShown() then
+            if win and win:IsShown() and not L.glance then
                 if fillLoot() == 0 then closeLootWindow() end
             end
         elseif e == "LOOT_CLOSED" then
             L.lootOpen = false
-            closeLootWindow()
+            if L.glance and win and win:IsShown() then
+                L.glance = false
+                lingerThenClose()
+            else
+                closeLootWindow()
+            end
         elseif e == "START_LOOT_ROLL" then
             startRoll(a1, a2)
         elseif e == "CANCEL_LOOT_ROLL" then
