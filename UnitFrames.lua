@@ -1080,10 +1080,26 @@ function UF:SeatTargetAuras()
     if okA and type(ap) == "string" and not issecretvalue(ap) and ap ~= "" then corner = ap end
     local right = corner:find("RIGHT") ~= nil
     local down = corner:find("TOP") ~= nil
-    -- Above the target's cast bar (which sits on its health pill): start at
-    -- the pill's end on the side the icons flow from.
-    local y = 6 + 14 + 8 + (down and 44 or 0)
-    tcSeat = { corner, t.healthPill, right and "TOPRIGHT" or "TOPLEFT", right and -6 or 6, y }
+    if self.targetStrip then
+        -- Console strip: under the health pill, beside the portrait that
+        -- hangs from its middle (the user's preferred spot). Blizzard's
+        -- icons come as one unbroken run, so they can't sit either side of
+        -- the portrait as ours did: they start next to it, on the side they
+        -- flow toward, and run outward. Offsets are in the container's own
+        -- scale; the pill belongs to the enlarged strip.
+        local k = STRIP_SCALE
+        local x = (t.avatar.D / 2 + 6) * k
+        -- Flowing downward: hang from the pill's bottom edge. Flowing upward
+        -- ("buffs on top" in Edit Mode): the first row is dropped below the
+        -- pill; further rows would climb into it.
+        local y = down and (-4 * k) or (-(4 + 30) * k)
+        tcSeat = { corner, t.healthPill, "BOTTOM", right and -x or x, y }
+    else
+        -- Normal target frame: above the cast bar, from the pill's end on
+        -- the side the icons flow from.
+        local y = 6 + 14 + 8 + (down and 44 or 0)
+        tcSeat = { corner, t.healthPill, right and "TOPRIGHT" or "TOPLEFT", right and -6 or 6, y }
+    end
     pcall(function()
         cont:SetIgnoreParentAlpha(true)
         cont:SetAlpha(1)
