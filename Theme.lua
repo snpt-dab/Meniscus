@@ -116,6 +116,18 @@ fontLoader:SetScript("OnEvent", function(self, _, name)
     if name ~= ns.name then return end
     self:UnregisterAllEvents()
     local db = MinimalUIDB
+    -- The saved font paths include the addon's folder name. After the addon
+    -- was renamed they pointed at a folder that no longer exists, every
+    -- SetFont failed, and the first SetText on such a string raised "Font
+    -- not set" (which took the unit frames down). Point them at wherever
+    -- this addon lives now.
+    if db then
+        for _, k in ipairs({ "fontPath", "fontBold" }) do
+            if type(db[k]) == "string" then
+                db[k] = db[k]:gsub("^Interface[/\]+AddOns[/\]+[^/\]+[/\]+", "Interface/AddOns/" .. ns.name .. "/")
+            end
+        end
+    end
     -- One-time switch to Inter when it was introduced (earlier picks were tests).
     if db and not db.fontInterMigrated then
         db.fontInterMigrated, db.font, db.fontPath, db.fontBold = true, INTER.key, INTER.path, INTER.bold
