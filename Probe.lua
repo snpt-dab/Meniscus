@@ -535,6 +535,70 @@ ns.commands.under = function()
     end
 end
 
+-- /men artprobe : what the thing under the mouse is drawn with. Hover a
+-- piece of stock art that survived restyling, type it, and the frame, its
+-- regions (atlas / texture, layer, size) and its parents are added to
+-- MinimalUIDB.artprobe (read after a reload). "/men artprobe clear" empties it.
+ns.commands.artprobe = function(rest)
+    if not MinimalUIDB then return end
+    if rest and rest:find("clear") then MinimalUIDB.artprobe = nil; return ns:Print("Art recordings cleared.") end
+    local store = MinimalUIDB.artprobe or {}
+    MinimalUIDB.artprobe = store
+    local foci = GetMouseFoci and GetMouseFoci() or { GetMouseFocus and GetMouseFocus() }
+    if #foci == 0 then return ns:Print("Nothing under the mouse.") end
+    local function num(v) return (type(v) == "number" and not (issecretvalue and issecretvalue(v))) and string.format("%.0f", v) or "?" end
+    local function frameLine(f, tag)
+        local keys = {}
+        local par = f.GetParent and f:GetParent()
+        if par then for k, v in pairs(par) do if v == f and type(k) == "string" then keys[#keys + 1] = k end end end
+        return tag .. " [" .. f:GetObjectType() .. "] " .. tostring(f:GetName() or "?") .. " key=" .. table.concat(keys, ",")
+            .. " " .. num(f:GetWidth()) .. "x" .. num(f:GetHeight()) .. " lvl " .. tostring(f:GetFrameLevel())
+            .. (f:IsShown() and "" or " hidden")
+            .. ((f.__muiSkin or f.__muiRow or f.__muiDeepSB or f.__muiDeepArt) and " (seen by skin)" or "")
+            .. (f.__muiOurs and " (ours)" or "")
+    end
+    local function regions(f, out, indent)
+        local names = {}
+        for k, v in pairs(f) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+        for _, r in ipairs({ f:GetRegions() }) do
+            pcall(function()
+                local what = r:GetObjectType()
+                local art = ""
+                if what == "Texture" then
+                    art = " atlas=" .. tostring(r.GetAtlas and r:GetAtlas()) .. " tex=" .. tostring(r:GetTexture())
+                        .. " layer=" .. tostring(r:GetDrawLayer())
+                elseif what == "FontString" then
+                    local t = r:GetText()
+                    art = (type(t) == "string" and not (issecretvalue and issecretvalue(t))) and (' "' .. t:sub(1, 24) .. '"') or ""
+                end
+                out[#out + 1] = indent .. (names[r] or "#") .. " <" .. what .. ">" .. art .. " " .. num(r:GetWidth()) .. "x"
+                    .. num(r:GetHeight()) .. (r:IsShown() and "" or " hidden") .. " a=" .. num((r:GetAlpha() or 0) * 100)
+            end)
+        end
+    end
+    for _, f in ipairs(foci) do
+        local out = {}
+        pcall(function()
+            local cur, tag = f, "FOCUS"
+            for up = 0, 3 do
+                if not cur or cur == UIParent or (cur.IsForbidden and cur:IsForbidden()) then break end
+                out[#out + 1] = frameLine(cur, tag)
+                regions(cur, out, "    ")
+                if up == 0 then
+                    for _, c in ipairs({ cur:GetChildren() }) do
+                        out[#out + 1] = "  " .. frameLine(c, "child")
+                        regions(c, out, "      ")
+                    end
+                end
+                cur = cur.GetParent and cur:GetParent()
+                tag = "PARENT" .. (up + 1)
+            end
+        end)
+        store[#store + 1] = out
+    end
+    ns:Print("Recorded " .. #foci .. " (" .. #store .. " in all). /reload when done.")
+end
+
 -- /men winprobe : which Blizzard windows are open right now, and what they
 -- are made of. Open a window that needs restyling, run this, and it is
 -- added to MinimalUIDB.winprobe (read after a reload). Run it once per

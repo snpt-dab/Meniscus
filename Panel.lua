@@ -698,6 +698,7 @@ ns.commands.help = function()
         "/men blizz  toggle Blizzard unit frames",
         "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
+        "/men artprobe [clear]  record what the thing under the mouse is drawn with",
         "/men console [wings]  dark plate behind the bottom row; wings = seat chat and damage meter in it",
         "/men dome [move | reset]  round minimap on the action bar; move = drag it",
         "/men noportrait  no player frame: your portrait moves to the console's character panel",

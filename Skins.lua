@@ -1368,6 +1368,70 @@ local function deepBar(f)
     ns.RoundedRect(back, -7, 1, 5, 0.06, 0.06, 0.07, 1)
 end
 
+-- List rows and section headers drawn as a bar of art (brown header bars
+-- with a gold rim, the red-tinted mount / pet rows): the art goes and a
+-- rounded plate of ours takes its place. A row's "selected" overlay becomes
+-- a rounded accent wash, and its icon gets rounded corners.
+local ROUND_TGA = "Interface/AddOns/Meniscus/Media/rounded.tga"
+local SELECT_KEYS = { "selectedTexture", "SelectedTexture", "Selected", "selected", "SelectedHighlight", "SelectedBar" }
+local ICON_KEYS = { "icon", "Icon", "IconTexture", "iconTexture" }
+
+local function roundIcon(f)
+    for i = 1, #ICON_KEYS do
+        local ic = rawget(f, ICON_KEYS[i])
+        if ic and not ic.__muiRound and ic.IsObjectType and ic:IsObjectType("Texture") and ic.AddMaskTexture then
+            local w, h = ic:GetWidth(), ic:GetHeight()
+            if w and h and not issecretvalue(w) and not issecretvalue(h) and w >= 18 and w <= 110
+                    and h >= 18 and math.abs(w - h) <= 4 then
+                ic.__muiRound = true
+                local m = f:CreateMaskTexture()
+                m:SetTexture(ROUND_TGA, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                m:SetAllPoints(ic)
+                ic:AddMaskTexture(m)
+            end
+        end
+    end
+end
+
+local function deepRow(f)
+    local w, h = f:GetWidth(), f:GetHeight()
+    if not (w and h) or issecretvalue(w) or issecretvalue(h) or w < 1 or h < 1 then return end -- not laid out yet
+    f.__muiRow = true
+    if w < 150 or h < 14 or h > 64 then return end
+    local sel = {}
+    for i = 1, #SELECT_KEYS do
+        local o = rawget(f, SELECT_KEYS[i])
+        if o and o.IsObjectType and o:IsObjectType("Texture") then sel[o] = true end
+    end
+    local found = false
+    for _, r in ipairs({ f:GetRegions() }) do
+        if r:IsObjectType("Texture") then
+            local rw, rh = r:GetWidth(), r:GetHeight()
+            if sel[r] then
+                r:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.20)
+                local m = f:CreateMaskTexture()
+                m:SetTexture(ROUND_TGA, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                m:SetAllPoints(r)
+                r:AddMaskTexture(m)
+            elseif r:GetDrawLayer() ~= "HIGHLIGHT" and rw >= w * 0.8 and rh >= h * 0.6 then
+                fade(r); found = true
+            end
+        end
+    end
+    if not found then return end
+    if h <= 30 then
+        -- A header: its small glyphs (the yellow minus / plus) go grey.
+        for _, r in ipairs({ f:GetRegions() }) do
+            if r:IsObjectType("Texture") and not r.__muiFaded and r:GetWidth() <= 24 and r:GetHeight() <= 24 then
+                r:SetDesaturated(true); r:SetVertexColor(0.7, 0.7, 0.75)
+            end
+        end
+    end
+    local rad = math.min(8, h / 2)
+    ns.RoundedRect(f, -8, 0, rad, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(f, -7, 1, rad - 1, 0.09, 0.09, 0.105, 1)
+end
+
 local function isGold(fs)
     local r, g, b = fs:GetTextColor()
     if type(r) ~= "number" or (issecretvalue and issecretvalue(r)) then return false end
@@ -1412,6 +1476,13 @@ local function deepSkin(f, depth)
         f.__muiPaging = true
         pcall(arrowButton, f.PrevPageButton, -1)
         pcall(arrowButton, f.NextPageButton, 1)
+    end
+    if depth > 0 then
+        pcall(roundIcon, f)
+        if isButton and not f.__muiRow and not f.__muiSkin and not f.__muiDeepDD and not f.__muiDeepTab
+                and not (f.Arrow and f.Text) then
+            pcall(deepRow, f)
+        end
     end
     if not deepScrollBar(f) then
         deepEditBox(f)
@@ -1624,6 +1695,21 @@ local function deepMap()
             end
         end
     end
+    -- The client's own "Player: x, y" line duplicates our coordinates chip:
+    -- found by its text (a few tries after the map opens), then hidden.
+    local tries, coordGone = 0, not (S.db and S.db.coords)
+    local function findCoords(f, d)
+        for _, r in ipairs({ f:GetRegions() }) do
+            if r:IsObjectType("FontString") and not r.__muiOurs then
+                local t = r:GetText()
+                if type(t) == "string" and not issecretvalue(t) and t:find("^Player:%s*%d") then fade(r); coordGone = true end
+            end
+        end
+        if d >= 2 then return end
+        for _, c in ipairs({ f:GetChildren() }) do
+            if c ~= wm.QuestLog and not (c.IsForbidden and c:IsForbidden()) and c:GetNumRegions() < 40 then findCoords(c, d + 1) end
+        end
+    end
     local tick = ours(CreateFrame("Frame", nil, wm))
     tick:SetSize(1, 1)
     tick:SetPoint("TOPLEFT")
@@ -1634,6 +1720,7 @@ local function deepMap()
         if acc < 0.5 then return end
         acc = 0
         pcall(crumbs)
+        if not coordGone and tries < 12 then tries = tries + 1; pcall(findCoords, wm, 0) end
     end)
     pcall(crumbs)
     deepDriver(wm, "WorldMapFrame")
