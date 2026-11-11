@@ -71,7 +71,12 @@ local function create(parent, unit, below)
         if unit == "player" and UF and UF.orbStyleOn and O and O.health then
             h:ClearAllPoints()
             local dome, qb = _G.MinimalUI_MinimapDome, _G.MinimalUIQuickBuff
-            if dome and qb then
+            local B = ns.modules.Bars
+            if dome and B and B.charSlot then
+                -- Quick Buff lives on the character panel: the cast bar sits
+                -- directly on the dome.
+                h:SetPoint("BOTTOM", dome, "TOP", 0, 8)
+            elseif dome and qb then
                 -- Minimap dome layout: above the Quick Buff pill (which
                 -- sits on the dome), whether or not the pill is showing.
                 h:SetPoint("BOTTOM", qb, "TOP", 0, 8)
