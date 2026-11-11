@@ -1218,6 +1218,45 @@ local function fadeRegions(f, except)
     end
 end
 
+-- Small stock controls we keep but drain of colour (scroll arrows and
+-- thumbs, collapse toggles, dropdown arrows, rotate buttons). Their art is
+-- swapped on every hover / press / state change, which brings the gold
+-- back, so the grey is re-applied on those moments (and by the deep pass).
+local GREY = { 0.62, 0.62, 0.67 }
+local function greyNow(b)
+    local regs, n = ns.Regs(b, 12) -- its own buffer: the deep pass uses 0-9
+    for i = 1, n do
+        local r = regs[i]
+        if r:IsObjectType("Texture") and not r.__muiFaded then
+            local c = r.__muiTint or GREY
+            r:SetDesaturated(true)
+            r:SetVertexColor(c[1], c[2], c[3])
+        end
+    end
+end
+local function greySoon(self)
+    greyNow(self)
+    C_Timer.After(0, function() greyNow(self) end)
+end
+local function keepGrey(b)
+    if not b or b.__muiGrey or not b.GetRegions then return end
+    b.__muiGrey = true
+    greyNow(b)
+    for _, ev in ipairs({ "OnEnter", "OnLeave", "OnMouseDown", "OnMouseUp", "OnShow", "OnEnable", "OnDisable" }) do
+        pcall(b.HookScript, b, ev, greySoon)
+    end
+end
+-- Atlas families that mark such a control.
+local GREY_ATLAS = { "common-dropdown", "questcollapse", "redbutton-", "campaign_headericon", "transmog-nav-slot",
+                     "minimal-scrollbar" }
+local GREY_KEYS = { "RotateLeftButton", "RotateRightButton", "RightPaneToggleButton", "ToggleCollapseButton" }
+local function isGreyAtlas(a)
+    if type(a) ~= "string" then return false end
+    a = a:lower()
+    for i = 1, #GREY_ATLAS do if a:find(GREY_ATLAS[i], 1, true) then return true end end
+    return false
+end
+
 local function deepScrollBar(f)
     if f.__muiDeepSB then return true end
     -- Modern scroll bar: Track / Thumb / Back / Forward.
@@ -1225,26 +1264,10 @@ local function deepScrollBar(f)
     if f.Track and thumb and (f.Back or f.Forward) then
         f.__muiDeepSB = true
         fadeRegions(f.Track)
-        -- The arrows swap atlas on hover / press (…-over, …-down): grey
-        -- them again after every swap, or the gold comes back.
-        local function grey(r) r:SetDesaturated(true); r:SetVertexColor(0.55, 0.55, 0.6) end
-        for _, b in ipairs({ f.Back, f.Forward }) do
-            if b then
-                for _, r in ipairs({ b:GetRegions() }) do
-                    if r:IsObjectType("Texture") then
-                        grey(r)
-                        hooksecurefunc(r, "SetAtlas", grey)
-                        hooksecurefunc(r, "SetTexture", grey)
-                    end
-                end
-            end
-        end
         -- Recolor, never replace: Blizzard's scroll bar reads the thumb's
         -- atlas back (GetAtlasInfo) and errors without one, which aborts
         -- the list update it's part of (empty guild roster).
-        for _, r in ipairs({ thumb:GetRegions() }) do
-            if r:IsObjectType("Texture") then r:SetDesaturated(true); r:SetVertexColor(0.55, 0.55, 0.6) end
-        end
+        keepGrey(f.Back); keepGrey(f.Forward); keepGrey(thumb)
         return true
     end
     -- Classic slider scroll bar: up / down buttons and a thumb texture.
@@ -1388,6 +1411,14 @@ local function roundIcon(f)
                 m:SetTexture(ROUND_TGA, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
                 m:SetAllPoints(ic)
                 ic:AddMaskTexture(m)
+                -- Its square hover glow follows the same shape.
+                local hl = rawget(f, "HighlightTexture") or (f.GetHighlightTexture and f:GetHighlightTexture())
+                if hl and hl.AddMaskTexture and not hl.__muiRound then
+                    hl.__muiRound = true
+                    hl:SetColorTexture(1, 1, 1, 0.12)
+                    hl:ClearAllPoints(); hl:SetAllPoints(ic)
+                    hl:AddMaskTexture(m)
+                end
             end
         end
     end
@@ -1477,6 +1508,23 @@ local function deepSkin(f, depth)
         pcall(arrowButton, f.PrevPageButton, -1)
         pcall(arrowButton, f.NextPageButton, 1)
     end
+    if f.__muiGrey then greyNow(f) end
+    if depth > 0 and not f.__muiGreyKeys then
+        f.__muiGreyKeys = true
+        for i = 1, #GREY_KEYS do
+            local b = rawget(f, GREY_KEYS[i])
+            if b and b.IsObjectType and b:IsObjectType("Button") then keepGrey(b) end
+        end
+        -- Appearance tiles: a model on a black square. The square goes and a
+        -- rounded card takes its place.
+        if f.Border and f:IsObjectType("DressUpModel") then
+            for _, r in ipairs({ f:GetRegions() }) do
+                if r:IsObjectType("Texture") and r:GetDrawLayer() == "BACKGROUND" and not r:GetAtlas() then fade(r) end
+            end
+            ns.RoundedRect(f, -8, -3, 8, T.border[1], T.border[2], T.border[3], 1)
+            ns.RoundedRect(f, -7, -2, 7, 0.085, 0.085, 0.10, 1)
+        end
+    end
     if depth > 0 then
         pcall(roundIcon, f)
         if isButton and not f.__muiRow and not f.__muiSkin and not f.__muiDeepDD and not f.__muiDeepTab
@@ -1503,7 +1551,12 @@ local function deepSkin(f, depth)
             if not r.__muiDeepSeen then
                 r.__muiDeepSeen = true
                 local a = r.GetAtlas and r:GetAtlas()
-                if isOrnateAtlas(a) then
+                if isButton and not f.__muiGrey and isGreyAtlas(a) then
+                    -- The selected ring of a slot picker keeps a colour: ours.
+                    local sel = rawget(f, "SelectedTexture")
+                    if sel and sel.IsObjectType then sel.__muiTint = T.accent end
+                    keepGrey(f)
+                elseif isOrnateAtlas(a) then
                     fade(r)
                 elseif not isButton and r:GetWidth() > 100 and r:GetHeight() > 100 then
                     fade(r)  -- panel art (parchment, painted backgrounds)
@@ -1649,11 +1702,7 @@ local function deepMap()
         if bf.TitleContainer then fadeRegions(bf.TitleContainer) end
         local mm = bf.MaxMinButtonFrame
         if mm then
-            for _, b in ipairs({ mm:GetChildren() }) do
-                for _, r in ipairs({ b:GetRegions() }) do
-                    if r:IsObjectType("Texture") then r:SetDesaturated(true); r:SetVertexColor(0.7, 0.7, 0.75) end
-                end
-            end
+            for _, b in ipairs({ mm:GetChildren() }) do keepGrey(b) end
         end
     end
     -- Painted backdrops of the quest log side (not the map canvas).
