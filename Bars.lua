@@ -822,6 +822,27 @@ local function microGlyph(btn)
     f:SetFrameLevel(btn:GetFrameLevel() + 2)
     local tinted, holes = {}, {}
     local stroke = math.max(1.8, S / 9)
+    -- Center every glyph on the grid's middle, whatever box its strokes
+    -- happen to cover as drawn (a flag from 2 to 14 and three bars from 4
+    -- to 12 otherwise sit at different heights in the row).
+    local x0, x1, y0, y1
+    local function span(x, y, r)
+        x0 = x0 and math.min(x0, x - r) or (x - r); x1 = x1 and math.max(x1, x + r) or (x + r)
+        y0 = y0 and math.min(y0, y - r) or (y - r); y1 = y1 and math.max(y1, y + r) or (y + r)
+    end
+    for _, p in ipairs(spec) do
+        if p[1] == "l" then span(p[2], p[3], 0); span(p[4], p[5], 0)
+        elseif p[1] == "o" or p[1] == "d" then span(p[2], p[3], p[4]) end
+    end
+    local ox, oy = 0, 0
+    if x0 then ox, oy = 8 - (x0 + x1) / 2, 8 - (y0 + y1) / 2 end
+    local shifted = {}
+    for i, p in ipairs(spec) do
+        if p[1] == "l" then shifted[i] = { "l", p[2] + ox, p[3] + oy, p[4] + ox, p[5] + oy, p[6] }
+        elseif p[1] == "o" or p[1] == "d" then shifted[i] = { p[1], p[2] + ox, p[3] + oy, p[4] }
+        else shifted[i] = p end
+    end
+    spec = shifted
     for _, p in ipairs(spec) do
         if p[1] == "l" then
             local ln = f:CreateLine(nil, "ARTWORK")
@@ -857,7 +878,8 @@ local function microGlyph(btn)
         elseif p[1] == "t" then
             local fs = f:CreateFontString(nil, "OVERLAY")
             ns:SetFont(fs, math.floor(S * 1.05 + 0.5), "", true)
-            fs:SetPoint("CENTER", f, "CENTER", 0, 0)
+            -- (A character's ink sits above the middle of its line box.)
+            fs:SetPoint("CENTER", f, "CENTER", 0, -S * 0.08)
             fs:SetText(p[2])
             tinted[#tinted + 1] = fs
         end
