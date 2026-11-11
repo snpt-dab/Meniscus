@@ -2394,16 +2394,31 @@ function Orbs:BuildAmmo()
     f.ammoDiv:SetPoint("RIGHT", f.chip, "RIGHT", -29, 0)
     f.ammoDiv:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
     local AMMO, RANGED = _G.INVSLOT_AMMO or 0, _G.INVSLOT_RANGED or 18
+    -- The item in a slot, only if it really is one of the given kind.
+    -- (An empty slot still reports a count of 1, and on this client the
+    -- ammo slot can report an id that isn't a real item: a warlock showed
+    -- "1". So the id has to be a positive number and, where the client can
+    -- say, the item has to be a projectile / a thrown weapon.)
+    local PROJECTILE = (Enum and Enum.ItemClass and Enum.ItemClass.Projectile) or 6
+    local WEAPON = (Enum and Enum.ItemClass and Enum.ItemClass.Weapon) or 2
+    local THROWN = (Enum and Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Thrown) or 16
+    local function itemIn(slot, class, subclass)
+        local id = GetInventoryItemID("player", slot)
+        if type(id) ~= "number" or id <= 0 then return nil end
+        if C_Item and C_Item.GetItemInfoInstant then
+            local _, _, _, _, _, c, sc = C_Item.GetItemInfoInstant(id)
+            if c == nil then return nil end
+            if c ~= class or (subclass and sc ~= subclass) then return nil end
+        end
+        return id
+    end
     local function loaded()
-        -- An empty slot reports a count of 1, so the item has to be there.
-        if GetInventoryItemID and GetInventoryItemCount then
-            if GetInventoryItemID("player", AMMO) then
-                return GetInventoryItemCount("player", AMMO)
-            end
-            if GetInventoryItemID("player", RANGED) then
-                local n = GetInventoryItemCount("player", RANGED)
-                if type(n) == "number" and n > 1 then return n end -- a stack: thrown
-            end
+        if not (GetInventoryItemID and GetInventoryItemCount) then return nil end
+        if itemIn(AMMO, PROJECTILE) then
+            return GetInventoryItemCount("player", AMMO)
+        end
+        if itemIn(RANGED, WEAPON, THROWN) then
+            return GetInventoryItemCount("player", RANGED)
         end
         return nil
     end
