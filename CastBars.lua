@@ -73,9 +73,10 @@ local function create(parent, unit, below)
             local dome, qb = _G.MinimalUI_MinimapDome, _G.MinimalUIQuickBuff
             local B = ns.modules.Bars
             if dome and B and B.charSlot then
-                -- Quick Buff lives on the character panel: the cast bar sits
-                -- directly on the dome.
-                h:SetPoint("BOTTOM", dome, "TOP", 0, 8)
+                -- Quick Buff lives on the character panel and the target's
+                -- portrait stands right above the map: the cast bar
+                -- straddles the dome's top edge, between the two.
+                h:SetPoint("CENTER", dome, "TOP", 0, 0)
             elseif dome and qb then
                 -- Minimap dome layout: above the Quick Buff pill (which
                 -- sits on the dome), whether or not the pill is showing.
@@ -92,7 +93,13 @@ local function create(parent, unit, below)
         local beside = unit == "target" and UF and UF.targetStrip
         if below and below:IsShown() and not beside then y = y - (ns.SMALL_FRAME_GAP or 8) - below:GetHeight() end
         h:ClearAllPoints()
-        h:SetPoint("TOP", parent, "BOTTOM", 0, y)
+        if beside then
+            -- Target strip: the portrait hangs under the frame, so the cast
+            -- bar goes on top of it.
+            h:SetPoint("BOTTOM", parent, "TOP", 0, 6)
+        else
+            h:SetPoint("TOP", parent, "BOTTOM", 0, y)
+        end
     end
     place()
     h.place = place

@@ -618,6 +618,7 @@ function A:OnInit(db)
     end
 
     -- Target: 7 icons stop short of the avatar on the pill's right end.
+    -- (A:PlaceTargetRow moves them under the bar in the console's strip.)
     table.insert(self.rows, newRow(UF.target, 7, 22, 3, { HARMFUL, HELPFUL }, above(UF.target),
         { "PLAYER_TARGET_CHANGED" }))
     if UF.focus then
@@ -649,6 +650,35 @@ function A:OnInit(db)
     -- After the bars, orbs and minimap have settled where they are.
     C_Timer.After(0.5, function() A:SeatBlizzard() end)
     C_Timer.After(4, function() pcall(A.ProbeBlizzard, A) end)
+end
+
+-- The target's icon row. Normally above its health pill. In the console's
+-- target strip the portrait hangs under the middle of the bar, so the icons
+-- go under the bar too, either side of it: the first three to the left of
+-- the portrait, the rest to the right.
+function A:PlaceTargetRow(strip)
+    local row = self.rows and self.rows[1]
+    local UF = ns.modules.UnitFrames
+    local t = UF and UF.target
+    if not (row and t and row.frame == t) then return end
+    local size, gap = 22, 3
+    local step = size + gap
+    local pillW, D = t.healthPill:GetWidth(), t.avatar.D
+    local leftN = math.max(1, math.floor((pillW / 2 - D / 2 - 4) / step))
+    for i, b in ipairs(row.icons) do
+        b:ClearAllPoints()
+        if strip then
+            if i <= leftN then
+                -- Counting outward from the portrait, so the first debuff is
+                -- the one nearest it.
+                b:SetPoint("TOPRIGHT", t.healthPill, "BOTTOM", -(D / 2 + 4) - (i - 1) * step, -4)
+            else
+                b:SetPoint("TOPLEFT", t.healthPill, "BOTTOM", (D / 2 + 4) + (i - leftN - 1) * step, -4)
+            end
+        else
+            b:SetPoint("BOTTOMLEFT", t.healthPill, "TOPLEFT", (i - 1) * step, 5)
+        end
+    end
 end
 
 -- ── Blizzard's buff frames, pinned into our layout ────────────────────────
