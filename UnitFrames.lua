@@ -888,6 +888,7 @@ function UF:PlaceTarget()
     if CB and CB.player and CB.player.place then CB.player.place() end
     local AU = ns.modules.Auras
     if AU and AU.PlaceTargetRow then pcall(AU.PlaceTargetRow, AU, strip) end
+    pcall(self.SeatTargetAuras, self)
 end
 
 local STYLE_NAMES = { frame = "normal frame", orb = "on the health orb's edge", none = "none (level in the health orb's pill)" }
@@ -1048,6 +1049,53 @@ local function ghostTarget()
     quietMouse(fr, 4)
 end
 
+-- Blizzard's target frame keeps its buff / debuff icons in a managed "aura
+-- container" (TargetFrame:GetAuraContainer()). That container is the one
+-- thing that can show a target's auras live in combat, and it only stays
+-- that way if nothing of ours is written into it: calling its setters from
+-- addon code would taint its fields and its next combat update would be
+-- refused like ours are. So it is only ever touched through plain widget
+-- calls: made visible despite its ghosted parent, and re-anchored onto our
+-- target strip (and put back whenever Blizzard's layout re-anchors it).
+-- Icon size, rows and "buffs on top" stay Edit Mode's target-frame settings.
+local tcSeat, tcSeating = nil, false
+local tcHooked = setmetatable({}, { __mode = "k" }) -- (kept here: nothing is written on the container)
+local function reseatTargetAuras(cont)
+    if not tcSeat or tcSeating then return end
+    tcSeating = true
+    pcall(function()
+        cont:ClearAllPoints()
+        cont:SetPoint(tcSeat[1], tcSeat[2], tcSeat[3], tcSeat[4], tcSeat[5])
+    end)
+    tcSeating = false
+end
+function UF:SeatTargetAuras()
+    local root, t = _G.TargetFrame, self.target
+    if not (root and t and root.__muiGhost and root.GetAuraContainer) then return end
+    local ok, cont = pcall(root.GetAuraContainer, root)
+    if not ok or type(cont) ~= "table" or not cont.SetPoint then return end
+    -- Which corner the icons flow from decides which corner gets pinned.
+    local corner = "BOTTOMLEFT"
+    local okA, ap = pcall(function() return cont.GetFlowLayoutAnchorPoint and cont:GetFlowLayoutAnchorPoint() end)
+    if okA and type(ap) == "string" and not issecretvalue(ap) and ap ~= "" then corner = ap end
+    local right = corner:find("RIGHT") ~= nil
+    local down = corner:find("TOP") ~= nil
+    -- Above the target's cast bar (which sits on its health pill): start at
+    -- the pill's end on the side the icons flow from.
+    local y = 6 + 14 + 8 + (down and 44 or 0)
+    tcSeat = { corner, t.healthPill, right and "TOPRIGHT" or "TOPLEFT", right and -6 or 6, y }
+    pcall(function()
+        cont:SetIgnoreParentAlpha(true)
+        cont:SetAlpha(1)
+    end)
+    if not tcHooked[cont] then
+        tcHooked[cont] = true
+        hooksecurefunc(cont, "SetPoint", function(self2) if not tcSeating then reseatTargetAuras(self2) end end)
+    end
+    reseatTargetAuras(cont)
+    self.liveTargetCont = cont
+end
+
 -- What Blizzard's target frame is made of on this client, and where its
 -- aura icons sit (MinimalUIDB.targetprobe): needed to borrow them. Taken
 -- automatically the first time a target shows any aura icons; /men
@@ -1055,6 +1103,9 @@ end
 local function probeTarget()
     local root = _G.TargetFrame
     if not (root and MinimalUIDB) then return 0 end
+    -- (Positions and sizes come back hidden in combat, which made the last
+    -- recording useless: only record outside it.)
+    if InCombatLockdown() then return -1 end
     local out, auraLike = {}, 0
     local function f0(v) return type(v) == "number" and string.format("%.0f", v) or tostring(v) end
     local function line(tag, f, depth)
@@ -1176,7 +1227,8 @@ function UF:ApplyBlizzard(hide)
             ev:RegisterUnitEvent("UNIT_AURA", "target")
             local tries = 0
             ev:SetScript("OnEvent", function(frame)
-                if tries >= 12 then frame:UnregisterAllEvents() return end
+                if not InCombatLockdown() and not UF.liveTargetCont then pcall(UF.SeatTargetAuras, UF) end
+                if tries >= 12 then return end
                 C_Timer.After(1, function()
                     if not UnitExists("target") then return end
                     tries = tries + 1

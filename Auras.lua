@@ -387,6 +387,14 @@ end
 local function fill(row, reset)
     local unit = row.frame.unit
     local i = 1
+    -- The target's icons are Blizzard's own once its aura container is seated
+    -- on our strip (UnitFrames.lua): ours would be a frozen duplicate.
+    local UFm = ns.modules.UnitFrames
+    if UFm and UFm.liveTargetCont and row.frame == UFm.target then
+        hideFrom(row, 1)
+        row.shown = 0
+        return
+    end
     if UnitExists(unit) then
         row.buf = row.buf or {}
         for _, f in ipairs(row.filters) do
