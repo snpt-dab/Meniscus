@@ -400,9 +400,12 @@ function Bars:Arrange()
     -- pet's, with a name pill on its bottom edge (Bars:ApplyCharWell).
     self.charSlot = nil
     if slots then
-        local cw = orbUnitW + 20 -- the pet well's width
+        -- The pet well's width, or the slot's if that is a touch narrower
+        -- (on a 2100-wide UI the slot is 251.5 against 252, which is why
+        -- nothing showed at first).
         local L = slots.left
-        if (L.x1 - L.x0) >= cw then
+        local cw = math.min(orbUnitW + 20, L.x1 - L.x0)
+        if cw >= 200 then
             local cx, cy = (L.x0 + L.x1) / 2, (slots.y0 + slots.y1) / 2 + 6
             local wx, wy, wh = cx - cw / 2, cy - orbD / 2 - 8, orbD + 16
             self.charSlot = {
