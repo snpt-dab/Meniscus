@@ -192,7 +192,8 @@ local function bubble(s)
         f.thumb:SetColorTexture(0.36, 0.36, 0.40, 1)
         local function placeThumb()
             local max = sf:GetVerticalScrollRange()
-            if max <= 0 then f.thumb:Hide(); return end
+            -- (A pixel or two of range is rounding, not content.)
+            if max <= 3 then f.thumb:Hide(); return end
             local h = sf:GetHeight()
             local size = math.max(16, h * h / (h + max))
             f.thumb:SetHeight(size)
@@ -204,6 +205,7 @@ local function bubble(s)
         sf:EnableMouseWheel(true)
         sf:SetScript("OnMouseWheel", function(self, d)
             local max = self:GetVerticalScrollRange()
+            if max <= 3 then max = 0 end
             self:SetVerticalScroll(math.max(0, math.min(max, self:GetVerticalScroll() - d * 36)))
             placeThumb()
         end)
@@ -217,7 +219,10 @@ local function bubble(s)
     b.text:SetText(s)
     local textH = b.text:GetStringHeight()
     b.inner:SetSize(CW - 34, textH + 2)
-    local h = math.min(textH + 24, BUBBLE_MAX)
+    -- The scroll area is the bubble minus 24 of padding: it has to be as
+    -- tall as the text's holder (textH + 2), or short text scrolls by the
+    -- difference and always shows a sliver of scroll bar.
+    local h = math.min(textH + 26, BUBBLE_MAX)
     b:SetSize(CW, h)
     b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 6)
     b.sf:SetVerticalScroll(0)
