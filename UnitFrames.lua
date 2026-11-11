@@ -1102,6 +1102,49 @@ local function probeTarget()
         end
     end
     walk(root, 1)
+    -- The icons are not children of the target frame: they live in a
+    -- managed "aura container" the frame hands out.
+    local okc, cont = pcall(function() return root.GetAuraContainer and root:GetAuraContainer() end)
+    if okc and type(cont) == "table" and cont.GetObjectType then
+        out[#out + 1] = "--- aura container ---"
+        line("container", cont, 0)
+        pcall(function()
+            out[#out + 1] = "alpha=" .. string.format("%.2f", cont:GetAlpha()) .. " effAlpha=" .. string.format("%.2f", cont:GetEffectiveAlpha())
+                .. " visible=" .. tostring(cont:IsVisible()) .. " strata=" .. tostring(cont:GetFrameStrata())
+                .. " ignoreParentAlpha=" .. tostring(cont.IsIgnoringParentAlpha and cont:IsIgnoringParentAlpha())
+                .. " R=" .. f0(cont:GetRight()) .. " T=" .. f0(cont:GetTop())
+            for i = 1, cont:GetNumPoints() do
+                local p, rel, rp, x, y = cont:GetPoint(i)
+                out[#out + 1] = "  point " .. i .. ": " .. tostring(p) .. " > " .. tostring(rel and (rel.GetName and rel:GetName() or "?"))
+                    .. " " .. tostring(rp) .. " " .. f0(x) .. "," .. f0(y)
+            end
+            local chain, pr = {}, cont:GetParent()
+            while pr and #chain < 6 do chain[#chain + 1] = tostring(pr:GetName() or "?"); pr = pr:GetParent() end
+            out[#out + 1] = "parents: " .. table.concat(chain, " < ")
+        end)
+        out[#out + 1] = "container keys: " .. keysOf(cont)
+        local shown = 0
+        pcall(function()
+            for _, c in ipairs({ cont:GetChildren() }) do
+                if c:IsShown() then
+                    shown = shown + 1
+                    if shown <= 5 then
+                        line("icon" .. shown, c, 1)
+                        out[#out + 1] = "    R=" .. f0(c:GetRight()) .. " T=" .. f0(c:GetTop()) .. " keys: " .. keysOf(c)
+                    end
+                end
+            end
+        end)
+        out[#out + 1] = "container children shown: " .. shown
+        auraLike = auraLike + shown
+        pcall(function()
+            out[#out + 1] = "frame: buffsOnTop=" .. tostring(root.buffsOnTop) .. " auraRows=" .. tostring(root.auraRows)
+            local sb = root.spellbar
+            if sb then line("spellbar", sb, 0) end
+        end)
+    else
+        out[#out + 1] = "aura container: " .. tostring(okc) .. " / " .. tostring(cont)
+    end
     out[#out + 1] = "shown aura-like children: " .. auraLike
     out[#out + 1] = string.format("screen %.0fx%.0f", UIParent:GetWidth(), UIParent:GetHeight())
     local best = MinimalUIDB.targetprobeCount or -1
@@ -1144,7 +1187,7 @@ function UF:ApplyBlizzard(hide)
         end
     end
     for _, fr in ipairs({ PlayerFrame, (not live) and TargetFrame or false, FocusFrame, PartyFrame, CompactPartyFrame,
-                          PlayerCastingBarFrame, TargetFrameSpellBar, FocusFrameSpellBar,
+                          PlayerCastingBarFrame, (not live) and TargetFrameSpellBar or false, FocusFrameSpellBar,
                           PetFrame, _G.BossTargetFrameContainer }) do
         if fr and not fr.__muiDisabled then
             fr.__muiDisabled = true
