@@ -1166,7 +1166,10 @@ local function build()
     win:EnableMouse(true)
     win:SetMovable(true)
     win:RegisterForDrag("LeftButton")
-    win:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    win:SetScript("OnDragStart", function(self)
+        if C.HideGearCovers then pcall(C.HideGearCovers) end
+        self:StartMoving()
+    end)
     win:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); savePos() end)
     local pos = C.db.pos
     if pos then win:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4]) else win:SetPoint("CENTER", 0, 40) end
@@ -1232,6 +1235,7 @@ local function build()
         C:Refresh()
     end)
     win:SetScript("OnHide", function()
+        if C.HideGearCovers then pcall(C.HideGearCovers) end
         pages.pet.stale = true
         call(PlaySound, SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
     end)
@@ -1320,12 +1324,69 @@ function C:OnInit(db)
     -- Using something that has to be applied to a piece of gear (an armor
     -- kit, a sharpening stone, an enchant) turns the cursor into "apply to
     -- what?". Blizzard's bag buttons open the character window at that
-    -- point; our bag tiles don't run that code, so we do it here: when the
-    -- cursor starts waiting for an item target, open the gear tab. Clicking
-    -- a gear tile then applies it (the tiles already pick the item up,
-    -- which is what "apply" means while the cursor is targeting).
+    -- point; our bag tiles don't run that code, so we do it here.
+    --
+    -- Applying it is a protected action: our gear tiles' own click
+    -- (PickupInventoryItem) gets "blocked from an action only available to
+    -- the Blizzard UI" while the cursor is targeting. So while it is, each
+    -- gear slot is covered by an invisible secure button that applies the
+    -- pending item / spell to that slot (a "/use <slot>" macro, plus the
+    -- secure button's own target-slot attribute as a second route).
+    -- The covers are separate frames placed over the tiles by screen
+    -- position, not children of the window and not anchored to it, so the
+    -- window itself stays free to open and close in combat. They can only
+    -- be shown out of combat; in combat, use /mui blizzchar.
+    local covers = {}
+    local function hideCovers()
+        if InCombatLockdown() then C.coversStale = true return end
+        C.coversStale = false
+        for _, cv in ipairs(covers) do cv:Hide() end
+    end
+    local function showCovers()
+        if InCombatLockdown() then
+            ns:Print("Can't target gear from this window in combat. Use /mui blizzchar for Blizzard's.")
+            return
+        end
+        for i, tile in ipairs(tiles) do
+            local cv = covers[i]
+            if not cv then
+                cv = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
+                cv:SetFrameStrata("DIALOG")
+                cv:RegisterForClicks("AnyDown", "AnyUp")
+                -- A ring in the accent color: "this is a valid target".
+                cv.ring = ns.RoundedRect(cv, 0, -2, 9, T.accent[1], T.accent[2], T.accent[3], 0.9, "OVERLAY")
+                ns.RoundedRect(cv, 1, 0, 7, 0, 0, 0, 0, "OVERLAY")
+                cv:SetScript("OnEnter", function(self)
+                    local t = self.tile
+                    local fn = t and t:GetScript("OnEnter")
+                    if fn then pcall(fn, t) end
+                end)
+                cv:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                covers[i] = cv
+            end
+            cv.tile = tile
+            local slot = tile.slot
+            local l, b = tile:GetLeft(), tile:GetBottom()
+            if slot and l and b and tile:IsVisible() then
+                local k = tile:GetEffectiveScale() / UIParent:GetEffectiveScale()
+                cv:SetAttribute("type", "macro")
+                cv:SetAttribute("macrotext", "/use " .. slot)
+                cv:SetAttribute("target-slot", slot)
+                cv:ClearAllPoints()
+                cv:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l * k, b * k)
+                cv:SetSize(tile:GetWidth() * k, tile:GetHeight() * k)
+                cv:Show()
+            else
+                cv:Hide()
+            end
+        end
+    end
+    C.HideGearCovers = hideCovers
+
     local aim = CreateFrame("Frame")
-    for _, e in ipairs({ "CURRENT_SPELL_CAST_CHANGED", "CURSOR_CHANGED" }) do pcall(aim.RegisterEvent, aim, e) end
+    for _, e in ipairs({ "CURRENT_SPELL_CAST_CHANGED", "CURSOR_CHANGED", "PLAYER_REGEN_ENABLED" }) do
+        pcall(aim.RegisterEvent, aim, e)
+    end
     local queued = false
     aim:SetScript("OnEvent", function()
         if queued then return end
@@ -1334,8 +1395,14 @@ function C:OnInit(db)
             queued = false
             if not (SpellIsTargeting and SpellCanTargetItem) then return end
             local ok, want = pcall(function() return SpellIsTargeting() and SpellCanTargetItem() end)
-            if ok and want and not (win and win:IsShown() and C.tab == "gear") then
-                pcall(C.Open, C, "gear")
+            if ok and want then
+                if not (win and win:IsShown() and C.tab == "gear") then pcall(C.Open, C, "gear") end
+                -- After the window has laid its tiles out.
+                C_Timer.After(0, function()
+                    if win and win:IsShown() and C.tab == "gear" then pcall(showCovers) end
+                end)
+            else
+                pcall(hideCovers)
             end
         end)
     end)
