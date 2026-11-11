@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Professions book (K): MinimalUI's version of Blizzard's book, which on
+-- Professions book (K): Meniscus's version of Blizzard's book, which on
 -- Forever is ProfessionsFrame with no profession open.
 --   header     "Professions", "N of 2 professions" chip
 --   primary    a card per profession slot: icon, name, rank, slim skill bar,
@@ -14,7 +14,7 @@ local T = ns.Theme
 
 local PB = ns:NewModule("ProfessionsBook", { enabled = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local W = 580
 local TOP = (ns.SHELL_H or 92) + 14
 local PRIM_H = 96

@@ -133,7 +133,7 @@ end
 local FLASH, WAIT, FILL = 0.6, 0.5, 1.5
 local HOLD = FLASH + WAIT
 local GAIN_COLOR = { 0.80, 0.74, 1.00, 0.55 }
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local phases, phase, pt, ft = {}, nil, 0, nil
 local power = 1 -- flash strength for the current gain, 0.35..1
 

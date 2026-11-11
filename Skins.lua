@@ -329,7 +329,7 @@ end
 -- construction as the unit-frame avatars: dark circle, a model window whose
 -- head rises out of the top, a crescent lip hiding the window's edges), and
 -- it plays a short talk animation whenever the dialog opens or turns a page.
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local TALK_ANIM = 60 -- EmoteTalk
 
 local function makeTalker(frame, unit)

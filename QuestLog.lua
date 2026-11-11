@@ -13,7 +13,7 @@ local T = ns.Theme
 
 local Q = ns:NewModule("QuestLog", { enabled = true, collapsed = {} })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local LIST_TOP = (ns.SHELL_H or 92) + 14 -- below the header band
 local W, H = 800, 540 - 66 + LIST_TOP

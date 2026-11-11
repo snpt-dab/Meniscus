@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Loot: MinimalUI's loot window and group loot rolls.
+-- Loot: Meniscus's loot window and group loot rolls.
 --   window  a compact card (at the cursor with Loot Under Mouse on): small noise band ("Loot", source
 --           name, close), item rows with quality-ringed icons, counts, a
 --           quest marker; click to loot, shift-click to link
@@ -13,7 +13,7 @@ local T = ns.Theme
 
 local L = ns:NewModule("Loot", { enabled = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local FILL = { 0.06, 0.06, 0.07, 0.98 }
 local BAND = { 0.095, 0.10, 0.11, 1 }

@@ -27,7 +27,7 @@ local UF = ns:NewModule("UnitFrames", {
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 
 -- Pill sizes must keep the generated aspect ratios: health 8:1, power 32:1.
 local SIZES = {
@@ -141,7 +141,7 @@ local newMask -- (defined with the avatar code below; used by the power orb here
 --               outside the ring.
 -- (Boss = a world boss, or anything whose level is hidden: the skull.)
 local GOLD, SILVER, EMBER = { 0.90, 0.72, 0.30 }, { 0.70, 0.78, 0.92 }, { 0.80, 0.22, 0.14 }
-local SWIRL_TEX = "Interface/AddOns/MinimalUI/Media/swirl.tga"
+local SWIRL_TEX = "Interface/AddOns/Meniscus/Media/swirl.tga"
 
 local function classOf(unit)
     local c = UnitClassification and UnitClassification(unit)
@@ -218,7 +218,7 @@ end
 -- For a player (not an NPC) the thin power pill is replaced by a small orb
 -- to the left of the health pill, as tall as the pill and with the same
 -- curve as its cap. An ordinary frame, so it can come and go in combat.
-local ORB_GLARE = "Interface/AddOns/MinimalUI/Media/orb_glare.tga"
+local ORB_GLARE = "Interface/AddOns/Meniscus/Media/orb_glare.tga"
 -- Built like the player's orbs, at a fraction of the size and with nothing
 -- moving: hairline ring, dark track, the liquid, a bright line on its
 -- surface, depth toward the bottom, glass sheen and glare.

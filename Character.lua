@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Character window: MinimalUI's own replacement for Blizzard's character
+-- Character window: Meniscus's own replacement for Blizzard's character
 -- screen (Character, Reputation and Skills tabs). Opening the character
 -- screen any normal way (C / U / K keys, micro menu) opens this instead.
 -- Other Blizzard tabs (honor, pet, currency) still open Blizzard's window, and
@@ -17,7 +17,7 @@ local T = ns.Theme
 
 local C = ns:NewModule("Character", { enabled = true, collapsed = {} })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 -- Header band (ns.SHELL_H), then tabs, a hairline, and the pages.
 local TABS_Y = (ns.SHELL_H or 92) + 12
@@ -1543,7 +1543,7 @@ function C:OnInit(db)
     attach()
 end
 
--- /mui char : open MinimalUI's character window.
+-- /mui char : open Meniscus's character window.
 -- /mui blizzchar : open Blizzard's character screen instead (this once).
 ns.commands.char = function() if C.db then C:Toggle("gear") end end
 ns.commands.blizzchar = function()

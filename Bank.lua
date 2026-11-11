@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Bank: MinimalUI's bank window, in the bag window's style (shared header
+-- Bank: Meniscus's bank window, in the bag window's style (shared header
 -- with the banker's 3D head; search and Sort in the band). Works with either
 -- bank system the client reports:
 --   tabs     (C_Bank character tabs) one pill per purchased tab, its slots
@@ -21,7 +21,7 @@ local T = ns.Theme
 
 local BK = ns:NewModule("Bank", { enabled = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local TILE, GAP, PAD = 34, 4, 16
 local COLS = 14
 local HEADER = (ns.SHELL_H or 92) + 12

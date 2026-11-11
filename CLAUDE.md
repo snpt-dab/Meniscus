@@ -1,7 +1,7 @@
-# MinimalUI — working notes
+# Meniscus — working notes
 
 Flat-dark, single-accent, pill/rounded UI overhaul for **WoW: Forever** (retail-style API, TOC 16001, Lua 5.1).
-SavedVariables: `_forever_/WTF/Account/<ACCOUNT>/SavedVariables/MinimalUI.lua` (MinimalUIDB).
+SavedVariables: `_forever_/WTF/Account/<ACCOUNT>/SavedVariables/Meniscus.lua` (MinimalUIDB).
 
 ## Workflow
 - The user tests in game and reports only problems. Don't send "testing now" turns; say what to check.
@@ -10,7 +10,7 @@ SavedVariables: `_forever_/WTF/Account/<ACCOUNT>/SavedVariables/MinimalUI.lua` (
   ```
   PYTHONPATH=<pylib> python -c "from lupa import lua51 as L; rt=L.LuaRuntime(); f=rt.eval('function(s,n) local f,e=loadstring(s,n) return f and \"ok\" or e end'); print(f(open('X.lua',encoding='utf-8').read(),'X.lua'))"
   ```
-- **New .lua files** must be added to `MinimalUI.toc` in dependency order (Core, Theme, Perf, Shell first). They need a full client restart, not just /reload.
+- **New .lua files** must be added to `Meniscus.toc` in dependency order (Core, Theme, Perf, Shell first). They need a full client restart, not just /reload.
 - **Runtime errors:** Core.lua logs unique errors and ADDON_ACTION_BLOCKED/FORBIDDEN into `MinimalUIDB.errors`. Read the SavedVariables file after the user reloads, or use `/mui errors` in game.
 - **Probes** (Probe.lua and others) dump client state when an API or frame is unknown, so we don't have to guess:
   - `/mui probe`, `uiprobe`, `menuprobe`, `keyprobe [KEY]`, `countprobe`, `guildprobe`, `dmprobe`

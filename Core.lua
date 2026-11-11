@@ -1,5 +1,6 @@
 local ADDON, ns = ...
 _G.MinimalUI = ns
+_G.Meniscus = ns
 
 ns.name = ADDON
 ns.modules = {}
@@ -78,7 +79,7 @@ function ns:NewModule(name, moduleDefaults)
 end
 
 function ns:Print(...)
-    print("|cff4fc3f7MinimalUI|r", ...)
+    print("|cff4fc3f7Meniscus|r", ...)
 end
 
 local f = CreateFrame("Frame")
@@ -190,6 +191,8 @@ ns.commands.errors = function()
 end
 
 SLASH_MINIMALUI1 = "/mui"
+SLASH_MINIMALUI2 = "/men"
+SLASH_MINIMALUI3 = "/meniscus"
 SlashCmdList.MINIMALUI = function(msg)
     local rawCmd, raw = (msg or ""):match("^(%S*)%s*(.*)$")
     local cmd, rest = rawCmd:lower(), raw:lower()

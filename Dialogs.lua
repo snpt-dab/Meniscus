@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Dialogs: MinimalUI's NPC conversation window, replacing the look of
+-- Dialogs: Meniscus's NPC conversation window, replacing the look of
 -- Blizzard's gossip and quest dialogs. Blizzard's frames stay open (closing
 -- them would end the conversation) but are made invisible and unclickable;
 -- this window drives the same C_GossipInfo / quest functions they use.
@@ -19,7 +19,7 @@ local T = ns.Theme
 
 local D = ns:NewModule("Dialogs", { enabled = true, typewriter = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local W = 380
 local HEADER_H = ns.SHELL_H or 92

@@ -44,7 +44,7 @@ local function killRegion(r)
     end)
 end
 
-local ROUND = "Interface/AddOns/MinimalUI/Media/rounded.tga"
+local ROUND = "Interface/AddOns/Meniscus/Media/rounded.tga"
 
 local function newMask(owner)
     local m = owner:CreateMaskTexture()

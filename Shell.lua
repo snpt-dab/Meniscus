@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Window shell: the header band every MinimalUI window shares (the NPC
+-- Window shell: the header band every Meniscus window shares (the NPC
 -- dialog's look). A slightly lighter band with a faint white-noise grain,
 -- a ring on the left holding a 3D head (popping out of the top) or an icon,
 -- title, dim subtitle, an optional status chip, a round close button, and a
@@ -14,7 +14,7 @@ local T = ns.Theme
 --   sh.band   -- anchor controls to its BOTTOMRIGHT (-14, 14)
 -- Content goes below ns.SHELL_H.
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local BAND = { 0.095, 0.10, 0.11, 1 }
 local TEXT_DARK = { 0.08, 0.08, 0.09, 1 }

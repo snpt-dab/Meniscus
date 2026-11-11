@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Mailbox: MinimalUI's mail window (shared header: mailbox icon, message
+-- Mailbox: Meniscus's mail window (shared header: mailbox icon, message
 -- count, money, unread chip, "Open all" pill in the band).
 --   Inbox: mail cards on the left (unread dot, sender, subject, days left,
 --   money / item count), the selected letter on the right (body, money,
@@ -13,7 +13,7 @@ local T = ns.Theme
 
 local ML = ns:NewModule("Mail", { enabled = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local W = 700
 local LIST_W = 300
 local CARD_H = 46

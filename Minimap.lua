@@ -8,7 +8,7 @@ local T = ns.Theme
 
 -- dome = true: a round map sitting on the main action bar (see MM:ApplyDome).
 local MM = ns:NewModule("Minimap", { enabled = true, dome = false, domeD = 130 })
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 
 -- Blizzard art to remove. Names differ between client generations, so each
 -- is optional.

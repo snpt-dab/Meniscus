@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Merchant: MinimalUI's vendor window (shared header: the vendor's 3D head,
+-- Merchant: Meniscus's vendor window (shared header: the vendor's 3D head,
 -- name, zone; Sell junk and Repair pills in the band). Buy / Buy back tabs,
 -- items as cards in a 2-column grid with price (red when you can't afford
 -- it), stack and stock. Click or right-click buys one lot (as listed, e.g.
@@ -13,7 +13,7 @@ local T = ns.Theme
 
 local M = ns:NewModule("Merchant", { enabled = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local W = 560
 local COLS, ROWS = 2, 6
 local PER = COLS * ROWS

@@ -15,13 +15,13 @@ local Theme = {
 ns.Theme = Theme
 
 -- ── Fonts ─────────────────────────────────────────────────────────────────
--- All MinimalUI text goes through ns:SetFont, which remembers each string's
+-- All Meniscus text goes through ns:SetFont, which remembers each string's
 -- size/flags so a font change applies live (ns:ApplyFont).
 -- Choices: Inter (bundled in Media, the default), font files the client
 -- actually has (from Blizzard's font objects plus known stock files, each
 -- verified by rendering test text), plus Media/font.ttf if you drop one there.
 -- bold = true uses the family's heavier weight (names, headings) when it has one.
-local MEDIA_FONTS = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA_FONTS = "Interface/AddOns/Meniscus/Media/"
 local INTER = { key = "inter", label = "Inter", path = MEDIA_FONTS .. "inter-400.ttf",
                 bold = MEDIA_FONTS .. "inter-600.ttf" }
 -- Manrope runs a step heavier than its nominal weights (500 body, 700 bold):
@@ -84,12 +84,12 @@ function ns:BuildFontList()
         table.insert(paths, p)
     end
     for _, p in ipairs(paths) do add(p:gsub("\\", "/"):lower(), labelFor(p), p) end
-    add("custom", "Custom (Media/font.ttf)", "Interface/AddOns/MinimalUI/Media/font.ttf")
+    add("custom", "Custom (Media/font.ttf)", "Interface/AddOns/Meniscus/Media/font.ttf")
     Theme.fonts = list
     return list
 end
 
--- Switch every MinimalUI string to the chosen font now, and remember it.
+-- Switch every Meniscus string to the chosen font now, and remember it.
 local function setAll(path, bold)
     Theme.font, Theme.fontBold = path, bold or path
     for fs, s in pairs(ns.fontStrings) do
@@ -135,7 +135,7 @@ fontLoader:SetScript("OnEvent", function(self, _, name)
     end
 end)
 
--- /mui font : what MinimalUI is using right now.
+-- /mui font : what Meniscus is using right now.
 ns.commands = ns.commands or {}
 ns.commands.font = function()
     ns:Print("Font in use: " .. tostring(Theme.font) .. "  (saved: " .. tostring(MinimalUIDB.font) .. ")")
@@ -150,7 +150,7 @@ function ns.RoundedRect(f, sub, inset, radius, r, g, b, a, layer)
     local corners, bands = {}, {}
     local function corner(point, l, rr, t, bb, x, y)
         local c = f:CreateTexture(nil, layer, nil, sub)
-        c:SetTexture("Interface/AddOns/MinimalUI/Media/rounded.tga")
+        c:SetTexture("Interface/AddOns/Meniscus/Media/rounded.tga")
         c:SetTexCoord(l, rr, t, bb)
         c:SetVertexColor(r, g, b, a)
         c:SetSize(radius, radius)
@@ -260,7 +260,7 @@ function ns.Regs(f, depth)
     return fill(b, f:GetRegions())
 end
 
--- Item / spell tooltips in MinimalUI windows: use the player's tooltip
+-- Item / spell tooltips in Meniscus windows: use the player's tooltip
 -- placement (Edit Mode default anchor) instead of pinning beside the button.
 function ns.TipAnchor(owner)
     if GameTooltip_SetDefaultAnchor then
@@ -336,7 +336,7 @@ end
 -- ── Pill bars ─────────────────────────────────────────────────────────────
 -- Rounded-end status bars. Masks/rings are generated at fixed aspect ratios
 -- (8:1, 16:1, 32:1) so the end caps stay perfectly round; pick w/h to match.
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 -- 128:1 is for long thin bars whose width follows other frames (XP bar); at
 -- ~6px tall the caps are tiny, so stretching it to other long ratios is invisible.
 local PILL_RATIOS = { 8, 16, 32, 128 }

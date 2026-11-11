@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Trainer: MinimalUI's trainer window (shared header with the trainer's 3D
+-- Trainer: Meniscus's trainer window (shared header with the trainer's 3D
 -- head; "N to learn" chip; Train all and Show unavailable pills). Spells as
 -- cards: icon, name and rank, cost (red when you can't afford it), and a
 -- level chip for ones you can't learn yet. Click a card to learn it.
@@ -9,7 +9,7 @@ local T = ns.Theme
 
 local TR = ns:NewModule("Trainer", { enabled = true, showUnavailable = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local W = 460
 local ROW_H = 44
 local ROWS = 9

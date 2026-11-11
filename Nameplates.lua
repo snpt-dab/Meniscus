@@ -9,7 +9,7 @@ local T = ns.Theme
 -- left as Blizzard draws them.
 
 local NP = ns:NewModule("Nameplates", { enabled = true })
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 
 local function zero(obj)
     if not obj or obj.__muiZero or not obj.SetAlpha then return end

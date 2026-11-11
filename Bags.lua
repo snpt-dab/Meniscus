@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Bags: MinimalUI's bag window, replacing Blizzard's bag frames.
+-- Bags: Meniscus's bag window, replacing Blizzard's bag frames.
 --   mode "combined": one window with every bag in a single grid
 --   mode "separate": one card per bag, stacked above a slim control card
 -- Tiles: quality ring, item level on gear, stack counts, cooldowns, a coin
@@ -21,7 +21,7 @@ local T = ns.Theme
 
 local B = ns:NewModule("Bags", { enabled = true, cols = 10, sepCols = 4, showKeys = false, mode = "combined" })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local TILE, GAP, PAD = 34, 4, 16
 local HEADER, FOOTER = (ns.SHELL_H or 92) + 12, 44

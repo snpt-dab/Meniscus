@@ -23,8 +23,8 @@ local Orbs = ns:NewModule("Orbs", {
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
-local SWIRL = "Interface/AddOns/MinimalUI/Media/swirl.tga"
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local SWIRL = "Interface/AddOns/Meniscus/Media/swirl.tga"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local RING_W = 1.5 -- hairline outer ring
 local INSET = 4    -- dark track between ring and liquid
 local CHIP_W = 112 -- value badge (8:1 pill -> 14px tall)

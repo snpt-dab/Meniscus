@@ -16,9 +16,9 @@ local T = ns.Theme
 -- secure buttons can't retarget).
 
 local QB = ns:NewModule("QuickBuff", { enabled = true, refresh = 2, groupMin = 3 })
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 
-BINDING_HEADER_MINIMALUI = "MinimalUI"
+BINDING_HEADER_MINIMALUI = "Meniscus"
 _G["BINDING_NAME_CLICK MinimalUIQuickBuff:LeftButton"] = "Quick Buff (cast next buff)"
 
 -- self = only on you; any = alternatives (having any counts; best known is
@@ -429,7 +429,7 @@ local function buildButton()
         GameTooltip:AddLine(self.spellName or "Quick Buff", 1, 1, 1)
         local key = GetBindingKey("CLICK MinimalUIQuickBuff:LeftButton")
         GameTooltip:AddLine(key and ("Click or press " .. GetBindingText(key) .. " to cast; then it moves on.")
-            or "Click to cast; then it moves on. (Keybind: Options > Keybindings > AddOns > MinimalUI)",
+            or "Click to cast; then it moves on. (Keybind: Options > Keybindings > AddOns > Meniscus)",
             0.8, 0.8, 0.85, true)
         GameTooltip:Show()
     end)

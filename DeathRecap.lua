@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Death recap: MinimalUI's version of Blizzard's "what killed me" list.
+-- Death recap: Meniscus's version of Blizzard's "what killed me" list.
 --   header   band with the killing blow's icon (red ring), "Death Recap",
 --            "Killed by <source> · <ability>", chip with damage taken
 --   list     hits as cards, killing blow first: amount (crits larger), icon,
@@ -12,7 +12,7 @@ local T = ns.Theme
 
 local DR = ns:NewModule("DeathRecap", { enabled = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local W = 420
 local ROW_H = 46
 local ROWS = 7

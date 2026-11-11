@@ -1,5 +1,5 @@
 ## Interface: 16001
-## Title: MinimalUI
+## Title: Meniscus
 ## Notes: Clean, minimal, modern UI overhaul for WoW Forever.
 ## Author: Andrew
 ## Version: 0.1.0

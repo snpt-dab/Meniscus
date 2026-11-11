@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Professions: MinimalUI's crafting window, replacing the look of Blizzard's
+-- Professions: Meniscus's crafting window, replacing the look of Blizzard's
 -- professions frame (which stays open but invisible; this drives the same
 -- C_TradeSkillUI calls).
 --
@@ -16,7 +16,7 @@ local T = ns.Theme
 
 local P = ns:NewModule("Professions", { enabled = true, haveMats = false, skillUps = false, collapsed = {} })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local W, LIST_W = 760, 300
 local ROW_H, ROWS = 30, 13
@@ -822,7 +822,7 @@ ns.commands.prof = function(rest)
     if rest == "blizz" then
         local db = ns.db.modules.Professions
         db.enabled = db.enabled == false
-        ns:Print(db.enabled and "Professions: MinimalUI window (reloading)." or "Professions: Blizzard's window (reloading).")
+        ns:Print(db.enabled and "Professions: Meniscus window (reloading)." or "Professions: Blizzard's window (reloading).")
         ReloadUI()
     elseif win then
         if win:IsShown() then win:Hide() else open() end

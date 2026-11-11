@@ -1,7 +1,7 @@
 local ADDON, ns = ...
 local T = ns.Theme
 
--- Resource monitor: how heavy is MinimalUI?
+-- Resource monitor: how heavy is Meniscus?
 --   /mui perf          toggle a small live readout (memory, churn, CPU, FPS)
 --   /mui perf report   print a summary + the slowest timed jobs
 --   /mui perf reset    clear the timed-job stats
@@ -156,7 +156,7 @@ local function buildBox()
     ns:SetFont(title, 11, "", true)
     title:SetTextColor(unpack(T.textDim))
     title:SetPoint("TOPLEFT", 10, -8)
-    title:SetText("MinimalUI resources")
+    title:SetText("Meniscus resources")
     box.body = box:CreateFontString(nil, "OVERLAY")
     ns:SetFont(box.body, 11)
     box.body:SetTextColor(unpack(T.text))
@@ -239,7 +239,7 @@ restore:SetScript("OnEvent", function()
 end)
 
 -- ── Dev reload pill ───────────────────────────────────────────────────────
--- Always-on Reload button in the top-left corner while MinimalUI is in
+-- Always-on Reload button in the top-left corner while Meniscus is in
 -- development. /mui reloadbtn hides or shows it (remembered).
 local reloadBtn
 local function buildReload()

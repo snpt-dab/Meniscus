@@ -21,7 +21,7 @@ local T = ns.Theme
 local A = ns:NewModule("Auras", { enabled = true, skinBlizzard = true, playerRows = false, playerSide = "left",
     attachBlizz = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local ROUND = MEDIA .. "rounded.tga"
 local U = C_UnitAuras
 

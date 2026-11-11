@@ -8,7 +8,7 @@ local T = ns.Theme
 -- the sidebar's Reload UI pill lights up once one has changed.
 -- Open with /mui, the minimap addon compartment, or Esc > Options > AddOns.
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local roundedRect = ns.RoundedRect
 
@@ -379,22 +379,22 @@ local PAGES = {
                 if SettingsPanel and Settings and Settings.OpenToCategory and Settings.KEYBINDINGS_CATEGORY_ID then
                     pcall(Settings.OpenToCategory, Settings.KEYBINDINGS_CATEGORY_ID)
                 else
-                    ns:Print("Options > Keybindings > AddOns > MinimalUI > Quick Buff")
+                    ns:Print("Options > Keybindings > AddOns > Meniscus > Quick Buff")
                 end
             end },
         } },
     } },
     { key = "bars", title = "Action bars", groups = {
         { title = "Bars", items = {
-            { "MinimalUI action bars", kind = "switch", reload = true,
+            { "Meniscus action bars", kind = "switch", reload = true,
               get = function() return ns.db.modules.Bars.enabled ~= false end,
               set = function() cmd("actionbars") end },
         } },
     } },
     { key = "bags", title = "Bags", groups = {
         { title = "Bags", items = {
-            moduleSwitch("MinimalUI bags", "Bags"),
-            moduleSwitch("MinimalUI bank", "Bank"),
+            moduleSwitch("Meniscus bags", "Bags"),
+            moduleSwitch("Meniscus bank", "Bank"),
             { "Layout", kind = "dropdown", reload = true,
               options = function() return { { key = "combined", label = "One combined bag" },
                                             { key = "separate", label = "Separate bags" } } end,
@@ -557,7 +557,7 @@ local function build()
 
     local title = text(side, 16, true)
     title:SetPoint("TOPLEFT", 18, -PAD)
-    title:SetText("MinimalUI")
+    title:SetText("Meniscus")
     local dot = side:CreateTexture(nil, "OVERLAY")
     dot:SetSize(6, 6)
     dot:SetPoint("LEFT", title, "RIGHT", 6, 0)
@@ -669,7 +669,7 @@ function MinimalUI_OnAddonCompartmentClick()
     ns:TogglePanel()
 end
 
--- Esc > Options > AddOns > MinimalUI: a stub page with an "Open panel" pill.
+-- Esc > Options > AddOns > Meniscus: a stub page with an "Open panel" pill.
 local reg = CreateFrame("Frame")
 reg:RegisterEvent("PLAYER_LOGIN")
 reg:SetScript("OnEvent", function()
@@ -678,14 +678,14 @@ reg:SetScript("OnEvent", function()
         local c = CreateFrame("Frame")
         local t = text(c, 16, true)
         t:SetPoint("TOPLEFT", 16, -16)
-        t:SetText("MinimalUI")
+        t:SetText("Meniscus")
         local open = pill(c, 140, "Open panel")
         open:SetPoint("TOPLEFT", 16, -48)
         open:SetScript("OnClick", function()
             if SettingsPanel and SettingsPanel:IsShown() then HideUIPanel(SettingsPanel) end
             ns:TogglePanel(true)
         end)
-        local cat = Settings.RegisterCanvasLayoutCategory(c, "MinimalUI")
+        local cat = Settings.RegisterCanvasLayoutCategory(c, "Meniscus")
         Settings.RegisterAddOnCategory(cat)
     end)
 end)
@@ -708,7 +708,7 @@ ns.commands.help = function()
         "/mui font | orbcolor | rage | energy [drip] | mana [fsr|burst] | combo | reloadbtn | minimap | keyring | errors | chat",
         "/mui probe | uiprobe | charprobe | bars | scales  diagnostics",
         "/mui perf [report | reset | gc]  resource monitor",
-        "/mui prof blizz  switch between MinimalUI and Blizzard professions windows",
+        "/mui prof blizz  switch between Meniscus and Blizzard professions windows",
     }
     for _, l in ipairs(lines) do ns:Print(l) end
 end

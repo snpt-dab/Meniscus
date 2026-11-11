@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Spellbook: MinimalUI's own spellbook window (the talent half of Blizzard's
+-- Spellbook: Meniscus's own spellbook window (the talent half of Blizzard's
 -- PlayerSpellsFrame stays Blizzard's; a "Talents" pill opens it).
 --   header   title, search, "All ranks" toggle, Talents pill, close
 --   tabs     one pill per spell school (General, Affliction…, Pet)
@@ -15,7 +15,7 @@ local T = ns.Theme
 
 local S = ns:NewModule("Spellbook", { enabled = true, allRanks = false })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 -- Header band (ns.SHELL_H), tabs, a hairline, then the card grid.
 local TABS_Y = (ns.SHELL_H or 92) + 12

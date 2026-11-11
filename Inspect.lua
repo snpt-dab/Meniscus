@@ -1,7 +1,7 @@
 local _, ns = ...
 local T = ns.Theme
 
--- Inspect: MinimalUI's inspect window, the character window's look for
+-- Inspect: Meniscus's inspect window, the character window's look for
 -- someone else. Shared header (their 3D head, class-colored name, "Level 60
 -- Race Class · Guild", item level chip) and gear tiles around a
 -- drag-to-rotate model.
@@ -10,7 +10,7 @@ local T = ns.Theme
 
 local I = ns:NewModule("Inspect", { enabled = true })
 
-local MEDIA = "Interface/AddOns/MinimalUI/Media/"
+local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local PAGE_TOP = (ns.SHELL_H or 92) + 16
 local TILE, GAP = 38, 6
 local GEAR_W = 380
