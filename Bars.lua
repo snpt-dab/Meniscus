@@ -754,54 +754,27 @@ ns.commands.petgrid = function()
 end
 
 -- ── Micro menu glyphs ─────────────────────────────────────────────────────
--- Our own icons for the micro menu buttons, in the style of the tracking
--- magnifier on the map pill: thin strokes and small rings in the dim text
--- color, brightening on hover. Each is drawn on a 16 x 16 grid (x right, y
--- down) from three primitives:
---   { "l", x1, y1, x2, y2 [, thickness] }   a stroke
---   { "o", cx, cy, r }                      a ring
---   { "d", cx, cy, r }                      a dot
---   { "t", "?" }                            a character in our font
--- A button is matched by a word in its name; a button nobody matches keeps
--- Blizzard's (greyed) art. The buttons underneath are untouched: clicks,
--- tooltips and key bindings are theirs.
--- (Second pass: strokes kept to horizontals, verticals and 45 degrees where
--- possible, since those are the angles a 14 px icon can draw cleanly; every
--- stroke gets round ends, which also rounds the corners where two meet.)
-local GROUP = { { "o", 5, 6, 2.5 }, { "o", 11, 6, 2.5 }, { "l", 3, 12, 13, 12 } }
-local COMPASS = { { "o", 8, 8, 6 }, { "l", 6, 10, 10, 6, 2.2 } }
-local BAG = { { "l", 3, 7, 13, 7 }, { "l", 3, 7, 3, 14 }, { "l", 13, 7, 13, 14 }, { "l", 3, 14, 13, 14 }, { "o", 8, 6, 2.6 } }
+-- Our own icons for the micro menu buttons, in the dim text color,
+-- brightening on hover. They are vector drawings rendered to small textures
+-- (Media/micro_<name>.tga, made by dist/icons.py: edit the shapes there and
+-- re-run it). Drawing them in game from lines and circles was tried first
+-- and looked rough at this size: no smoothing, and corners that didn't
+-- quite meet.
+-- A button is matched by a word in its name or its tooltip title; a button
+-- nobody matches keeps Blizzard's (greyed) art. The buttons underneath are
+-- untouched: clicks, tooltips and key bindings are theirs.
 local MICRO_GLYPHS = {
-    -- a head and shoulders
-    { "character", { { "o", 8, 5, 2.8 }, { "l", 3, 14, 6, 11 }, { "l", 6, 11, 10, 11 }, { "l", 10, 11, 13, 14 } } },
-    -- a hammer
-    { "profession", { { "l", 4, 13, 9, 8 }, { "l", 7, 4, 12, 9, 3.4 } } },
-    -- an open book
-    { "spell", { { "l", 2, 4, 14, 4 }, { "l", 2, 12, 14, 12 }, { "l", 2, 4, 2, 12 }, { "l", 14, 4, 14, 12 }, { "l", 8, 4, 8, 12 } } },
-    -- three linked points
-    { "talent", { { "d", 8, 4, 2 }, { "d", 4, 12, 2 }, { "d", 12, 12, 2 }, { "l", 8, 4, 4, 12, 1.2 }, { "l", 8, 4, 12, 12, 1.2 },
-                  { "l", 4, 12, 12, 12, 1.2 } } },
-    -- a diamond
-    { "achievement", { { "l", 8, 2, 14, 8 }, { "l", 14, 8, 8, 14 }, { "l", 8, 14, 2, 8 }, { "l", 2, 8, 8, 2 } } },
-    -- a shield (Forever's "Legacy" button, where retail has achievements)
-    { "legacy", { { "l", 3, 3, 13, 3 }, { "l", 3, 3, 3, 8 }, { "l", 13, 3, 13, 8 }, { "l", 3, 8, 8, 13 }, { "l", 13, 8, 8, 13 } } },
-    { "quest", { { "t", "!" } } },
-    -- a flag on a pole
-    { "guild", { { "l", 4, 2, 4, 14 }, { "l", 4, 3, 12, 3 }, { "l", 12, 3, 12, 8 }, { "l", 12, 8, 4, 8 } } },
-    -- two heads
-    { "lfd", GROUP }, { "lfg", GROUP }, { "group", GROUP },
-    -- four tiles
-    { "collection", { { "d", 5, 5, 2.2 }, { "d", 11, 5, 2.2 }, { "d", 5, 11, 2.2 }, { "d", 11, 11, 2.2 } } },
-    -- a compass
-    { "ej", COMPASS }, { "journal", COMPASS }, { "adventure", COMPASS },
-    -- a bag
-    { "store", BAG }, { "shop", BAG },
-    -- three bars
-    { "mainmenu", { { "l", 3, 4, 13, 4 }, { "l", 3, 8, 13, 8 }, { "l", 3, 12, 13, 12 } } },
-    { "help", { { "t", "?" } } },
+    { "character", "character" }, { "profession", "profession" },
+    { "spell", "spell" }, { "talent", "talent" },
+    { "achievement", "achievement" }, { "legacy", "legacy" },
+    { "quest", "quest" }, { "guild", "guild" },
+    { "lfd", "group" }, { "lfg", "group" }, { "group", "group" },
+    { "collection", "collection" },
+    { "ej", "journal" }, { "journal", "journal" }, { "adventure", "journal" },
+    { "store", "store" }, { "shop", "store" },
+    { "mainmenu", "mainmenu" }, { "help", "help" },
 }
-local MICRO_BG = { 0.06, 0.06, 0.07 }
-local MICRO_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
+local MICRO_MEDIA = "Interface/AddOns/Meniscus/Media/micro_"
 
 local function microGlyph(btn)
     if btn.__muiGlyph ~= nil then return btn.__muiGlyph end
@@ -810,102 +783,23 @@ local function microGlyph(btn)
     local name = (btn.GetName and btn:GetName() or ""):lower()
     local tip = rawget(btn, "tooltipText")
     if type(tip) == "string" then name = name .. " " .. tip:lower() end
-    local spec
+    local file
     for _, g in ipairs(MICRO_GLYPHS) do
-        if name:find(g[1], 1, true) then spec = g[2] break end
+        if name:find(g[1], 1, true) then file = g[2] break end
     end
-    if not spec then btn.__muiGlyph = false return false end
+    if not file then btn.__muiGlyph = false return false end
     local w, h = btn:GetWidth(), btn:GetHeight()
-    local S = math.min(w, h) * 0.72 -- the glyph's square, in the button's own units
-    local u = S / 16
+    -- Nearly the pill's height: the buttons are scaled so their own height
+    -- slightly exceeds the pill, and the drawings carry their own margin.
+    local S = math.min(h * 0.80, w * 0.98)
     local f = CreateFrame("Frame", nil, btn)
     f:SetSize(S, S)
     f:SetPoint("CENTER", btn, "CENTER", 0, 0)
     f:SetFrameLevel(btn:GetFrameLevel() + 2)
-    local tinted, holes = {}, {}
-    local stroke = math.max(1.8, S / 10)
-    -- Center every glyph on the grid's middle, whatever box its strokes
-    -- happen to cover as drawn (a flag from 2 to 14 and three bars from 4
-    -- to 12 otherwise sit at different heights in the row).
-    local x0, x1, y0, y1
-    local function span(x, y, r)
-        x0 = x0 and math.min(x0, x - r) or (x - r); x1 = x1 and math.max(x1, x + r) or (x + r)
-        y0 = y0 and math.min(y0, y - r) or (y - r); y1 = y1 and math.max(y1, y + r) or (y + r)
-    end
-    for _, p in ipairs(spec) do
-        if p[1] == "l" then span(p[2], p[3], 0); span(p[4], p[5], 0)
-        elseif p[1] == "o" or p[1] == "d" then span(p[2], p[3], p[4]) end
-    end
-    local ox, oy = 0, 0
-    if x0 then ox, oy = 8 - (x0 + x1) / 2, 8 - (y0 + y1) / 2 end
-    local shifted = {}
-    for i, p in ipairs(spec) do
-        if p[1] == "l" then shifted[i] = { "l", p[2] + ox, p[3] + oy, p[4] + ox, p[5] + oy, p[6] }
-        elseif p[1] == "o" or p[1] == "d" then shifted[i] = { p[1], p[2] + ox, p[3] + oy, p[4] }
-        else shifted[i] = p end
-    end
-    spec = shifted
-    for _, p in ipairs(spec) do
-        if p[1] == "l" then
-            local ln = f:CreateLine(nil, "ARTWORK")
-            ln:SetThickness(p[6] and p[6] * u or stroke)
-            ln:SetColorTexture(1, 1, 1, 1)
-            ln:SetStartPoint("TOPLEFT", f, p[2] * u, -p[3] * u)
-            ln:SetEndPoint("TOPLEFT", f, p[4] * u, -p[5] * u)
-            tinted[#tinted + 1] = ln
-            -- Round ends: a dot the stroke's own width on each end. Where
-            -- two strokes meet, the dots make the corner round instead of
-            -- leaving a notch.
-            local th = p[6] and p[6] * u or stroke
-            for e = 0, 1 do
-                local cap = f:CreateTexture(nil, "ARTWORK")
-                cap:SetSize(th, th)
-                cap:SetPoint("CENTER", f, "TOPLEFT", p[2 + e * 2] * u, -p[3 + e * 2] * u)
-                cap:SetColorTexture(1, 1, 1, 1)
-                local cm = f:CreateMaskTexture()
-                cm:SetTexture(MICRO_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-                cm:SetAllPoints(cap)
-                cap:AddMaskTexture(cm)
-                tinted[#tinted + 1] = cap
-            end
-        elseif p[1] == "o" or p[1] == "d" then
-            local d = p[4] * 2 * u
-            local disc = f:CreateTexture(nil, "ARTWORK", nil, 1)
-            disc:SetSize(d, d)
-            disc:SetPoint("CENTER", f, "TOPLEFT", p[2] * u, -p[3] * u)
-            disc:SetColorTexture(1, 1, 1, 1)
-            local mk = f:CreateMaskTexture()
-            mk:SetTexture(MICRO_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            mk:SetAllPoints(disc)
-            disc:AddMaskTexture(mk)
-            tinted[#tinted + 1] = disc
-            if p[1] == "o" then
-                -- A ring: the disc with its middle taken back out.
-                local id = math.max(d - stroke * 2, 1)
-                local hole = f:CreateTexture(nil, "ARTWORK", nil, 2)
-                hole:SetSize(id, id)
-                hole:SetPoint("CENTER", disc, "CENTER")
-                hole:SetColorTexture(MICRO_BG[1], MICRO_BG[2], MICRO_BG[3], 1)
-                local hm = f:CreateMaskTexture()
-                hm:SetTexture(MICRO_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-                hm:SetAllPoints(hole)
-                hole:AddMaskTexture(hm)
-                holes[#holes + 1] = hole
-            end
-        elseif p[1] == "t" then
-            local fs = f:CreateFontString(nil, "OVERLAY")
-            ns:SetFont(fs, math.floor(S * 1.05 + 0.5), "", true)
-            -- (A character's ink sits above the middle of its line box.)
-            fs:SetPoint("CENTER", f, "CENTER", 0, -S * 0.08)
-            fs:SetText(p[2])
-            tinted[#tinted + 1] = fs
-        end
-    end
-    local function tint(c)
-        for _, o in ipairs(tinted) do
-            if o.SetTextColor then o:SetTextColor(c[1], c[2], c[3]) else o:SetVertexColor(c[1], c[2], c[3], 1) end
-        end
-    end
+    local tex = f:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints()
+    tex:SetTexture(MICRO_MEDIA .. file .. ".tga")
+    local function tint(c) tex:SetVertexColor(c[1], c[2], c[3], 1) end
     tint(T.textDim)
     btn:HookScript("OnEnter", function() tint(T.text) end)
     btn:HookScript("OnLeave", function() tint(T.textDim) end)

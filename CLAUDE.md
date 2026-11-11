@@ -81,6 +81,7 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
 - **Fading a texture:** `tex:SetAlpha()` on the orb swirl texture did nothing visible (GetAlpha still read the vertex alpha). Fade through the vertex color's alpha, or put the texture in a holder frame and set the frame's alpha.
 - **Clipping:** `SetClipsChildren` reliably clips child frames. A texture reparented onto the clip frame itself stayed unclipped, so put clipped textures on a child frame of the clip.
 - **Minimap mask:** `Minimap:SetMaskTexture` drew nothing with the game's own round masks (`TempPortraitAlphaMask`, `Textures/MinimapMask`); only our own TGA works (white, shape in the alpha: `Media/rounded.tga`, `Media/circle.tga`). New media files need a full client restart, like new .lua files.
+- **Small icons:** draw them as vectors in `dist/icons.py` and render to `Media/*.tga` (white, shape in alpha, tinted with SetVertexColor). In-game Lines and masked discs look rough below ~16 px. Check the result by rendering a contact sheet and looking at it.
 - **Syntax trap:** `obj:Method and x` without parentheses is a syntax error that kills the file.
 
 ## Performance
