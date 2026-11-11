@@ -534,3 +534,69 @@ ns.commands.under = function()
             "| mouse enabled:", tostring(f.IsMouseEnabled and f:IsMouseEnabled()))
     end
 end
+
+-- /men winprobe : which Blizzard windows are open right now, and what they
+-- are made of. Open a window that needs restyling, run this, and it is
+-- added to MinimalUIDB.winprobe (read after a reload). Run it once per
+-- window / tab; entries accumulate. "/men winprobe clear" empties the list.
+ns.commands.winprobe = function(rest)
+    if not MinimalUIDB then return end
+    if rest and rest:find("clear") then
+        MinimalUIDB.winprobe = nil
+        return ns:Print("Window recordings cleared.")
+    end
+    local store = MinimalUIDB.winprobe or {}
+    MinimalUIDB.winprobe = store
+    local skip = { WorldFrame = true, UIParent = true }
+    local found = {}
+    local function describe(f, key, depth, out)
+        local ok, line = pcall(function()
+            local txt = ""
+            if f.GetText then
+                local t = f:GetText()
+                if type(t) == "string" and t ~= "" and not (issecretvalue and issecretvalue(t)) then txt = ' "' .. t:sub(1, 30) .. '"' end
+            end
+            return string.rep("  ", depth) .. key .. " [" .. f:GetObjectType() .. "] " .. tostring(f:GetName() or "?")
+                .. (f:IsShown() and "" or " hidden")
+                .. string.format(" %.0fx%.0f", f:GetWidth(), f:GetHeight()) .. txt
+        end)
+        out[#out + 1] = ok and line or (key .. " error")
+    end
+    local function walk(f, depth, out)
+        if depth > 3 or #out > 140 or (f.IsForbidden and f:IsForbidden()) then return end
+        local names = {}
+        for k, v in pairs(f) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+        for _, c in ipairs({ f:GetChildren() }) do
+            if c:IsShown() or depth < 2 then
+                describe(c, names[c] or "#", depth, out)
+                if c:IsShown() then walk(c, depth + 1, out) end
+            end
+        end
+    end
+    for _, f in ipairs({ UIParent:GetChildren() }) do
+        local ok = pcall(function()
+            if f.IsForbidden and f:IsForbidden() then return end
+            local name = f:GetName()
+            if not name or skip[name] or name:find("^MinimalUI") or name:find("^ChatFrame") then return end
+            if not (f:IsShown() and f:IsVisible() and f:IsMouseEnabled()) then return end
+            if f:GetWidth() < 280 or f:GetHeight() < 200 or f:GetEffectiveAlpha() < 0.05 then return end
+            local strata = f:GetFrameStrata()
+            if strata ~= "MEDIUM" and strata ~= "HIGH" and strata ~= "DIALOG" then return end
+            local out = {}
+            describe(f, "WINDOW", 0, out)
+            out[#out + 1] = "  strata=" .. strata .. " at " .. date("%H:%M:%S")
+            walk(f, 1, out)
+            -- One entry per window + what is selected in it, so tabs don't overwrite each other.
+            local n = 1
+            while store[name .. " #" .. n] do n = n + 1 end
+            store[name .. " #" .. n] = out
+            found[#found + 1] = name
+        end)
+        local _ = ok
+    end
+    if #found == 0 then
+        ns:Print("No Blizzard window found open. Open the one you mean first.")
+    else
+        ns:Print("Recorded: " .. table.concat(found, ", ") .. ". /reload when you've done them all.")
+    end
+end
