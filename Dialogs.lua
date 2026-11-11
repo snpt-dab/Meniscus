@@ -572,11 +572,11 @@ local function rewardCards(list)
                 t.what:SetTextColor(0.90, 0.45, 0.45)
             elseif it.weight and bestArmor and it.weight == bestArmor then
                 -- The heaviest armor you can wear: the kind meant for you.
-                t.what:SetText("Your armor type  \194\183  " .. what)
+                t.what:SetText("Suits you well  \194\183  " .. what)
                 t.what:SetTextColor(0.45, 0.85, 0.50)
             elseif it.weight and bestArmor and it.weight < bestArmor then
                 -- Wearable, but lighter than you could be wearing.
-                t.what:SetText("Lighter armor  \194\183  " .. what)
+                t.what:SetText("Lighter than your usual  \194\183  " .. what)
                 t.what:SetTextColor(0.45, 0.70, 0.95)
             else
                 t.what:SetText(what)
