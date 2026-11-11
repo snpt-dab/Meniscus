@@ -555,3 +555,48 @@ function TR:ApplyConsole(combatStarting)
     local c = mode == "auto" and T.accent or T.textDim
     P.tabAuto.fs:SetTextColor(c[1], c[2], c[3])
 end
+
+-- ── The game's damage meter has to be switched on ─────────────────────────
+-- The right-hand panel shows Blizzard's damage meter, which is a game
+-- option (Options > Gameplay Enhancements) that a new character starts
+-- with OFF: the panel's Damage tab is then just empty. With the console's
+-- panel in use, the option is turned on for you (once per login, out of
+-- combat, with a line in chat saying so). What was found is kept in
+-- MinimalUIDB.dmstate for troubleshooting.
+do
+    local CVAR = "damageMeterEnabled"
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        C_Timer.After(4, function()
+            local B = ns.modules.Bars
+            if not (TR.db and B and B.db and B.db.plate and B.db.wings) then return end
+            if (TR.db.wingTab or "auto") == "quests" then return end
+            local get = (C_CVar and C_CVar.GetCVar) or _G.GetCVar
+            local set = (C_CVar and C_CVar.SetCVar) or _G.SetCVar
+            local okv, val = pcall(get, CVAR)
+            local dm = _G.DamageMeter
+            local state = { "cvar " .. CVAR .. " = " .. tostring(okv and val), "frame " .. tostring(dm and true or false)
+                .. " shown " .. tostring(dm and dm:IsShown()) }
+            if okv and val == "0" and not InCombatLockdown() then
+                local oks = pcall(set, CVAR, "1")
+                state[#state + 1] = "set to 1: " .. tostring(oks)
+                if oks then
+                    ns:Print("Turned on the game's damage meter for this character (it fills the console's right panel).")
+                    -- The meter frame appears now: seat and style it.
+                    C_Timer.After(0.5, function()
+                        local MM = ns.modules.Minimap
+                        if not InCombatLockdown() then
+                            if MM and MM.ArrangeAround then pcall(MM.ArrangeAround, MM) elseif B.ApplyPlate then pcall(B.ApplyPlate, B) end
+                        end
+                        pcall(TR.ApplyConsole, TR)
+                    end)
+                end
+            elseif (not okv or val == nil) and not (dm and dm:IsShown()) then
+                ns:Print("The damage panel is empty because the game's Damage Meter is off: turn it on in Options > Gameplay Enhancements.")
+            end
+            if MinimalUIDB then MinimalUIDB.dmstate = state end
+        end)
+    end)
+end
