@@ -10,7 +10,7 @@ local T = ns.Theme
 --   header   name (class color), "Level 60 Race Class · Guild", item level pill
 --   gear     rounded tiles (quality ring, item level, durability bar,
 --            cooldowns) around a drag-to-rotate model on a soft spotlight
---   stats    resistance chips + collapsible stat sections (buffed values
+--   stats    attribute tiles + resistance chips + collapsible stat sections (buffed values
 --            green, debuffed red)
 --   rep      pill bars colored by standing, collapsible headers, click to watch
 --   skills   pill bars with rank / max
@@ -507,18 +507,9 @@ local function statsData(unit)
         return m
     end
 
+    -- (The five attributes are tiles across the top of the card, not rows
+    -- here: see ATTRS / updateAttrs.)
     local rows = {}
-    local names = { SPELL_STAT1_NAME or "Strength", SPELL_STAT2_NAME or "Agility", SPELL_STAT3_NAME or "Stamina",
-                    SPELL_STAT4_NAME or "Intellect", SPELL_STAT5_NAME or "Spirit" }
-    for i = 1, 5 do
-        local _, eff, pos, neg = call(UnitStat, unit, i)
-        stat(rows, names[i], fmt(eff, "%d"), buffColor(pos, neg))
-        if not plain(eff) or eff ~= 0 then rows.any = true end
-    end
-    -- Some pets (demons on this client) report no attributes at all.
-    if rows.any or not pet then section("attr", "Attributes", rows) end
-
-    rows = {}
     local base, pos, neg = call(UnitAttackPower, unit)
     stat(rows, "Attack power", fmt(total(base, pos, neg), "%d"), buffColor(pos, neg))
     local lo, hi = call(UnitDamage, unit)
@@ -583,6 +574,34 @@ local RESISTS = {
     { 4, "Frost", { 0.45, 0.75, 1.00 } }, { 5, "Shadow", { 0.68, 0.48, 0.95 } },
     { 6, "Arcane", { 0.95, 0.88, 0.55 } },
 }
+
+-- The five primary attributes, as a row of tiles across the top of the stats
+-- card: a short colored label over the buffed value (green when raised by
+-- buffs or gear effects, red when lowered). Hover for the breakdown.
+local ATTRS = {
+    { "STR", SPELL_STAT1_NAME or "Strength",  { 0.92, 0.48, 0.38 } },
+    { "AGI", SPELL_STAT2_NAME or "Agility",   { 0.58, 0.85, 0.42 } },
+    { "STA", SPELL_STAT3_NAME or "Stamina",   { 0.95, 0.72, 0.32 } },
+    { "INT", SPELL_STAT4_NAME or "Intellect", { 0.42, 0.66, 1.00 } },
+    { "SPI", SPELL_STAT5_NAME or "Spirit",    { 0.76, 0.62, 0.96 } },
+}
+
+-- Returns whether the unit reports any attributes (some pets, demons on
+-- this client, report none: their tiles are hidden).
+local function updateAttrs(card, unit)
+    local any = false
+    for i, tile in ipairs(card.attrs) do
+        local base, eff, pos, neg = call(UnitStat, unit or "player", i)
+        tile.base, tile.eff, tile.pos, tile.neg = base, eff, pos, neg
+        tile.value:SetText(fmt(eff, "%d") or "0")
+        local col = buffColor(pos, neg) or T.text
+        tile.value:SetTextColor(col[1], col[2], col[3])
+        if not plain(eff) or eff ~= 0 then any = true end
+    end
+    local show = any or (unit or "player") == "player"
+    for _, tile in ipairs(card.attrs) do tile:SetShown(show) end
+    return any
+end
 
 local function updateResists(chips, unit)
     for _, chip in ipairs(chips) do
@@ -878,6 +897,7 @@ local function updatePet(page)
         pcall(page.model.SetCamDistanceScale, page.model, 1.25)
     end
     updateResists(page.card.resists, "pet")
+    pcall(updateAttrs, page.card, "pet")
     local ok, d = pcall(statsData, "pet")
     if ok then page.card.list:SetData(d) end
 
@@ -1016,13 +1036,52 @@ local function makeStatsCard(page, top)
     card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
     ns.RoundedRect(card, -6, 0, 10, unpack(CARD))
 
+    -- Attribute tiles: the top row.
+    card.attrs = {}
+    local TW, TH, TG = 44, 38, 6
+    local ATTR_ROW = TH + 8
+    local ax0 = (W - 20 - 440) / 2 - (#ATTRS * TW + (#ATTRS - 1) * TG) / 2
+    for i, a in ipairs(ATTRS) do
+        local tile = CreateFrame("Frame", nil, card)
+        tile:SetSize(TW, TH)
+        tile:SetPoint("TOPLEFT", card, "TOPLEFT", ax0 + (i - 1) * (TW + TG), -8)
+        ns.RoundedRect(tile, -4, 0, 7, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(tile, -3, 1, 6, unpack(FILL))
+        local label = text(tile, 9, true, a[3])
+        label:SetPoint("TOP", 0, -5)
+        label:SetText(a[1])
+        -- A short stroke in the attribute's color under its label.
+        local stroke = tile:CreateTexture(nil, "ARTWORK")
+        stroke:SetSize(14, 1)
+        stroke:SetPoint("TOP", label, "BOTTOM", 0, -2)
+        stroke:SetColorTexture(a[3][1], a[3][2], a[3][3], 0.55)
+        tile.value = text(tile, 13, true)
+        tile.value:SetPoint("BOTTOM", 0, 5)
+        tile:EnableMouse(true)
+        tile:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(a[2], a[3][1], a[3][2], a[3][3])
+            if self.eff ~= nil then GameTooltip:AddLine(fmt(self.eff, "%d"), 1, 1, 1) end
+            if plain(self.base) then GameTooltip:AddDoubleLine("Base", string.format("%d", self.base), 0.6, 0.6, 0.65, 1, 1, 1) end
+            if plain(self.pos) and self.pos > 0 then
+                GameTooltip:AddDoubleLine("Bonus", string.format("+%d", self.pos), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3])
+            end
+            if plain(self.neg) and self.neg < 0 then
+                GameTooltip:AddDoubleLine("Penalty", string.format("%d", self.neg), 0.6, 0.6, 0.65, RED[1], RED[2], RED[3])
+            end
+            GameTooltip:Show()
+        end)
+        tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        card.attrs[i] = tile
+    end
+
     card.resists = {}
     local D, step = 28, 40
     local x0 = (W - 20 - 440) / 2 - (#RESISTS - 1) * step / 2
     for i, r in ipairs(RESISTS) do
         local chip = CreateFrame("Frame", nil, card)
         chip:SetSize(D, D)
-        chip:SetPoint("CENTER", card, "TOPLEFT", x0 + (i - 1) * step, -24)
+        chip:SetPoint("CENTER", card, "TOPLEFT", x0 + (i - 1) * step, -24 - ATTR_ROW)
         local ring = circle(chip, D, "ARTWORK", 1)
         ring:SetPoint("CENTER")
         ring:SetColorTexture(r[3][1], r[3][2], r[3][3], 0.9)
@@ -1044,8 +1103,8 @@ local function makeStatsCard(page, top)
     end
 
     local cardW, cardH = W - 20 - 440, H - PAGE_TOP + top - 16
-    card.list = makeList(card, cardW - 12, cardH - 52, 18)
-    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -46)
+    card.list = makeList(card, cardW - 12, cardH - 52 - ATTR_ROW, 18)
+    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -46 - ATTR_ROW)
     return card
 end
 
@@ -1186,6 +1245,7 @@ function C:Refresh()
     pcall(updateHeader)
     if self.tab == "gear" then
         pcall(updateResists, win.card.resists, "player")
+        pcall(updateAttrs, win.card, "player")
         local ok, d = pcall(statsData, "player")
         if ok then win.card.list:SetData(d) else ns:Print("Character stats: " .. tostring(d)) end
     elseif self.tab == "pet" then
