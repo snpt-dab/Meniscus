@@ -41,4 +41,5 @@ ProfessionsBook.lua
 Bank.lua
 Mail.lua
 Inspect.lua
+Windows.lua
 Panel.lua

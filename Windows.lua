@@ -1,0 +1,235 @@
+local _, ns = ...
+-- ── Window docks ──────────────────────────────────────────────────────────
+-- One system for where windows go and how many are open. Two docks sit on
+-- the console: a window opens in the left or the right one, its bottom edge
+-- just above the wings. Each dock holds one window: opening another on that
+-- side replaces it. The world map is too wide for a dock; it opens centered
+-- and closes the docked windows (and a docked window closes it).
+-- Dragging a window across the middle of the screen changes its side, which
+-- is remembered; it then settles into that dock. Esc closes our windows one
+-- at a time, newest first.
+--
+-- Windows are found by their global name, as they come to exist (ours are
+-- built on first use, Blizzard's load on demand). Nothing is reparented and
+-- no Blizzard function is replaced: we hook show / hide and set points.
+-- Protected windows (the bags, Blizzard's panels) are left alone in combat
+-- and caught up when it ends.
+local W = ns:NewModule("Windows", { enabled = true, sides = {} })
+
+local MANAGED = {
+    MinimalUICharacter = "left", MinimalUISpellbook = "left", MinimalUIQuestLog = "left",
+    MinimalUIDialog = "left", MinimalUIMerchant = "left", MinimalUITrainer = "left",
+    MinimalUIProfessions = "left", MinimalUIProfessionsBook = "left",
+    MinimalUIBank = "left", MinimalUIMail = "left",
+    MinimalUIInspect = "right", MinimalUIBags = "right",
+    -- Blizzard windows we restyle in place.
+    CollectionsJournal = "left", SocialUIFrame = "left", FriendsFrame = "left", CharacterFrame = "left",
+    CommunitiesFrame = "left", LFGParentFrame = "left", PlayerSpellsFrame = "left",
+    WorldMapFrame = "center",
+}
+local MARGIN = 18          -- from the screen edge
+local LIFT = 12            -- gap between the wings' top and a window's bottom
+local MAP_FLOOR = 330      -- the map stays above the dome and the target strip
+
+local hooked = {}          -- frame -> name
+local waiting = {}         -- names not yet seen
+local open = {}            -- frame -> side, while it is shown and docked
+local stack = {}           -- our own open windows, oldest first (for Esc)
+local pending = {}         -- frame -> "place" / "hide", owed after combat
+local seating = {}         -- frame -> true while we are the one calling SetPoint
+local proxy, proxySelf
+
+local function isOurs(name) return name:sub(1, 9) == "MinimalUI" end
+local function locked(f) return InCombatLockdown() and f:IsProtected() end
+
+local function sideOf(name)
+    local s = W.db and W.db.sides and W.db.sides[name]
+    if MANAGED[name] == "center" then return "center" end
+    return (s == "left" or s == "right") and s or MANAGED[name]
+end
+
+-- A frame that is shown but is really one of our "ghosts" (kept shown at
+-- alpha 0 / tiny scale so its interaction stays alive) is not a window.
+local function real(f)
+    if not f:IsShown() then return false end
+    local a, sc = f:GetAlpha(), f:GetScale()
+    return a > 0.05 and sc > 0.05
+end
+
+local function dockBottom()
+    local B = ns.modules.Bars
+    if B and B.db and B.db.plate and B.db.wings and B.plate and B.plate:IsShown() then
+        return 14 + 210 + LIFT   -- the wings' top (Bars:ApplyPlate: wy + WING_H)
+    end
+    return 150
+end
+
+local function place(f, side)
+    if locked(f) then pending[f] = "place" return end
+    local s = f:GetScale()
+    if not s or s <= 0 then s = 1 end
+    local sh = UIParent:GetHeight()
+    local h = (f:GetHeight() or 0) * s
+    seating[f] = true
+    f:ClearAllPoints()
+    if side == "center" then
+        local y = MAP_FLOOR + math.max(0, (sh - 10 - MAP_FLOOR - h) / 2)
+        if y + h > sh - 10 then y = math.max(10, sh - 10 - h) end
+        f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, y / s)
+    else
+        local y = dockBottom()
+        if y + h > sh - 10 then y = math.max(10, sh - 10 - h) end
+        if side == "right" then
+            f:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -MARGIN / s, y / s)
+        else
+            f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", MARGIN / s, y / s)
+        end
+    end
+    seating[f] = nil
+end
+
+local function close(f)
+    local name = hooked[f]
+    if locked(f) then pending[f] = "hide" return false end
+    if name == "MinimalUIBags" and ns.modules.Bags and ns.modules.Bags.Close then
+        ns.modules.Bags:Close()
+    elseif not isOurs(name) and HideUIPanel and not InCombatLockdown() then
+        HideUIPanel(f)
+        if f:IsShown() then f:Hide() end
+    else
+        f:Hide()
+    end
+    return true
+end
+
+local function syncProxy()
+    if not proxy then return end
+    local any = false
+    for i = 1, #stack do if stack[i]:IsShown() and not locked(stack[i]) then any = true break end end
+    proxySelf = true
+    proxy:SetShown(any)
+    proxySelf = false
+end
+
+local function unstack(f)
+    for i = #stack, 1, -1 do if stack[i] == f then table.remove(stack, i) end end
+end
+
+-- A window came up: settle it in its dock and clear what it replaces.
+local function opened(f)
+    local name = hooked[f]
+    if not name or not real(f) then return end
+    local side = sideOf(name)
+    for other, oside in pairs(open) do
+        if other ~= f and other:IsShown() and real(other)
+                and (oside == side or side == "center" or oside == "center") then
+            close(other)
+        end
+    end
+    open[f] = side
+    place(f, side)
+    if isOurs(name) then unstack(f); stack[#stack + 1] = f end
+    syncProxy()
+end
+
+local function closed(f)
+    open[f] = nil
+    pending[f] = nil
+    unstack(f)
+    syncProxy()
+end
+
+local function hook(name, f)
+    hooked[f] = name
+    waiting[name] = nil
+    local ours = isOurs(name)
+    f:HookScript("OnShow", function(self)
+        if ours then
+            opened(self)
+        else
+            -- Blizzard's panel code positions the window right after showing
+            -- it, and a ghosted window is hidden again at once: look one
+            -- frame later.
+            C_Timer.After(0, function() opened(self) end)
+        end
+    end)
+    f:HookScript("OnHide", closed)
+    if ours then
+        -- Esc goes through our proxy (one window per press) instead.
+        for i = #UISpecialFrames, 1, -1 do
+            if UISpecialFrames[i] == name then table.remove(UISpecialFrames, i) end
+        end
+        -- Dropped after a drag: the half of the screen it is in becomes its side.
+        hooksecurefunc(f, "StopMovingOrSizing", function(self)
+            if not self:IsShown() or sideOf(name) == "center" then return end
+            local x = self:GetCenter()
+            if not x then return end
+            local side = (x * self:GetScale() < UIParent:GetWidth() / 2) and "left" or "right"
+            W.db.sides[name] = side
+            C_Timer.After(0, function() if self:IsShown() then opened(self) end end)
+        end)
+    else
+        -- The panel manager re-centers its windows whenever another opens or
+        -- closes: put ours back in its dock.
+        hooksecurefunc(f, "SetPoint", function(self)
+            if seating[self] or not open[self] then return end
+            if locked(self) then pending[self] = "place" return end
+            place(self, open[self])
+        end)
+    end
+    if f:IsShown() then
+        if ours then opened(f) else C_Timer.After(0, function() opened(f) end) end
+    end
+end
+
+function W:OnInit(db)
+    self.db = db
+    db.sides = db.sides or {}
+    for name in pairs(MANAGED) do waiting[name] = true end
+
+    proxy = CreateFrame("Frame", "MeniscusEscProxy", UIParent)
+    proxy:Hide()
+    table.insert(UISpecialFrames, "MeniscusEscProxy")
+    proxy:SetScript("OnHide", function()
+        if proxySelf then return end
+        -- Esc: close the newest of our windows that can be closed now.
+        for i = #stack, 1, -1 do
+            local f = stack[i]
+            if f:IsShown() and not locked(f) then close(f) break end
+        end
+        C_Timer.After(0, syncProxy)
+    end)
+
+    local driver = CreateFrame("Frame")
+    local acc = 0
+    driver:SetScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc < 0.1 then return end
+        acc = 0
+        for name in pairs(waiting) do
+            local f = _G[name]
+            if type(f) == "table" and f.HookScript and not (f.IsForbidden and f:IsForbidden()) then
+                local ok, err = pcall(hook, name, f)
+                if not ok then waiting[name] = nil; ns:Print("Windows " .. name .. ": " .. tostring(err)) end
+                break -- the table changed; the rest next tick
+            end
+        end
+    end)
+    driver:RegisterEvent("PLAYER_REGEN_ENABLED")
+    driver:SetScript("OnEvent", function()
+        for f, what in pairs(pending) do
+            pending[f] = nil
+            if what == "hide" then close(f)
+            elseif f:IsShown() and open[f] then place(f, open[f]) end
+        end
+        syncProxy()
+    end)
+end
+
+-- /men windows : turn docking on / off (takes a reload).
+ns.commands.windows = function()
+    local mdb = W.db or (ns.db and ns.db.modules and ns.db.modules.Windows)
+    if not mdb then return end
+    mdb.enabled = mdb.enabled == false
+    ns:Print("Window docking " .. (mdb.enabled and "on" or "off") .. ". /reload to apply.")
+end

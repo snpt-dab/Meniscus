@@ -66,6 +66,11 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
 - Before hiding a Blizzard unit frame, call UnregisterAllEvents on it recursively.
 - Restyle in place only by recoloring. Never replace atlas art that Blizzard reads back: SetColorTexture on a MinimalScrollBar thumb broke the guild roster.
 
+## Window docks (Windows.lua)
+- Every window, ours or Blizzard's, is listed by global name in `MANAGED` with a side (left / right / center). The manager hooks show / hide, seats the window in its dock, closes what it replaces, and owns Esc for our windows (one per press, through `MeniscusEscProxy`; our names are taken out of UISpecialFrames).
+- A new window: add its name to `MANAGED`. Don't position it yourself beyond a first-time default; the dock overrides it on show.
+- Protected windows (bags, Blizzard panels) are not moved or hidden in combat; the work is queued until PLAYER_REGEN_ENABLED.
+
 ## Secure code and combat
 - Anything that casts, uses items or targets must be a SecureActionButton or SecureUnitButton. Use wildcard attributes (`*type1`, `*type2`) so modifiers and Click Casting work, plus `RegisterForClicks("AnyDown","AnyUp")`. Keep both edges: with only `"AnyUp"`, the click never fired on Forever.
 - In combat, don't Show/Hide, change attributes on, or lay out protected frames. Use alpha instead, or defer to `PLAYER_REGEN_ENABLED`. Build secure buttons at init.
