@@ -163,6 +163,7 @@ local function paragraph(s, color)
 end
 
 -- Speech bubble with a tail toward the head; the text types itself out.
+local TILE_H = 48 -- reward tiles: icon, name, a comparison line under it
 local typer
 -- Long text scrolls inside the bubble (BUBBLE_MAX tall), so everything below
 -- it (objectives, rewards, buttons) stays in view without scrolling the window.
@@ -317,7 +318,7 @@ local function itemTiles(list)
     for _, it in ipairs(list) do
         local t = take("tile", function()
             local f = CreateFrame("Button", nil, content)
-            f:SetHeight(42)
+            f:SetHeight(TILE_H)
             f.ring = ns.RoundedRect(f, -8, 0, 10, T.border[1], T.border[2], T.border[3], 1)
             f.fill = ns.RoundedRect(f, -7, 1, 9, unpack(CARD))
             local box = CreateFrame("Frame", nil, f)
@@ -339,10 +340,27 @@ local function itemTiles(list)
             f.sell:SetPoint("RIGHT", f, "RIGHT", -9, 0)
             f.sell:SetJustifyH("RIGHT")
             f.name = text(f, 11)
-            f.name:SetPoint("LEFT", box, "RIGHT", 8, 0)
-            f.name:SetPoint("RIGHT", f.sell, "LEFT", -6, 0)
             f.name:SetJustifyH("LEFT")
-            f.name:SetWordWrap(true)
+            -- Gear: how it differs from what you wear, under the name.
+            f.cmp = text(f, 10, false, T.textDim)
+            f.cmp:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 8, -3)
+            f.cmp:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+            f.cmp:SetJustifyH("LEFT")
+            f.cmp:SetWordWrap(false)
+            -- With a comparison line the name is one line on top; without,
+            -- it is centered and may wrap.
+            f.layoutText = function(self, two)
+                self.name:ClearAllPoints()
+                if two then
+                    self.name:SetPoint("TOPLEFT", box, "TOPRIGHT", 8, 3)
+                    self.name:SetWordWrap(false)
+                else
+                    self.name:SetPoint("LEFT", box, "RIGHT", 8, 0)
+                    self.name:SetWordWrap(true)
+                end
+                self.name:SetPoint("RIGHT", self.sell, "LEFT", -6, 0)
+            end
+            f:layoutText(false)
             f:SetScript("OnEnter", function(self)
                 ns.TipAnchor(self)
                 pcall(GameTooltip.SetQuestItem, GameTooltip, self.kind, self.index)
@@ -355,6 +373,8 @@ local function itemTiles(list)
         t.kind, t.index = it.kind, it.index
         t.sellValue = nil
         t.sell:SetText("")
+        t.cmp:SetText("")
+        t:layoutText(false)
         t:SetWidth(tw)
         t:SetPoint("TOPLEFT", content, "TOPLEFT", col * (tw + 8), y)
         t.icon:SetTexture(it.tex)
@@ -388,9 +408,9 @@ local function itemTiles(list)
             end
         end)
         col = col + 1
-        if col == 2 then col = 0; y = y - 48 end
+        if col == 2 then col = 0; y = y - (TILE_H + 6) end
     end
-    if col == 1 then y = y - 48 end
+    if col == 1 then y = y - (TILE_H + 6) end
     y = y - 6
     -- Vendor values. Item data may not have arrived yet for an item never
     -- seen before, so this is tried again a moment later.
@@ -412,6 +432,11 @@ local function itemTiles(list)
                     price = select(11, call(C_Item.GetItemInfo, link))
                 end
                 local _, _, count = call(_G.GetQuestItemInfo, t.kind, t.index)
+                local line = link and ns.CompareLine and call(ns.CompareLine, link)
+                if type(line) == "string" then
+                    t.cmp:SetText(line)
+                    t:layoutText(true)
+                end
                 if type(price) == "number" and not secret(price) then
                     if type(count) == "number" and not secret(count) and count > 1 then price = price * count end
                     t.sellValue = price -- 0 = can't be sold

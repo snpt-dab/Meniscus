@@ -338,6 +338,53 @@ local function statLabel(key)
     return (key:gsub("^ITEM_MOD_", ""):gsub("_SHORT$", ""):gsub("_", " "):lower():gsub("^%l", string.upper))
 end
 
+-- The same comparison as one short coloured line for a tile:
+-- "+3 Agi  +12 Armor  -2 Sta" (biggest changes first, at most four).
+-- Returns nil for things that aren't gear or whose data hasn't arrived,
+-- "" .. note for an empty slot / identical stats.
+local SHORT = { Agility = "Agi", Strength = "Str", Stamina = "Sta", Intellect = "Int", Spirit = "Spi",
+                ["Damage Per Second"] = "DPS", ["Attack Power"] = "AP", ["Spell Power"] = "SP",
+                ["Critical Strike"] = "Crit" }
+local function byMagnitude(a, b) return math.abs(a[2]) > math.abs(b[2]) end
+function ns.CompareLine(link)
+    if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return nil end
+    local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
+    local slots = ok and SLOTS[loc]
+    if not slots then return nil end
+    local new = itemStats(link)
+    if not new then return nil end
+    local worn
+    for _, slot in ipairs(slots) do
+        local l = GetInventoryItemLink("player", slot)
+        if l then worn = l break end
+    end
+    if not worn then return "|cff8fd19eNothing equipped there|r" end
+    if worn == link then return "|cff9a9aa5You're wearing this|r" end
+    local old = itemStats(worn)
+    if not old then return nil end
+    local diffs = {}
+    for k, v in pairs(new) do
+        local d = v - (old[k] or 0)
+        if math.abs(d) > 0.05 then diffs[#diffs + 1] = { k, d } end
+    end
+    for k, v in pairs(old) do
+        if new[k] == nil and v > 0.05 then diffs[#diffs + 1] = { k, -v } end
+    end
+    if #diffs == 0 then return "|cff9a9aa5Same stats as equipped|r" end
+    table.sort(diffs, byMagnitude)
+    local out = ""
+    for i = 1, math.min(#diffs, 4) do
+        local d = diffs[i][2]
+        local a = math.abs(d)
+        local label = statLabel(diffs[i][1])
+        label = SHORT[label] or label
+        out = out .. (i > 1 and "   " or "") .. (d > 0 and "|cff73d980+" or "|cffe57373-")
+            .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5)) .. " " .. label .. "|r"
+    end
+    if #diffs > 4 then out = out .. "  |cff9a9aa5\226\128\166|r" end
+    return out
+end
+
 function ns.AddCompare(tip, link)
     if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return end
     local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
