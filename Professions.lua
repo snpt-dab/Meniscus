@@ -12,7 +12,7 @@ local T = ns.Theme
 --   detail   the selected recipe: icon (tooltip), skill-up odds, tools,
 --            cooldown, description, reagent tiles (have / need)
 --   footer   Close bottom-left; quantity stepper, Create all (N), Create
--- /mui prof blizz   use Blizzard's window instead (reloads); again to undo.
+-- /men prof blizz   use Blizzard's window instead (reloads); again to undo.
 
 local P = ns:NewModule("Professions", { enabled = true, haveMats = false, skillUps = false, collapsed = {} })
 

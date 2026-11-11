@@ -18,7 +18,7 @@ local Orbs = ns:NewModule("Orbs", {
     size = 120,
     health = { x = DEFAULT.health.x, y = DEFAULT.health.y },
     power  = { x = DEFAULT.power.x,  y = DEFAULT.power.y },
-    -- A small pair of orbs for your pet instead of its frame (/mui petorbs).
+    -- A small pair of orbs for your pet instead of its frame (/men petorbs).
     petOrbs = true,
 })
 
@@ -2233,117 +2233,6 @@ local function powerPct(ptype)
     return fn
 end
 
--- ── Portrait at rest ──────────────────────────────────────────────────────
--- Out of combat at full health the health orb turns into a portrait window:
--- your portrait fades in, translucent, inside the liquid. The moment a
--- fight starts or health drops it fades back out, fast, and the orb is a
--- plain health readout again. On when the player frame style is "rest"
--- (UnitFrames.lua, /mui restportrait).
--- The portrait is the flat (2D) one, not a 3D model: a model draws in a
--- rectangular window that can't be masked, which showed as straight cuts at
--- the bottom and side. A texture can take a soft round mask, so the face
--- simply thins out toward the rim with no edge anywhere, and it is drawn
--- translucent: a likeness seen in the liquid, not a window over it.
-local REST_ALPHA = 0.45
-local SPOT_MASK = MEDIA .. "spot.tga"
-local function buildRestPortrait(f)
-    local inner = f.inner
-    local P = CreateFrame("Frame", nil, f)
-    P:SetAllPoints(f.bar)
-    P:SetFrameLevel(f.bar:GetFrameLevel() + 2) -- over the liquid, under the value chip
-    P:SetAlpha(0)
-    P:Hide()
-    -- Two alphas multiply: P fades with combat (ours to animate), the body
-    -- inside it follows health (possibly a hidden value, set by the engine
-    -- from a curve: 1 at full health, 0 below ~98%).
-    local body = CreateFrame("Frame", nil, P)
-    body:SetAllPoints()
-    P.body = body
-
-    local face = body:CreateTexture(nil, "ARTWORK")
-    face:SetPoint("CENTER", 0, inner * 0.02)
-    face:SetSize(inner * 0.86, inner * 0.86)
-    face:SetVertexColor(1, 1, 1, REST_ALPHA)
-    -- Soft falloff to nothing well inside the liquid's rim.
-    local soft = body:CreateMaskTexture()
-    soft:SetTexture(SPOT_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    soft:SetPoint("CENTER", face, "CENTER")
-    soft:SetSize(inner * 1.05, inner * 1.05)
-    face:AddMaskTexture(soft)
-    face:AddMaskTexture(f.innerMask)
-    P.face = face
-
-    if f.chip then f.chip:SetFrameLevel(P:GetFrameLevel() + 3) end
-
-    P.alpha, P.want, P.dirty = 0, 0, true
-    function P:RefreshModel()
-        self.dirty = false
-        pcall(SetPortraitTexture, face, "player")
-    end
-    local function setAlpha(a)
-        P.alpha = a
-        P:SetAlpha(a)
-    end
-    -- Slow in (a second of calm first), fast out.
-    P:SetScript("OnUpdate", function(self, dt)
-        if self.want > 0 then
-            self.wait = (self.wait or 0) + dt
-            if self.wait < 1 then return end
-            setAlpha(math.min(1, self.alpha + dt / 0.9))
-        else
-            setAlpha(math.max(0, self.alpha - dt / 0.2))
-            if self.alpha <= 0 then self:Hide() end
-        end
-    end)
-    local ev = CreateFrame("Frame")
-    ev:RegisterUnitEvent("UNIT_MODEL_CHANGED", "player")
-    ev:RegisterUnitEvent("UNIT_PORTRAIT_UPDATE", "player")
-    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-    ev:SetScript("OnEvent", function()
-        P.dirty = true
-        if P:IsShown() then P:RefreshModel() end
-    end)
-    f.rest = P
-    return P
-end
-
--- Decide whether the portrait should be showing: out of combat and alive
--- (ours to know), and at full health. Health is hidden from addons on this
--- client, so "full" isn't tested here; the body's alpha is set by the engine
--- from a curve over the health percentage instead.
-local REST_CURVE = { { 0.00, 0 }, { 0.975, 0 }, { 1.00, 1 } }
-local restCurve, restCurveTried
-local function setBodyAlpha(body, pctFn, c) body:SetAlpha(pctFn(c)) end
-local function checkRest(f)
-    if not f then return end
-    local P = f.rest
-    local want = 0
-    if Orbs.restPortrait and not InCombatLockdown() and not UnitAffectingCombat("player")
-        and not UnitIsDeadOrGhost("player") then
-        want = 1
-    end
-    if want == 1 and not P then P = buildRestPortrait(f) end
-    if not P then return end
-    if want == 1 then
-        local cur, max = UnitHealth("player"), UnitHealthMax("player")
-        if not issecretvalue(cur) and not issecretvalue(max) then
-            P.body:SetAlpha((max > 0 and cur >= max) and 1 or 0)
-        else
-            if not restCurveTried then restCurveTried = true; restCurve = floatCurve(REST_CURVE) end
-            if not (restCurve and healthPct and pcall(setBodyAlpha, P.body, healthPct, restCurve)) then
-                P.body:SetAlpha(0)
-            end
-        end
-    end
-    if P.want == want then return end
-    P.want = want
-    if want == 1 then
-        P.wait = 0
-        if P.dirty then P:RefreshModel() end
-        P:Show()
-    end
-end
-
 -- Your level set into the left end of the health orb's value pill, with a
 -- hairline divider (the same arrangement as tracking in the minimap's zone
 -- pill). Used when there is no player frame to carry the level badge.
@@ -2443,24 +2332,18 @@ function Orbs:BuildAmmo()
     refresh()
 end
 
-function Orbs:SetRestPortrait(on)
-    self.restPortrait = on and true or false
-    checkRest(self.health)
-end
-
 local function updateHealth(f)
     local cur, max = UnitHealth("player"), UnitHealthMax("player")
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
     setText(f.text, cur)
-    checkRest(f)
     local c = getCurves()
     colorByPercent(f, cur, max, HEALTH_STOPS, HEALTH_FLASH, c.healthColor, c.healthFlash,
         healthPct)
 end
 
 local function updatePower(f)
-    if f.rageTest then return end -- /mui rage preview running
+    if f.rageTest then return end -- /men rage preview running
     local ptype = UnitPowerType("player")
     local cur, max = UnitPower("player", ptype), UnitPowerMax("player", ptype)
     f.bar:SetMinMaxValues(0, max)
@@ -2513,7 +2396,7 @@ local function updatePower(f)
     end
 end
 
--- /mui rage : preview the rage boil on the power orb (any class). Rage
+-- /men rage : preview the rage boil on the power orb (any class). Rage
 -- arrives in chunks to 100, holds, then drains like it does out of combat.
 ns.commands.rage = function(rest)
     local f = ns.modules.Orbs.power
@@ -2562,7 +2445,7 @@ ns.commands.rage = function(rest)
     ns:Print("Rage preview: building to 100, then draining (about 18s).")
 end
 
--- /mui energy : preview energy on the power orb (any class): refills to
+-- /men energy : preview energy on the power orb (any class): refills to
 -- full, crackles while capped, spends in chunks, refills.
 ns.commands.energy = function(rest)
     local f = ns.modules.Orbs.power
@@ -2606,7 +2489,7 @@ ns.commands.energy = function(rest)
     ns:Print("Energy preview (about 16s).")
 end
 
--- /mui mana : preview mana on the power orb (any class): drains, then
+-- /men mana : preview mana on the power orb (any class): drains, then
 -- refills (motes thin out and fill back in).
 ns.commands.mana = function(rest)
     local f = ns.modules.Orbs.power
@@ -2652,7 +2535,7 @@ ns.commands.mana = function(rest)
     ns:Print("Mana preview (about 15s).")
 end
 
--- /mui orbcolor : which path the orb colors use on this client.
+-- /men orbcolor : which path the orb colors use on this client.
 ns.commands.orbcolor = function()
     local O = ns.modules.Orbs
     if not O.health then return end
@@ -2835,7 +2718,7 @@ local function buildCombo(O)
     updateCombo(C)
 end
 
--- /mui combo : preview the combo pips on any class (fills to 5, spends, ends).
+-- /men combo : preview the combo pips on any class (fills to 5, spends, ends).
 ns.commands.combo = function()
     local C = Orbs.combo
     if not C then return end
@@ -2997,18 +2880,6 @@ function Orbs:OnInit(db)
         end
     end)
     for _, e in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }) do ev:RegisterUnitEvent(e, "player") end
-    -- Combat start / end decides the portrait-at-rest window.
-    local rest = CreateFrame("Frame")
-    for _, e in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_DEAD" }) do
-        rest:RegisterEvent(e)
-    end
-    rest:SetScript("OnEvent", function(_, e)
-        if e == "PLAYER_REGEN_DISABLED" and self.health.rest then
-            self.health.rest.want = 0 -- InCombatLockdown isn't true yet during this event
-        else
-            checkRest(self.health)
-        end
-    end)
     for _, e in ipairs({ "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }) do
         ev:RegisterUnitEvent(e, "player")
     end
@@ -3076,7 +2947,7 @@ function Orbs:SetLocked(locked)
     end
 end
 
--- Piggyback on the existing /mui unlock | lock | reset commands.
+-- Piggyback on the existing /men unlock | lock | reset commands.
 local baseUnlock, baseLock, baseReset = ns.commands.unlock, ns.commands.lock, ns.commands.reset
 ns.commands.unlock = function(...)
     if baseUnlock then baseUnlock(...) end

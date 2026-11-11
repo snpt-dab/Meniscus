@@ -424,7 +424,7 @@ local function fill(row, reset)
     row.shown = i - 1
 end
 
--- Fill a row; failures go to the error recorder (/mui errors) instead of vanishing.
+-- Fill a row; failures go to the error recorder (/men errors) instead of vanishing.
 function A:Fill(row, reset)
     local ok, err = pcall(fill, row, reset)
     if not ok then
@@ -700,7 +700,7 @@ end
 --   player frame shown:  left of the avatar, debuffs under the buffs
 --   no player frame:     buffs above the left half of the main action bar,
 --                        debuffs above the right half
--- /mui buffs attach toggles it (off needs a reload to hand them back).
+-- /men buffs attach toggles it (off needs a reload to hand them back).
 local seats, seating, hooked = {}, false, {}
 local function reseat(frame)
     local s = seats[frame]
@@ -869,7 +869,7 @@ ns.commands.buffs = function(rest)
         end
         return
     end
-    ns:Print("/mui buffs attach  pin the game's buff frames into the layout (toggle)   /mui buffs probe  where they are")
+    ns:Print("/men buffs attach  pin the game's buff frames into the layout (toggle)   /men buffs probe  where they are")
 end
 
 -- Player rows sit right of the health pill, or left of the avatar growing
@@ -992,7 +992,7 @@ function A:RefreshAll()
     for _, row in ipairs(self.rows or {}) do self:Fill(row) end
 end
 
--- /mui auralist: what the aura code sees right now, and how many icons each row shows.
+-- /men auralist: what the aura code sees right now, and how many icons each row shows.
 ns.commands.auralist = function()
     for _, unit in ipairs({ "player", "target", "focus" }) do
         if UnitExists(unit) then

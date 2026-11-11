@@ -8,7 +8,7 @@ local T = ns.Theme
 --   [health orb] [1 2 3 / 4 5 6] ( dome ) [7 8 9 / 0 - =] [power orb]
 -- (two blocks of 3 x 2: a single split row would not fit between the orbs).
 -- Bar 2 / bar 3 blocks are anchored to the orbs, so they follow when orbs move.
--- Escape hatch if anything misbehaves: /mui actionbars, then /reload.
+-- Escape hatch if anything misbehaves: /men actionbars, then /reload.
 
 local DEFAULT_MAIN = { x = 0, y = 30 }
 
@@ -17,13 +17,13 @@ local Bars = ns:NewModule("Bars", {
     main  = { size = 44, gap = 4, x = DEFAULT_MAIN.x, y = DEFAULT_MAIN.y },
     small = { size = 26, gap = 3, cols = 4, margin = 14 }, -- ~60% of main
     -- A dark rounded plate behind the whole bottom row (side bars, orbs,
-    -- main bar, minimap dome), so it reads as one console. /mui console
+    -- main bar, minimap dome), so it reads as one console. /men console
     plate = true,
     -- The plate runs the full width of the screen and seats the chat window
-    -- in its left wing and the damage meter in its right. /mui console wings
+    -- in its left wing and the damage meter in its right. /men console wings
     wings = true,
     wingFill = 0.5, -- share of each wing's width the chat / meter panel takes (outer side)
-    petGrid = true, -- empty pet action slots are drawn too (/mui petgrid)
+    petGrid = true, -- empty pet action slots are drawn too (/men petgrid)
 })
 
 local function safe(fn, ...)
@@ -1269,7 +1269,7 @@ function Bars:OnInit(db)
     ev:SetScript("OnEvent", function() Bars:Arrange() end)
 end
 
--- ── Move the main bar with /mui unlock | lock | reset ─────────────────────
+-- ── Move the main bar with /men unlock | lock | reset ─────────────────────
 local overlay
 local function mainOverlay()
     if overlay then return overlay end

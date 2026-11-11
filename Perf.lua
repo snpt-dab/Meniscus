@@ -2,10 +2,10 @@ local ADDON, ns = ...
 local T = ns.Theme
 
 -- Resource monitor: how heavy is Meniscus?
---   /mui perf          toggle a small live readout (memory, churn, CPU, FPS)
---   /mui perf report   print a summary + the slowest timed jobs
---   /mui perf reset    clear the timed-job stats
---   /mui perf gc       full garbage collect, then show retained memory
+--   /men perf          toggle a small live readout (memory, churn, CPU, FPS)
+--   /men perf report   print a summary + the slowest timed jobs
+--   /men perf reset    clear the timed-job stats
+--   /men perf gc       full garbage collect, then show retained memory
 -- A sample is logged every 60s into MinimalUIDB.perf (readable from the
 -- SavedVariables file after /reload or logout), with peaks and job timings.
 --
@@ -240,7 +240,7 @@ end)
 
 -- ── Dev reload pill ───────────────────────────────────────────────────────
 -- Always-on Reload button in the top-left corner while Meniscus is in
--- development. /mui reloadbtn hides or shows it (remembered).
+-- development. /men reloadbtn hides or shows it (remembered).
 local reloadBtn
 local function buildReload()
     local b = CreateFrame("Button", "MinimalUIReload", UIParent)

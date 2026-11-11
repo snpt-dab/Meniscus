@@ -939,7 +939,7 @@ function D:OnInit(db)
     end)
 end
 
--- /mui typewriter : toggle the typing effect.
+-- /men typewriter : toggle the typing effect.
 ns.commands.typewriter = function()
     if not D.db then return end
     D.db.typewriter = not D.db.typewriter

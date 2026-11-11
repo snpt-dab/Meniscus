@@ -10,15 +10,15 @@ INSTALL
    "Load out of date AddOns".
 
 USING IT
-/mui            open the settings panel (every part can be switched off)
-/mui errors     show any errors the addon has caught
+/men            open the settings panel (every part can be switched off)
+/men errors     show any errors the addon has caught
 /reload         reload the UI after changing a setting that asks for it
 
 This is an early test build. Some windows are replaced with new ones
 (character, bags, bank, mail, spellbook, quest log, professions, merchant,
 trainer, loot). If something looks broken or a game window is missing a
 feature, please note what you were doing and send a screenshot, plus the
-output of /mui errors.
+output of /men errors.
 
 TO REMOVE
 Delete the Meniscus folder. Your settings are kept in

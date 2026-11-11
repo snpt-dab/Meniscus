@@ -409,7 +409,7 @@ function L:OnInit(db)
     end)
 end
 
--- /mui testroll : preview a roll card (uses your first bag item's look).
+-- /men testroll : preview a roll card (uses your first bag item's look).
 ns.commands.testroll = function()
     if not holder then
         holder = CreateFrame("Frame", "MinimalUILootRolls", UIParent)

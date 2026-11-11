@@ -156,10 +156,10 @@ do
     end)
 end
 
--- /mui profile                 list profiles (current marked)
--- /mui profile use <name>      switch this character (reloads)
--- /mui profile copy <name>     copy the current profile to <name> and use it
--- /mui profile delete <name>   remove a profile (not the one in use / Default)
+-- /men profile                 list profiles (current marked)
+-- /men profile use <name>      switch this character (reloads)
+-- /men profile copy <name>     copy the current profile to <name> and use it
+-- /men profile delete <name>   remove a profile (not the one in use / Default)
 ns.commands.profile = function(_, raw)
     local verb, name = (raw or ""):match("^(%S*)%s*(.-)%s*$")
     verb = verb:lower()
@@ -204,11 +204,11 @@ SlashCmdList.MINIMALUI = function(msg)
         -- Catch errors so the chat box always closes and the error is visible.
         local ok, err = pcall(ns.commands[cmd], rest, raw) -- raw keeps case (profile names)
         if not ok then
-            ns:Print("|cffff6666/mui " .. cmd .. " failed:|r " .. tostring(err))
+            ns:Print("|cffff6666/men " .. cmd .. " failed:|r " .. tostring(err))
             local handler = geterrorhandler()
-            if handler then pcall(handler, err) end -- also lands in /mui errors
+            if handler then pcall(handler, err) end -- also lands in /men errors
         end
     else
-        ns:Print("Unknown command. /mui opens the panel, /mui help lists commands.")
+        ns:Print("Unknown command. /men opens the panel, /men help lists commands.")
     end
 end

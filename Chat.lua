@@ -72,7 +72,7 @@ local function selectedFrame()
     return SELECTED_CHAT_FRAME
 end
 
--- /mui chat : record ChatFrame1's state into MinimalUIDB.chatprobe (chat may
+-- /men chat : record ChatFrame1's state into MinimalUIDB.chatprobe (chat may
 -- be invisible, so it's saved, not just printed), then force it back on screen.
 ns.commands = ns.commands or {}
 ns.commands.chat = function()

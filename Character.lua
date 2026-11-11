@@ -5,7 +5,7 @@ local T = ns.Theme
 -- screen (Character, Reputation and Skills tabs). Opening the character
 -- screen any normal way (C / U / K keys, micro menu) opens this instead.
 -- Other Blizzard tabs (honor, pet, currency) still open Blizzard's window, and
--- `/mui blizzchar` opens Blizzard's character screen on demand.
+-- `/men blizzchar` opens Blizzard's character screen on demand.
 --
 --   header   name (class color), "Level 60 Race Class · Guild", item level pill
 --   gear     rounded tiles (quality ring, item level, durability bar,
@@ -1414,7 +1414,7 @@ function C:OnInit(db)
     -- The covers are separate frames placed over the tiles by screen
     -- position, not children of the window and not anchored to it, so the
     -- window itself stays free to open and close in combat. They can only
-    -- be shown out of combat; in combat, use /mui blizzchar.
+    -- be shown out of combat; in combat, use /men blizzchar.
     local covers = {}
     -- Can the thing on the cursor go on what is in this slot? Blizzard's own
     -- test for dimming non-matching items (an armor kit: chest, legs, hands,
@@ -1441,7 +1441,7 @@ function C:OnInit(db)
     end
     local function showCovers()
         if InCombatLockdown() then
-            ns:Print("Can't target gear from this window in combat. Use /mui blizzchar for Blizzard's.")
+            ns:Print("Can't target gear from this window in combat. Use /men blizzchar for Blizzard's.")
             return
         end
         for i, tile in ipairs(tiles) do
@@ -1543,15 +1543,15 @@ function C:OnInit(db)
     attach()
 end
 
--- /mui char : open Meniscus's character window.
--- /mui blizzchar : open Blizzard's character screen instead (this once).
+-- /men char : open Meniscus's character window.
+-- /men blizzchar : open Blizzard's character screen instead (this once).
 ns.commands.char = function() if C.db then C:Toggle("gear") end end
 ns.commands.blizzchar = function()
     C.bypass = true
     if ToggleCharacter then ToggleCharacter("PaperDollFrame") else ShowUIPanel(CharacterFrame) end
 end
 
--- /mui charprobe : record what this client offers for names and skills into
+-- /men charprobe : record what this client offers for names and skills into
 -- MinimalUIDB.charprobe (/reload afterwards to save it).
 ns.commands.charprobe = function()
     local out = {}

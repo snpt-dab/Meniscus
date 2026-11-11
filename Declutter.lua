@@ -139,7 +139,7 @@ function DC:OnInit(db)
     end)
 end
 
--- /mui keyring: list everything drawn by the keyring button, with alphas.
+-- /men keyring: list everything drawn by the keyring button, with alphas.
 ns.commands.keyring = function()
     local k = _G.KeyRingButton or _G.MainMenuBarKeyRingButton
     if not k then ns:Print("No keyring button found.") return end

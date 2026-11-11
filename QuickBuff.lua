@@ -594,7 +594,7 @@ function QB:OnInit(db)
     end)
 end
 
--- /mui quickbuff : what it would cast now and why nothing shows.
+-- /men quickbuff : what it would cast now and why nothing shows.
 ns.commands.quickbuff = function()
     if InCombatLockdown() then return ns:Print("Quick Buff is paused in combat.") end
     local ok, err = pcall(scan)

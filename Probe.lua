@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- /mui probe: report what this Forever build actually provides.
+-- /men probe: report what this Forever build actually provides.
 function ns:RunProbe()
     local P = function(...) ns:Print(...) end
     local version, build, date, toc = GetBuildInfo()
@@ -34,7 +34,7 @@ function ns:RunProbe()
     P("|cffff6666no frame|r:", table.concat(m2, ", "))
 end
 
--- /mui bars: inspect the default action bar structure on this build.
+-- /men bars: inspect the default action bar structure on this build.
 ns.commands.bars = function()
     local P = function(...) ns:Print(...) end
     local function has(n) return _G[n] ~= nil end
@@ -102,7 +102,7 @@ ns.commands.bars = function()
       "InCombat:", tostring(InCombatLockdown()))
 end
 
--- /mui scales: show where button scaling comes from (diagnostic).
+-- /men scales: show where button scaling comes from (diagnostic).
 ns.commands.scales = function()
     for _, n in ipairs({ "ActionButton1", "MultiBarBottomLeftButton1", "MultiBarBottomRightButton1" }) do
         local b = _G[n]
@@ -118,7 +118,7 @@ ns.commands.scales = function()
     end
 end
 
--- /mui auras: what aura data looks like on this build (run with a target that
+-- /men auras: what aura data looks like on this build (run with a target that
 -- has buffs/debuffs; try once out of combat and once in combat).
 ns.commands.auras = function()
     local P = function(...) ns:Print(...) end
@@ -185,7 +185,7 @@ ns.commands.auras = function()
     P("DebuffFrame:", tostring(_G.DebuffFrame ~= nil))
 end
 
--- /mui clicks: toggle printing every click our secure unit buttons receive.
+-- /men clicks: toggle printing every click our secure unit buttons receive.
 -- If clicking prints nothing, something above the frame is eating the mouse.
 ns.commands.clicks = function()
     ns.clickDebug = not ns.clickDebug
@@ -209,7 +209,7 @@ ns.commands.clicks = function()
     ns:Print("Click debug", ns.clickDebug and "on: click your frames" or "off")
 end
 
--- /mui uiprobe: which map / bag / quest log / spellbook frames and APIs this
+-- /men uiprobe: which map / bag / quest log / spellbook frames and APIs this
 -- client has. Saved to MinimalUIDB.uiprobe (/reload to write it).
 ns.commands.uiprobe = function()
     local out = {}
@@ -251,7 +251,7 @@ ns.commands.uiprobe = function()
     ns:Print("Recorded " .. #out .. " lines. /reload to save them.")
 end
 
--- /mui menuprobe: 5 seconds after typing it, records the menu under the
+-- /men menuprobe: 5 seconds after typing it, records the menu under the
 -- mouse (open a right-click menu and its submenu, keep the mouse on a
 -- submenu row). Saved to MinimalUIDB.menuprobe (/reload to write it).
 ns.commands.menuprobe = function()
@@ -322,7 +322,7 @@ ns.commands.menuprobe = function()
     end)
 end
 
--- /mui dmprobe: Blizzard's damage meter, frames / regions / bars (open it
+-- /men dmprobe: Blizzard's damage meter, frames / regions / bars (open it
 -- with a fight's data showing first). Saved to MinimalUIDB.dmprobe.
 ns.commands.dmprobe = function()
     local root = _G.DamageMeter
@@ -363,7 +363,7 @@ ns.commands.dmprobe = function()
     ns:Print("Damage meter probe recorded " .. #out .. " lines. /reload to save.")
 end
 
--- /mui guildprobe: the guild & communities window (open it on the Roster
+-- /men guildprobe: the guild & communities window (open it on the Roster
 -- page first): frames with key, shown/visible, alpha, level, size and first
 -- anchor; textures and text. Saved to MinimalUIDB.guildprobe.
 ns.commands.guildprobe = function()
@@ -417,7 +417,7 @@ ns.commands.guildprobe = function()
     ns:Print("Guild probe recorded " .. #out .. " lines. /reload to save.")
 end
 
--- /mui countprobe: every action button showing a count, with what each API
+-- /men countprobe: every action button showing a count, with what each API
 -- says the count should be (ammo / reagent counts). Printed to chat and
 -- saved to MinimalUIDB.countprobe.
 ns.commands.countprobe = function()
@@ -462,7 +462,7 @@ ns.commands.countprobe = function()
     MinimalUIDB.countprobe = out
 end
 
--- /mui keyprobe [KEY]: what a key is bound to, and which frames show up
+-- /men keyprobe [KEY]: what a key is bound to, and which frames show up
 -- after pressing it. Run it, press the key within 4 seconds; the frames
 -- that appeared are printed (alpha, scale, size, strata) and saved to
 -- MinimalUIDB.keyprobe.
@@ -519,7 +519,7 @@ ns.commands.keyprobe = function(rest)
     end)
 end
 
--- /mui under: name the frame(s) under the mouse (hover a frame, then type it).
+-- /men under: name the frame(s) under the mouse (hover a frame, then type it).
 ns.commands.under = function()
     local foci = GetMouseFoci and GetMouseFoci() or { GetMouseFocus and GetMouseFocus() }
     if #foci == 0 then return ns:Print("Nothing under the mouse.") end

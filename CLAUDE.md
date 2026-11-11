@@ -11,9 +11,9 @@ SavedVariables: `_forever_/WTF/Account/<ACCOUNT>/SavedVariables/Meniscus.lua` (M
   PYTHONPATH=<pylib> python -c "from lupa import lua51 as L; rt=L.LuaRuntime(); f=rt.eval('function(s,n) local f,e=loadstring(s,n) return f and \"ok\" or e end'); print(f(open('X.lua',encoding='utf-8').read(),'X.lua'))"
   ```
 - **New .lua files** must be added to `Meniscus.toc` in dependency order (Core, Theme, Perf, Shell first). They need a full client restart, not just /reload.
-- **Runtime errors:** Core.lua logs unique errors and ADDON_ACTION_BLOCKED/FORBIDDEN into `MinimalUIDB.errors`. Read the SavedVariables file after the user reloads, or use `/mui errors` in game.
+- **Runtime errors:** Core.lua logs unique errors and ADDON_ACTION_BLOCKED/FORBIDDEN into `MinimalUIDB.errors`. Read the SavedVariables file after the user reloads, or use `/men errors` in game.
 - **Probes** (Probe.lua and others) dump client state when an API or frame is unknown, so we don't have to guess:
-  - `/mui probe`, `uiprobe`, `menuprobe`, `keyprobe [KEY]`, `countprobe`, `guildprobe`, `dmprobe`
+  - `/men probe`, `uiprobe`, `menuprobe`, `keyprobe [KEY]`, `countprobe`, `guildprobe`, `dmprobe`
   - Add a probe instead of guessing at Forever's API.
 - Paths in Lua strings use forward slashes, because bash heredocs eat backslashes.
 - **Version control:** this folder is a git repository (local only, branch `main`; first commit is the 2026-11-10 baseline). Commit after every change, without asking (the user said to commit at will), with a message saying what changed for them. `git diff` / `git log -p <file>` answer "what changed", `git checkout <commit> -- <file>` brings an old version back. Tester zips are ignored (`dist/*.zip`); rebuild with `python dist/build.py`.
@@ -26,7 +26,7 @@ local _, ns = ...
 local T = ns.Theme
 local M = ns:NewModule("Name", { enabled = true, ... })  -- defaults -> per-profile db
 function M:OnInit(db) ... end                              -- runs at PLAYER_LOGIN, pcall'd
-ns.commands.name = function(lowerRest, rawRest) ... end    -- /mui name
+ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
 ```
 - Settings go into `PAGES` in Panel.lua; set `reload = true` if the setting needs a reload.
 - Add a help line in Panel.lua for each new slash command.
@@ -49,7 +49,7 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /mui name
     - `Lift(...)`: controls on the band must call it, or the band paints over them.
   - `ns:CreateFooter(win, h)`: a footer band (hairline on top).
 - **Skins.lua:** `ns.SkinWindow(f, opts)` (opts.deep for deep passes), `ns.SkinButton`, `ns.SetButtonPrimary(b, on)`.
-- **Perf.lua:** wrap recurring jobs in `ns.Timed("label", fn, ...)` so `/mui perf report` attributes their cost.
+- **Perf.lua:** wrap recurring jobs in `ns.Timed("label", fn, ...)` so `/men perf report` attributes their cost.
 
 ## Window recipe (Dialogs.lua is the reference)
 - Header shell, then content in rounded cards, then a footer band with pills.
@@ -61,7 +61,7 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /mui name
 
 ## Taking over Blizzard windows
 - **Ghost pattern:** use it when hiding Blizzard's frame would end the interaction (Gossip, Quest, Merchant, Trainer, Inspect, Mail, Bank, ProfessionsFrame while a trade skill is open). Keep the frame shown with alpha 0, scale 0.001 and no mouse; our window drives the API. Sync visibility from the ghost frame's OnShow/OnHide, not from event order.
-- **Plain windows:** post-hook the toggle function (`hooksecurefunc`). Add an OnShow fallback on Blizzard's frame that hides it and opens ours. Offer a bypass command (`/mui blizzchar`, `/mui prof blizz`, ...).
+- **Plain windows:** post-hook the toggle function (`hooksecurefunc`). Add an OnShow fallback on Blizzard's frame that hides it and opens ours. Offer a bypass command (`/men blizzchar`, `/men prof blizz`, ...).
 - Never reparent Blizzard containers that Edit Mode manages; set alpha 0 and turn the mouse off instead.
 - Before hiding a Blizzard unit frame, call UnregisterAllEvents on it recursively.
 - Restyle in place only by recoloring. Never replace atlas art that Blizzard reads back: SetColorTexture on a MinimalScrollBar thumb broke the guild roster.
@@ -88,4 +88,4 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /mui name
 - Prefer events over polling. Polling loops (deep skin 1s, damage meter 0.5s) are the known hot spots for the optimization pass. The menu watcher only runs while a menu is open (0.1s, no tables).
 - For UIParent (hundreds of children) neither `{ GetChildren() }` nor `select(i, ...)` per child: take the varargs eight at a time with a tail call (Skins.lua `checkTop`).
 - Hidden frames should stop their OnUpdate. TweenColor already snaps when its frame is hidden.
-- Check new recurring work with `/mui perf`.
+- Check new recurring work with `/men perf`.

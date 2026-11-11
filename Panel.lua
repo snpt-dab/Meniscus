@@ -6,7 +6,7 @@ local T = ns.Theme
 -- control on the right (switch, dropdown pill showing the current value, or
 -- an action pill). Settings that need a reload say so under their label, and
 -- the sidebar's Reload UI pill lights up once one has changed.
--- Open with /mui, the minimap addon compartment, or Esc > Options > AddOns.
+-- Open with /men, the minimap addon compartment, or Esc > Options > AddOns.
 
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -304,8 +304,7 @@ local PAGES = {
               set = function() cmd("buffs", "attach") end },
             { "Player frame", kind = "dropdown",
               options = function() return { { key = "frame", label = "Normal frame" },
-                                            { key = "none", label = "Character panel (no frame)" },
-                                            { key = "orb", label = "Portrait on the health orb" } } end,
+                                            { key = "none", label = "Character panel (no frame)" } } end,
               get = function() return UF().db.playerStyle or "frame" end,
               set = function(k) UF():SetPlayerStyle(k) end },
         } },
@@ -624,7 +623,7 @@ local function build()
 
     local foot = text(p, 10, false, T.textDim)
     foot:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", CONTENT_X + 4, 12)
-    foot:SetText("Shift while dragging skips snapping   ·   /mui help lists commands")
+    foot:SetText("Shift while dragging skips snapping   ·   /men help lists commands")
 
     p:SetScript("OnShow", function()
         local key = MinimalUIDB.panelPage
@@ -690,25 +689,25 @@ reg:SetScript("OnEvent", function()
     end)
 end)
 
--- /mui help
+-- /men help
 ns.commands.help = function()
     local lines = {
-        "/mui  open the settings panel",
-        "/mui unlock | lock | reset  move frames / restore positions",
-        "/mui party attach | detach | test",
-        "/mui blizz  toggle Blizzard unit frames",
-        "/mui petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
-        "/mui console [wings]  dark plate behind the bottom row; wings = seat chat and damage meter in it",
-        "/mui dome [move | reset]  round minimap on the action bar; move = drag it",
-        "/mui noportrait | orbportrait  no player frame (level in the health orb's pill) / portrait on its edge",
-        "/mui orbs  toggle orbs      /mui actionbars  toggle bar styling (reload)",
-        "/mui char | bags [combined|separate] | spells | quests  open windows / bag layout",
-        "/mui portrait [reset | <zoom|dist|x|z|facing|pop|fidget> <n>]",
-        "/mui profile [use | copy | delete <name>]  layouts per character",
-        "/mui font | orbcolor | rage | energy [drip] | mana [fsr|burst] | combo | reloadbtn | minimap | keyring | errors | chat",
-        "/mui probe | uiprobe | charprobe | bars | scales  diagnostics",
-        "/mui perf [report | reset | gc]  resource monitor",
-        "/mui prof blizz  switch between Meniscus and Blizzard professions windows",
+        "/men  open the settings panel",
+        "/men unlock | lock | reset  move frames / restore positions",
+        "/men party attach | detach | test",
+        "/men blizz  toggle Blizzard unit frames",
+        "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
+        "/men console [wings]  dark plate behind the bottom row; wings = seat chat and damage meter in it",
+        "/men dome [move | reset]  round minimap on the action bar; move = drag it",
+        "/men noportrait  no player frame: your portrait moves to the console's character panel",
+        "/men orbs  toggle orbs      /men actionbars  toggle bar styling (reload)",
+        "/men char | bags [combined|separate] | spells | quests  open windows / bag layout",
+        "/men portrait [reset | <zoom|dist|x|z|facing|pop|fidget> <n>]",
+        "/men profile [use | copy | delete <name>]  layouts per character",
+        "/men font | orbcolor | rage | energy [drip] | mana [fsr|burst] | combo | reloadbtn | minimap | keyring | errors | chat",
+        "/men probe | uiprobe | charprobe | bars | scales  diagnostics",
+        "/men perf [report | reset | gc]  resource monitor",
+        "/men prof blizz  switch between Meniscus and Blizzard professions windows",
     }
     for _, l in ipairs(lines) do ns:Print(l) end
 end

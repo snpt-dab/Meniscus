@@ -83,7 +83,7 @@ end
 -- ours, and put back there if Blizzard's layout moves it. The zone name
 -- rides on top of the dome. Tracking, mail, clock and the addon menu stay
 -- where the cluster has them for now.
--- /mui dome toggles it, /mui dome move shows a drag handle, /mui dome reset
+-- /men dome toggles it, /men dome move shows a drag handle, /men dome reset
 -- puts it back on the bar. Turning it off takes a reload.
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local function circleMask(frame, size)
@@ -551,7 +551,7 @@ function MM:SetDomeMover(on)
         t:AddMaskTexture(circleMask(mv, h:GetWidth()))
         local label = ns:CreateText(mv, 11)
         label:SetPoint("CENTER")
-        label:SetText("Drag  ·  /mui dome move to finish")
+        label:SetText("Drag  ·  /men dome move to finish")
         h:SetMovable(true)
         mv:SetScript("OnDragStart", function() if not InCombatLockdown() then h:StartMoving() end end)
         mv:SetScript("OnDragStop", function()
@@ -572,7 +572,7 @@ end
 ns.commands.dome = function(rest)
     rest = rest or ""
     if rest:find("move") then
-        if not MM.domeHolder then return ns:Print("Turn the dome on first: /mui dome") end
+        if not MM.domeHolder then return ns:Print("Turn the dome on first: /men dome") end
         MM:SetDomeMover()
         return
     end
@@ -591,7 +591,7 @@ ns.commands.dome = function(rest)
         MM:ApplyDome()
         MM:ArrangeAround()
         C_Timer.After(1, function() MM:ProbeDome() end)
-        ns:Print("Minimap dome on. /mui dome move to drag it, /mui dome reset to put it back on the bar.")
+        ns:Print("Minimap dome on. /men dome move to drag it, /men dome reset to put it back on the bar.")
     else
         MM:ArrangeAround()
         if MM.domeMover then MM.domeMover:Hide() end
@@ -600,7 +600,7 @@ ns.commands.dome = function(rest)
     end
 end
 
--- /mui minimap : list what was found/removed (for tuning on this client).
+-- /men minimap : list what was found/removed (for tuning on this client).
 ns.commands.minimap = function()
     if not Minimap then return ns:Print("No Minimap frame.") end
     local n = 0

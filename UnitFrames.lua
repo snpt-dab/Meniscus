@@ -10,21 +10,20 @@ local UF = ns:NewModule("UnitFrames", {
     liveTargetAuras = true,
     player = { x = -180, y = -180 },
     -- "frame": the usual player frame (avatar + health / power pills).
-    -- "orb": just the avatar, pinned to the 10 o'clock edge of the health
-    -- orb; the orbs already show health and power (/mui orbportrait).
     -- "none": no player frame and no portrait; your level is set into the
     -- health orb's value pill and the resting z's rise from the orb's rim
-    -- (/mui noportrait).
-    -- ("rest", a portrait inside the orb, was tried and dropped; a saved
-    -- "rest" is turned into "none".)
+    -- (/men noportrait).
+    -- (Two portrait experiments were tried and dropped: "orb", the avatar
+    -- on the health orb's rim, and "rest", a portrait inside the orb. A
+    -- saved value of either becomes "none".)
     playerStyle = "frame",
     target = { x = 180, y = -180 },
     focus  = { x = 196, y = -96 },
     -- attach = true stacks party frames directly above the player frame;
-    -- false lets them float at x/y (drag with /mui unlock).
+    -- false lets them float at x/y (drag with /men unlock).
     party  = { attach = true, x = -420, y = 0 },
     boss   = { x = 560, y = 140 },
-    -- 3D pop-out avatar camera; tune live with /mui portrait <key> <value>
+    -- 3D pop-out avatar camera; tune live with /men portrait <key> <value>
     -- fidget = 0 keeps the plain breathing idle (no yawns/stretches that hit
     -- the model window's edges); 1 allows Blizzard's random idle fidgets.
     portrait = { zoom = 1.0, dist = 1.0, z = 0, facing = 0, pop = 0.25, fidget = 0 },
@@ -661,9 +660,9 @@ function UF:ApplyPlayerStyle()
     self.stylePending = false
     local O = ns.modules.Orbs
     local orb = O and O.health
-    if self.db.playerStyle == "rest" then self.db.playerStyle = "none" end
+    if self.db.playerStyle == "rest" or self.db.playerStyle == "orb" then self.db.playerStyle = "none" end
     local style = self.db.playerStyle
-    local on = (style == "orb" or style == "none") and orb and orb:IsShown() and true or false
+    local on = style == "none" and orb and orb:IsShown() and true or false
     local bare = on and style == "none"
     -- "none": no pills. With the console's character panel (Bars.charSlot)
     -- the portrait lives there, larger; without it the frame is only an
@@ -672,7 +671,6 @@ function UF:ApplyPlayerStyle()
     local char = bare and BR and BR.charSlot or nil
     f.avatar:SetShown((not bare) or char ~= nil)
     f:EnableMouse((not bare) or char ~= nil)
-    if O and O.SetRestPortrait then O:SetRestPortrait(false) end
     local s = SIZES.large
     local av = f.avatar
     self.orbStyleOn = on
@@ -891,18 +889,17 @@ function UF:PlaceTarget()
     pcall(self.SeatTargetAuras, self)
 end
 
-local STYLE_NAMES = { frame = "normal frame", orb = "on the health orb's edge", none = "none (level in the health orb's pill)" }
+local STYLE_NAMES = { frame = "normal frame", none = "character panel (no frame)" }
 function UF:SetPlayerStyle(style)
     if InCombatLockdown() then return ns:Print("Can't change the player frame in combat.") end
     self.db.playerStyle = STYLE_NAMES[style] and style or "frame"
     self:ApplyPlayerStyle()
     if self.db.playerStyle ~= "frame" and not self.orbStyleOn then
-        ns:Print("That player style needs the orbs, which are hidden (/mui orbs).")
+        ns:Print("That player style needs the orbs, which are hidden (/men orbs).")
     else
         ns:Print("Player portrait:", STYLE_NAMES[self.db.playerStyle])
     end
 end
-ns.commands.orbportrait = function() UF:SetPlayerStyle(UF.db.playerStyle == "orb" and "frame" or "orb") end
 ns.commands.noportrait = function() UF:SetPlayerStyle(UF.db.playerStyle == "none" and "frame" or "none") end
 
 -- ── Party ─────────────────────────────────────────────────────────────────
@@ -1433,7 +1430,7 @@ ns.commands.blizz = function()
     if db.hideBlizzard then ns:Print("Blizzard unit frames hidden") end
 end
 
--- /mui party attach | detach | test
+-- /men party attach | detach | test
 ns.commands.party = function(rest)
     rest = rest or ""
     if rest == "attach" or rest == "detach" then
@@ -1441,18 +1438,18 @@ ns.commands.party = function(rest)
         UF.db.party.attach = rest == "attach"
         UF:LayoutParty()
         ns:Print("Party frames", UF.db.party.attach and "attached above the player frame"
-            or "detached (move with /mui unlock)")
+            or "detached (move with /men unlock)")
     elseif rest == "test" then
         UF:SetPartyTest(not UF.partyTest)
     else
-        ns:Print("usage: /mui party attach | detach | test   (currently "
+        ns:Print("usage: /men party attach | detach | test   (currently "
             .. (UF.db.party.attach and "attached" or "detached") .. ")")
     end
 end
 
 -- ── Movable frames ────────────────────────────────────────────────────────
--- /mui unlock : drag the frames, positions save automatically
--- /mui lock   : lock again    /mui reset : restore default positions
+-- /men unlock : drag the frames, positions save automatically
+-- /men lock   : lock again    /men reset : restore default positions
 local overlays = {}
 
 local function makeOverlay(key, frame, onMoved)
@@ -1510,7 +1507,7 @@ function UF:SetLocked(locked)
         end
     end
     if overlays.party and (locked or UF.db.party.attach) then overlays.party:Hide() end
-    ns:Print(locked and "Frames locked." or "Frames unlocked: drag them, then /mui lock.")
+    ns:Print(locked and "Frames locked." or "Frames unlocked: drag them, then /men lock.")
 end
 
 ns.commands.unlock = function() UF:SetLocked(false) end
@@ -1534,7 +1531,7 @@ guard:RegisterEvent("PLAYER_REGEN_DISABLED")
 guard:SetScript("OnEvent", function()
     if UF.unlocked then
         for _, o in pairs(overlays) do o:Hide() end
-        ns:Print("Combat started: move mode paused. /mui lock when out of combat.")
+        ns:Print("Combat started: move mode paused. /men lock when out of combat.")
     end
 end)
 
@@ -1551,9 +1548,9 @@ local function eachModel(fn)
     end
 end
 
--- /mui portrait                 show current camera values
--- /mui portrait <key> <value>   zoom | dist | z | facing | pop | fidget   (applies live)
--- /mui portrait reset
+-- /men portrait                 show current camera values
+-- /men portrait <key> <value>   zoom | dist | z | facing | pop | fidget   (applies live)
+-- /men portrait reset
 ns.commands.portrait = function(rest)
     local p = UF.db and UF.db.portrait
     if not p then return end
@@ -1571,7 +1568,7 @@ ns.commands.portrait = function(rest)
         p[key] = val
         eachModel(function(av) UF:LayoutAvatar(av); UF:RefreshAvatar(av) end)
     elseif rest and rest ~= "" then
-        ns:Print("usage: /mui portrait <zoom|dist|x|z|facing|pop|fidget> <number>  |  /mui portrait reset")
+        ns:Print("usage: /men portrait <zoom|dist|x|z|facing|pop|fidget> <number>  |  /men portrait reset")
     end
     ns:Print(string.format("portrait zoom %.2f  dist %.2f  x %.2f  z %.2f  facing %.2f  pop %.2f  fidget %d",
         p.zoom, p.dist, p.x, p.z, p.facing, p.pop, p.fidget))

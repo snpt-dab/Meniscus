@@ -147,7 +147,7 @@ fontLoader:SetScript("OnEvent", function(self, _, name)
     end
 end)
 
--- /mui font : what Meniscus is using right now.
+-- /men font : what Meniscus is using right now.
 ns.commands = ns.commands or {}
 ns.commands.font = function()
     ns:Print("Font in use: " .. tostring(Theme.font) .. "  (saved: " .. tostring(MinimalUIDB.font) .. ")")
