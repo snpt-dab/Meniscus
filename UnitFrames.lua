@@ -4,6 +4,10 @@ local T = ns.Theme
 local UF = ns:NewModule("UnitFrames", {
     enabled = true,
     hideBlizzard = false,
+    -- Blizzard's own target frame is kept running (invisible) instead of
+    -- being switched off, so its buff / debuff icons, the only ones that
+    -- can update in combat, are there to borrow. See ghostTarget.
+    liveTargetAuras = true,
     player = { x = -180, y = -180 },
     -- "frame": the usual player frame (avatar + health / power pills).
     -- "orb": just the avatar, pinned to the 10 o'clock edge of the health
@@ -1025,13 +1029,121 @@ local function silence(fr, depth)
     end
 end
 
+-- Blizzard's target frame as a ghost: still shown by the game when you have
+-- a target and still receiving its events (so its own, untainted code keeps
+-- its aura icons current in combat), but fully transparent and deaf to the
+-- mouse. Nothing is unregistered, hidden or reparented.
+local function quietMouse(fr, depth)
+    if fr.EnableMouse then pcall(fr.EnableMouse, fr, false) end
+    if depth > 0 then
+        for _, child in ipairs({ fr:GetChildren() }) do quietMouse(child, depth - 1) end
+    end
+end
+local function ghostTarget()
+    local fr = _G.TargetFrame
+    if not fr or fr.__muiGhost then return end
+    fr.__muiGhost = true
+    fr:SetAlpha(0)
+    hooksecurefunc(fr, "SetAlpha", function(self, a) if a ~= 0 then self:SetAlpha(0) end end)
+    quietMouse(fr, 4)
+end
+
+-- What Blizzard's target frame is made of on this client, and where its
+-- aura icons sit (MinimalUIDB.targetprobe): needed to borrow them. Taken
+-- automatically the first time a target shows any aura icons; /men
+-- targetprobe forces it.
+local function probeTarget()
+    local root = _G.TargetFrame
+    if not (root and MinimalUIDB) then return 0 end
+    local out, auraLike = {}, 0
+    local function f0(v) return type(v) == "number" and string.format("%.0f", v) or tostring(v) end
+    local function line(tag, f, depth)
+        local ok, s = pcall(function()
+            local p, rel, rp, x, y = f:GetPoint(1)
+            local prot = f.IsProtected and select(1, f:IsProtected())
+            local hasIcon = type(rawget(f, "Icon")) == "table"
+            return string.rep("  ", depth) .. tag .. " [" .. f:GetObjectType() .. "] " .. tostring(f:GetName() or "?")
+                .. (f:IsShown() and "" or " hidden") .. " " .. f0(f:GetWidth()) .. "x" .. f0(f:GetHeight())
+                .. " @" .. tostring(p) .. ">" .. tostring(rel and (rel.GetName and rel:GetName() or "?")) .. " "
+                .. tostring(rp) .. " " .. f0(x) .. "," .. f0(y)
+                .. " L=" .. f0(f:GetLeft()) .. " B=" .. f0(f:GetBottom())
+                .. " scale=" .. string.format("%.2f", f:GetScale())
+                .. " level=" .. tostring(f:GetFrameLevel()) .. " prot=" .. tostring(prot)
+                .. (hasIcon and " ICON" or "")
+        end)
+        out[#out + 1] = ok and s or (tag .. " error: " .. tostring(s))
+    end
+    local function keysOf(f)
+        local ks = {}
+        for k, v in pairs(f) do
+            if type(k) == "string" and k:sub(1, 2) ~= "__" then ks[#ks + 1] = k .. ":" .. type(v) end
+        end
+        table.sort(ks)
+        return table.concat(ks, ", ")
+    end
+    line("TargetFrame", root, 0)
+    out[#out + 1] = "TargetFrame keys: " .. keysOf(root)
+    local function walk(f, depth)
+        if depth > 4 or (f.IsForbidden and f:IsForbidden()) then return end
+        local names = {}
+        for k, v in pairs(f) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+        for _, c in ipairs({ f:GetChildren() }) do
+            local icon = type(rawget(c, "Icon")) == "table"
+            if icon and c:IsShown() then
+                auraLike = auraLike + 1
+                if auraLike <= 3 then
+                    line(names[c] or "#", c, depth)
+                    out[#out + 1] = string.rep("  ", depth + 1) .. "keys: " .. keysOf(c)
+                end
+            elseif not icon then
+                line(names[c] or "#", c, depth)
+                walk(c, depth + 1)
+            end
+        end
+    end
+    walk(root, 1)
+    out[#out + 1] = "shown aura-like children: " .. auraLike
+    out[#out + 1] = string.format("screen %.0fx%.0f", UIParent:GetWidth(), UIParent:GetHeight())
+    local best = MinimalUIDB.targetprobeCount or -1
+    if auraLike >= best then
+        MinimalUIDB.targetprobe, MinimalUIDB.targetprobeCount = out, auraLike
+    end
+    return auraLike
+end
+ns.commands.targetprobe = function()
+    if MinimalUIDB then MinimalUIDB.targetprobeCount = -1 end
+    local n = probeTarget()
+    ns:Print("Target frame recorded (" .. tostring(n) .. " aura icons showing). /reload so it can be read.")
+end
+
 function UF:ApplyBlizzard(hide)
     if InCombatLockdown() then return ns:Print("Can't change Blizzard frames in combat.") end
     if not hide then
         -- Their events are gone; only a reload brings them back cleanly.
         return ns:Print("Blizzard unit frames will return after /reload.")
     end
-    for _, fr in ipairs({ PlayerFrame, TargetFrame, FocusFrame, PartyFrame, CompactPartyFrame,
+    local live = self.db.liveTargetAuras ~= false
+    if live then
+        ghostTarget()
+        if not self.targetProbeEv then
+            -- Record the frame once it has aura icons to show.
+            local ev = CreateFrame("Frame")
+            self.targetProbeEv = ev
+            ev:RegisterEvent("PLAYER_TARGET_CHANGED")
+            ev:RegisterUnitEvent("UNIT_AURA", "target")
+            local tries = 0
+            ev:SetScript("OnEvent", function(frame)
+                if tries >= 12 then frame:UnregisterAllEvents() return end
+                C_Timer.After(1, function()
+                    if not UnitExists("target") then return end
+                    tries = tries + 1
+                    local ok, n = pcall(probeTarget)
+                    if ok and type(n) == "number" and n > 0 then tries = tries + 3 end
+                end)
+            end)
+        end
+    end
+    for _, fr in ipairs({ PlayerFrame, (not live) and TargetFrame or false, FocusFrame, PartyFrame, CompactPartyFrame,
                           PlayerCastingBarFrame, TargetFrameSpellBar, FocusFrameSpellBar,
                           PetFrame, _G.BossTargetFrameContainer }) do
         if fr and not fr.__muiDisabled then
