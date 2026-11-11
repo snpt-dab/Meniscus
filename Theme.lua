@@ -466,6 +466,31 @@ function ns.ItemUnusable(link)
     return nil
 end
 
+-- The heaviest armor this character can wear, as the item subclass number
+-- (1 cloth, 2 leather, 3 mail, 4 plate). Read from the armor proficiencies
+-- the character actually knows; if those can't be read, from the class
+-- (with the usual step up at level 40).
+local ARMOR_SPELL = { [4] = 750, [3] = 8737, [2] = 9077, [1] = 9078 }
+local CLASS_ARMOR = { WARRIOR = 4, PALADIN = 4, DEATHKNIGHT = 4, HUNTER = 3, SHAMAN = 3, EVOKER = 3,
+                      ROGUE = 2, DRUID = 2, MONK = 2, DEMONHUNTER = 2, MAGE = 1, PRIEST = 1, WARLOCK = 1 }
+function ns.BestArmor()
+    local known = _G.IsPlayerSpell or _G.IsSpellKnown
+    if known then
+        local any = false
+        for sub = 4, 1, -1 do
+            local ok, has = pcall(known, ARMOR_SPELL[sub])
+            if ok and has == true then return sub end
+            if ok and has ~= nil then any = true end
+        end
+        local _ = any
+    end
+    local _, class = UnitClass("player")
+    local best = CLASS_ARMOR[class] or 1
+    local lvl = UnitLevel("player")
+    if type(lvl) == "number" and not issecretvalue(lvl) and lvl < 40 and best >= 3 then best = best - 1 end
+    return best
+end
+
 function ns.AddCompare(tip, link)
     if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return end
     local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)

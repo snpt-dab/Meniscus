@@ -432,8 +432,12 @@ local function rewardCards(list)
     for _, it in ipairs(list) do
         it.link = call(_G.GetQuestItemLink, it.kind, it.index)
         if it.link and C_Item and C_Item.GetItemInfoInstant then
-            local _, typ, sub, loc = call(C_Item.GetItemInfoInstant, it.link)
+            local _, typ, sub, loc, _, classID, subID = call(C_Item.GetItemInfoInstant, it.link)
             it.typ, it.sub = typ, sub
+            -- Body armor (cloth / leather / mail / plate; cloaks are cloth
+            -- for everyone and don't count): its weight, 1 to 4.
+            it.weight = (classID == 4 and type(subID) == "number" and subID >= 1 and subID <= 4
+                and loc ~= "INVTYPE_CLOAK") and subID or nil
             -- Only real equipment slots count (things you can't equip carry
             -- a placeholder slot whose name is an empty string).
             local sn = type(loc) == "string" and loc ~= "" and _G[loc]
@@ -536,6 +540,7 @@ local function rewardCards(list)
     -- never seen before can arrive a moment late, so this runs again then.
     local function details()
         local best, missing = 0, false
+        local bestArmor = ns.BestArmor and call(ns.BestArmor)
         for _, t in ipairs(cards) do
             local it = t.it
             local link = it.link or call(_G.GetQuestItemLink, t.kind, t.index)
@@ -565,6 +570,14 @@ local function rewardCards(list)
             if cant then
                 t.what:SetText("Can't use" .. (type(why) == "string" and ("  \194\183  " .. why) or ""))
                 t.what:SetTextColor(0.90, 0.45, 0.45)
+            elseif it.weight and bestArmor and it.weight == bestArmor then
+                -- The heaviest armor you can wear: the kind meant for you.
+                t.what:SetText("Your armor type  \194\183  " .. what)
+                t.what:SetTextColor(0.45, 0.85, 0.50)
+            elseif it.weight and bestArmor and it.weight < bestArmor then
+                -- Wearable, but lighter than you could be wearing.
+                t.what:SetText("Lighter armor  \194\183  " .. what)
+                t.what:SetTextColor(0.45, 0.70, 0.95)
             else
                 t.what:SetText(what)
                 t.what:SetTextColor(unpack(T.textDim))
