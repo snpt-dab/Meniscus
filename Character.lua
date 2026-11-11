@@ -1353,9 +1353,9 @@ function C:OnInit(db)
                 cv = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
                 cv:SetFrameStrata("DIALOG")
                 cv:RegisterForClicks("AnyDown", "AnyUp")
-                -- A ring in the accent color: "this is a valid target".
-                cv.ring = ns.RoundedRect(cv, 0, -2, 9, T.accent[1], T.accent[2], T.accent[3], 0.9, "OVERLAY")
-                ns.RoundedRect(cv, 1, 0, 7, 0, 0, 0, 0, "OVERLAY")
+                -- A light wash in the accent color: "this is a valid target".
+                -- (A wash, not a ring: the gear icon has to stay visible.)
+                ns.RoundedRect(cv, 0, 0, 7, T.accent[1], T.accent[2], T.accent[3], 0.22, "OVERLAY")
                 cv:SetScript("OnEnter", function(self)
                     local t = self.tile
                     local fn = t and t:GetScript("OnEnter")
