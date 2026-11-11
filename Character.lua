@@ -394,13 +394,28 @@ local function makeTile(parent, slotName)
     end)
     b:SetScript("OnDragStart", function(self) PickupInventoryItem(self.slot) end)
     b:SetScript("OnReceiveDrag", function(self) PickupInventoryItem(self.slot) end)
+    -- This IS the equipped item, so there is nothing to compare it with: the
+    -- game's comparison tooltips (which it adds beside any item tooltip
+    -- when "always compare" is on, showing the same item twice here) are
+    -- put away for as long as the mouse is on the tile.
+    local function noCompare()
+        for _, name in ipairs({ "ShoppingTooltip1", "ShoppingTooltip2", "ShoppingTooltip3" }) do
+            local st = _G[name]
+            if st and st:IsShown() then st:Hide() end
+        end
+    end
     b:SetScript("OnEnter", function(self)
         ns.TipAnchor(self)
         local has = GameTooltip:SetInventoryItem("player", self.slot)
         if not has then GameTooltip:SetText(_G[self.slotName:upper() .. "SLOT"] or self.slotName) end
         GameTooltip:Show()
+        noCompare()
+        self:SetScript("OnUpdate", noCompare)
     end)
-    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnLeave", function(self)
+        self:SetScript("OnUpdate", nil)
+        GameTooltip:Hide()
+    end)
     table.insert(tiles, b)
     return b
 end
