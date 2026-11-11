@@ -196,15 +196,18 @@ local function hook(name, f, building)
     hooked[f] = name
     waiting[name] = nil
     local ours = isOurs(name)
+    local shown, hidden
     if ours then
         -- Our windows are hooked while their module is still building them,
         -- and the module then sets its own OnShow / OnHide scripts, which
         -- would replace script hooks made here. So the methods are hooked
-        -- instead (they fire on every call, shown already or not).
-        local function shown(self)
+        -- (they fire on every call, shown already or not), and the scripts
+        -- are hooked once the build is over (below): a window can also be
+        -- shown without any Show call (the bags, by their secure toggle).
+        shown = function(self)
             if self:IsShown() then dropSpecial(name); opened(self) end
         end
-        local function hidden(self)
+        hidden = function(self)
             if not self:IsShown() and (open[self] or pending[self]) then closed(self) end
         end
         hooksecurefunc(f, "Show", shown)
@@ -251,7 +254,13 @@ local function hook(name, f, building)
         -- it when ready: the show hook docks it. (Not positioned here: the
         -- module may still be anchoring it, and two anchors would stretch
         -- it.) If it was simply left shown, settle it once the build is over.
-        C_Timer.After(0, function() if f:IsShown() and not open[f] then dropSpecial(name); opened(f) end end)
+        C_Timer.After(0, function()
+            if shown then
+                f:HookScript("OnShow", shown)
+                f:HookScript("OnHide", hidden)
+            end
+            if f:IsShown() and not open[f] then dropSpecial(name); opened(f) end
+        end)
     elseif f:IsShown() then
         if ours then opened(f) else C_Timer.After(0, function() opened(f) end) end
     end
