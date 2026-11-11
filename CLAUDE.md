@@ -16,7 +16,7 @@ SavedVariables: `_forever_/WTF/Account/<ACCOUNT>/SavedVariables/MinimalUI.lua` (
   - `/mui probe`, `uiprobe`, `menuprobe`, `keyprobe [KEY]`, `countprobe`, `guildprobe`, `dmprobe`
   - Add a probe instead of guessing at Forever's API.
 - Paths in Lua strings use forward slashes, because bash heredocs eat backslashes.
-- **Version control:** this folder is a git repository (local only, branch `main`; first commit is the 2026-11-10 baseline). Commit after each change the user accepts, with a message saying what changed for them; leave experiments uncommitted until they've seen them. `git diff` / `git log -p <file>` answer "what changed", `git checkout <commit> -- <file>` brings an old version back. Tester zips are ignored (`dist/*.zip`); rebuild with `python dist/build.py`.
+- **Version control:** this folder is a git repository (local only, branch `main`; first commit is the 2026-11-10 baseline). Commit after every change, without asking (the user said to commit at will), with a message saying what changed for them. `git diff` / `git log -p <file>` answer "what changed", `git checkout <commit> -- <file>` brings an old version back. Tester zips are ignored (`dist/*.zip`); rebuild with `python dist/build.py`.
 - **Line endings are LF.** Patch scripts must write with `open(p, 'w', encoding='utf-8', newline='
 ')`; plain `open(p, 'w')` on Windows writes CRLF and makes every line show as changed.
 
