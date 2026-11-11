@@ -178,26 +178,41 @@ local function closed(f)
     syncProxy()
 end
 
-local function hook(name, f)
+-- Where a window would go if it opened now, without closing anything.
+local function guessSide(f, name)
+    if open[f] then return open[f] end
+    local side = sideOf(name)
+    if side ~= "center" and occupant(side, f) and not occupant(flip(side), f) then side = flip(side) end
+    return side
+end
+
+local function dropSpecial(name)
+    for i = #UISpecialFrames, 1, -1 do
+        if UISpecialFrames[i] == name then table.remove(UISpecialFrames, i) end
+    end
+end
+
+local function hook(name, f, building)
     hooked[f] = name
     waiting[name] = nil
     local ours = isOurs(name)
     f:HookScript("OnShow", function(self)
         if ours then
+            dropSpecial(name)
             opened(self)
         else
             -- Blizzard's panel code positions the window right after showing
-            -- it, and a ghosted window is hidden again at once: look one
-            -- frame later.
+            -- it, and a ghosted window is hidden again at once: decide one
+            -- frame later what it replaces. It is put in its dock right
+            -- away though, so it is never drawn in the wrong place.
+            if real(self) then place(self, guessSide(self, name)) end
             C_Timer.After(0, function() opened(self) end)
         end
     end)
     f:HookScript("OnHide", closed)
     if ours then
         -- Esc goes through our proxy (one window per press) instead.
-        for i = #UISpecialFrames, 1, -1 do
-            if UISpecialFrames[i] == name then table.remove(UISpecialFrames, i) end
-        end
+        dropSpecial(name)
         -- Dropped after a drag: the half of the screen it is in becomes its side.
         hooksecurefunc(f, "StopMovingOrSizing", function(self)
             if not self:IsShown() or sideOf(name) == "center" then return end
@@ -216,8 +231,40 @@ local function hook(name, f)
             place(self, open[self])
         end)
     end
-    if f:IsShown() then
+    if building then
+        -- Still being put together by its module, which hides it and shows
+        -- it when ready: the show hook docks it. (Not positioned here: the
+        -- module may still be anchoring it, and two anchors would stretch
+        -- it.) If it was simply left shown, settle it once the build is over.
+        C_Timer.After(0, function() if f:IsShown() and not open[f] then dropSpecial(name); opened(f) end end)
+    elseif f:IsShown() then
         if ours then opened(f) else C_Timer.After(0, function() opened(f) end) end
+    end
+end
+
+-- Called by the window shell (Shell.lua) the moment one of our windows is
+-- built, so it is docked before it is first drawn. (Finding windows by
+-- polling left the first open of each one visible at its old position for
+-- a moment.)
+function ns.WindowBuilt(f)
+    local name = f and f.GetName and f:GetName()
+    if name and waiting[name] then
+        local ok, err = pcall(hook, name, f, true)
+        if not ok then waiting[name] = nil; ns:Print("Windows " .. name .. ": " .. tostring(err)) end
+    end
+end
+
+-- Blizzard windows: hook every one that exists (at login, and again each
+-- time a load-on-demand part of the UI arrives, which is before its window
+-- is first shown).
+local function sweep()
+    for name in pairs(waiting) do
+        local f = _G[name]
+        if type(f) == "table" and f.HookScript and not (f.IsForbidden and f:IsForbidden()) then
+            local ok, err = pcall(hook, name, f)
+            if not ok then waiting[name] = nil; ns:Print("Windows " .. name .. ": " .. tostring(err)) end
+            return sweep() -- the table changed: start over
+        end
     end
 end
 
@@ -241,22 +288,19 @@ function W:OnInit(db)
 
     local driver = CreateFrame("Frame")
     local acc = 0
+    sweep()
+    -- A slow safety net for anything the two paths above miss.
     driver:SetScript("OnUpdate", function(self, dt)
         acc = acc + dt
-        if acc < 0.1 then return end
+        if acc < 1 then return end
         acc = 0
         if not next(waiting) then self:SetScript("OnUpdate", nil) return end
-        for name in pairs(waiting) do
-            local f = _G[name]
-            if type(f) == "table" and f.HookScript and not (f.IsForbidden and f:IsForbidden()) then
-                local ok, err = pcall(hook, name, f)
-                if not ok then waiting[name] = nil; ns:Print("Windows " .. name .. ": " .. tostring(err)) end
-                break -- the table changed; the rest next tick
-            end
-        end
+        sweep()
     end)
     driver:RegisterEvent("PLAYER_REGEN_ENABLED")
-    driver:SetScript("OnEvent", function()
+    driver:RegisterEvent("ADDON_LOADED")
+    driver:SetScript("OnEvent", function(_, e)
+        if e == "ADDON_LOADED" then sweep() return end
         for f, what in pairs(pending) do
             pending[f] = nil
             if what == "hide" then close(f)

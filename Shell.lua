@@ -56,6 +56,7 @@ end
 
 function ns:CreateShell(win, opts)
     opts = opts or {}
+    if ns.WindowBuilt then ns.WindowBuilt(win) end -- Windows.lua: dock it before it is first drawn
     local S = {}
 
     local band = CreateFrame("Frame", nil, win)
