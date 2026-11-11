@@ -196,10 +196,25 @@ local function hook(name, f, building)
     hooked[f] = name
     waiting[name] = nil
     local ours = isOurs(name)
+    if ours then
+        -- Our windows are hooked while their module is still building them,
+        -- and the module then sets its own OnShow / OnHide scripts, which
+        -- would replace script hooks made here. So the methods are hooked
+        -- instead (they fire on every call, shown already or not).
+        local function shown(self)
+            if self:IsShown() then dropSpecial(name); opened(self) end
+        end
+        local function hidden(self)
+            if not self:IsShown() and (open[self] or pending[self]) then closed(self) end
+        end
+        hooksecurefunc(f, "Show", shown)
+        hooksecurefunc(f, "Hide", hidden)
+        hooksecurefunc(f, "SetShown", function(self) if self:IsShown() then shown(self) else hidden(self) end end)
+    end
     f:HookScript("OnShow", function(self)
         if ours then
-            dropSpecial(name)
-            opened(self)
+            -- (Covered by the method hooks; kept for a window nobody re-scripts.)
+            if not open[self] then dropSpecial(name); opened(self) end
         else
             -- Blizzard's panel code positions the window right after showing
             -- it, and a ghosted window is hidden again at once: decide one
