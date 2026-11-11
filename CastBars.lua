@@ -88,7 +88,9 @@ local function create(parent, unit, below)
             return
         end
         local y = -6
-        if below and below:IsShown() then y = y - (ns.SMALL_FRAME_GAP or 8) - below:GetHeight() end
+        -- (In the target strip its target sits beside it, not under it.)
+        local beside = unit == "target" and UF and UF.targetStrip
+        if below and below:IsShown() and not beside then y = y - (ns.SMALL_FRAME_GAP or 8) - below:GetHeight() end
         h:ClearAllPoints()
         h:SetPoint("TOP", parent, "BOTTOM", 0, y)
     end

@@ -545,8 +545,40 @@ function UF:ApplyPlayerStyle()
     local CB = ns.modules.CastBars
     if CB and CB.player and CB.player.place then CB.player.place() end
     if self.partyAnchor then self:LayoutParty() end
+    self:PlaceTarget()
     local AU = ns.modules.Auras
     if AU and AU.SeatBlizzard and AU.db then AU:SeatBlizzard() end
+end
+
+-- Console layout (minimap dome + character panel): the target is a strip
+-- stacked over the map, where your eyes are in a fight. From the dome up:
+-- your cast bar, the target's cast bar (its usual place under its frame),
+-- the target frame. Its target is a small pill to the strip's right.
+-- Otherwise the target is wherever you put it, with its target underneath.
+function UF:PlaceTarget()
+    local t, tot = self.target, self.tot
+    if not t or InCombatLockdown() then return end
+    local dome = _G.MinimalUI_MinimapDome
+    local B = ns.modules.Bars
+    local strip = dome and B and B.charSlot and true or false
+    self.targetStrip = strip
+    t:ClearAllPoints()
+    if strip then
+        -- 8 + 14 (your cast bar) + 6 + 14 (its cast bar) + 6 above the dome.
+        t:SetPoint("BOTTOM", dome, "TOP", 0, 48)
+    else
+        place(t, self.db.target)
+    end
+    if tot then
+        tot:ClearAllPoints()
+        if strip then
+            tot:SetPoint("LEFT", t, "RIGHT", 34, 0)
+        else
+            tot:SetPoint("TOPRIGHT", t, "BOTTOMRIGHT", 0, -SMALL_FRAME_GAP)
+        end
+    end
+    local CB = ns.modules.CastBars
+    if CB and CB.target and CB.target.place then CB.target.place() end
 end
 
 local STYLE_NAMES = { frame = "normal frame", orb = "on the health orb's edge", none = "none (level in the health orb's pill)" }
