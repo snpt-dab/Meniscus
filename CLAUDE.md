@@ -38,7 +38,8 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
   - `ns.RoundedRect(f, sublevel, inset, radius, r,g,b,a, layer)` returns a paint function `(r,g,b,a)`.
   - `ns:CreatePillBar(parent, w, h)`: the w:h ratio must be 8:1, 16:1 or 32:1, or the caps distort.
   - `ns.TweenColor(key, paint, r,g,b,a, dur)` and `ns.EasePaint(b, paint)`. Pills use `b.paint = ns.EasePaint(b, ns.RoundedRect(...))` and set `b.hover` in OnEnter/OnLeave.
-  - `ns.TipAnchor(owner)`: every tooltip in our windows uses it, never a pinned anchor.
+  - `ns.TipAnchor(owner)`: every tooltip in our windows uses it. It puts the tooltip beside the window the owner is in (right side, or left when there is more room), level with the owner; outside our windows it falls back to the player's default anchor.
+  - `ns.AddCompare(tip, itemLink)`: appends stat gains / losses against the equipped piece (quest rewards, merchant).
   - `ns.Kill(obj)`, `ns.Pixel()`.
   - `ns.Pill(parent, label, onClick, opts)`: the one pill button (opts: h, font, pad, minW, ring, dimIdle, primary; state `b.on`/`b.selected`/`b.primary`; `b:SetLabel`, `b:Repaint`). Each window keeps a thin local `pill()` wrapper with its own opts.
   - `ns.Call(fn, ...)`: pcall that returns the results and allocates nothing. Use `local call = ns.Call`; never `{ pcall(...) }`.

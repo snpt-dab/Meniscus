@@ -364,7 +364,7 @@ function ns.AddCompare(tip, link)
                 tip:AddLine("Instead of " .. name .. ":", 0.6, 0.6, 0.65, true)
                 local function fmt(d)
                     local a = math.abs(d)
-                    return (d > 0 and "+" or "\226\136\146") .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
+                    return (d > 0 and "+" or "-") .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
                 end
                 for _, e in ipairs(gains) do tip:AddLine(fmt(e[2]) .. " " .. statLabel(e[1]), 0.45, 0.85, 0.50) end
                 for _, e in ipairs(losses) do tip:AddLine(fmt(e[2]) .. " " .. statLabel(e[1]), 0.90, 0.45, 0.45) end
