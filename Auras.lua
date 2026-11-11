@@ -709,7 +709,22 @@ function A:SeatBlizzard()
     local pf = UF and UF.player
     local ROW = 46 -- one row of Blizzard's icons with its timer text
     local slots = B and B.Slots and B:Slots()
-    if slots and (slots.left.x1 - slots.left.x0) >= 100 then
+    local char = B and B.charSlot
+    if char then
+        -- Character panel: to the right of the portrait, buffs from the top
+        -- of the well, debuffs along its bottom. Each frame is pinned by the
+        -- corner it fills from.
+        for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
+            if fr then
+                local v, h = fillCorner(fr)
+                local x = (h == "RIGHT") and char.auraX1 or char.auraX0
+                local y
+                if i == 1 then y = (v == "TOP") and char.auraTop or (char.auraTop - 30)
+                else y = (v == "TOP") and (char.auraBottom + 30) or char.auraBottom end
+                seat(fr, v .. h, UIParent, "BOTTOMLEFT", x, y)
+            end
+        end
+    elseif slots and (slots.left.x1 - slots.left.x0) >= 100 then
         -- Console layout: seated in the plate's left slot (between the chat
         -- panel and the side bar), buffs in the upper part, debuffs along
         -- the bottom. Each frame is pinned by the corner it fills from.

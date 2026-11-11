@@ -395,6 +395,24 @@ function Bars:Arrange()
         self.petSlot = { x = px, top = top, w = petW, gridTop = top - PET_PILL - 6,
                          well = { x = px - 16, y = top - unitH - 8, w = petW + 32, h = unitH + 16 } }
     end
+    -- Character panel, in the console's left slot: your portrait on the
+    -- left, buffs and debuffs to its right, in a well the same size as the
+    -- pet's, with a name pill on its bottom edge (Bars:ApplyCharWell).
+    self.charSlot = nil
+    if slots then
+        local cw = orbUnitW + 20 -- the pet well's width
+        local L = slots.left
+        if (L.x1 - L.x0) >= cw then
+            local cx, cy = (L.x0 + L.x1) / 2, (slots.y0 + slots.y1) / 2 + 6
+            local wx, wy, wh = cx - cw / 2, cy - orbD / 2 - 8, orbD + 16
+            self.charSlot = {
+                well = { x = wx, y = wy, w = cw, h = wh },
+                avD = 60, avX = wx + 12 + 30, avY = cy + 2,       -- portrait: size, center
+                auraX0 = wx + 84, auraX1 = wx + cw - 8,            -- buffs / debuffs: left and right edges
+                auraTop = wy + wh - 6, auraBottom = wy + 10,
+            }
+        end
+    end
     local petSlot = self.petSlot
     for i = 1, 10 do
         local col, up = i - 1, 0
@@ -434,6 +452,7 @@ function Bars:Arrange()
         end
     end
     self:ApplyPetWell()
+    self:ApplyCharWell()
     -- Once the anchors above have real positions.
     C_Timer.After(0, function() Bars:ApplyPlate() end)
 end
@@ -595,6 +614,65 @@ function Bars:ApplyPetWell()
         pl:SetShown(self.db.petGrid ~= false)
     end
     w.on = true
+    w.refresh()
+end
+
+-- ── Character area ────────────────────────────────────────────────────────
+-- The pet area's twin on the other side: a well holding your portrait (the
+-- player frame's own avatar, placed there by UnitFrames.lua) and your buffs
+-- and debuffs (Blizzard's frames, seated by Auras.lua), with a pill on its
+-- bottom edge carrying your name, ringed in your class color.
+function Bars:ApplyCharWell()
+    local slot = self.charSlot
+    local w = self.charWell
+    if not slot then
+        if w then w:Hide() end
+        return
+    end
+    if not w then
+        w = CreateFrame("Frame", "MinimalUI_CharWell", UIParent)
+        w:SetFrameStrata("BACKGROUND")
+        w:SetFrameLevel(2)
+        ns.RoundedRect(w, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(w, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
+        local pill = CreateFrame("Frame", nil, w)
+        pill:SetHeight(14)
+        pill:SetFrameLevel(w:GetFrameLevel() + 3)
+        pill:EnableMouse(true)
+        local paintRing = ns.RoundedRect(pill, -8, 0, 7, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(pill, -7, 1, 6, 0.06, 0.06, 0.07, 0.97)
+        local name = ns:CreateText(pill, 11)
+        name:SetPoint("LEFT", 10, 0); name:SetPoint("RIGHT", -10, 0)
+        name:SetJustifyH("CENTER")
+        name:SetWordWrap(false)
+        name:SetShadowOffset(1, -1)
+        name:SetShadowColor(0, 0, 0, 0.8)
+        pill:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            if pcall(GameTooltip.SetUnit, GameTooltip, "player") then GameTooltip:Show() end
+        end)
+        pill:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        w.pill = pill
+        function w.refresh()
+            name:SetText((UnitName("player")))
+            local _, class = UnitClass("player")
+            local c = class and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[class]
+            if c then paintRing(c.r * 0.85, c.g * 0.85, c.b * 0.85, 1) end
+        end
+        local ev = CreateFrame("Frame")
+        ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+        pcall(ev.RegisterUnitEvent, ev, "UNIT_NAME_UPDATE", "player")
+        ev:SetScript("OnEvent", function() w.refresh() end)
+        self.charWell = w
+    end
+    local wl = slot.well
+    w:ClearAllPoints()
+    w:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", wl.x, wl.y)
+    w:SetSize(wl.w, wl.h)
+    w.pill:ClearAllPoints()
+    w.pill:SetPoint("CENTER", w, "BOTTOM", 0, 0)
+    w.pill:SetWidth(math.max(120, wl.w - 44))
+    w:Show()
     w.refresh()
 end
 

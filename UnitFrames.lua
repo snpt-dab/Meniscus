@@ -443,9 +443,13 @@ function UF:ApplyPlayerStyle()
     local style = self.db.playerStyle
     local on = (style == "orb" or style == "none") and orb and orb:IsShown() and true or false
     local bare = on and style == "none"
-    -- "none": the frame stays as an invisible anchor for what hangs off it.
-    f.avatar:SetShown(not bare)
-    f:EnableMouse(not bare)
+    -- "none": no pills. With the console's character panel (Bars.charSlot)
+    -- the portrait lives there, larger; without it the frame is only an
+    -- invisible anchor for what hangs off it.
+    local BR = ns.modules.Bars
+    local char = bare and BR and BR.charSlot or nil
+    f.avatar:SetShown((not bare) or char ~= nil)
+    f:EnableMouse((not bare) or char ~= nil)
     if O and O.SetRestPortrait then O:SetRestPortrait(false) end
     local s = SIZES.large
     local av = f.avatar
@@ -455,7 +459,17 @@ function UF:ApplyPlayerStyle()
     f.powerPill:SetShown(not on)
     f:ClearAllPoints()
     av:ClearAllPoints()
-    if on then
+    av:SetScale(1)
+    if char then
+        -- The frame is the portrait's click area; the avatar itself is
+        -- scaled up to the panel's portrait size.
+        f:SetSize(char.avD, char.avD)
+        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", char.avX, char.avY)
+        av:SetScale(char.avD / av.D)
+        av:SetPoint("CENTER", f, "CENTER")
+        f:SetFrameStrata("LOW")
+        f:SetFrameLevel(5)
+    elseif on then
         local R = orb:GetWidth() / 2
         f:SetSize(av.D, av.D)
         f:SetPoint("CENTER", orb, "CENTER", math.cos(ORB_ANGLE) * R, math.sin(ORB_ANGLE) * R)
@@ -484,12 +498,14 @@ function UF:ApplyPlayerStyle()
         badge:ClearAllPoints()
         badge:SetPoint("CENTER", av, "BOTTOM", 0, 1)
         badge:SetFrameLevel(base + 11)
+        -- In the character panel the level is already in the health pill.
+        badge:SetShown(not char)
     end
     if O and O.SetChipLevel then O:SetChipLevel(bare) end
     if zs then
-        zs:SetParent(bare and f or av)
+        zs:SetParent((bare and not char) and f or av)
         zs:ClearAllPoints()
-        if bare then
+        if bare and not char then
             local R = orb:GetWidth() / 2
             zs:SetPoint("BOTTOMLEFT", orb, "CENTER", math.cos(ORB_ANGLE) * R - 8, math.sin(ORB_ANGLE) * R - 4)
         else
@@ -497,6 +513,7 @@ function UF:ApplyPlayerStyle()
         end
         zs:SetFrameLevel(base + 14)
     end
+    if char then pcall(self.RefreshAvatar, self, av) end
     if self.pet then
         -- Pet orbs (Orbs.lua) replace the pet's frame while they are on.
         local petOrbs = O and O.petOrbsOn
