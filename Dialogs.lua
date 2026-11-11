@@ -347,6 +347,7 @@ local function itemTiles(list)
                 ns.TipAnchor(self)
                 pcall(GameTooltip.SetQuestItem, GameTooltip, self.kind, self.index)
                 GameTooltip:Show()
+                pcall(ns.AddCompare, GameTooltip, call(_G.GetQuestItemLink, self.kind, self.index))
             end)
             f:SetScript("OnLeave", function() GameTooltip:Hide() end)
             return f

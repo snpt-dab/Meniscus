@@ -272,14 +272,112 @@ function ns.Regs(f, depth)
     return fill(b, f:GetRegions())
 end
 
--- Item / spell tooltips in Meniscus windows: use the player's tooltip
--- placement (Edit Mode default anchor) instead of pinning beside the button.
+-- Item / spell tooltips in Meniscus windows sit beside the window the
+-- mouse is in, level with the thing hovered: on the window's right, or its
+-- left when there is more room there (a window docked on the right). So a
+-- tooltip is always next to what it describes and never covers the list
+-- being read. Anything outside our windows uses the player's own tooltip
+-- placement (Edit Mode default anchor).
+local function ownWindow(f)
+    local cur = f
+    for _ = 1, 12 do
+        if not cur or cur == UIParent then return nil end
+        if rawget(cur, "shell") then return cur end -- our windows keep their header shell here
+        cur = cur.GetParent and cur:GetParent()
+    end
+end
+local function plain(v) return type(v) == "number" and not (issecretvalue and issecretvalue(v)) end
+
 function ns.TipAnchor(owner)
+    local win = ownWindow(owner)
+    if win and win:IsShown() then
+        local l, r, wt, ot = win:GetLeft(), win:GetRight(), win:GetTop(), owner:GetTop()
+        if plain(l) and plain(r) and plain(wt) and plain(ot) then
+            local k = win:GetEffectiveScale() / UIParent:GetEffectiveScale()
+            local spaceR, spaceL = UIParent:GetWidth() - r * k, l * k
+            local dy = math.min(0, ot * (owner:GetEffectiveScale() / win:GetEffectiveScale()) - wt)
+            GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            if spaceR >= 340 or spaceR >= spaceL then
+                GameTooltip:SetPoint("TOPLEFT", win, "TOPRIGHT", 8, dy)
+            else
+                GameTooltip:SetPoint("TOPRIGHT", win, "TOPLEFT", -8, dy)
+            end
+            return
+        end
+    end
     if GameTooltip_SetDefaultAnchor then
         GameTooltip_SetDefaultAnchor(GameTooltip, owner)
     else
         GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     end
+end
+
+-- ── "Compared with what you wear" ─────────────────────────────────────────
+-- Adds, to an item tooltip, how the item's stats differ from the piece
+-- equipped in its slot: green for what you gain, red for what you lose.
+-- (For rings, trinkets and one-hand weapons: against each of the two.)
+local SLOTS = {
+    INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_BODY = { 4 },
+    INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 },
+    INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 }, INVTYPE_FINGER = { 11, 12 },
+    INVTYPE_TRINKET = { 13, 14 }, INVTYPE_CLOAK = { 15 }, INVTYPE_WEAPON = { 16, 17 },
+    INVTYPE_2HWEAPON = { 16 }, INVTYPE_WEAPONMAINHAND = { 16 }, INVTYPE_WEAPONOFFHAND = { 17 },
+    INVTYPE_HOLDABLE = { 17 }, INVTYPE_SHIELD = { 17 }, INVTYPE_RANGED = { 18 }, INVTYPE_RANGEDRIGHT = { 18 },
+    INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
+}
+local function itemStats(link)
+    local f = (C_Item and C_Item.GetItemStats) or _G.GetItemStats
+    if not f then return nil end
+    local ok, t = pcall(f, link)
+    return ok and type(t) == "table" and t or nil
+end
+local function statLabel(key)
+    local s = _G[key]
+    if type(s) == "string" and s ~= "" then return s end
+    return (key:gsub("^ITEM_MOD_", ""):gsub("_SHORT$", ""):gsub("_", " "):lower():gsub("^%l", string.upper))
+end
+
+function ns.AddCompare(tip, link)
+    if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return end
+    local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
+    local slots = ok and SLOTS[loc]
+    if not slots then return end
+    local new = itemStats(link)
+    if not new then return end
+    local shownAny = false
+    for _, slot in ipairs(slots) do
+        local worn = GetInventoryItemLink("player", slot)
+        if worn and worn ~= link then
+            local old = itemStats(worn)
+            if old then
+                local gains, losses = {}, {}
+                for k, v in pairs(new) do
+                    local d = v - (old[k] or 0)
+                    if d > 0.05 then gains[#gains + 1] = { k, d } elseif d < -0.05 then losses[#losses + 1] = { k, d } end
+                end
+                for k, v in pairs(old) do
+                    if new[k] == nil and v > 0.05 then losses[#losses + 1] = { k, -v } end
+                end
+                local name = worn:match("%[(.-)%]") or "equipped"
+                tip:AddLine(" ")
+                tip:AddLine("Instead of " .. name .. ":", 0.6, 0.6, 0.65, true)
+                local function fmt(d)
+                    local a = math.abs(d)
+                    return (d > 0 and "+" or "\226\136\146") .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
+                end
+                for _, e in ipairs(gains) do tip:AddLine(fmt(e[2]) .. " " .. statLabel(e[1]), 0.45, 0.85, 0.50) end
+                for _, e in ipairs(losses) do tip:AddLine(fmt(e[2]) .. " " .. statLabel(e[1]), 0.90, 0.45, 0.45) end
+                if #gains == 0 and #losses == 0 then tip:AddLine("Same stats", 0.85, 0.85, 0.88) end
+                shownAny = true
+            end
+        end
+    end
+    if not shownAny then
+        tip:AddLine(" ")
+        tip:AddLine("Nothing equipped in that slot", 0.6, 0.6, 0.65)
+    end
+    tip:Show() -- resize for the added lines
 end
 
 -- Hide a non-secure Blizzard region/frame and keep it hidden.

@@ -124,6 +124,9 @@ local function newCard(i)
         if M.tab == "buyback" then pcall(GameTooltip.SetBuybackItem, GameTooltip, self.index)
         else pcall(GameTooltip.SetMerchantItem, GameTooltip, self.index) end
         GameTooltip:Show()
+        if M.tab ~= "buyback" and _G.GetMerchantItemLink then
+            pcall(ns.AddCompare, GameTooltip, call(_G.GetMerchantItemLink, self.index))
+        end
         -- The coin "buy" pointer, as the game's own vendor window shows it
         -- (its functions pick the right one: buy, or greyed when unaffordable).
         if not CursorHasItem() then
