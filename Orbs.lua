@@ -2377,6 +2377,57 @@ function Orbs:SetChipLevel(on)
     -- (The value stays centered on the whole pill, as on the power orb.)
 end
 
+-- Ammo set into the right end of the power orb's value pill, mirroring the
+-- level on the health pill: the count of what is loaded right now (the ammo
+-- slot's arrows / bullets, or a stack of thrown weapons in the ranged
+-- slot). Only there while something is loaded; yellow when running low, red
+-- when nearly out.
+function Orbs:BuildAmmo()
+    local f = self.power
+    if not f or not f.chip or f.ammo then return end
+    f.ammo = ns:CreateText(f.chip, 10, T.textDim)
+    f.ammo:SetPoint("CENTER", f.chip, "RIGHT", -15, 0)
+    f.ammo:SetShadowOffset(1, -1)
+    f.ammo:SetShadowColor(0, 0, 0, 0.8)
+    f.ammoDiv = f.chip:CreateTexture(nil, "ARTWORK")
+    f.ammoDiv:SetSize(1, 8)
+    f.ammoDiv:SetPoint("RIGHT", f.chip, "RIGHT", -29, 0)
+    f.ammoDiv:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    local AMMO, RANGED = _G.INVSLOT_AMMO or 0, _G.INVSLOT_RANGED or 18
+    local function loaded()
+        -- An empty slot reports a count of 1, so the item has to be there.
+        if GetInventoryItemID and GetInventoryItemCount then
+            if GetInventoryItemID("player", AMMO) then
+                return GetInventoryItemCount("player", AMMO)
+            end
+            if GetInventoryItemID("player", RANGED) then
+                local n = GetInventoryItemCount("player", RANGED)
+                if type(n) == "number" and n > 1 then return n end -- a stack: thrown
+            end
+        end
+        return nil
+    end
+    local function refresh()
+        local ok, n = pcall(loaded)
+        if not ok or type(n) ~= "number" or (issecretvalue and issecretvalue(n)) then
+            f.ammo:Hide(); f.ammoDiv:Hide()
+            return
+        end
+        f.ammo:SetText(n >= 10000 and string.format("%.0fk", n / 1000) or n)
+        if n <= 50 then f.ammo:SetTextColor(0.90, 0.35, 0.30)
+        elseif n <= 200 then f.ammo:SetTextColor(0.92, 0.76, 0.32)
+        else f.ammo:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end
+        f.ammo:Show(); f.ammoDiv:Show()
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE_DELAYED" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_INVENTORY_CHANGED", "player")
+    ev:SetScript("OnEvent", refresh)
+    refresh()
+end
+
 function Orbs:SetRestPortrait(on)
     self.restPortrait = on and true or false
     checkRest(self.health)
@@ -2950,6 +3001,7 @@ function Orbs:OnInit(db)
     updateHealth(self.health)
     updatePower(self.power)
     buildCombo(self)
+    pcall(self.BuildAmmo, self)
     -- Pet orbs first: the player-style pass below hides the pet's own frame
     -- when they are on.
     pcall(self.PlacePet, self)
