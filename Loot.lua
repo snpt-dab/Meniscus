@@ -347,9 +347,9 @@ local function floatTick(_, dt)
                 if t < OPEN then o = 1 - (1 - t / OPEN) ^ 3
                 elseif left < CLOSE then o = (left / CLOSE) ^ 2 end
                 f:SetWidth(PILL_H + (f.full - PILL_H) * o)
-                -- Rise: a quick lift off the minimap, then a slow drift.
-                local e = 0.25 * (1 - (1 - math.min(1, t / 0.5)) ^ 3) + 0.75 * k
-                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + f.rise * e)
+                -- A steady climb: every line moves at the same speed, so
+                -- the distance between two of them never changes.
+                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + f.rise * k)
             else
                 any = true
             end
@@ -423,7 +423,10 @@ local function floatSlot(slot)
     f:SetWidth(PILL_H)
     -- Each line starts from the same spot, a beat after the one before.
     local now = GetTime()
-    local start = math.max(now, lastStart + FLOAT_GAP)
+    -- (The beat is however long it takes the line ahead to climb clear:
+    -- a pill's height and a little air.)
+    local gap = math.max(FLOAT_GAP, (PILL_H + 5) / (math.max(floatRise, 40) / FLOAT_LIFE))
+    local start = math.max(now, lastStart + gap)
     lastStart = start
     f.x, f.y, f.rise = floatX, floatY, floatRise
     f.age = now - start
