@@ -1314,7 +1314,42 @@ function UF:ApplyBlizzard(hide)
             if fr.SetUnit then pcall(fr.SetUnit, fr, nil) end -- cast bars
             fr:Hide()
             fr:SetParent(hidden)
+            self.gone = self.gone or {}
+            self.gone[#self.gone + 1] = fr
+            -- If the game takes the frame back, put it away again.
+            hooksecurefunc(fr, "SetParent", function(_, p)
+                if p ~= hidden then C_Timer.After(0, function() UF:KeepHidden() end) end
+            end)
         end
+    end
+    if not self.keeper then
+        -- On a cold login the game lays out its frames (the Edit Mode
+        -- layout) after we have put these away, and that brought the player
+        -- frame back to the screen. Check again once that has happened.
+        local k = CreateFrame("Frame")
+        self.keeper = k
+        k:RegisterEvent("PLAYER_ENTERING_WORLD")
+        k:RegisterEvent("PLAYER_REGEN_ENABLED")
+        pcall(k.RegisterEvent, k, "EDIT_MODE_LAYOUTS_UPDATED")
+        k:SetScript("OnEvent", function(_, event)
+            if event == "PLAYER_REGEN_ENABLED" and not UF.keepPending then return end
+            UF:KeepHidden()
+            if event ~= "PLAYER_REGEN_ENABLED" then
+                C_Timer.After(1, function() UF:KeepHidden() end)
+                C_Timer.After(4, function() UF:KeepHidden() end)
+            end
+        end)
+    end
+end
+
+function UF:KeepHidden()
+    if not self.gone then return end
+    if InCombatLockdown() then self.keepPending = true return end
+    self.keepPending = nil
+    for i = 1, #self.gone do
+        local fr = self.gone[i]
+        if fr:GetParent() ~= hidden then pcall(fr.SetParent, fr, hidden) end
+        if fr:IsShown() then pcall(fr.Hide, fr) end
     end
 end
 
