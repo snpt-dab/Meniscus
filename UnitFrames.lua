@@ -530,7 +530,11 @@ function UF:RefreshAvatar(av)
     -- rectangle and its corners show outside the ring. So the bust uses the
     -- game's own head-and-shoulders portrait, which masks cleanly
     -- (/men portrait bust3d 1 brings the model back).
-    local flatBust = av.bust and p.bust3d ~= 1
+    -- With 3D on, only players get the model there: creatures come in every
+    -- size and spill out of the circle, so they keep the flat portrait.
+    local isPlayer = UnitIsPlayer(unit)
+    if issecretvalue(isPlayer) then isPlayer = false end
+    local flatBust = av.bust and (p.bust3d ~= 1 or not isPlayer)
     if av.lip then av.lip:SetShown(not flatBust) end
     if m and visible(unit) and not flatBust then
         av.flat:Hide()

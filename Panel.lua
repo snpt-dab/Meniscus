@@ -356,7 +356,7 @@ local PAGES = {
               get = function() return UF().db.portrait.fidget == 1 end,
               set = function() cmd("portrait", "fidget " .. (UF().db.portrait.fidget == 1 and 0 or 1)) end },
             { "3D portraits (target, window headers)", kind = "switch",
-              note = "Off: flat portrait, always inside the ring. On: live model, some spill past it",
+              note = "On: a live model for players (creatures stay flat). Off: flat for everyone",
               get = function() return UF().db.portrait.bust3d == 1 end,
               set = function() cmd("portrait", "bust3d " .. (UF().db.portrait.bust3d == 1 and 0 or 1)) end },
             { "Camera", kind = "action", action = "Reset", run = function() cmd("portrait", "reset") end },
