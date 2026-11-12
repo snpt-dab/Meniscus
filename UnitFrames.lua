@@ -27,7 +27,7 @@ local UF = ns:NewModule("UnitFrames", {
     -- 3D pop-out avatar camera; tune live with /men portrait <key> <value>
     -- fidget = 0 keeps the plain breathing idle (no yawns/stretches that hit
     -- the model window's edges); 1 allows Blizzard's random idle fidgets.
-    portrait = { zoom = 1.0, dist = 1.2, z = 0, facing = 0, pop = 0.45, x = 0.06, fit = 2, fidget = 0, sdist = 1.5, bust3d = 1 },
+    portrait = { zoom = 1.0, dist = 1.2, z = 0, facing = 0, pop = 0.45, x = 0.06, fit = 3, fidget = 0, sdist = 1.5, bust3d = 0 },
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -1398,6 +1398,12 @@ function UF:OnInit(db)
         p.fit = 2
         p.bust3d = 1
     end
+    -- ...and flat again: creatures don't fit, and the race fits are made on
+    -- the player frame now.
+    if p and (p.fit or 0) < 3 then
+        p.fit = 3
+        p.bust3d = 0
+    end
     self.frames = {}
 
     self.player = create("player", "Player", { size = "large", avatar = "3d", side = "LEFT" })
@@ -1692,6 +1698,11 @@ ns.commands.portrait = function(rest)
     local key, val = (rest or ""):match("^(%S+)%s+(%S+)$")
     val = tonumber(val)
     if rest == "tune" then return UF:OpenTuner() end
+    if rest == "todo" then
+        local missing, have, total = UF:FitsMissing()
+        return ns:Print(#missing == 0 and ("All " .. total .. " race and gender fits done.")
+            or string.format("%d of %d fitted. Still to do: %s", have, total, table.concat(missing, ", ")))
+    end
     -- /men portrait fit <x|z|dist> <number>: for the race + gender of your
     -- target (or yourself with no player targeted). "fit clear" drops it.
     local fk, fv = (rest or ""):match("^fit%s+(%S+)%s*(%S*)$")
@@ -1736,8 +1747,23 @@ end
 -- (kept for that race and gender) or Revert. /men portrait tune opens it.
 local tuner
 local STEP = { x = 0.01, z = 0.01, dist = 0.05 }
-local function tunerUnit()
-    return (UnitExists("target") and UnitIsPlayer("target")) and "target" or "player"
+local function tunerUnit() return "player" end
+
+-- The races and genders to fit, and which are still missing. (The classic
+-- races; any other race you fit is counted too.)
+local FIT_RACES = { { "Human", "Human" }, { "Dwarf", "Dwarf" }, { "NightElf", "Night Elf" }, { "Gnome", "Gnome" },
+                    { "Orc", "Orc" }, { "Scourge", "Undead" }, { "Tauren", "Tauren" }, { "Troll", "Troll" } }
+function UF:FitsMissing()
+    local done = (self.db.portrait.byModel) or {}
+    local missing, total, have = {}, 0, 0
+    for _, r in ipairs(FIT_RACES) do
+        for _, sx in ipairs({ { 2, "Male" }, { 3, "Female" } }) do
+            total = total + 1
+            if done[r[1] .. sx[1]] then have = have + 1
+            else missing[#missing + 1] = sx[2] .. " " .. r[2] end
+        end
+    end
+    return missing, have, total
 end
 local function refreshAll()
     eachModel(function(av) pcall(UF.RefreshAvatar, UF, av) end)
@@ -1765,6 +1791,9 @@ local function tunerLoad()
     tuner.saved = p.byModel and p.byModel[key] ~= nil
 end
 local function tunerShow()
+    local missing, have, total = UF:FitsMissing()
+    tuner.todo:SetText(#missing == 0 and ("All " .. total .. " fitted.")
+        or string.format("%d of %d fitted. Still to do: %s", have, total, table.concat(missing, ", ")))
     local pv = UF.preview
     for k, row in pairs(tuner.rows) do
         row.value:SetText(pv and string.format(k == "dist" and "%.2f" or "%.2f", pv[k]) or "-")
@@ -1776,7 +1805,7 @@ end
 function UF:OpenTuner()
     if not tuner then
         tuner = CreateFrame("Frame", "MeniscusPortraitTuner", UIParent)
-        tuner:SetSize(220, 168)
+        tuner:SetSize(240, 252)
         tuner:SetPoint("RIGHT", UIParent, "RIGHT", -360, 120)
         tuner:SetFrameStrata("DIALOG")
         tuner:EnableMouse(true)
@@ -1791,6 +1820,11 @@ function UF:OpenTuner()
         tuner.title:SetPoint("TOP", 0, -12)
         tuner.state = ns:CreateText(tuner, 10, T.textDim)
         tuner.state:SetPoint("TOP", tuner.title, "BOTTOM", 0, -3)
+        tuner.todo = ns:CreateText(tuner, 10, T.textDim)
+        tuner.todo:SetPoint("TOPLEFT", tuner, "TOPLEFT", 14, -126)
+        tuner.todo:SetPoint("TOPRIGHT", tuner, "TOPRIGHT", -14, -126)
+        tuner.todo:SetJustifyH("LEFT")
+        tuner.todo:SetWordWrap(true)
         tuner.rows = {}
         local labels = { x = "Sideways", z = "Up / down", dist = "Distance" }
         for i, k in ipairs({ "x", "z", "dist" }) do
