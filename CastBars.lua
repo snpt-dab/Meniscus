@@ -57,7 +57,9 @@ local function start(h, channel)
     h:Show()
 end
 
-local function create(parent, unit, below)
+-- slot = true (party): the bar sits tight under the health pill, in the
+-- space the power pill would take (party members have a power orb instead).
+local function create(parent, unit, below, slot)
     -- 16:1 pill to match the generated mask: parent width (224) x 14.
     local w = parent:GetWidth()
     local h = ns:CreatePillBar(parent, w, w / 16)
@@ -65,6 +67,11 @@ local function create(parent, unit, below)
     -- The small frame (pet / target-of-target) sits tight under the big
     -- one; while it's shown the cast bar drops below it instead.
     local function place()
+        if slot then
+            h:ClearAllPoints()
+            h:SetPoint("TOP", parent.healthPill or parent, "BOTTOM", 0, -3)
+            return
+        end
         -- Player portrait on the health orb: there is no frame to hang
         -- under, so the bar sits above the orb.
         local UF = ns.modules.UnitFrames
@@ -128,14 +135,15 @@ local function create(parent, unit, below)
     local x = (w / 16) / 2 + 2
 
     h.name = clipTrack:CreateFontString(nil, "OVERLAY")
-    ns:SetFont(h.name, 10, "", true)
+    local fsz = slot and 9 or 10
+    ns:SetFont(h.name, fsz, "", true)
     h.name:SetTextColor(unpack(T.text))
     h.name:SetShadowOffset(1, -1)
     h.name:SetShadowColor(0, 0, 0, 0.8)
     h.name:SetPoint("LEFT", h, "LEFT", x, 0)
 
     local dark = clipFill:CreateFontString(nil, "OVERLAY")
-    ns:SetFont(dark, 10, "", true)
+    ns:SetFont(dark, fsz, "", true)
     dark:SetTextColor(0.07, 0.07, 0.08, 1)
     dark:SetShadowOffset(1, -1)
     dark:SetShadowColor(1, 1, 1, 0.25)
@@ -177,6 +185,15 @@ function CB:OnInit()
     self.player = create(UF.player, "player", UF.pet)
     self.target = create(UF.target, "target", UF.tot)
     if UF.focus then self.focus = create(UF.focus, "focus") end
+    -- Party members: a slim bar under each one's health pill.
+    self.party = {}
+    for i, pf in ipairs(UF.party or {}) do
+        local ok, h = pcall(create, pf, "party" .. i, nil, true)
+        if ok then
+            h:SetFrameLevel(pf:GetFrameLevel() + 2)
+            self.party[i] = h
+        end
+    end
 end
 
 ns.commands.cast = function()

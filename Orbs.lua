@@ -2351,12 +2351,31 @@ function Orbs:BuildAmmo()
         GameTooltip:Show()
     end)
     hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- A warning pill floats up (like loot, in red) when the count drops to
+    -- 200, and again at 50: once per threshold, not per shot. Restocking
+    -- re-arms it. Logging in already low counts as crossing it.
+    local warned, bornAt = 0, GetTime()
+    local function warn(n, item, thrown, level)
+        if not ns.FloatWarning then return end
+        local tex = item and C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(item)
+        local what = thrown and "throwing weapons" or "ammo"
+        local label = level >= 2 and ("Nearly out of " .. what) or ("Low on " .. what)
+        ns.FloatWarning(tex or "Interface/Icons/INV_Misc_QuestionMark", label, n .. " left")
+    end
     local function refresh()
         local ok, n, item, thrown = pcall(loaded)
         if not ok or type(n) ~= "number" or (issecretvalue and issecretvalue(n)) then
             f.ammo:Hide(); f.ammoDiv:Hide(); hit:Hide()
             return
         end
+        local level = n <= 50 and 2 or (n <= 200 and 1 or 0)
+        if level > warned then
+            -- (Right after login the screen is still settling: wait a little.)
+            local wait = math.max(0, 5 - (GetTime() - bornAt))
+            if wait > 0 then C_Timer.After(wait, function() warn(n, item, thrown, level) end)
+            else warn(n, item, thrown, level) end
+        end
+        warned = level
         hit.n, hit.item, hit.thrown = n, item, thrown
         hit:Show()
         f.ammo:SetText(n >= 10000 and string.format("%.0fk", n / 1000) or n)

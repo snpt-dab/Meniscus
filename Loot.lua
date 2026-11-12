@@ -302,6 +302,12 @@ local function snapshot()
         e.tex, e.name, e.qty, e.quality = tex, item, qty, quality
         e.money = (call(GetLootSlotType, slot) == MONEY_SLOT)
     end
+end
+
+-- Where pills start and how far they climb: just above the minimap, by its
+-- height. (With the minimap up in its corner there is no room above it;
+-- then from the cursor.)
+local function floatOrigin()
     local sc = UIParent:GetEffectiveScale()
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
     local mm = _G.Minimap
@@ -366,7 +372,7 @@ local function floatLine()
     f:EnableMouse(false)
     f:SetClipsChildren(true)
     f.ring = ns.RoundedRect(f, -8, 0, PILL_H / 2, T.border[1], T.border[2], T.border[3], 1)
-    ns.RoundedRect(f, -7, 1, PILL_H / 2 - 1, FILL[1], FILL[2], FILL[3], 0.94)
+    f.fill = ns.RoundedRect(f, -7, 1, PILL_H / 2 - 1, FILL[1], FILL[2], FILL[3], 0.94)
     -- (Clipped textures go on a child of the clip frame, not on it.)
     local inner = CreateFrame("Frame", nil, f)
     inner:SetPoint("LEFT")
@@ -388,43 +394,24 @@ local function floatLine()
     return f
 end
 
-local function floatSlot(slot)
-    if not (L.db and L.db.float ~= false) then return end
-    local e = type(slot) == "number" and slot <= snapN and snap[slot]
-    if not e or not e.tex then return end
-    local name = e.name
-    if type(name) ~= "string" or secret(name) or name == "" then return end
-    local tex, qty, quality = e.tex, e.qty, e.quality
-    e.tex = nil -- one line per slot
+-- One pill: icon, text (may carry colour codes), an optional dim note after
+-- it, the ring's colour, and an optional fill (a warning's tint).
+local function floatPill(tex, label, tr, tg, tb, note, rr, rg, rb, fr, fg, fb)
     local f = floatLine()
     f.icon:SetTexture(tex)
-    local cr, cg, cb = qualityColor(quality)
-    local fine = type(quality) == "number" and quality >= 2
-    if e.money then
-        -- "1 Silver / 25 Copper" as "1s 25c", coins in their colours.
-        local out = ""
-        for num, word in name:gmatch("(%d+)%s*(%a)") do
-            out = out .. (out ~= "" and " " or "") .. num .. (COIN[word:lower()] or "")
-        end
-        f.text:SetText(out ~= "" and out or (name:gsub("\n", "  ")))
-        f.text:SetTextColor(unpack(T.text))
-        fine = false
-    else
-        f.text:SetText(name)
-        if fine then f.text:SetTextColor(cr, cg, cb) else f.text:SetTextColor(unpack(T.text)) end
-    end
-    local many = type(qty) == "number" and not secret(qty) and qty > 1 and not e.money
-    f.count:SetText(many and ("\195\151" .. qty) or "")
-    -- The ring carries the quality; plain things keep the usual hairline.
-    if fine then f.ring(cr * 0.75, cg * 0.75, cb * 0.75, 1)
-    else f.ring(T.border[1], T.border[2], T.border[3], 1) end
+    f.text:SetText(label)
+    f.text:SetTextColor(tr, tg, tb)
+    local hasNote = type(note) == "string" and note ~= ""
+    f.count:SetText(hasNote and note or "")
+    f.ring(rr, rg, rb, 1)
+    if fr then f.fill(fr, fg, fb, 0.96) else f.fill(FILL[1], FILL[2], FILL[3], 0.94) end
     f.full = math.ceil((PILL_H - 3) + 7 + f.text:GetStringWidth()
-        + (many and (6 + f.count:GetStringWidth()) or 0) + PILL_PAD)
+        + (hasNote and (6 + f.count:GetStringWidth()) or 0) + PILL_PAD)
     f:SetWidth(PILL_H)
     -- Each line starts from the same spot, a beat after the one before.
-    local now = GetTime()
     -- (The beat is however long it takes the line ahead to climb clear:
     -- a pill's height and a little air.)
+    local now = GetTime()
     local gap = math.max(FLOAT_GAP, (PILL_H + 5) / (math.max(floatRise, 40) / FLOAT_LIFE))
     local start = math.max(now, lastStart + gap)
     lastStart = start
@@ -441,6 +428,40 @@ local function floatSlot(slot)
         floatDriver:SetScript("OnUpdate", floatTick)
     end
     floatDriver:Show()
+end
+
+-- For the rest of the addon: a warning pill in the same place and motion
+-- as loot (red ring, dark red fill). Used for low ammunition.
+function ns.FloatWarning(tex, label, note)
+    if not pcall(floatOrigin) then return end
+    pcall(floatPill, tex, label, 1.0, 0.86, 0.84, note, 0.90, 0.35, 0.30, 0.20, 0.07, 0.07)
+end
+
+local function floatSlot(slot)
+    if not (L.db and L.db.float ~= false) then return end
+    local e = type(slot) == "number" and slot <= snapN and snap[slot]
+    if not e or not e.tex then return end
+    local name = e.name
+    if type(name) ~= "string" or secret(name) or name == "" then return end
+    local tex, qty, quality = e.tex, e.qty, e.quality
+    e.tex = nil -- one line per slot
+    local cr, cg, cb = qualityColor(quality)
+    local fine = type(quality) == "number" and quality >= 2
+    if e.money then
+        -- "1 Silver / 25 Copper" as "1s 25c", coins in their colours.
+        local out = ""
+        for num, word in name:gmatch("(%d+)%s*(%a)") do
+            out = out .. (out ~= "" and " " or "") .. num .. (COIN[word:lower()] or "")
+        end
+        name = out ~= "" and out or (name:gsub("\n", "  "))
+        fine = false
+    end
+    local many = type(qty) == "number" and not secret(qty) and qty > 1 and not e.money
+    -- The ring carries the quality; plain things keep the usual hairline.
+    local tr, tg, tb = T.text[1], T.text[2], T.text[3]
+    local rr, rg, rb = T.border[1], T.border[2], T.border[3]
+    if fine then tr, tg, tb, rr, rg, rb = cr, cg, cb, cr * 0.75, cg * 0.75, cb * 0.75 end
+    floatPill(tex, name, tr, tg, tb, many and ("\195\151" .. qty) or nil, rr, rg, rb)
 end
 
 -- ── Group loot rolls ──────────────────────────────────────────────────────
@@ -580,6 +601,7 @@ function L:OnInit(db)
             closeLootWindow()
             L.lootOpen = true
             pcall(snapshot)
+            pcall(floatOrigin)
             openLoot(a1)
         elseif e == "LOOT_SLOT_CLEARED" or e == "LOOT_SLOT_CHANGED" then
             if e == "LOOT_SLOT_CLEARED" and L.lootOpen then pcall(floatSlot, a1) end
