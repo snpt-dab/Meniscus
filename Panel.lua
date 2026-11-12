@@ -360,6 +360,7 @@ local PAGES = {
               get = function() return UF().db.portrait.bust3d == 1 end,
               set = function() cmd("portrait", "bust3d " .. (UF().db.portrait.bust3d == 1 and 0 or 1)) end },
             { "Camera", kind = "action", action = "Reset", run = function() cmd("portrait", "reset") end },
+            { "Fit per race and gender", kind = "action", action = "Tune", run = function() cmd("portrait", "tune") end },
         } },
     } },
     { key = "auras", title = "Buffs", groups = {
@@ -723,6 +724,7 @@ ns.commands.help = function()
         "/men orbs  toggle orbs      /men actionbars  toggle bar styling (reload)",
         "/men char | bags [combined|separate] | spells | quests  open windows / bag layout",
         "/men portrait [reset | <zoom|dist|x|z|facing|pop|fidget> <n>]",
+        "/men portrait tune  window to fit the camera for your target's race and gender",
         "/men portrait fit <x|z|dist> <n>  camera for your target's race and gender (yourself with no player targeted); fit clear",
         "/men profile [use | copy | delete <name>]  layouts per character",
         "/men font | orbcolor | rage | energy [drip] | mana [fsr|burst] | combo | reloadbtn | minimap | keyring | errors | chat",

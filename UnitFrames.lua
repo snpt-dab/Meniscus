@@ -542,7 +542,8 @@ function UF:RefreshAvatar(av)
         -- the camera back so the whole head and the shoulders fit inside
         -- the circle, instead of the head rising out of its top.
         local key = modelKey(unit)
-        local o = key and p.byModel and p.byModel[key] or nil
+        local o = key and ((UF.preview and UF.preview.key == key and UF.preview)
+            or (p.byModel and p.byModel[key])) or nil
         pcall(m.SetCamDistanceScale, m, av.bust and (p.sdist or 1.5) or (o and o.dist) or p.dist)
         -- x nudges the model sideways (negative = left) so the face sits
         -- centered in the circle, clear of the model window's straight edges.
@@ -1674,6 +1675,7 @@ ns.commands.portrait = function(rest)
     if p.x == nil or p.x == -0.03 then p.x = 0.04 end
     local key, val = (rest or ""):match("^(%S+)%s+(%S+)$")
     val = tonumber(val)
+    if rest == "tune" then return UF:OpenTuner() end
     -- /men portrait fit <x|z|dist> <number>: for the race + gender of your
     -- target (or yourself with no player targeted). "fit clear" drops it.
     local fk, fv = (rest or ""):match("^fit%s+(%S+)%s*(%S*)$")
@@ -1710,4 +1712,120 @@ ns.commands.portrait = function(rest)
     end
     ns:Print(string.format("portrait zoom %.2f  dist %.2f  x %.2f  z %.2f  facing %.2f  pop %.2f  fidget %d  |  target strip dist (sdist) %.2f",
         p.zoom, p.dist, p.x, p.z, p.facing, p.pop, p.fidget, p.sdist or 1.5))
+end
+
+-- ── Portrait tuner (temporary) ────────────────────────────────────────────
+-- A small window for fitting the 3D portrait camera per race and gender:
+-- nudge x / z / dist with - and +, watch the portraits change, then Save
+-- (kept for that race and gender) or Revert. /men portrait tune opens it.
+local tuner
+local STEP = { x = 0.01, z = 0.01, dist = 0.05 }
+local function tunerUnit()
+    return (UnitExists("target") and UnitIsPlayer("target")) and "target" or "player"
+end
+local function refreshAll()
+    eachModel(function(av) pcall(UF.RefreshAvatar, UF, av) end)
+end
+local function tunerLoad()
+    local p = UF.db.portrait
+    local unit = tunerUnit()
+    local key = modelKey(unit)
+    tuner.key = key
+    if not key then
+        UF.preview = nil
+        tuner.title:SetText("Target a player")
+        return
+    end
+    local saved = p.byModel and p.byModel[key] or {}
+    UF.preview = { key = key, x = saved.x or p.x, z = saved.z or p.z, dist = saved.dist or p.dist }
+    local race = UnitRace(unit)
+    local sex = UnitSex(unit) == 3 and "Female" or "Male"
+    tuner.title:SetText(sex .. " " .. (type(race) == "string" and not issecretvalue(race) and race or key)
+        .. (unit == "player" and "  (you)" or ""))
+    tuner.saved = p.byModel and p.byModel[key] ~= nil
+end
+local function tunerShow()
+    local pv = UF.preview
+    for k, row in pairs(tuner.rows) do
+        row.value:SetText(pv and string.format(k == "dist" and "%.2f" or "%.2f", pv[k]) or "-")
+    end
+    tuner.state:SetText(tuner.key and (tuner.dirty and "Not saved" or (tuner.saved and "Saved for this race" or "Using the shared camera")) or "")
+    refreshAll()
+end
+
+function UF:OpenTuner()
+    if not tuner then
+        tuner = CreateFrame("Frame", "MeniscusPortraitTuner", UIParent)
+        tuner:SetSize(220, 168)
+        tuner:SetPoint("RIGHT", UIParent, "RIGHT", -360, 120)
+        tuner:SetFrameStrata("DIALOG")
+        tuner:EnableMouse(true)
+        tuner:SetMovable(true)
+        tuner:RegisterForDrag("LeftButton")
+        tuner:SetScript("OnDragStart", tuner.StartMoving)
+        tuner:SetScript("OnDragStop", tuner.StopMovingOrSizing)
+        ns.RoundedRect(tuner, -8, 0, 12, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(tuner, -7, 1, 11, 0.06, 0.06, 0.07, 0.97)
+        tuner.title = ns:CreateText(tuner, 12)
+        ns:SetFont(tuner.title, 12, "", true)
+        tuner.title:SetPoint("TOP", 0, -12)
+        tuner.state = ns:CreateText(tuner, 10, T.textDim)
+        tuner.state:SetPoint("TOP", tuner.title, "BOTTOM", 0, -3)
+        tuner.rows = {}
+        local labels = { x = "Sideways", z = "Up / down", dist = "Distance" }
+        for i, k in ipairs({ "x", "z", "dist" }) do
+            local y = -48 - (i - 1) * 26
+            local l = ns:CreateText(tuner, 11, T.textDim)
+            l:SetPoint("LEFT", tuner, "TOPLEFT", 14, y)
+            l:SetText(labels[k])
+            local function nudge(dir)
+                if not UF.preview then return end
+                UF.preview[k] = UF.preview[k] + dir * STEP[k]
+                tuner.dirty = true
+                tunerShow()
+            end
+            local plus = ns.Pill(tuner, "+", function() nudge(1) end, { h = 20, minW = 26, pad = 10 })
+            plus:SetPoint("RIGHT", tuner, "TOPRIGHT", -12, y)
+            local val = ns:CreateText(tuner, 11)
+            val:SetPoint("RIGHT", plus, "LEFT", -8, 0)
+            val:SetWidth(38)
+            val:SetJustifyH("CENTER")
+            local minus = ns.Pill(tuner, "-", function() nudge(-1) end, { h = 20, minW = 26, pad = 10 })
+            minus:SetPoint("RIGHT", val, "LEFT", -8, 0)
+            tuner.rows[k] = { value = val }
+        end
+        local close = ns.Pill(tuner, "Close", function() tuner:Hide() end, { h = 22, minW = 54, pad = 16 })
+        close:SetPoint("BOTTOMLEFT", 12, 12)
+        local revert = ns.Pill(tuner, "Revert", function()
+            tuner.dirty = false
+            tunerLoad(); tunerShow()
+        end, { h = 22, minW = 54, pad = 16 })
+        revert:SetPoint("LEFT", close, "RIGHT", 6, 0)
+        local save = ns.Pill(tuner, "Save", function()
+            local pv = UF.preview
+            if not (pv and tuner.key) then return end
+            local p = UF.db.portrait
+            p.byModel = p.byModel or {}
+            p.byModel[tuner.key] = { x = pv.x, z = pv.z, dist = pv.dist }
+            tuner.dirty, tuner.saved = false, true
+            tunerShow()
+            ns:Print("Portrait camera saved for " .. tuner.title:GetText() .. ".")
+        end, { h = 22, minW = 54, pad = 16, primary = true })
+        save:SetPoint("BOTTOMRIGHT", -12, 12)
+        if ns.SetButtonPrimary then pcall(ns.SetButtonPrimary, save, true) end
+        tuner:SetScript("OnHide", function()
+            UF.preview = nil
+            tuner.dirty = false
+            refreshAll()
+        end)
+        local ev = CreateFrame("Frame", nil, tuner)
+        ev:RegisterEvent("PLAYER_TARGET_CHANGED")
+        ev:SetScript("OnEvent", function()
+            if tuner:IsShown() and not tuner.dirty then tunerLoad(); tunerShow() end
+        end)
+    end
+    tuner.dirty = false
+    tuner:Show()
+    tunerLoad()
+    tunerShow()
 end
