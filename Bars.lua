@@ -508,6 +508,34 @@ function Bars:Arrange()
             for _, k in ipairs({ "BorderArt", "EndCaps", "Background" }) do killRegion(bar[k]) end
         end
     end
+    -- With Edit Mode's "hide bar art" off (any fresh character's default
+    -- layout), the main bar also draws gold dividers between its buttons and
+    -- the page number with its up / down arrows. Our buttons have their own
+    -- plates, so these go too, whatever the layout says.
+    local mab = _G.MainActionBar or _G.MainMenuBar
+    if mab then
+        local function noDividers(bar)
+            local pool = bar.dividersPool
+            if pool and pool.EnumerateActive then
+                for d in pool:EnumerateActive() do killRegion(d) end
+            end
+            for _, k in ipairs({ "ActionBarButtonDividers", "Dividers" }) do killRegion(bar[k]) end
+        end
+        safe(noDividers, mab)
+        if mab.UpdateDividers and not mab.__muiDivHook then
+            mab.__muiDivHook = true
+            hooksecurefunc(mab, "UpdateDividers", function(bar) safe(noDividers, bar) end)
+        end
+        killRegion(mab.ActionBarPageNumber)
+        for _, n in ipairs({ "ActionBarUpButton", "ActionBarDownButton", "MainMenuBarPageNumber" }) do
+            killRegion(_G[n])
+        end
+        if mab.ActionBarPageNumber then
+            killRegion(mab.ActionBarPageNumber.UpButton)
+            killRegion(mab.ActionBarPageNumber.DownButton)
+            killRegion(mab.ActionBarPageNumber.Text)
+        end
+    end
     self:ApplyPetWell()
     self:ApplyCharWell()
     -- Once the anchors above have real positions.
