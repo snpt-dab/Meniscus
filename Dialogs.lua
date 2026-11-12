@@ -428,12 +428,20 @@ end
 --        | what it is ("Wrist · Mail"), or in red why you can't use it
 --        | how it differs from what you wear (green gains, red losses)
 -- A choice is picked by clicking its card.
+-- Weapon types come as plurals ("One-Handed Swords"); a card names one.
+local SINGULAR = { Staves = "Staff", Thrown = "Thrown", Miscellaneous = "Miscellaneous" }
+local function singular(s) return SINGULAR[s] or (s:gsub("s$", "")) end
+
 local function rewardCards(list)
-    for _, it in ipairs(list) do
-        it.link = call(_G.GetQuestItemLink, it.kind, it.index)
+    -- What kind of thing a reward is. An item never seen before may have no
+    -- link yet; details() below tries again when it does.
+    local function classify(it)
         if it.link and C_Item and C_Item.GetItemInfoInstant then
             local _, typ, sub, loc, _, classID, subID = call(C_Item.GetItemInfoInstant, it.link)
             it.typ, it.sub = typ, sub
+            -- Weapons and shields: the type says it all ("Dagger",
+            -- "Two-Handed Sword"), so the slot isn't shown beside it.
+            it.weapon = classID == 2 or (classID == 4 and subID == 6)
             -- Body armor (cloth / leather / mail / plate; cloaks are cloth
             -- for everyone and don't count): its weight, 1 to 4.
             it.weight = (classID == 4 and type(subID) == "number" and subID >= 1 and subID <= 4
@@ -443,6 +451,10 @@ local function rewardCards(list)
             local sn = type(loc) == "string" and loc ~= "" and _G[loc]
             it.slotName = (type(sn) == "string" and sn ~= "") and sn or nil
         end
+    end
+    for _, it in ipairs(list) do
+        it.link = call(_G.GetQuestItemLink, it.kind, it.index)
+        classify(it)
     end
 
     local function coins(v)
@@ -545,6 +557,15 @@ local function rewardCards(list)
             local it = t.it
             local link = it.link or call(_G.GetQuestItemLink, t.kind, t.index)
             it.link = link
+            if link and not it.typ then classify(it) end
+            -- A name that hadn't arrived when the card was built.
+            if type(it.name) ~= "string" or it.name == "" then
+                local n = call(_G.GetQuestItemInfo, t.kind, t.index)
+                if (type(n) ~= "string" or n == "") and link and C_Item and C_Item.GetItemInfo then
+                    n = call(C_Item.GetItemInfo, link)
+                end
+                if type(n) == "string" and n ~= "" then it.name = n; t.name:SetText(n) else missing = true end
+            end
             local price
             if link and C_Item and C_Item.GetItemInfo then price = select(11, call(C_Item.GetItemInfo, link)) end
             if type(price) == "number" and not secret(price) then
@@ -574,7 +595,9 @@ local function rewardCards(list)
                 elseif it.weight < bestArmor then tint = "|cff73b3f2" end
             end
             local what
-            if it.slotName then
+            if it.weapon and type(it.sub) == "string" and it.sub ~= "" then
+                what = singular(it.sub)
+            elseif it.slotName then
                 what = it.slotName
                 if type(it.sub) == "string" and it.sub ~= "" and it.sub ~= it.slotName then
                     what = what .. "  \194\183  " .. (tint and (tint .. it.sub .. "|r") or it.sub)
@@ -586,9 +609,10 @@ local function rewardCards(list)
                 -- Gear you can't wear, or anything else you can't use.
                 -- Same line as any other card, with the verdict last in
                 -- parentheses; the reason follows unless it is just the
-                -- armor type already shown.
+                -- type or slot (the tooltip's red line for a weapon you
+                -- can't wield is its slot).
                 local note = it.slotName and "Can't equip" or "Can't use"
-                if type(why) == "string" and why ~= "" and why ~= it.sub then note = note .. "  \194\183  " .. why end
+                if type(why) == "string" and why ~= "" and why ~= it.sub and why ~= it.slotName then note = note .. "  \194\183  " .. why end
                 what = what .. (what ~= "" and "  " or "") .. RED .. "(" .. note .. ")|r"
             end
             t.what:SetText(what)
