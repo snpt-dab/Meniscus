@@ -157,8 +157,20 @@ local function opened(f, forced)
         -- room, and closes otherwise. Nothing else is touched.
         local occ = occupant(side, f)
         if occ then
-            if free(flip(side), f) then open[occ] = flip(side); place(occ, flip(side))
-            else close(occ) end
+            -- With the other dock in use too, the older of the two windows
+            -- goes, not simply the one in the way: a merchant that had
+            -- just opened beside the NPC's dialog was being closed by the
+            -- bags it opened itself.
+            local across = occupant(flip(side), f)
+            if across and (order[across] or 0) <= (order[occ] or 0) then
+                close(across)
+                across = nil
+            end
+            if not across and not pinnedOn(flip(side), f) then
+                open[occ] = flip(side); place(occ, flip(side))
+            else
+                close(occ)
+            end
         end
         side = "pin"
     elseif side == "center" then

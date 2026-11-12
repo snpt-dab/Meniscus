@@ -1832,10 +1832,36 @@ local function deepMap()
             if f and not (f.IsForbidden and f:IsForbidden()) then readable(f, 0) end
         end
     end
+    -- The rewards block at the foot of that pane: on this client its
+    -- holder comes out shorter than the block inside it (126 against 148
+    -- for one item), so the last reward hangs down behind the Abandon /
+    -- Share / Track buttons. The holder is given the block's height; it is
+    -- pinned by its bottom, so it grows upward into the scrolling text.
+    local fitting = false
+    local function fitRewards()
+        local q = _G.QuestMapFrame
+        local c = q and q.DetailsFrame and q.DetailsFrame.RewardsFrameContainer
+        local rf = c and c.RewardsFrame
+        if not rf or fitting then return end
+        if not c.__muiFit then
+            c.__muiFit = true
+            hooksecurefunc(c, "SetHeight", function() pcall(fitRewards) end)
+            hooksecurefunc(rf, "SetHeight", function() pcall(fitRewards) end)
+        end
+        local ch, rh = c:GetHeight(), rf:GetHeight()
+        if type(ch) == "number" and type(rh) == "number" and rh - ch > 1 then
+            fitting = true
+            c:SetHeight(rh)
+            fitting = false
+        end
+    end
     if _G.QuestInfo_Display then
-        hooksecurefunc("QuestInfo_Display", function() if wm:IsShown() then pcall(questPane) end end)
+        hooksecurefunc("QuestInfo_Display", function()
+            if wm:IsShown() then pcall(questPane); pcall(fitRewards) end
+        end)
     end
     pcall(questPane)
+    pcall(fitRewards)
 
     local tick = ours(CreateFrame("Frame", nil, wm))
     tick:SetSize(1, 1)
@@ -1848,7 +1874,7 @@ local function deepMap()
         acc = 0
         pcall(crumbs)
         local qm = _G.QuestMapFrame
-        if qm and qm.DetailsFrame and qm.DetailsFrame:IsVisible() then pcall(questPane) end
+        if qm and qm.DetailsFrame and qm.DetailsFrame:IsVisible() then pcall(questPane); pcall(fitRewards) end
         if not coordGone and tries < 12 then tries = tries + 1; pcall(findCoords, wm, 0) end
     end)
     pcall(crumbs)
