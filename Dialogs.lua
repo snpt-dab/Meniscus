@@ -564,8 +564,12 @@ local function rewardCards(list)
             -- with no verdict in words: green for the heaviest kind you can
             -- wear, blue for a lighter one. Whether the piece is better is
             -- for the comparison rows to say.
+            local RED = "|cffe57373"
             local tint
-            if not cant and it.weight and bestArmor then
+            if cant then
+                -- Red on the type word when the type itself is the reason.
+                if why == it.sub or (it.weight and bestArmor and it.weight > bestArmor) then tint = RED end
+            elseif it.weight and bestArmor then
                 if it.weight == bestArmor then tint = "|cff73d980"
                 elseif it.weight < bestArmor then tint = "|cff73b3f2" end
             end
@@ -580,13 +584,15 @@ local function rewardCards(list)
             end
             if cant then
                 -- Gear you can't wear, or anything else you can't use.
-                t.what:SetText((it.slotName and "Can't equip" or "Can't use")
-                    .. (type(why) == "string" and ("  \194\183  " .. why) or ""))
-                t.what:SetTextColor(0.90, 0.45, 0.45)
-            else
-                t.what:SetText(what)
-                t.what:SetTextColor(unpack(T.textDim))
+                -- Same line as any other card, with the verdict last in
+                -- parentheses; the reason follows unless it is just the
+                -- armor type already shown.
+                local note = it.slotName and "Can't equip" or "Can't use"
+                if type(why) == "string" and why ~= "" and why ~= it.sub then note = note .. "  \194\183  " .. why end
+                what = what .. (what ~= "" and "  " or "") .. RED .. "(" .. note .. ")|r"
             end
+            t.what:SetText(what)
+            t.what:SetTextColor(unpack(T.textDim))
             t.icon:SetDesaturated(cant)
             local c = t.qc
             if cant then t.name:SetTextColor(0.55, 0.55, 0.60)
