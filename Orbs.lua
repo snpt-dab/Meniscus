@@ -2369,6 +2369,9 @@ function Orbs:BuildAmmo()
             return
         end
         local level = n <= 50 and 2 or (n <= 200 and 1 or 0)
+        -- A different kind loaded: judged afresh, so swapping from one low
+        -- stack to another low one still says so.
+        if item ~= f.ammoItem then f.ammoItem = item; warned = 0 end
         if level > warned then
             -- (Right after login the screen is still settling: wait a little.)
             local wait = math.max(0, 5 - (GetTime() - bornAt))
