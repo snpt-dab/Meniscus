@@ -839,13 +839,43 @@ local function buildBanner()
             row.value:SetTextColor(r, gg, b)
         end
     end)
-    f:SetScript("OnHide", function()
-        for _, name in ipairs({ "EventToastManagerFrame", "LevelUpDisplay" }) do
-            local b = _G[name]
-            if b and not (b.IsForbidden and b:IsForbidden()) then b:SetAlpha(1) end
-        end
-    end)
     banner = f
+end
+
+-- The game's own level-up banner is EventToastManagerFrame ("You've
+-- Reached Level 3"; MinimalUIDB.levelprobe). It used to be faded only while
+-- our card was up, and given its alpha back when ours closed, but its toast
+-- runs longer than our card, so it reappeared. Now it stays invisible until
+-- the toast manager itself closes (the end of that run of toasts), with a
+-- 30 s limit in case it never does.
+local quietUntil = 0
+local TOASTS = { "EventToastManagerFrame", "LevelUpDisplay" }
+local function setToastAlpha(a)
+    for i = 1, #TOASTS do
+        local b = _G[TOASTS[i]]
+        if b and not (b.IsForbidden and b:IsForbidden()) then b:SetAlpha(a) end
+    end
+end
+local function quietTick()
+    if GetTime() > quietUntil then return setToastAlpha(1) end
+    setToastAlpha(0)
+    C_Timer.After(0.1, quietTick)
+end
+function XP:QuietToasts()
+    local running = GetTime() < quietUntil
+    quietUntil = GetTime() + 30
+    for i = 1, #TOASTS do
+        local b = _G[TOASTS[i]]
+        if b and not b.__menQuietHook and b.HookScript then
+            b.__menQuietHook = true
+            b:HookScript("OnHide", function(self)
+                -- Done: give it back its alpha for the next toast.
+                quietUntil = 0
+                self:SetAlpha(1)
+            end)
+        end
+    end
+    if not running then quietTick() end
 end
 
 function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
@@ -880,17 +910,7 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     f.holder:SetHeight(1)
     f:SetAlpha(0)
     f:Show()
-    -- The game's banner: invisible while ours is up. It can appear a moment
-    -- after the event and set its own alpha, so this is re-applied.
-    local function quiet()
-        if not f:IsShown() then return end
-        for _, name in ipairs({ "EventToastManagerFrame", "LevelUpDisplay" }) do
-            local b = _G[name]
-            if b and not (b.IsForbidden and b:IsForbidden()) then b:SetAlpha(0) end
-        end
-        C_Timer.After(0.1, quiet)
-    end
-    quiet()
+    XP:QuietToasts()
 end
 
 local lvEv = CreateFrame("Frame")
