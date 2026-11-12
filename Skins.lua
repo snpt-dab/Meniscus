@@ -2458,10 +2458,181 @@ lod:SetScript("OnEvent", function()
     if S.db and S.db.enabled ~= false then pcall(skinOthers); pcall(skinTabard); pcall(deepMap); pcall(deepTalents) end
 end)
 
+-- ── The game's Options window ─────────────────────────────────────────────
+-- The frame only: card, title, close button, tabs, the two panes, search
+-- box, scroll bars and the Close / Apply / Defaults buttons. The controls
+-- inside each setting row (checkboxes, sliders, dropdowns, key bindings)
+-- are left exactly as Blizzard draws them: they are recycled as the list
+-- scrolls and feed the game's protected settings code. Alpha and color
+-- only; nothing is moved, resized or replaced.
+-- Off: /men blizzopts (or the switch in /men), then reload.
+local function optCategoryRow(row)
+    if row.__muiOpt then return end
+    row.__muiOpt = true
+    -- Section header ("Gameplay"): its ornate plate goes, the label stays.
+    if row.Background and row.Background.GetAtlas then fade(row.Background) end
+    -- Category button: the gold selected / hover bar becomes a grey one
+    -- tinted with the accent (recolored, so the game's own show / hide and
+    -- atlas swaps keep working).
+    local bar = row.Texture
+    if bar and bar.SetDesaturated then
+        bar:SetDesaturated(true)
+        bar:SetVertexColor(T.accent[1], T.accent[2], T.accent[3])
+    end
+end
+
+local function optPane(P, f, l, t, r, b)
+    local h = ours(CreateFrame("Frame", nil, P))
+    h:SetPoint("TOPLEFT", f, "TOPLEFT", -l, t)
+    h:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", r, -b)
+    h:SetFrameLevel(P:GetFrameLevel())
+    ns.RoundedRect(h, -8, 0, 8, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(h, -7, 1, 7, 0.09, 0.09, 0.105, 0.9)
+end
+
+local function optTab(tab)
+    if not tab or tab.__muiOpt then return end
+    tab.__muiOpt = true
+    local line = tab:CreateTexture(nil, "OVERLAY")
+    line:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+    line:SetHeight(2)
+    line:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 8, 3)
+    line:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -8, 3)
+    -- Which tab is selected is read off the game's own art (it swaps the
+    -- tab's atlas), which stays in place, faded.
+    local left = tab.Left
+    local function refresh()
+        local a = left and left.GetAtlas and left:GetAtlas()
+        line:SetShown(type(a) == "string" and a:find("Active", 1, true) ~= nil)
+    end
+    refresh()
+    if left then hooksecurefunc(left, "SetAtlas", refresh) end
+    tab:HookScript("OnShow", refresh)
+    fade(tab.Left); fade(tab.Middle); fade(tab.Right)
+end
+
+local function optBuild(P)
+    if P.__muiSkin then return end
+    P.__muiSkin = true
+    -- Window card. (Not ns.SkinWindow: the title lives on the border frame,
+    -- so the border's art is faded piece by piece and the frame is kept.)
+    fade(P.Bg)
+    if P.NineSlice then
+        for _, r in ipairs({ P.NineSlice:GetRegions() }) do
+            if r:IsObjectType("Texture") then fade(r) end
+        end
+        local title = P.NineSlice.Text
+        if title then
+            ns:SetFont(title, 13, "", true)
+            title:SetTextColor(unpack(T.text))
+        end
+    end
+    -- The gold inner frame around the two panes.
+    for _, r in ipairs({ P:GetRegions() }) do
+        if r:IsObjectType("Texture") then fade(r) end
+    end
+    local holder = ours(CreateFrame("Frame", nil, P))
+    holder:SetAllPoints(P)
+    holder:SetFrameLevel(math.max(P:GetFrameLevel() - 1, 0))
+    ns.RoundedRect(holder, -8, 0, 12, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(holder, -7, 1, 11, unpack(FILL))
+    P.__muiHolder = holder
+
+    skinClose(P.ClosePanelButton)
+    optTab(P.GameTab); optTab(P.AddOnsTab)
+
+    -- The two panes, each on a quiet card.
+    local list, cont = P.CategoryList, P.Container
+    if list then optPane(P, list, 6, 6, 4, 6) end
+    if cont then optPane(P, cont, 4, 6, 6, 6) end
+
+    -- Category list: rows are recycled, so each is settled once, the first
+    -- time the list hands it out.
+    local box = list and list.ScrollBox
+    if box and box.ForEachFrame then
+        local function rows() pcall(box.ForEachFrame, box, optCategoryRow) end
+        hooksecurefunc(box, "Update", rows)
+        rows()
+    end
+    if list and list.ScrollBar then pcall(deepScrollBar, list.ScrollBar) end
+
+    local sl = cont and cont.SettingsList
+    if sl then
+        if sl.ScrollBar then pcall(deepScrollBar, sl.ScrollBar) end
+        local head = sl.Header
+        if head then
+            if head.Title then
+                ns:SetFont(head.Title, 18, "", true)
+                head.Title:SetTextColor(unpack(T.text))
+            end
+            -- Gold divider under the page title: a hairline of ours.
+            for _, r in ipairs({ head:GetRegions() }) do
+                if r:IsObjectType("Texture") and r:GetAtlas() == "Options_HorizontalDivider" then
+                    local hair = head:CreateTexture(nil, "ARTWORK")
+                    hair:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+                    hair:SetAllPoints(r)
+                    fade(r)
+                end
+            end
+            ns.SkinButton(head.DefaultsButton)
+        end
+    end
+    ns.SkinButton(P.CloseButton)
+    ns.SkinButton(P.ApplyButton)
+    if P.SearchBox then pcall(deepEditBox, P.SearchBox) end
+end
+
+local function skinOptions()
+    if S.db and S.db.options == false then return end
+    local waiting
+    local function build()
+        local P = _G.SettingsPanel
+        if not P or P.__muiSkin then return end
+        if InCombatLockdown() then
+            if not waiting then
+                waiting = CreateFrame("Frame")
+                waiting:SetScript("OnEvent", function(self)
+                    self:UnregisterAllEvents()
+                    build()
+                end)
+            end
+            waiting:RegisterEvent("PLAYER_REGEN_ENABLED")
+            return
+        end
+        local ok, err = pcall(optBuild, P)
+        if not ok then ns:Print("Options skin: " .. tostring(err)) end
+    end
+    local function hook()
+        local P = _G.SettingsPanel
+        if not P then return false end
+        if P.__muiOptHook then return true end
+        P.__muiOptHook = true
+        -- Built the first time the window is opened (its lists are filled
+        -- by then), not at login.
+        P:HookScript("OnShow", build)
+        if P:IsShown() then build() end
+        return true
+    end
+    if not hook() then
+        local w = CreateFrame("Frame")
+        w:RegisterEvent("ADDON_LOADED")
+        w:SetScript("OnEvent", function(self) if hook() then self:UnregisterAllEvents() end end)
+    end
+end
+
+-- /men blizzopts : the game's Options window as Blizzard draws it (or back).
+ns.commands = ns.commands or {}
+ns.commands.blizzopts = function()
+    local d = S.db
+    if not d then return end
+    d.options = d.options == false
+    ns:Print("Options window skin " .. (d.options and "on" or "off") .. ". /reload to apply.")
+end
+
 function S:OnInit(db)
     self.db = db
     for _, step in ipairs({ skinGameMenu, skinDialogs, skinMerchant, skinMap, deepMap, deepTalents, skinOthers, skinPopups,
-                            skinTabard, skinMenus }) do
+                            skinTabard, skinMenus, skinOptions }) do
         local ok, err = pcall(step)
         if not ok then ns:Print("Skins: " .. tostring(err)) end
     end

@@ -444,6 +444,13 @@ local PAGES = {
             { "Map coordinates", kind = "switch", reload = true,
               get = function() return ns.modules.Skins.db and ns.modules.Skins.db.coords end,
               set = function() local d = ns.modules.Skins.db; if d then d.coords = not d.coords end end },
+            { "Game Options window", kind = "switch", reload = true,
+              note = "The frame only; the settings' own controls stay Blizzard's",
+              get = function() return ns.modules.Skins.db and ns.modules.Skins.db.options ~= false end,
+              set = function()
+                  local d = ns.modules.Skins.db
+                  if d then d.options = d.options == false end
+              end },
             { "Damage meter", kind = "switch", reload = true,
               get = function() return ns.modules.Skins.db and ns.modules.Skins.db.damageMeter ~= false end,
               set = function()
@@ -762,6 +769,7 @@ ns.commands.help = function()
         "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
         "/men optprobe  record what the game's Options window is made of (open it first)",
+        "/men blizzopts  the game's Options window without our skin (and back); needs a reload",
         "/men windows  window docking on / off (reload)",
         "/men levelup  preview the level-up banner",
         "/men perf trace  time every handler, for finding hidden costs (reload; run again to stop)",
