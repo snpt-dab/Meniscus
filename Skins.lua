@@ -1777,6 +1777,50 @@ local function deepMap()
             if c ~= wm.QuestLog and not (c.IsForbidden and c:IsForbidden()) and c:GetNumRegions() < 40 then findCoords(c, d + 1) end
         end
     end
+    -- A quest's details beside the map: the game writes them in near-black
+    -- for a parchment page, and with the parchment gone they can't be read.
+    -- Any dark text in that pane becomes light (headings white, the rest
+    -- our body colour), and the wooden banner behind "Rewards" goes. The
+    -- game re-colours the text each time it shows a quest, so this runs
+    -- after each showing and on the map's slow tick.
+    local function readable(f, d)
+        local regs = ns.Regs(f, 13 + d)
+        for i = 1, regs.n do
+            local r = regs[i]
+            if r:IsObjectType("FontString") then
+                local cr, cg, cb = r:GetTextColor()
+                if type(cr) == "number" and not issecretvalue(cr) and (0.3 * cr + 0.59 * cg + 0.11 * cb) < 0.4 then
+                    local _, size = r:GetFont()
+                    if type(size) == "number" and size >= 15 then r:SetTextColor(TITLE[1], TITLE[2], TITLE[3])
+                    else r:SetTextColor(BODY[1], BODY[2], BODY[3]) end
+                    pcall(r.SetShadowOffset, r, 0, 0)
+                end
+            elseif r:IsObjectType("Texture") and not r.__muiQArt then
+                local w, h = r:GetWidth(), r:GetHeight()
+                if type(w) == "number" and not issecretvalue(w) and w > 0 then
+                    r.__muiQArt = true
+                    if w > 180 and h >= 20 then fade(r) end -- banners and page art, not icons
+                end
+            end
+        end
+        if d >= 6 then return end
+        local kids = ns.Kids(f, 13 + d)
+        for i = 1, kids.n do
+            local c = kids[i]
+            if not (c.IsForbidden and c:IsForbidden()) then readable(c, d + 1) end
+        end
+    end
+    local function questPane()
+        local q = _G.QuestMapFrame
+        local df = q and q.DetailsFrame
+        if df and df:IsVisible() then readable(df, 0) end
+        local rw = _G.MapQuestInfoRewardsFrame
+        if rw and rw:IsVisible() then readable(rw, 0) end
+    end
+    if _G.QuestInfo_Display then
+        hooksecurefunc("QuestInfo_Display", function() if wm:IsShown() then pcall(questPane) end end)
+    end
+
     local tick = ours(CreateFrame("Frame", nil, wm))
     tick:SetSize(1, 1)
     tick:SetPoint("TOPLEFT")
@@ -1787,6 +1831,7 @@ local function deepMap()
         if acc < 0.5 then return end
         acc = 0
         pcall(crumbs)
+        pcall(questPane)
         if not coordGone and tries < 12 then tries = tries + 1; pcall(findCoords, wm, 0) end
     end)
     pcall(crumbs)
