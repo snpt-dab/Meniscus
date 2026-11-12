@@ -452,6 +452,50 @@ local PAGES = {
               end },
         } },
     } },
+    -- Tools for testing and for finding out how the client works. Probes
+    -- write into the saved variables, which are only on disk after a reload.
+    { key = "debug", title = "Debug", groups = {
+        { title = "Monitor", items = {
+            { "Performance monitor", kind = "action", action = "Show / hide", note = "CPU and memory per module",
+              run = function() cmd("perf", "") end },
+            { "Performance report", kind = "action", action = "Print", note = "The heaviest jobs so far, in chat",
+              run = function() cmd("perf", "report") end },
+            { "Performance counters", kind = "action", action = "Reset", run = function() cmd("perf", "reset") end },
+            { "Time every handler (trace)", kind = "switch", reload = true,
+              note = "Finds hidden costs; slows the UI a little. Needs a reload",
+              get = function() return MinimalUIDB and MinimalUIDB.perfTrace and true or false end,
+              set = function() cmd("perf", "trace") end },
+            { "Lua errors this session", kind = "action", action = "Print", run = function() cmd("errors", "") end },
+            { "Reload the UI", kind = "action", action = "Reload", note = "Writes probe results to disk",
+              run = function() ReloadUI() end },
+        } },
+        { title = "Previews", items = {
+            { "Level-up banner", kind = "action", action = "Show", run = function() cmd("levelup", "") end },
+            { "Loot roll", kind = "action", action = "Show", run = function() cmd("testroll", "") end },
+            { "3D portrait camera per race and gender", kind = "action", action = "Tune",
+              note = "Target a player first (or none for yourself)",
+              run = function() cmd("portrait", "tune") end },
+        } },
+        { title = "Probes", items = {
+            { "Whatever is under the mouse", kind = "action", action = "In 3 s",
+              note = "Click, then hover the thing within 3 seconds",
+              run = function()
+                  ns:Print("Hover the thing to record; recording in 3 seconds.")
+                  C_Timer.After(3, function() cmd("artprobe", "") end)
+              end },
+            { "Open Blizzard windows", kind = "action", action = "Record", note = "Open the window first",
+              run = function() cmd("winprobe", "") end },
+            { "Pet happiness values", kind = "action", action = "Record", run = function() cmd("petprobe", "") end },
+            { "Pet mood words", kind = "action", action = "Record", run = function() cmd("moodprobe", "") end },
+            { "Target frame", kind = "action", action = "Record", note = "Target something with buffs first",
+              run = function() cmd("targetprobe", "") end },
+            { "Character window", kind = "action", action = "Record", run = function() cmd("charprobe", "") end },
+            { "UI frames", kind = "action", action = "Record", run = function() cmd("uiprobe", "") end },
+            { "Damage meter", kind = "action", action = "Record", run = function() cmd("dmprobe", "") end },
+            { "Guild window", kind = "action", action = "Record", run = function() cmd("guildprobe", "") end },
+            { "Item counts", kind = "action", action = "Record", run = function() cmd("countprobe", "") end },
+        } },
+    } },
     { key = "profiles", title = "Profiles", groups = {
         { title = "Profile", items = {
             { "Active profile", kind = "dropdown", note = "Switching reloads the UI",
