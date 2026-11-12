@@ -472,11 +472,6 @@ local PAGES = {
         { title = "Previews", items = {
             { "Level-up banner", kind = "action", action = "Show", run = function() cmd("levelup", "") end },
             { "Loot roll", kind = "action", action = "Show", run = function() cmd("testroll", "") end },
-            { "3D portrait camera per race and gender", kind = "action", action = "Tune",
-              note = "Fits your own character's race and gender",
-              run = function() cmd("portrait", "tune") end },
-            { "Race and gender fits still to do", kind = "action", action = "List",
-              run = function() cmd("portrait", "todo") end },
         } },
         { title = "Probes", items = {
             { "Whatever is under the mouse", kind = "action", action = "In 3 s",
