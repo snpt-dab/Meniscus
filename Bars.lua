@@ -559,6 +559,14 @@ local function channel(k)
     local u, c, h = MOOD[1][k + 1] * 0.8, MOOD[2][k + 1] * 0.8, MOOD[3][k + 1] * 0.8
     return curve({ { 0, u }, { LOW - E, u }, { LOW, c }, { HIGH - E, c }, { HIGH, h }, { 1, h } })
 end
+local MOOD_OFF = { 0.06, 0.06, 0.07 }
+-- Sets a mood word's colour and alpha from the hidden value. (The alpha
+-- has to go in the text colour: a hidden value given to SetAlpha, on the
+-- font string or on a frame, was stored but not drawn; /men moodprobe.)
+function ns.PetMoodWord(fs, c, i)
+    local t, p = c.text[i], ns.PetMoodPct
+    fs:SetTextColor(p(t[1]), p(t[2]), p(t[3]), p(c[i]))
+end
 local HAPPY = (Enum and Enum.PowerType and Enum.PowerType.Happiness) or 27
 function ns.PetMoodPct(c) return UnitPowerPercent("pet", HAPPY, false, c) end
 function ns.PetMoodCurves()
@@ -572,6 +580,25 @@ function ns.PetMoodCurves()
                         r = channel(1), g = channel(2), b = channel(3) }
             local ok = true
             for _, k in ipairs({ 1, 2, 3, "r", "g", "b" }) do if not c[k] then ok = false end end
+            -- Each word's text colour: its own colour inside its band, the
+            -- dark of the pill outside it (in case the alpha is ignored too).
+            local los, his = { 0, LOW, HIGH }, { LOW - E, HIGH - E, 1 }
+            c.text = {}
+            for i = 1, 3 do
+                local lo, hi = los[i], his[i]
+                local t = {}
+                for k = 1, 3 do
+                    local on, off = MOOD[i][k + 1], MOOD_OFF[k]
+                    local pts = {}
+                    if lo > 0 then pts[#pts + 1] = { 0, off }; pts[#pts + 1] = { lo - E, off } end
+                    pts[#pts + 1] = { lo, on }
+                    pts[#pts + 1] = { hi, on }
+                    if hi < 1 then pts[#pts + 1] = { hi + E, off }; pts[#pts + 1] = { 1, off } end
+                    t[k] = curve(pts)
+                    if not t[k] then ok = false end
+                end
+                c.text[i] = t
+            end
             if ok then moodCurves = c end
         end
     end
@@ -681,11 +708,11 @@ function Bars:ApplyPetWell()
         for i, m in ipairs(MOOD) do
             local wf = CreateFrame("Frame", nil, i == 3 and pill or pulse)
             wf:SetAllPoints(pill)
-            wf:SetAlpha(0)
             local fs = ns:CreateText(wf, 10)
             fs:SetPoint("RIGHT", pill, "RIGHT", -9, 0)
             fs:SetText(m[1])
-            fs:SetTextColor(m[2], m[3], m[4])
+            fs:SetTextColor(0, 0, 0, 0)
+            fs:SetShadowOffset(0, 0)
             words[i], wordText[i] = wf, fs
         end
         local name = ns:CreateText(pill, 11)
@@ -693,7 +720,7 @@ function Bars:ApplyPetWell()
         name:SetPoint("RIGHT", mood, "LEFT", -6, 0)
         name:SetJustifyH("CENTER")
         name:SetWordWrap(false)
-        for _, fs in ipairs({ lvl, mood, name, wordText[1], wordText[2], wordText[3] }) do
+        for _, fs in ipairs({ lvl, mood, name }) do
             fs:SetShadowOffset(1, -1)
             fs:SetShadowColor(0, 0, 0, 0.8)
         end
@@ -726,7 +753,7 @@ function Bars:ApplyPetWell()
         local curves
         local pct = ns.PetMoodPct
         local function apply()
-            for i = 1, 3 do words[i]:SetAlpha(pct(curves[i])) end
+            for i = 1, 3 do ns.PetMoodWord(wordText[i], curves, i) end
             paintRing(pct(curves.r), pct(curves.g), pct(curves.b), 1)
         end
         function w.mood()
@@ -736,7 +763,7 @@ function Bars:ApplyPetWell()
                 return
             end
             -- Not a hunter pet (or no way to read it): no mood, the pet's own colour.
-            for i = 1, 3 do words[i]:SetAlpha(0) end
+            for i = 1, 3 do wordText[i]:SetTextColor(0, 0, 0, 0) end
             local c = w.baseRing
             if c then paintRing(c[1], c[2], c[3], 1) end
         end
@@ -766,9 +793,9 @@ function Bars:ApplyPetWell()
                 out[#out + 1] = "apply ok=" .. tostring(okA) .. " " .. tostring(errA)
             end
             for i = 1, 3 do
-                local f = words[i]
-                out[#out + 1] = string.format("word %d alpha=%s eff=%s shown=%s visible=%s", i,
-                    show(f:GetAlpha()), show(f:GetEffectiveAlpha()), tostring(f:IsShown()), tostring(f:IsVisible()))
+                local r, g, b, a = wordText[i]:GetTextColor()
+                out[#out + 1] = string.format("word %d text=%s,%s,%s,%s visible=%s", i,
+                    show(r), show(g), show(b), show(a), tostring(wordText[i]:IsVisible()))
             end
             out[#out + 1] = "pulse alpha=" .. show(pulse:GetAlpha())
             MinimalUIDB.moodprobe = out
