@@ -101,6 +101,12 @@ local function skin(b, fontSize, thick)
         killRegion(b.Border)
         killRegion(b.FlyoutBorder)
         killRegion(b.FlyoutBorderShadow)
+        -- The gold separators between slots: each button's own right / bottom
+        -- divider, shown when Edit Mode's bar art is on (fresh layouts).
+        killRegion(b.RightDivider)
+        killRegion(b.BottomDivider)
+        killRegion(b.LeftDivider)
+        killRegion(b.TopDivider)
         if b.GetNormalTexture then killRegion(b:GetNormalTexture()) end
 
         -- Rounded back plate: ring (+ accent hover ring) under a dark fill.

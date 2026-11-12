@@ -728,3 +728,41 @@ do
         C_Timer.After(5, function() if UnitExists("pet") then pcall(petProbe) end end)
     end)
 end
+
+-- /men barprobe: what the first main bar button and the bar itself are
+-- drawn with (finds leftover Blizzard bar art). Read MinimalUIDB.barprobe.
+ns.commands.barprobe = function()
+    if not MinimalUIDB then return end
+    local out = {}
+    local function regs(f, indent)
+        local names = {}
+        for k, v in pairs(f) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+        for _, r in ipairs({ f:GetRegions() }) do
+            pcall(function()
+                local what = r:GetObjectType()
+                local art = what == "Texture" and (" atlas=" .. tostring(r.GetAtlas and r:GetAtlas()) .. " tex=" .. tostring(r:GetTexture())) or ""
+                out[#out + 1] = string.format("%s%s <%s>%s %.0fx%.0f%s a=%.2f", indent, names[r] or "#", what, art,
+                    r:GetWidth() or 0, r:GetHeight() or 0, r:IsShown() and "" or " hidden", r:GetAlpha() or 0)
+            end)
+        end
+        for _, c in ipairs({ f:GetChildren() }) do
+            pcall(function()
+                out[#out + 1] = string.format("%s%s [%s] %s %.0fx%.0f%s a=%.2f", indent, names[c] or "#", c:GetObjectType(),
+                    tostring(c:GetName()), c:GetWidth() or 0, c:GetHeight() or 0, c:IsShown() and "" or " hidden", c:GetAlpha() or 0)
+            end)
+        end
+    end
+    local b = _G.ActionButton1 or _G.ActionButton2
+    if b then out[#out + 1] = "ActionButton1:"; regs(b, "  ") end
+    local bar = _G.MainActionBar or _G.MainMenuBar
+    if bar then
+        out[#out + 1] = "Main bar " .. tostring(bar:GetName()) .. ":"
+        local keys = {}
+        for k, v in pairs(bar) do if type(k) == "string" and type(v) == "table" then keys[#keys + 1] = k end end
+        table.sort(keys)
+        out[#out + 1] = "  keys: " .. table.concat(keys, ", ")
+        regs(bar, "  ")
+    end
+    MinimalUIDB.barprobe = out
+    ns:Print("Action bar recorded. /reload so it can be read.")
+end

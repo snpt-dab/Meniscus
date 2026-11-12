@@ -496,6 +496,7 @@ local PAGES = {
             { "Damage meter", kind = "action", action = "Record", run = function() cmd("dmprobe", "") end },
             { "Guild window", kind = "action", action = "Record", run = function() cmd("guildprobe", "") end },
             { "Item counts", kind = "action", action = "Record", run = function() cmd("countprobe", "") end },
+            { "Main action bar art", kind = "action", action = "Record", run = function() cmd("barprobe", "") end },
         } },
     } },
     { key = "profiles", title = "Profiles", groups = {
