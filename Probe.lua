@@ -665,3 +665,66 @@ ns.commands.winprobe = function(rest)
         ns:Print("Recorded: " .. table.concat(found, ", ") .. ". /reload when you've done them all.")
     end
 end
+
+-- Pet happiness: what this client gives for a hunter pet's mood. Recorded by
+-- /men petprobe, and on its own a few seconds after you log in with a pet.
+local function petProbe()
+    if not MinimalUIDB then return end
+    local out = {}
+    local function add(...) out[#out + 1] = table.concat({ tostringall(...) }, "  ") end
+    local function show(v) if issecretvalue and issecretvalue(v) then return "<secret>" end return tostring(v) end
+    add("at", date("%H:%M:%S"), "pet", show(UnitExists("pet")), show(UnitName("pet")),
+        "family", show(UnitCreatureFamily and UnitCreatureFamily("pet")))
+    add("GetPetHappiness", type(_G.GetPetHappiness))
+    if _G.GetPetHappiness then
+        local r = { pcall(GetPetHappiness) }
+        local t = {}
+        for i = 1, #r do t[i] = show(r[i]) end
+        add("  returns", table.concat(t, ", "))
+    end
+    if _G.HasPetUI then
+        local ok, has, kind = pcall(HasPetUI)
+        add("HasPetUI", show(ok), show(has), show(kind))
+    end
+    add("UnitPowerType", show(UnitPowerType("pet")))
+    add("Enum.PowerType.Happiness", show(Enum and Enum.PowerType and Enum.PowerType.Happiness))
+    for i = 0, 30 do
+        local ok, cur = pcall(UnitPower, "pet", i)
+        local ok2, max = pcall(UnitPowerMax, "pet", i)
+        if (ok and cur and show(cur) ~= "0") or (ok2 and max and show(max) ~= "0") then
+            add("  power", i, show(cur), "/", show(max))
+        end
+    end
+    for _, fn in ipairs({ "GetPetLoyalty", "GetPetTrainingPoints", "GetPetFoodTypes", "GetPetExperience" }) do
+        if _G[fn] then
+            local r = { pcall(_G[fn]) }
+            local t = {}
+            for i = 1, #r do t[i] = show(r[i]) end
+            add(fn, table.concat(t, ", "))
+        else
+            add(fn, "missing")
+        end
+    end
+    -- Pet buffs / debuffs (some clients show mood as an aura).
+    for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+        for i = 1, 20 do
+            local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "pet", i, filter)
+            if not ok or not a then break end
+            add("  aura", filter, show(a.name), show(a.spellId), show(a.icon))
+        end
+    end
+    MinimalUIDB.petprobe = out
+    return out
+end
+ns.commands.petprobe = function()
+    petProbe()
+    ns:Print("Pet recorded. /reload so it can be read.")
+end
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        C_Timer.After(5, function() if UnitExists("pet") then pcall(petProbe) end end)
+    end)
+end
