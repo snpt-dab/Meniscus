@@ -530,6 +530,24 @@ local function modelKey(unit)
 end
 UF.ModelKey = modelKey
 
+-- Built-in fits for every classic race + Skyborne, both genders (tuned by
+-- hand with the portrait tuner, 2026-11-12). A fit saved in the profile
+-- (tuner Save, /men portrait fit) takes precedence.
+local FITS = {
+    Human2    = { x = 0.02, z = -0.02, dist = 1.05 }, Human3    = { x = 0.02,  z = 0,     dist = 0.9 },
+    Dwarf2    = { x = 0.03, z = -0.03, dist = 1.15 }, Dwarf3    = { x = 0.01,  z = 0,     dist = 1.0 },
+    NightElf2 = { x = 0.07, z = -0.02, dist = 1.15 }, NightElf3 = { x = 0.03,  z = 0,     dist = 1.1 },
+    Gnome2    = { x = 0.04, z = -0.03, dist = 1.0 },  Gnome3    = { x = 0.08,  z = -0.05, dist = 1.0 },
+    Orc2      = { x = 0.03, z = -0.02, dist = 1.15 }, Orc3      = { x = 0.06,  z = -0.03, dist = 1.05 },
+    Scourge2  = { x = 0.06, z = 0,     dist = 1.0 },  Scourge3  = { x = 0,     z = 0,     dist = 1.15 },
+    Tauren2   = { x = 0.18, z = -0.25, dist = 1.75 }, Tauren3   = { x = 0.16,  z = -0.08, dist = 1.4 },
+    Troll2    = { x = 0.10, z = -0.01, dist = 1.15 }, Troll3    = { x = 0.06,  z = -0.03, dist = 1.05 },
+    Skyborne2 = { x = 0.02, z = 0,     dist = 1.1 },  Skyborne3 = { x = -0.02, z = -0.01, dist = 0.8 },
+}
+local function fitFor(p, key)
+    return key and ((p.byModel and p.byModel[key]) or FITS[key]) or nil
+end
+
 function UF:RefreshAvatar(av)
     local unit = av.unit
     if not UnitExists(unit) then return end
@@ -557,7 +575,7 @@ function UF:RefreshAvatar(av)
         -- the circle, instead of the head rising out of its top.
         local key = modelKey(unit)
         local o = key and ((UF.preview and UF.preview.key == key and UF.preview)
-            or (p.byModel and p.byModel[key])) or nil
+            or fitFor(p, key)) or nil
         -- (The bust's own distance, scaled by the race's fit when there is one.)
         local bustDist = (p.sdist or 1.5) * ((o and o.dist and p.dist and p.dist > 0) and (o.dist / p.dist) or 1)
         pcall(m.SetCamDistanceScale, m, (av.bust and not UF.tuning) and bustDist or (o and o.dist) or p.dist)
@@ -1720,13 +1738,16 @@ ns.commands.portrait = function(rest)
         if fk == "clear" then
             p.byModel[mk] = nil
         elseif (fk == "x" or fk == "z" or fk == "dist") and tonumber(fv) then
-            p.byModel[mk] = p.byModel[mk] or {}
+            if not p.byModel[mk] then
+                local b = FITS[mk] or {}
+                p.byModel[mk] = { x = b.x, z = b.z, dist = b.dist }
+            end
             p.byModel[mk][fk] = tonumber(fv)
         else
             return ns:Print("usage: /men portrait fit <x|z|dist> <number>  |  /men portrait fit clear")
         end
         eachModel(function(av) UF:RefreshAvatar(av) end)
-        local o = p.byModel[mk] or {}
+        local o = fitFor(p, mk) or {}
         return ns:Print(string.format("%s (%s): x %s  z %s  dist %s  (blank = shared value)", mk,
             unit == "target" and "your target" or "you", tostring(o.x or "-"), tostring(o.z or "-"), tostring(o.dist or "-")))
     end
@@ -1766,7 +1787,7 @@ function UF:FitsMissing()
     for _, r in ipairs(FIT_RACES) do
         for _, sx in ipairs({ { 2, "Male" }, { 3, "Female" } }) do
             total = total + 1
-            if done[r[1] .. sx[1]] then have = have + 1
+            if done[r[1] .. sx[1]] or FITS[r[1] .. sx[1]] then have = have + 1
             else missing[#missing + 1] = sx[2] .. " " .. r[2] end
         end
     end
@@ -1789,13 +1810,13 @@ local function tunerLoad()
         tuner.title:SetText("Target a player")
         return
     end
-    local saved = p.byModel and p.byModel[key] or {}
+    local saved = fitFor(p, key) or {}
     UF.preview = { key = key, x = saved.x or p.x, z = saved.z or p.z, dist = saved.dist or p.dist }
     local race = UnitRace(unit)
     local sex = UnitSex(unit) == 3 and "Female" or "Male"
     tuner.title:SetText(sex .. " " .. (type(race) == "string" and not issecretvalue(race) and race or key)
         .. (unit == "player" and "  (you)" or ""))
-    tuner.saved = p.byModel and p.byModel[key] ~= nil
+    tuner.saved = fitFor(p, key) ~= nil
 end
 local function tunerShow()
     local missing, have, total = UF:FitsMissing()
