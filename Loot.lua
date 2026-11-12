@@ -8,11 +8,15 @@ local T = ns.Theme
 --           quest marker; click to loot, shift-click to link
 --   rolls   cards stacked above the action bars: item, a draining timer,
 --           Need / Greed / Pass pills (only the rolls you're allowed)
+--   text    what you take floats up from where you looted and fades: icon,
+--           name in its quality colour, count; coins too. With auto-loot
+--           this is all you see, unless something is left on the corpse
+--           (full bags), in which case the window opens with the rest.
 -- Blizzard's loot frame stops listening for loot events; its roll frames are
 -- hidden as they appear. Blizzard's confirmation popups (bind on pickup,
 -- etc.) still show as usual.
 
-local L = ns:NewModule("Loot", { enabled = true, linger = 1.5 })
+local L = ns:NewModule("Loot", { enabled = true, float = true })
 
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -247,42 +251,135 @@ local function openLoot(autoLoot)
             win:Show()
         end
     end
-    -- With auto-loot the game empties the corpse at once. The list is
-    -- shown anyway, as it was when it opened, and stays up for a moment
-    -- after the loot is taken (see lingerThenClose), so there is time to
-    -- glance at what you got. "glance": the rows are a record, not a live
-    -- list; they aren't removed as the slots clear.
-    L.glance = autoLoot and (L.db.linger or 0) > 0 or false
     win:SetAlpha(1)
-    show()
+    -- With auto-loot the game empties the corpse at once, and the floating
+    -- text says what you got: the window only opens if something is still
+    -- there a moment later (full bags, an item that needs confirming).
+    if autoLoot then
+        local seq = (L.openSeq or 0) + 1
+        L.openSeq = seq
+        C_Timer.After(0.35, function()
+            if L.openSeq == seq and L.lootOpen then show() end
+        end)
+    else
+        show()
+    end
 end
 
 local function closeLootWindow()
-    L.lingerToken = (L.lingerToken or 0) + 1 -- cancels a pending linger
     if win and win:IsShown() then
         closing = true
         win:Hide()
         closing = false
     end
-    if win then win:SetAlpha(1) end
 end
 
--- Auto-loot has taken everything: keep the list on screen for L.db.linger
--- seconds, fade it out, then close. Anything that closes or reopens the
--- window in the meantime cancels this.
-local function lingerThenClose()
-    local token = (L.lingerToken or 0) + 1
-    L.lingerToken = token
-    C_Timer.After(L.db.linger or 1.5, function()
-        if L.lingerToken ~= token or not (win and win:IsShown()) then return end
-        local step = 0
-        C_Timer.NewTicker(0.03, function()
-            if L.lingerToken ~= token then return end
-            step = step + 1
-            win:SetAlpha(math.max(0, 1 - step / 8))
-            if step >= 8 then closeLootWindow() end
-        end, 8)
-    end)
+-- ── Floating loot text ────────────────────────────────────────────────────
+-- What the corpse held is noted when it opens; each slot that then empties
+-- is something you took, and floats up from where the cursor was: a small
+-- icon, the name in its quality colour, the count. Lines stack upward, rise
+-- a little and fade. Nothing here can be clicked.
+local snap, snapN = {}, 0          -- slot -> { tex, name, qty, quality }
+local floats, active = {}, 0       -- pooled lines; how many are showing
+local floatX, floatY = 0, 0
+local FLOAT_LIFE, FLOAT_IN, FLOAT_OUT, FLOAT_RISE, FLOAT_STEP = 2.6, 0.15, 0.7, 26, 22
+local floatDriver
+
+local function snapshot()
+    local n = call(GetNumLootItems) or 0
+    snapN = n
+    for slot = 1, n do
+        local e = snap[slot]
+        if not e then e = {}; snap[slot] = e end
+        local tex, item, qty, _, quality = call(GetLootSlotInfo, slot)
+        e.tex, e.name, e.qty, e.quality = tex, item, qty, quality
+    end
+    local x, y = GetCursorPosition()
+    local sc = UIParent:GetEffectiveScale()
+    local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    floatX = math.max(140, math.min(w - 140, x / sc))
+    floatY = math.max(80, math.min(h - 200, y / sc + 30))
+end
+
+local function floatTick(_, dt)
+    local any = false
+    for i = 1, #floats do
+        local f = floats[i]
+        if f.live then
+            f.age = f.age + dt
+            local t = f.age
+            if t >= FLOAT_LIFE then
+                f.live = false
+                f:Hide()
+                active = active - 1
+            elseif t >= 0 then
+                any = true
+                local k = t / FLOAT_LIFE
+                local a = t < FLOAT_IN and t / FLOAT_IN
+                    or (t > FLOAT_LIFE - FLOAT_OUT and (FLOAT_LIFE - t) / FLOAT_OUT) or 1
+                f:SetAlpha(a)
+                -- Rises quickly, then settles.
+                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + FLOAT_RISE * (1 - (1 - k) ^ 3))
+            else
+                any = true
+            end
+        end
+    end
+    if not any then active = 0; floatDriver:Hide() end
+end
+
+local function floatLine()
+    for i = 1, #floats do if not floats[i].live then return floats[i] end end
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:SetFrameStrata("HIGH")
+    f:SetSize(10, 20)
+    f:EnableMouse(false)
+    local mask = f:CreateMaskTexture()
+    mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetSize(18, 18)
+    mask:SetPoint("LEFT")
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetAllPoints(mask)
+    f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    f.icon:AddMaskTexture(mask)
+    f.text = text(f, 12, true)
+    f.text:SetPoint("LEFT", mask, "RIGHT", 6, 0)
+    f.text:SetShadowOffset(1, -1)
+    f.text:SetShadowColor(0, 0, 0, 0.9)
+    floats[#floats + 1] = f
+    return f
+end
+
+local function floatSlot(slot)
+    if not (L.db and L.db.float ~= false) then return end
+    local e = type(slot) == "number" and slot <= snapN and snap[slot]
+    if not e or not e.tex then return end
+    local name = e.name
+    if type(name) ~= "string" or secret(name) or name == "" then return end
+    local tex, qty, quality = e.tex, e.qty, e.quality
+    e.tex = nil -- one line per slot
+    local f = floatLine()
+    f.icon:SetTexture(tex)
+    -- (Coins come as one amount per line: "1 Silver" / "25 Copper".)
+    name = name:gsub("\n", "  ")
+    if type(qty) == "number" and not secret(qty) and qty > 1 then name = name .. "  x" .. qty end
+    f.text:SetText(name)
+    f.text:SetTextColor(qualityColor(quality))
+    f:SetWidth(18 + 6 + f.text:GetStringWidth())
+    -- Each line of a batch sits above the one before and starts a beat later.
+    f.x, f.y = floatX, floatY + active * FLOAT_STEP
+    f.age = -0.06 * active
+    f.live = true
+    active = active + 1
+    f:SetAlpha(0)
+    f:ClearAllPoints()
+    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y)
+    f:Show()
+    if not floatDriver then
+        floatDriver = CreateFrame("Frame")
+        floatDriver:SetScript("OnUpdate", floatTick)
+    end
+    floatDriver:Show()
 end
 
 -- ── Group loot rolls ──────────────────────────────────────────────────────
@@ -419,35 +516,18 @@ function L:OnInit(db)
     end
     ev:SetScript("OnEvent", function(_, e, a1, a2)
         if e == "LOOT_OPENED" then
-            -- A list still lingering from the last corpse makes way.
             closeLootWindow()
             L.lootOpen = true
+            pcall(snapshot)
             openLoot(a1)
-            -- Auto-loot that couldn't take everything (full bags) leaves
-            -- the corpse open. The list is then no longer a record of what
-            -- you got: after a moment, show only what is still there
-            -- (coins and anything that did fit are gone from it).
-            if L.glance then
-                local seq = (L.openSeq or 0) + 1
-                L.openSeq = seq
-                C_Timer.After(0.7, function()
-                    if L.openSeq ~= seq or not (L.lootOpen and L.glance) then return end
-                    L.glance = false
-                    if win and win:IsShown() and fillLoot() == 0 then closeLootWindow() end
-                end)
-            end
         elseif e == "LOOT_SLOT_CLEARED" or e == "LOOT_SLOT_CHANGED" then
-            if win and win:IsShown() and not L.glance then
+            if e == "LOOT_SLOT_CLEARED" and L.lootOpen then pcall(floatSlot, a1) end
+            if win and win:IsShown() then
                 if fillLoot() == 0 then closeLootWindow() end
             end
         elseif e == "LOOT_CLOSED" then
             L.lootOpen = false
-            if L.glance and win and win:IsShown() then
-                L.glance = false
-                lingerThenClose()
-            else
-                closeLootWindow()
-            end
+            closeLootWindow()
         elseif e == "START_LOOT_ROLL" then
             startRoll(a1, a2)
         elseif e == "CANCEL_LOOT_ROLL" then
