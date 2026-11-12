@@ -589,6 +589,7 @@ local LV_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 -- 0 centre, +1 right).
 local LV_PRISM = { { 1.00, 0.12, 0.22 }, { 0.15, 1.00, 0.35 }, { 0.22, 0.38, 1.00 } }
 local LV_PULL = { -1, 0, 1 }
+local LV_SEG = 24 -- segments in each light of the afterglow line
 local banner
 
 local function clamp01(v) return v < 0 and 0 or (v > 1 and 1 or v) end
@@ -712,6 +713,26 @@ local function buildBanner()
         f.ghosts[i] = g
     end
 
+    -- Afterglow: a thin, straight line of light through the badge, along
+    -- the card's top edge. It arrives with the flash and stays as the card
+    -- does, slowly dimming, thinning and drawing in. It is drawn in the
+    -- three lights a pixel apart (red above, blue below), so it is white
+    -- with the faintest coloured edge. Each light is a chain of short
+    -- segments, which is what lets it taper to nothing at the tips.
+    f.beams = {}
+    for i, c in ipairs(LV_PRISM) do
+        local segs = {}
+        for j = 1, LV_SEG do
+            local ln = glow:CreateLine(nil, "ARTWORK", nil, 3)
+            ln:SetColorTexture(c[1], c[2], c[3], 1)
+            pcall(ln.SetBlendMode, ln, "ADD")
+            ln:SetAlpha(0)
+            segs[j] = ln
+        end
+        f.beams[i] = segs
+    end
+    f.beamAt = glow
+
     f:SetScript("OnUpdate", function(self, dt)
         local t = self.t + dt
         self.t = t
@@ -779,6 +800,31 @@ local function buildBanner()
         local h = LV_HEAD + body
         self:SetHeight(h)
         self.holder:SetHeight(math.max(1, body))
+        -- The line: bright at the flash, then dimmer, thinner and shorter
+        -- all the way to the fade. Always straight.
+        local life = clamp01((t - 0.4) / (out + 0.6 - 0.4))
+        local half = LV_W * (1.9 - 0.55 * life)                      -- half its length
+        local la = math.max(a, glowIn * (0.62 - 0.30 * life))
+        local thick = math.max(px, 2.4 - 1.2 * life)
+        local at = self.beamAt
+        for i = 1, 3 do
+            local segs = self.beams[i]
+            local y = -LV_PULL[i] * px
+            local x0 = -half
+            for j = 1, LV_SEG do
+                local u = -1 + 2 * j / LV_SEG                         -- -1 .. 1 along the line
+                local x1 = u * half
+                local ln = segs[j]
+                ln:SetStartPoint("CENTER", at, x0, y)
+                ln:SetEndPoint("CENTER", at, x1, y)
+                ln:SetThickness(thick)
+                -- Brightest at the middle, tapering to nothing at the tips.
+                local m = u - 1 / LV_SEG
+                local taper = 1 - m * m
+                ln:SetAlpha(la * taper * taper)
+                x0 = x1
+            end
+        end
         -- Amber, then purple.
         local c = clamp01((t - turn) / 1.0)
         c = c * c * (3 - 2 * c)
