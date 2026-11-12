@@ -568,15 +568,15 @@ local function rewardCards(list)
                 what = type(it.typ) == "string" and it.typ or ""
             end
             if cant then
-                t.what:SetText("Can't use" .. (type(why) == "string" and ("  \194\183  " .. why) or ""))
+                t.what:SetText("Can't equip" ..(type(why) == "string" and ("  \194\183  " .. why) or ""))
                 t.what:SetTextColor(0.90, 0.45, 0.45)
             elseif it.weight and bestArmor and it.weight == bestArmor then
                 -- The heaviest armor you can wear: the kind meant for you.
-                t.what:SetText("Suits you well  \194\183  " .. what)
+                t.what:SetText("Optimal  \194\183  " .. what)
                 t.what:SetTextColor(0.45, 0.85, 0.50)
             elseif it.weight and bestArmor and it.weight < bestArmor then
                 -- Wearable, but lighter than you could be wearing.
-                t.what:SetText("Lighter than your usual  \194\183  " .. what)
+                t.what:SetText("Suboptimal  \194\183  " .. what)
                 t.what:SetTextColor(0.45, 0.70, 0.95)
             else
                 t.what:SetText(what)
