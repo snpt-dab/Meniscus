@@ -666,6 +666,70 @@ ns.commands.winprobe = function(rest)
     end
 end
 
+-- /men optprobe : what the game's Options window is made of on this client
+-- (frames with their keys, and each one's art: atlas / file / layer), for
+-- restyling it. Open Options first. Saved in MinimalUIDB.optprobe.
+ns.commands.optprobe = function()
+    local P = _G.SettingsPanel
+    if not (MinimalUIDB and P) then return ns:Print("No SettingsPanel on this client.") end
+    if not P:IsShown() then return ns:Print("Open the game's Options window first, then run this.") end
+    local out = {}
+    local function s(v) if issecretvalue and issecretvalue(v) then return "<secret>" end return tostring(v) end
+    local function keysOf(f)
+        local names = {}
+        for k, v in pairs(f) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+        return names
+    end
+    local function walk(f, key, depth)
+        if #out > 900 or depth > 7 or (f.IsForbidden and f:IsForbidden()) then return end
+        local pad = string.rep("  ", depth)
+        pcall(function()
+            local txt = ""
+            if f.GetText then
+                local t = f:GetText()
+                if type(t) == "string" and t ~= "" and not (issecretvalue and issecretvalue(t)) then txt = ' "' .. t:sub(1, 28) .. '"' end
+            end
+            out[#out + 1] = pad .. key .. " [" .. f:GetObjectType() .. "] " .. s(f:GetName() or "?")
+                .. (f:IsShown() and "" or " hidden") .. string.format(" %.0fx%.0f", f:GetWidth(), f:GetHeight())
+                .. " lvl " .. s(f:GetFrameLevel()) .. (f:IsMouseEnabled() and " mouse" or "") .. txt
+        end)
+        local names = keysOf(f)
+        local nr = 0
+        for _, r in ipairs({ f:GetRegions() }) do
+            nr = nr + 1
+            if nr > 14 then out[#out + 1] = pad .. "  ..more regions"; break end
+            pcall(function()
+                local ot = r:GetObjectType()
+                local line = pad .. "  ~" .. (names[r] or "#") .. " " .. ot .. " " .. s(r:GetName() or "")
+                    .. (r:IsShown() and "" or " hidden")
+                if ot == "Texture" then
+                    local layer, sub = r:GetDrawLayer()
+                    line = line .. " " .. s(layer) .. "/" .. s(sub) .. " atlas=" .. s(r:GetAtlas()) .. " tex=" .. s(r:GetTexture())
+                        .. string.format(" %.0fx%.0f a=%.2f", r:GetWidth(), r:GetHeight(), r:GetAlpha())
+                elseif ot == "FontString" then
+                    local t = r:GetText()
+                    local _, size = r:GetFont()
+                    line = line .. " size=" .. s(size) .. ' "' .. ((type(t) == "string" and not (issecretvalue and issecretvalue(t))) and t:sub(1, 28) or "") .. '"'
+                end
+                out[#out + 1] = line
+            end)
+        end
+        if not f:IsShown() and depth > 1 then return end
+        -- Recycled list rows: the first three of each list are enough.
+        local isList = key == "ScrollTarget"
+        local n = 0
+        for _, c in ipairs({ f:GetChildren() }) do
+            n = n + 1
+            if isList and n > 3 then out[#out + 1] = pad .. "  ..more rows"; break end
+            walk(c, names[c] or "#", depth + 1)
+        end
+    end
+    out[#out + 1] = "at " .. date("%H:%M:%S") .. " strata " .. s(P:GetFrameStrata()) .. " scale " .. s(P:GetEffectiveScale())
+    walk(P, "SettingsPanel", 0)
+    MinimalUIDB.optprobe = out
+    ns:Print("Options window recorded (" .. #out .. " lines). /reload to save it.")
+end
+
 -- Pet happiness: what this client gives for a hunter pet's mood. Recorded by
 -- /men petprobe, and on its own a few seconds after you log in with a pet.
 local function petProbe()

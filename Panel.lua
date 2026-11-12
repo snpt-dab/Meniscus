@@ -482,6 +482,11 @@ local PAGES = {
               end },
             { "Open Blizzard windows", kind = "action", action = "Record", note = "Open the window first",
               run = function() cmd("winprobe", "") end },
+            { "Game Options window", kind = "action", action = "In 6 s", note = "Click, then open Options (Esc > Options)",
+              run = function()
+                  ns:Print("Open the game's Options window now; recording in 6 seconds.")
+                  C_Timer.After(6, function() cmd("optprobe", "") end)
+              end },
             { "Pet happiness values", kind = "action", action = "Record", run = function() cmd("petprobe", "") end },
             { "Pet mood words", kind = "action", action = "Record", run = function() cmd("moodprobe", "") end },
             { "Target frame", kind = "action", action = "Record", note = "Target something with buffs first",
@@ -756,6 +761,7 @@ ns.commands.help = function()
         "/men blizz  toggle Blizzard unit frames",
         "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
+        "/men optprobe  record what the game's Options window is made of (open it first)",
         "/men windows  window docking on / off (reload)",
         "/men levelup  preview the level-up banner",
         "/men perf trace  time every handler, for finding hidden costs (reload; run again to stop)",
