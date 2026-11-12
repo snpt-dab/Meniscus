@@ -2302,10 +2302,12 @@ function Orbs:BuildAmmo()
         end
         return id
     end
+    -- Returns the count, the item, and whether it is thrown weapons.
     local function loaded()
         if not (GetInventoryItemID and GetInventoryItemCount) then return nil end
-        if itemIn(AMMO, PROJECTILE) then
-            return GetInventoryItemCount("player", AMMO)
+        local ammo = itemIn(AMMO, PROJECTILE)
+        if ammo then
+            return GetInventoryItemCount("player", AMMO), ammo, false
         end
         -- A thrown weapon only has a count worth showing when it comes in a
         -- stack that gets used up. A permanent one (a single throwing knife
@@ -2319,16 +2321,44 @@ function Orbs:BuildAmmo()
             elseif type(n) == "number" and not (issecretvalue and issecretvalue(n)) and n <= 1 then
                 return nil
             end
-            return n
+            return n, thrown, true
         end
         return nil
     end
+    -- Hovering the count says what it is (it is a bare number otherwise).
+    local hit = CreateFrame("Frame", nil, f.chip)
+    hit:SetSize(30, 18)
+    hit:SetPoint("RIGHT", f.chip, "RIGHT", 0, 0)
+    hit:SetFrameLevel(f.chip:GetFrameLevel() + 3)
+    hit:EnableMouse(true)
+    if hit.SetMouseClickEnabled then hit:SetMouseClickEnabled(false) end
+    hit:Hide()
+    hit:SetScript("OnEnter", function(self)
+        local n, item, thrown = self.n, self.item, self.thrown
+        if not n then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP", 0, 6)
+        GameTooltip:SetText(thrown and "Thrown weapons" or "Ammunition", 1, 1, 1)
+        local name = item and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(item)
+        if type(name) == "string" and name ~= "" then
+            GameTooltip:AddDoubleLine(name, n .. " left", 0.84, 0.84, 0.88, 1, 1, 1)
+        else
+            GameTooltip:AddLine(n .. " left", 1, 1, 1)
+        end
+        if n <= 50 then GameTooltip:AddLine("Nearly out.", 0.90, 0.35, 0.30)
+        elseif n <= 200 then GameTooltip:AddLine("Running low.", 0.92, 0.76, 0.32) end
+        GameTooltip:AddLine(thrown and "Each throw uses one." or "Each ranged shot uses one. Vendors that sell weapons or general goods stock more.",
+            T.textDim[1], T.textDim[2], T.textDim[3], true)
+        GameTooltip:Show()
+    end)
+    hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local function refresh()
-        local ok, n = pcall(loaded)
+        local ok, n, item, thrown = pcall(loaded)
         if not ok or type(n) ~= "number" or (issecretvalue and issecretvalue(n)) then
-            f.ammo:Hide(); f.ammoDiv:Hide()
+            f.ammo:Hide(); f.ammoDiv:Hide(); hit:Hide()
             return
         end
+        hit.n, hit.item, hit.thrown = n, item, thrown
+        hit:Show()
         f.ammo:SetText(n >= 10000 and string.format("%.0fk", n / 1000) or n)
         if n <= 50 then f.ammo:SetTextColor(0.90, 0.35, 0.30)
         elseif n <= 200 then f.ammo:SetTextColor(0.92, 0.76, 0.32)
