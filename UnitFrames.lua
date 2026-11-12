@@ -27,7 +27,7 @@ local UF = ns:NewModule("UnitFrames", {
     -- 3D pop-out avatar camera; tune live with /men portrait <key> <value>
     -- fidget = 0 keeps the plain breathing idle (no yawns/stretches that hit
     -- the model window's edges); 1 allows Blizzard's random idle fidgets.
-    portrait = { zoom = 1.0, dist = 1.2, z = 0, facing = 0, pop = 0.45, x = 0.06, fit = 1, fidget = 0, sdist = 1.5, bust3d = 0 },
+    portrait = { zoom = 1.0, dist = 1.2, z = 0, facing = 0, pop = 0.45, x = 0.06, fit = 2, fidget = 0, sdist = 1.5, bust3d = 1 },
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -544,7 +544,9 @@ function UF:RefreshAvatar(av)
         local key = modelKey(unit)
         local o = key and ((UF.preview and UF.preview.key == key and UF.preview)
             or (p.byModel and p.byModel[key])) or nil
-        pcall(m.SetCamDistanceScale, m, av.bust and (p.sdist or 1.5) or (o and o.dist) or p.dist)
+        -- (The bust's own distance, scaled by the race's fit when there is one.)
+        local bustDist = (p.sdist or 1.5) * ((o and o.dist and p.dist and p.dist > 0) and (o.dist / p.dist) or 1)
+        pcall(m.SetCamDistanceScale, m, av.bust and bustDist or (o and o.dist) or p.dist)
         -- x nudges the model sideways (negative = left) so the face sits
         -- centered in the circle, clear of the model window's straight edges.
         -- (-0.03 was the first, wrong-way guess: positive y moves the model left.)
@@ -1381,6 +1383,12 @@ function UF:OnInit(db)
         p.dist = math.max(p.dist or 1, 1.2)
         p.pop = math.max(p.pop or 0.25, 0.45)
         p.x = 0.06
+    end
+    -- The target's portrait is a live 3D face again (it can be fitted per
+    -- race and gender now); the switch in settings still turns it off.
+    if p and (p.fit or 0) < 2 then
+        p.fit = 2
+        p.bust3d = 1
     end
     self.frames = {}
 
