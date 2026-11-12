@@ -571,46 +571,74 @@ function XP:SetSpan(span)
 end
 
 -- ── Level-up banner ───────────────────────────────────────────────────────
--- In place of the game's gold-lined "You've Reached Level N": a round badge
--- with the new level, and a dark pill that opens out of it with "Level N"
--- and what the level gave you (health, power, stats, talent points). It
--- holds for a few seconds, then closes back into the badge and fades.
+-- In place of the game's gold-lined "You've Reached Level N": a card on the
+-- left of the screen, about halfway up. A round badge with the new level
+-- sits on its top edge; under "Level N" the card grows downward as what the
+-- level gave you is written in, one line at a time.
+-- It borrows the XP bar's gain effect: a soft flash and a bloom of light as
+-- it lands, the gains written in the trail's amber, which then settles to
+-- the bar's purple before the whole card fades.
 -- The game's own banner is made invisible for as long as ours is up (alpha
 -- only: it still runs, so its sound plays). /men levelup previews it.
-local LV_H, LV_D, LV_LIFE = 56, 74, 6.0
+local LV_W, LV_D, LV_ROW = 200, 62, 19
+local LV_HEAD = LV_D / 2 + 8 + 24 + 9   -- badge overhang, title, rule
 local LV_COLOR = { 0.66, 0.56, 1.00 }
+local LV_AMBER = { 1.00, 0.80, 0.38 }
 local LV_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local banner
 
+local function clamp01(v) return v < 0 and 0 or (v > 1 and 1 or v) end
+
 local function buildBanner()
-    local off = LV_D / 2 - LV_H / 2 -- the pill starts under the badge
     local f = CreateFrame("Frame", "MeniscusLevelUp", UIParent)
     f:SetFrameStrata("HIGH")
-    f:SetSize(LV_D, LV_D)
-    f:SetPoint("TOP", UIParent, "TOP", 0, -180)
+    f:SetSize(LV_W, LV_HEAD)
+    f:SetPoint("TOPLEFT", UIParent, "LEFT", 60, 130)
     f:EnableMouse(false)
     f:Hide()
+    ns.RoundedRect(f, -8, 0, 14, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 1)
+    ns.RoundedRect(f, -7, 1, 13, 0.06, 0.06, 0.07, 0.97)
 
-    local pill = CreateFrame("Frame", nil, f)
-    pill:SetSize(LV_H, LV_H)
-    pill:SetPoint("LEFT", f, "LEFT", off, 0)
-    pill:SetClipsChildren(true)
-    ns.RoundedRect(pill, -8, 0, LV_H / 2, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 1)
-    ns.RoundedRect(pill, -7, 1, LV_H / 2 - 1, 0.06, 0.06, 0.07, 0.97)
-    local inner = CreateFrame("Frame", nil, pill)
-    inner:SetPoint("LEFT")
-    inner:SetSize(700, LV_H)
-    local tx = LV_D / 2 + LV_H / 2 + 12
-    f.title = ns:CreateText(inner, 19, T.text)
-    ns:SetFont(f.title, 19, "", true)
-    f.title:SetPoint("BOTTOMLEFT", inner, "LEFT", tx, 0)
-    f.gains = ns:CreateText(inner, 11, T.textDim)
-    f.gains:SetPoint("TOPLEFT", inner, "LEFT", tx, -4)
+    -- Flash: the whole card washed in pale light for a moment.
+    local fl = CreateFrame("Frame", nil, f)
+    fl:SetAllPoints()
+    fl:SetFrameLevel(f:GetFrameLevel() + 4)
+    ns.RoundedRect(fl, 1, 0, 14, 0.90, 0.86, 1, 1, "OVERLAY")
+    fl:SetAlpha(0)
+    f.flash = fl
+
+    f.title = ns:CreateText(f, 17, T.text)
+    ns:SetFont(f.title, 17, "", true)
+    f.title:SetPoint("TOP", f, "TOP", 0, -(LV_D / 2 + 8))
+    local rule = f:CreateTexture(nil, "ARTWORK")
+    rule:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    rule:SetHeight(1)
+    rule:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -(LV_D / 2 + 8 + 24))
+    rule:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -(LV_D / 2 + 8 + 24))
+
+    -- The gains: label on the left, amount on the right, one per line.
+    local holder = CreateFrame("Frame", nil, f)
+    holder:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -LV_HEAD)
+    holder:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -LV_HEAD)
+    holder:SetHeight(1)
+    holder:SetClipsChildren(true)
+    local inner = CreateFrame("Frame", nil, holder)
+    inner:SetPoint("TOPLEFT"); inner:SetPoint("TOPRIGHT")
+    inner:SetHeight(400)
+    f.holder, f.rows = holder, {}
+    for i = 1, 8 do
+        local label = ns:CreateText(inner, 11, T.textDim)
+        label:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, -(i - 1) * LV_ROW)
+        local value = ns:CreateText(inner, 12, T.text)
+        ns:SetFont(value, 12, "", true)
+        value:SetPoint("TOPRIGHT", inner, "TOPRIGHT", 0, -(i - 1) * LV_ROW)
+        f.rows[i] = { label = label, value = value }
+    end
 
     local badge = CreateFrame("Frame", nil, f)
     badge:SetSize(LV_D, LV_D)
-    badge:SetPoint("LEFT")
-    badge:SetFrameLevel(pill:GetFrameLevel() + 3)
+    badge:SetPoint("CENTER", f, "TOP", 0, 0)
+    badge:SetFrameLevel(f:GetFrameLevel() + 6)
     local function disc(size, sub, r, g, b)
         local t = badge:CreateTexture(nil, "BACKGROUND", nil, sub)
         t:SetSize(size, size); t:SetPoint("CENTER")
@@ -624,27 +652,57 @@ local function buildBanner()
     disc(LV_D, 0, LV_COLOR[1], LV_COLOR[2], LV_COLOR[3])
     disc(LV_D - 5, 1, 0.07, 0.07, 0.085)
     f.wash = disc(LV_D - 5, 2, LV_COLOR[1], LV_COLOR[2], LV_COLOR[3])
-    f.num = ns:CreateText(badge, 30, T.text)
-    ns:SetFont(f.num, 30, "", true)
+    f.num = ns:CreateText(badge, 26, T.text)
+    ns:SetFont(f.num, 26, "", true)
     f.num:SetPoint("CENTER", 0, 0)
+    -- Bloom: light spilling out from behind the badge as it lands.
+    local glow = CreateFrame("Frame", nil, f)
+    glow:SetFrameLevel(f:GetFrameLevel() + 5)
+    glow:SetSize(1, 1)
+    glow:SetPoint("CENTER", badge, "CENTER")
+    f.bloom = glow:CreateTexture(nil, "ARTWORK")
+    f.bloom:SetTexture(MEDIA .. "spot.tga")
+    f.bloom:SetVertexColor(0.78, 0.68, 1, 1)
+    f.bloom:SetBlendMode("ADD")
+    f.bloom:SetPoint("CENTER")
+    f.bloom:SetAlpha(0)
 
-    f.pill, f.off = pill, off
     f:SetScript("OnUpdate", function(self, dt)
         local t = self.t + dt
         self.t = t
-        if t >= LV_LIFE then self:Hide() return end
-        local left = LV_LIFE - t
-        self:SetAlpha(t < 0.25 and t / 0.25 or (left < 0.5 and left / 0.5) or 1)
-        -- Open out of the badge (eased), hold, close back into it.
-        local o = 1
-        if t < 0.2 then o = 0
-        elseif t < 0.75 then o = 1 - (1 - (t - 0.2) / 0.55) ^ 3
-        elseif left < 0.7 then o = math.max(0, (left - 0.2) / 0.5) ^ 2 end
-        local w = LV_H + (self.full - LV_H) * o
-        self.pill:SetWidth(w)
-        self:SetWidth(math.max(LV_D, self.off + w)) -- stays centered as it opens
-        -- The badge's tint: bright at first, settling to a faint wash.
-        self.wash:SetAlpha(0.10 + 0.5 * math.max(0, 1 - t / 0.9) ^ 2)
+        local n = self.n
+        local written = 0.35 + n * 0.12 + 0.2   -- every line is in
+        local turn = written + 2.2              -- amber starts settling to purple
+        local out = turn + 1.0 + 0.9            -- the card starts to fade
+        if t >= out + 0.6 then self:Hide() return end
+        self:SetAlpha(t < 0.2 and t / 0.2 or (t > out and 1 - (t - out) / 0.6) or 1)
+        -- Flash and bloom: sharp attack, long soft decay (as on the XP bar).
+        local fk = t / 0.8
+        local a = fk < 0.15 and fk / 0.15 or (fk < 1 and (1 - (fk - 0.15) / 0.85) ^ 2 or 0)
+        self.flash:SetAlpha(0.30 * a)
+        self.bloom:SetAlpha(0.85 * a)
+        local bs = LV_D * (1.5 + 1.3 * clamp01(fk))
+        self.bloom:SetSize(bs, bs)
+        self.wash:SetAlpha(0.10 + 0.5 * a)
+        -- The card grows downward as the lines are written.
+        local g = clamp01((t - 0.25) / (written - 0.25))
+        local e = 1 - (1 - g) ^ 3
+        local body = (n * LV_ROW + 8) * e
+        self:SetHeight(LV_HEAD + body)
+        self.holder:SetHeight(math.max(1, body))
+        -- Amber, then purple.
+        local c = clamp01((t - turn) / 1.0)
+        c = c * c * (3 - 2 * c)
+        local r = LV_AMBER[1] + (LV_COLOR[1] - LV_AMBER[1]) * c
+        local gg = LV_AMBER[2] + (LV_COLOR[2] - LV_AMBER[2]) * c
+        local b = LV_AMBER[3] + (LV_COLOR[3] - LV_AMBER[3]) * c
+        for i = 1, n do
+            local row = self.rows[i]
+            local ra = clamp01((t - (0.35 + (i - 1) * 0.12)) / 0.2)
+            row.label:SetAlpha(ra)
+            row.value:SetAlpha(ra)
+            row.value:SetTextColor(r, gg, b)
+        end
     end)
     f:SetScript("OnHide", function()
         for _, name in ipairs({ "EventToastManagerFrame", "LevelUpDisplay" }) do
@@ -655,10 +713,6 @@ local function buildBanner()
     banner = f
 end
 
-local function gainText(n, label)
-    if type(n) == "number" and not issecretvalue(n) and n > 0 then return "+" .. n .. " " .. label end
-end
-
 function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     if type(level) ~= "number" or issecretvalue(level) then return end
     if not banner then buildBanner() end
@@ -667,20 +721,26 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     f.title:SetText("Level " .. level)
     local _, tok = UnitPowerType("player")
     local powerName = type(tok) == "string" and _G[tok] or "Power"
-    local out
-    local function add(s) if s then out = out and (out .. "    " .. s) or s end end
-    add(gainText(health, "Health")); add(gainText(power, powerName))
-    add(gainText(str, "Strength")); add(gainText(agi, "Agility"))
-    add(gainText(sta, "Stamina")); add(gainText(int, "Intellect"))
-    if type(talents) == "number" and not issecretvalue(talents) and talents > 0 then
-        add("+" .. talents .. (talents == 1 and " Talent point" or " Talent points"))
+    local n = 0
+    local function add(v, label)
+        if type(v) == "number" and not issecretvalue(v) and v > 0 and n < #f.rows then
+            n = n + 1
+            f.rows[n].label:SetText(label)
+            f.rows[n].value:SetText("+" .. v)
+        end
     end
-    f.gains:SetText(out or "You've reached a new level")
-    f.full = math.ceil(LV_D / 2 + LV_H / 2 + 12
-        + math.max(f.title:GetStringWidth(), f.gains:GetStringWidth()) + 26)
+    add(health, "Health"); add(power, powerName)
+    add(str, "Strength"); add(agi, "Agility"); add(sta, "Stamina"); add(int, "Intellect")
+    add(talents, talents == 1 and "Talent point" or "Talent points")
+    for i = 1, #f.rows do
+        local row = f.rows[i]
+        row.label:SetShown(i <= n); row.value:SetShown(i <= n)
+        row.label:SetAlpha(0); row.value:SetAlpha(0)
+    end
+    f.n = n
     f.t = 0
-    f.pill:SetWidth(LV_H)
-    f:SetWidth(LV_D)
+    f:SetHeight(LV_HEAD)
+    f.holder:SetHeight(1)
     f:SetAlpha(0)
     f:Show()
     -- The game's banner: invisible while ours is up. It can appear a moment
@@ -703,7 +763,8 @@ lvEv:SetScript("OnEvent", function(_, _, ...)
     pcall(XP.ShowLevelUp, XP, ...)
 end)
 
+-- /men levelup: a made-up level-up, to look at the banner.
 ns.commands.levelup = function()
     local lvl = UnitLevel("player")
-    XP:ShowLevelUp(type(lvl) == "number" and not issecretvalue(lvl) and lvl or 10, 17, 12, 0, 0, 1, 2, 1, 0)
+    XP:ShowLevelUp(type(lvl) == "number" and not issecretvalue(lvl) and lvl or 10, 27, 28, 1, 0, 1, 2, 1, 1)
 end
