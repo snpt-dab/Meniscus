@@ -324,6 +324,20 @@ local function newButton(bag, slot)
     b.junk:SetPoint("TOPLEFT", b, "TOPLEFT", 3, -3)
     b.junk:SetTexture("Interface/Buttons/UI-GroupLoot-Coin-Up")
     b.junk:Hide()
+    -- Starts a quest you don't have yet: a gold disc with "!" in the top-left
+    -- corner (and a gold ring). Items for a quest you're on get the ring only.
+    b.bang = over:CreateTexture(nil, "OVERLAY")
+    b.bang:SetSize(14, 14)
+    b.bang:SetPoint("TOPLEFT", b, "TOPLEFT", 2, -2)
+    b.bang:SetTexture(MEDIA .. "circle.tga")
+    b.bang:SetVertexColor(1.0, 0.80, 0.20, 1)
+    b.bang:Hide()
+    b.bangText = over:CreateFontString(nil, "OVERLAY", nil, 1)
+    ns:SetFont(b.bangText, 11, "", true)
+    b.bangText:SetPoint("CENTER", b.bang, "CENTER", 0.5, 0)
+    b.bangText:SetTextColor(0.10, 0.07, 0.02, 1)
+    b.bangText:SetText("!")
+    b.bangText:Hide()
 
     -- New-item glow: an accent halo one level BELOW the tile (only the rim
     -- around the tile shows), breathing until hovered.
@@ -371,6 +385,20 @@ local function matches(info)
     return name and name:lower():find(q, 1, true) ~= nil
 end
 
+-- Is it a quest item, and does it start a quest you haven't taken?
+local function questInfo(bag, slot)
+    local f = CC.GetContainerItemQuestInfo or _G.GetContainerItemQuestInfo
+    if not f then return false, false end
+    local ok, a, b2, c = pcall(f, bag, slot)
+    if not ok then return false, false end
+    local isQuest, qid, active
+    if type(a) == "table" then isQuest, qid, active = a.isQuestItem, a.questID or a.questId, a.isActive
+    else isQuest, qid, active = a, b2, c end
+    if secret(isQuest) or secret(qid) or secret(active) then return false, false end
+    local starts = qid ~= nil and qid ~= 0 and not active
+    return (isQuest or starts) and true or false, starts and true or false
+end
+
 local function updateButton(b)
     local info = itemInfo(b.bag, b.slot)
     if info and info.iconFileID then
@@ -382,8 +410,12 @@ local function updateButton(b)
         b.count:SetText((num(n) and n > 1) and n or "")
         local q = info.quality
         local c = num(q) and q >= 2 and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
-        if c then b.ring(c.r, c.g, c.b, 1) else b.ring(T.border[1], T.border[2], T.border[3], 1) end
-        b.junk:SetShown(q == 0 and not info.hasNoValue)
+        local isQuest, starts = questInfo(b.bag, b.slot)
+        if isQuest then b.ring(1.0, 0.80, 0.20, 1)
+        elseif c then b.ring(c.r, c.g, c.b, 1) else b.ring(T.border[1], T.border[2], T.border[3], 1) end
+        b.bang:SetShown(starts)
+        b.bangText:SetShown(starts)
+        b.junk:SetShown(q == 0 and not info.hasNoValue and not starts)
         local link = info.hyperlink
         local lvl = link and not secret(link) and isGear(link) and itemLevel(link)
         b.ilvl:SetText(lvl and string.format("%d", lvl) or "")
@@ -398,6 +430,8 @@ local function updateButton(b)
         b.count:SetText("")
         b.ring(T.border[1] * 0.8, T.border[2] * 0.8, T.border[3] * 0.8, 1)
         b.junk:Hide()
+        b.bang:Hide()
+        b.bangText:Hide()
         b.ilvl:SetText("")
         b.glow:Hide()
     end
@@ -907,7 +941,8 @@ function B:OnInit(db)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "BAG_UPDATE", "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN",
                          "PLAYER_MONEY", "BAG_NEW_ITEMS_UPDATED", "BAG_CONTAINER_UPDATE",
-                         "PLAYER_REGEN_ENABLED", "UNIT_INVENTORY_CHANGED", "GET_ITEM_INFO_RECEIVED" }) do
+                         "PLAYER_REGEN_ENABLED", "UNIT_INVENTORY_CHANGED", "GET_ITEM_INFO_RECEIVED",
+                         "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_LOG_UPDATE" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
     local dirty, relayout, acc = false, false, 0
