@@ -27,7 +27,7 @@ local UF = ns:NewModule("UnitFrames", {
     -- 3D pop-out avatar camera; tune live with /men portrait <key> <value>
     -- fidget = 0 keeps the plain breathing idle (no yawns/stretches that hit
     -- the model window's edges); 1 allows Blizzard's random idle fidgets.
-    portrait = { zoom = 1.0, dist = 1.0, z = 0, facing = 0, pop = 0.25, fidget = 0, sdist = 1.5, bust3d = 0 },
+    portrait = { zoom = 1.0, dist = 1.2, z = 0, facing = 0, pop = 0.45, x = 0.06, fit = 1, fidget = 0, sdist = 1.5, bust3d = 0 },
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -1356,6 +1356,16 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────
 function UF:OnInit(db)
     self.db = db
+    -- Fit the pop-out (once): the head and hair were reaching the model
+    -- window's straight sides and top. Camera further back, a taller window
+    -- above the circle, the face nudged toward the middle.
+    local p = db.portrait
+    if p and (p.fit or 0) < 1 then
+        p.fit = 1
+        p.dist = math.max(p.dist or 1, 1.2)
+        p.pop = math.max(p.pop or 0.25, 0.45)
+        p.x = 0.06
+    end
     self.frames = {}
 
     self.player = create("player", "Player", { size = "large", avatar = "3d", side = "LEFT" })
@@ -1651,7 +1661,7 @@ ns.commands.portrait = function(rest)
     val = tonumber(val)
     if rest == "reset" then
         if InCombatLockdown() then return ns:Print("Can't resize avatars in combat.") end
-        p.zoom, p.dist, p.z, p.facing, p.pop, p.fidget, p.x = 1.0, 1.0, 0, 0, 0.25, 0, 0.04
+        p.zoom, p.dist, p.z, p.facing, p.pop, p.fidget, p.x = 1.0, 1.2, 0, 0, 0.45, 0, 0.06
         eachModel(function(av) UF:LayoutAvatar(av); UF:RefreshAvatar(av) end)
     elseif key and val and p[key] ~= nil then
         if InCombatLockdown() and key == "pop" then
