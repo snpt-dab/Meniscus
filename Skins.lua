@@ -2004,9 +2004,9 @@ local function styleTalent(b)
         pcall(st.SetShadowOffset, st, 1, -1)
         pcall(st.SetShadowColor, st, 0, 0, 0, 0.9)
         local chip = b:CreateTexture(nil, "OVERLAY", nil, -1)
-        chip:SetTexture(ROUND_TGA)
+        chip:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga") -- a round chip
         chip:SetVertexColor(0.05, 0.05, 0.06, 0.94)
-        chip:SetSize(17, 15)
+        chip:SetSize(17, 17)
         chip:SetPoint("CENTER", st, "CENTER", 0, 0)
         local busy = false
         local function sync()
@@ -2089,9 +2089,9 @@ local function styleTreeHeader(c)
     if text and text.SetFont then
         pcall(ns.SetFont, ns, text, 11, "", true)
         local chip = c:CreateTexture(nil, "OVERLAY", nil, -1)
-        chip:SetTexture(ROUND_TGA)
+        chip:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga")
         chip:SetVertexColor(0.05, 0.05, 0.06, 0.94)
-        chip:SetSize(18, 15)
+        chip:SetSize(18, 18)
         chip:SetPoint("CENTER", text, "CENTER", 0, 0)
     end
 end
