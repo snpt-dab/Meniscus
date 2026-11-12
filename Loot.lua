@@ -423,6 +423,19 @@ function L:OnInit(db)
             closeLootWindow()
             L.lootOpen = true
             openLoot(a1)
+            -- Auto-loot that couldn't take everything (full bags) leaves
+            -- the corpse open. The list is then no longer a record of what
+            -- you got: after a moment, show only what is still there
+            -- (coins and anything that did fit are gone from it).
+            if L.glance then
+                local seq = (L.openSeq or 0) + 1
+                L.openSeq = seq
+                C_Timer.After(0.7, function()
+                    if L.openSeq ~= seq or not (L.lootOpen and L.glance) then return end
+                    L.glance = false
+                    if win and win:IsShown() and fillLoot() == 0 then closeLootWindow() end
+                end)
+            end
         elseif e == "LOOT_SLOT_CLEARED" or e == "LOOT_SLOT_CHANGED" then
             if win and win:IsShown() and not L.glance then
                 if fillLoot() == 0 then closeLootWindow() end

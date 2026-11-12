@@ -158,6 +158,10 @@ end
 -- the purple; the closing sweep slides it rightward past the trail's end, so
 -- the last of the amber fades out through the gradient, never cut off.
 local TRAIL_A = 0.9
+-- The taper's two gradient colors are made once and re-filled: this runs
+-- every frame while a gain animates, and a new pair of color objects each
+-- time was most of the addon's memory churn in combat.
+local gradL, gradR, gradAL, gradAR
 local function drawTrail(self, left, right, max, ts)
     local w = self.pill:GetWidth()
     local x1, x2 = w * left / math.max(max, 1), w * right / math.max(max, 1)
@@ -170,8 +174,19 @@ local function drawTrail(self, left, right, max, ts)
     local er = math.min(ts + EDGE, x2)
     if er - vl >= 0.5 then
         local aL, aR = (vl - ts) / EDGE * TRAIL_A, (er - ts) / EDGE * TRAIL_A
-        local c = TRAIL_COLOR
-        pcall(edge.SetGradient, edge, "HORIZONTAL", CreateColor(c[1], c[2], c[3], aL), CreateColor(c[1], c[2], c[3], aR))
+        if aL ~= gradAL or aR ~= gradAR then
+            local c = TRAIL_COLOR
+            if not gradL then
+                gradL, gradR = CreateColor(c[1], c[2], c[3], aL), CreateColor(c[1], c[2], c[3], aR)
+            end
+            if gradL.SetRGBA then
+                gradL:SetRGBA(c[1], c[2], c[3], aL); gradR:SetRGBA(c[1], c[2], c[3], aR)
+            else
+                gradL.a, gradR.a = aL, aR
+            end
+            gradAL, gradAR = aL, aR
+            pcall(edge.SetGradient, edge, "HORIZONTAL", gradL, gradR)
+        end
         edge:ClearAllPoints()
         edge:SetPoint("TOPLEFT", self.pill, "TOPLEFT", vl, 0)
         edge:SetPoint("BOTTOMRIGHT", self.pill, "BOTTOMLEFT", er, 0)
