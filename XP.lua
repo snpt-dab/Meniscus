@@ -571,8 +571,8 @@ function XP:SetSpan(span)
 end
 
 -- ── Level-up banner ───────────────────────────────────────────────────────
--- In place of the game's gold-lined "You've Reached Level N": a card on the
--- left of the screen, about halfway up. A round badge with the new level
+-- In place of the game's gold-lined "You've Reached Level N": a card in the
+-- middle of the screen, its top 30% of the way down. A round badge with the new level
 -- sits on its top edge; under "Level N" the card grows downward as what the
 -- level gave you is written in, one line at a time.
 -- It borrows the XP bar's gain effect: a soft flash and a bloom of light as
@@ -593,7 +593,9 @@ local function buildBanner()
     local f = CreateFrame("Frame", "MeniscusLevelUp", UIParent)
     f:SetFrameStrata("HIGH")
     f:SetSize(LV_W, LV_HEAD)
-    f:SetPoint("TOPLEFT", UIParent, "LEFT", 60, 130)
+    -- Centered, the card's top edge 30% of the way down the screen (the
+    -- badge sits half above that).
+    f:SetPoint("TOP", UIParent, "TOP", 0, -0.30 * UIParent:GetHeight())
     f:EnableMouse(false)
     f:Hide()
     ns.RoundedRect(f, -8, 0, 14, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 1)
