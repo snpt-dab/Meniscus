@@ -282,6 +282,16 @@ local function bubble(s)
     end
 end
 
+-- A gossip quest's level: what the NPC's list says, else what the game
+-- knows about the quest itself (some lists come without levels).
+local function questLevel(q)
+    local l = q.questLevel
+    if type(l) == "number" and not secret(l) and l > 0 then return l end
+    local f = C_QuestLog and C_QuestLog.GetQuestDifficultyLevel
+    l = f and q.questID and call(f, q.questID)
+    return type(l) == "number" and not secret(l) and l > 0 and l or nil
+end
+
 -- Quest card row: level chip, title, status glyph.
 local function questCard(title, level, status, onClick, trivial)
     local c = take("card", function()
@@ -852,14 +862,14 @@ local function gossipPage()
     if #avail > 0 then
         section("Available quests", #avail)
         for i, q in ipairs(avail) do
-            questCard(q.title, q.questLevel, "available", function() selectQuest(false, q, i) end, q.isTrivial)
+            questCard(q.title, questLevel(q), "available", function() selectQuest(false, q, i) end, q.isTrivial)
         end
         y = y - 6
     end
     if #active > 0 then
         section("In progress", #active)
         for i, q in ipairs(active) do
-            questCard(q.title, q.questLevel, q.isComplete and "complete" or "active",
+            questCard(q.title, questLevel(q), q.isComplete and "complete" or "active",
                 function() selectQuest(true, q, i) end, q.isTrivial)
         end
         y = y - 6
