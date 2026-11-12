@@ -312,8 +312,15 @@ local function questCard(title, level, status, onClick, trivial)
     if trivial then r, g, b = 0.6, 0.6, 0.62 end
     c.chipPaint(r * 0.25, g * 0.25, b * 0.25, 1)
     c.chipText:SetTextColor(r, g, b)
-    c.chipText:SetText(type(level) == "number" and level > 0 and level or "")
-    c.chip:SetShown(type(level) == "number" and level > 0)
+    -- The quest's level sits in a chip on the left. When the game doesn't
+    -- give one, the title takes that space instead of leaving a gap.
+    local hasLevel = type(level) == "number" and not secret(level) and level > 0
+    c.chipText:SetText(hasLevel and level or "")
+    c.chip:SetShown(hasLevel)
+    c.title:ClearAllPoints()
+    if hasLevel then c.title:SetPoint("LEFT", c.chip, "RIGHT", 10, 0)
+    else c.title:SetPoint("LEFT", c, "LEFT", 14, 0) end
+    c.title:SetPoint("RIGHT", c, "RIGHT", -32, 0)
     c.title:SetText(title)
     c.title:SetTextColor(unpack(trivial and T.textDim or T.text))
     if status == "available" then c.glyph:SetText("!"); c.glyph:SetTextColor(unpack(GOLD))

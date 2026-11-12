@@ -196,12 +196,19 @@ function ns:CreateShell(win, opts)
         tint:SetColorTexture(color[1], color[2], color[3], 0.12)
         lipRing:SetVertexColor(color[1], color[2], color[3], 1)
     end
-    -- 3D head of a unit (talk animation optional), flat portrait if out of sight.
+    -- A unit's portrait. By default the game's own head-and-shoulders
+    -- picture, which always sits cleanly inside the ring. With "3D
+    -- portraits" on (the same switch as the target's), a live model that
+    -- pops out of the top and can talk; its window is a rectangle, so on
+    -- some models hair, shoulders or the cup at the bottom look off.
     function S:SetUnit(unit, talk)
         icon:Hide()
         local exists = UnitExists(unit)
         local visible = exists and UnitIsVisible(unit)
         if issecretvalue and issecretvalue(visible) then visible = true end
+        local UF = ns.modules.UnitFrames
+        local p = UF and UF.db and UF.db.portrait
+        if not (p and p.bust3d == 1) then visible = false end
         if visible then
             flat:Hide()
             lip:Show()
