@@ -1,4 +1,25 @@
 local ADDON, ns = ...
+
+-- Every file makes its frames through this (each starts with
+-- "local CreateFrame = ns.CreateFrame"), so trace mode (Perf.lua) can time
+-- the handlers set on our own frames without touching anyone else's.
+-- Frames made before the saved settings have loaded are kept in a list with
+-- where they were made; Perf.lua picks the list up and clears it. With
+-- tracing off this only passes through.
+local rawCreateFrame = CreateFrame
+ns.madeFrames, ns.madeSites = {}, {}
+function ns.CreateFrame(...)
+    local f = rawCreateFrame(...)
+    local list = ns.madeFrames
+    if list then
+        list[#list + 1] = f
+        ns.madeSites[#list] = debugstack(2, 1, 0)
+    elseif ns.traceFrame then
+        ns.traceFrame(f)
+    end
+    return f
+end
+local CreateFrame = ns.CreateFrame
 _G.MinimalUI = ns
 _G.Meniscus = ns
 

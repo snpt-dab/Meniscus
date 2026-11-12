@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Quest/objective tracker, light touch: section header art removed, header

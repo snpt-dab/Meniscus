@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Restyles Blizzard's own action buttons (so paging/stances keep working) and

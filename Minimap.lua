@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Minimap: rounded-square map with a hairline rounded border, Blizzard's

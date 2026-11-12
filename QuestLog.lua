@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Quest log: a standalone two-column window (on this client Blizzard's log

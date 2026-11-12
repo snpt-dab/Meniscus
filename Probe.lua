@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 
 -- /men probe: report what this Forever build actually provides.
 function ns:RunProbe()

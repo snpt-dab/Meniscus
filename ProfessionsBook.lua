@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Professions book (K): Meniscus's version of Blizzard's book, which on

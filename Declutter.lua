@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 
 -- Micro menu and bag bar fade out entirely (buttons and their background
 -- panels) until the mouse is over them. Optionally one anchor button stays

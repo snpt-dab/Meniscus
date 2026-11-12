@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Thin XP pill along the bottom, spanning either the orbs or the bar 2/3 blocks.

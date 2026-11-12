@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Death recap: Meniscus's version of Blizzard's "what killed me" list.

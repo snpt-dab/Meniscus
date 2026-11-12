@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Bags: Meniscus's bag window, replacing Blizzard's bag frames.

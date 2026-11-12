@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Tooltips: dark rounded card with a hairline border (item tooltips tint the

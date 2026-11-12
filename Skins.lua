@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Skins: restyles Blizzard windows in place (nothing moved or rebuilt):

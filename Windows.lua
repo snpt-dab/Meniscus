@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 -- ── Window docks ──────────────────────────────────────────────────────────
 -- One system for where windows go and how many are open. Two docks sit on
 -- the console: a window opens in the left or the right one, its bottom edge

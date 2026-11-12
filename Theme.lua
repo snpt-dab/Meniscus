@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 
 -- Flat dark, hairline borders, single accent.
 local Theme = {

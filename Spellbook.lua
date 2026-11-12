@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Spellbook: Meniscus's own spellbook window (the talent half of Blizzard's

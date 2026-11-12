@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Snapping drag for move mode. Replaces StartMoving/StopMovingOrSizing:

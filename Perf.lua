@@ -1,4 +1,5 @@
 local ADDON, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Resource monitor: how heavy is Meniscus?
@@ -41,31 +42,44 @@ end
 -- time and memory for each handler, which is how a cost that isn't in any
 -- hand-timed job gets found. It adds a little overhead to everything, so it
 -- is off unless asked for; run it again to turn it off.
--- (How: a post-hook on SetScript for each kind of frame. It only acts when
--- the call came from one of our files; everyone else's are left alone.)
-local function installTrace()
-    local wrapping, seen = false, {}
-    local function hook(self, script, handler)
-        if wrapping or type(handler) ~= "function" or (script ~= "OnUpdate" and script ~= "OnEvent") then return end
-        local stack = debugstack(2, 6, 0)
-        if type(stack) ~= "string" then return end
-        local label
-        for file, line in stack:gmatch("Meniscus[/\\]([%w_]+%.lua)[^:]*:(%d+)") do
-            if file ~= "Perf.lua" then label = file .. ":" .. line .. " " .. script break end
-        end
-        if not label then return end
+-- (How: our frames are made through ns.CreateFrame, which hands each one
+-- here for a post-hook on its own SetScript. Nothing shared is hooked: an
+-- earlier version hooked SetScript for every frame in the game, and with
+-- that on the client stopped answering key presses.)
+local SCRIPTS = { "OnUpdate", "OnEvent" }
+local function installTrace(early, sites)
+    local wrapping = false
+    local function wrap(self, script, handler, label)
         wrapping = true
         pcall(self.SetScript, self, script, function(...) return ns.Timed(label, handler, ...) end)
         wrapping = false
     end
-    for _, kind in ipairs({ "Frame", "Button", "StatusBar", "ScrollFrame", "CheckButton", "EditBox", "Slider",
-                            "PlayerModel", "Cooldown" }) do
-        local ok, f = pcall(CreateFrame, kind)
-        local mt = ok and f and getmetatable(f)
-        local idx = mt and mt.__index
-        if type(idx) == "table" and not seen[idx] then
-            seen[idx] = true
-            pcall(hooksecurefunc, idx, "SetScript", hook)
+    local function site(stack)
+        if type(stack) ~= "string" then return nil end
+        for file, line in stack:gmatch("Meniscus[/\\]([%w_]+%.lua)[^:]*:(%d+)") do
+            if file ~= "Perf.lua" and file ~= "Core.lua" then return file .. ":" .. line end
+        end
+    end
+    local function hook(self, script, handler)
+        if wrapping or type(handler) ~= "function" or (script ~= "OnUpdate" and script ~= "OnEvent") then return end
+        local at = site(debugstack(2, 6, 0))
+        if at then wrap(self, script, handler, at .. " " .. script) end
+    end
+    function ns.traceFrame(f)
+        if type(f) ~= "table" or f.__muiTraced or not f.SetScript then return end
+        f.__muiTraced = true
+        pcall(hooksecurefunc, f, "SetScript", hook)
+    end
+    -- Frames made while the files were loading: hook them, and wrap the
+    -- handlers they already have (labelled by where the frame was made).
+    for i, f in ipairs(early or {}) do
+        local at = site(sites and sites[i])
+        if at then
+            ns.traceFrame(f)
+            for _, script in ipairs(SCRIPTS) do
+                local ok, h = pcall(f.GetScript, f, script)
+                if ok and type(h) == "function" then wrap(f, script, h, at .. " " .. script .. " (frame)") end
+            end
         end
     end
     ns.perfTracing = true
@@ -75,8 +89,10 @@ traceBoot:RegisterEvent("ADDON_LOADED")
 traceBoot:SetScript("OnEvent", function(self, _, name)
     if name ~= ADDON then return end
     self:UnregisterAllEvents()
+    local early, sites = ns.madeFrames, ns.madeSites
+    ns.madeFrames, ns.madeSites = nil, nil
     if MinimalUIDB and MinimalUIDB.perfTrace then
-        local ok, err = pcall(installTrace)
+        local ok, err = pcall(installTrace, early, sites)
         if not ok then ns:Print("Perf trace could not start: " .. tostring(err)) end
     end
 end)

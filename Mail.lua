@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Mailbox: Meniscus's mail window (shared header: mailbox icon, message

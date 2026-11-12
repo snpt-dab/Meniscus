@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Merchant: Meniscus's vendor window (shared header: the vendor's 3D head,

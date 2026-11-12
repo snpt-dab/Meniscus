@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Professions: Meniscus's crafting window, replacing the look of Blizzard's

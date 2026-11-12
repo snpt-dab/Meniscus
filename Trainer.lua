@@ -1,4 +1,5 @@
 local _, ns = ...
+local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Trainer: Meniscus's trainer window (shared header with the trainer's 3D
