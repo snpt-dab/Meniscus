@@ -188,6 +188,19 @@ end
 
 local function splitStack(self, n) call(CC.SplitContainerItem or _G.SplitContainerItem, self.bag, self.slot, n) end
 
+-- Gear that goes into one of your equipment slots (not bags, ammo,
+-- quivers or things you only use).
+local NOT_EQUIP = { INVTYPE_BAG = true, INVTYPE_QUIVER = true, INVTYPE_AMMO = true, INVTYPE_NON_EQUIP_IGNORE = true }
+local function equipsDirectly(bag, slot)
+    local info = itemInfo(bag, slot)
+    local link = info and info.hyperlink
+    if not link or secret(link) then return false end
+    local instant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
+    local _, _, _, equipLoc = call(instant, link)
+    if type(equipLoc) ~= "string" or equipLoc == "" or NOT_EQUIP[equipLoc] then return false end
+    return true
+end
+
 local nameCount = 0
 local function newButton(bag, slot)
     local h = holderFor(bag)
@@ -213,10 +226,45 @@ local function newButton(bag, slot)
         -- The press may already have fed the spell, so on the release
         -- targeting is over: remember it from the press.
         if down then self.aimed = now else self.aimed = self.aimed or now end
+        -- Right-clicking gear: Blizzard's secure "use item" equips gear BY
+        -- NAME, so with two of the same item it put on the first one in
+        -- your bags, not the one clicked. Out of combat the secure action
+        -- is switched off for this click and the clicked piece itself is
+        -- equipped (OnClick, below). In combat attributes can't change, so
+        -- there the game's own (by-name) equip still happens.
+        if button == "RightButton" and self.bag >= 0 and not B.interact and not InCombatLockdown() then
+            if down then
+                -- (A release outside the tile skips PostClick: put back what
+                -- the last click switched off before deciding this one.)
+                if self.savedType2 ~= nil then
+                    self:SetAttribute("*type2", self.savedType2 or nil)
+                    self.savedType2 = nil
+                end
+                self.equipThis = equipsDirectly(self.bag, self.slot)
+            end
+            if self.equipThis then
+                self.savedType2 = self.savedType2 or self:GetAttribute("*type2") or false
+                self:SetAttribute("*type2", nil)
+            end
+        end
+    end)
+    b:SetScript("PostClick", function(self, button, down)
+        if self.savedType2 ~= nil and not down and not InCombatLockdown() then
+            self:SetAttribute("*type2", self.savedType2 or nil)
+            self.savedType2 = nil
+        end
     end)
     b:HookScript("OnClick", function(self, button, down)
         if self.aimed then return end
         if down then return end
+        if button == "RightButton" and self.equipThis then
+            self.equipThis = nil
+            if not CursorHasItem() and itemInfo(self.bag, self.slot) then
+                pickup(self.bag, self.slot)
+                if CursorHasItem() then call(_G.AutoEquipCursorItem) end
+            end
+            return
+        end
         if button == "RightButton" then
             if B.interact == "mail" then
                 local ML = ns.modules.Mail
