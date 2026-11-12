@@ -654,6 +654,26 @@ local function skinPopup(f)
                 first = false
             end
         end
+        -- With the alert icon on the left, Blizzard centres the message in
+        -- the room beside it but the buttons on the whole popup, so they
+        -- sat left of the text. Line the button row up under the message.
+        C_Timer.After(0, function()
+            if not self:IsShown() or InCombatLockdown() then return end
+            local row = self.ButtonContainer or buttons[1]
+            local msg = self.text or self.Text or _G[name .. "Text"]
+            if not (row and msg) then return end
+            local p, rel, rp, x, y = row:GetPoint(1)
+            if not p then return end
+            local base = x - (self.__muiDx or 0)
+            local icon = self.AlertIcon or _G[name .. "AlertIcon"]
+            local dx = 0
+            if icon and icon:IsShown() then
+                local mx, fx = msg:GetCenter(), self:GetCenter()
+                if mx and fx then dx = math.floor(mx - fx + 0.5) end
+            end
+            self.__muiDx = dx
+            row:SetPoint(p, rel, rp, base + dx, y)
+        end)
         self.__muiMax = (type(self.timeleft) == "number" and self.timeleft > 0) and self.timeleft or nil
         track:SetShown(self.__muiMax ~= nil)
         bar:SetShown(self.__muiMax ~= nil)
