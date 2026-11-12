@@ -103,8 +103,29 @@ local function onItem(tip)
     if c and q > 1 then setBorder(tip, c.r, c.g, c.b) end
 end
 
+-- Default tooltip position: with the console's wings up, tucked into the
+-- corner where the plate's top edge meets the right wing (the damage meter /
+-- objectives panel), instead of the screen's bottom-right corner. Only the
+-- default anchor: tooltips that follow the cursor or that a window places
+-- itself are left alone.
+local function consoleCorner(tip)
+    if tip ~= GameTooltip or tip:GetAnchorType() ~= "ANCHOR_NONE" then return end
+    local B = ns.modules.Bars
+    local plate = B and B.plate
+    local wing = plate and plate.meterWell
+    if not (plate and plate:IsShown() and wing and wing:IsShown()) then return end
+    local x, y = wing:GetLeft(), plate:GetTop()
+    if not (x and y) then return end
+    local k = UIParent:GetEffectiveScale() / tip:GetEffectiveScale()
+    tip:ClearAllPoints()
+    tip:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMLEFT", (x - 2) * k, (y + 2) * k)
+end
+
 function TT:OnInit(db)
     self.db = db
+    if GameTooltip_SetDefaultAnchor then
+        hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tip) pcall(consoleCorner, tip) end)
+    end
     for _, name in ipairs(TIPS) do pcall(style, _G[name]) end
     styleFonts()
     pcall(styleHealthBar)

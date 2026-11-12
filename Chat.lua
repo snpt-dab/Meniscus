@@ -119,8 +119,29 @@ ns.commands.chat = function()
     ns:Print("Chat state saved; ChatFrame1 forced visible. /reload to save the report.")
 end
 
+-- Chat text at 12 by default: set once per character (the size is the
+-- game's own chat setting, so a change you make afterwards sticks).
+local function defaultFontSize()
+    if not (MinimalUIDB and FCF_SetChatWindowFontSize) then return end
+    local key = ns.CharKey and ns:CharKey() or "?"
+    MinimalUIDB.chatSize12 = MinimalUIDB.chatSize12 or {}
+    if MinimalUIDB.chatSize12[key] then return end
+    MinimalUIDB.chatSize12[key] = true
+    for i = 1, (NUM_CHAT_WINDOWS or 10) do
+        local cf = _G["ChatFrame" .. i]
+        if cf then pcall(FCF_SetChatWindowFontSize, nil, cf, 12) end
+    end
+end
+
 function CH:OnInit(db)
     self.db = db
+    -- (After the game has loaded its own chat settings.)
+    local fe = CreateFrame("Frame")
+    fe:RegisterEvent("PLAYER_ENTERING_WORLD")
+    fe:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        C_Timer.After(1, defaultFontSize)
+    end)
     local n = NUM_CHAT_WINDOWS or 10
     for i = 1, n do
         pcall(styleTab, i)
