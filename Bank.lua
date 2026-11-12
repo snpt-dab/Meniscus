@@ -773,15 +773,35 @@ function adopt()
     return true
 end
 
+-- Shown see-through until Blizzard's bank has laid itself out and its bag
+-- buttons are in our footer, then faded in. (On the first open the window
+-- appeared first and the footer and grid filled in after it.)
+local revealGen = 0
+local function reveal(gen)
+    if gen ~= revealGen or not win or not win:IsShown() then return end
+    revealGen = revealGen + 1
+    if UIFrameFadeIn then UIFrameFadeIn(win, 0.12, win:GetAlpha(), 1) else win:SetAlpha(1) end
+end
+
 local function open()
     if not win then build() end
     win.shell:SetUnit("npc")
     win.shell:SetAttitude("npc")
-    if not win:IsShown() then win:Show() end
+    local fresh = not win:IsShown()
+    revealGen = revealGen + 1
+    local gen = revealGen
+    if fresh then
+        win:SetAlpha(0)
+        win:Show()
+    end
     BK:Refresh()
     -- After Blizzard's frame has laid itself out.
-    C_Timer.After(0, adopt)
-    C_Timer.After(0.5, adopt)
+    C_Timer.After(0, function()
+        local ok = adopt()
+        -- Its buttons were there: show now. Otherwise wait for the retry.
+        if ok or not bankTabs() then C_Timer.After(0, function() reveal(gen) end) end
+    end)
+    C_Timer.After(0.5, function() adopt(); reveal(gen) end)
 end
 
 local function close()
