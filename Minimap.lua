@@ -227,6 +227,26 @@ function MM:ApplyDome()
     gloss:SetAlpha(0.55)
     gloss:AddMaskTexture(circleMask(glass, D))
 
+    -- With the map moved out, Blizzard's cluster is an empty shell left
+    -- where Edit Mode puts it, and it still takes the mouse: on a fresh
+    -- layout it measured 1279x1158 and swallowed right-click turning over
+    -- most of the screen. The shell and its map container stop taking the
+    -- mouse; their buttons (tracking, addon menu, clock) keep theirs.
+    local function letThrough()
+        if InCombatLockdown() then return end
+        local C = MinimapCluster
+        if C then
+            pcall(C.EnableMouse, C, false)
+            if C.MinimapContainer then pcall(C.MinimapContainer.EnableMouse, C.MinimapContainer, false) end
+        end
+    end
+    letThrough()
+    local lev = CreateFrame("Frame")
+    lev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    lev:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    lev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    lev:SetScript("OnEvent", function() C_Timer.After(0, letThrough) end)
+
     self:BuildZonePill(h)
 end
 
