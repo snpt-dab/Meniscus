@@ -716,8 +716,14 @@ function Bars:ApplyPetWell()
             words[i], wordText[i] = wf, fs
         end
         local name = ns:CreateText(pill, 11)
-        name:SetPoint("LEFT", div, "RIGHT", 6, 0)
-        name:SetPoint("RIGHT", mood, "LEFT", -6, 0)
+        -- Centred on the whole pill (not on the room between the level and
+        -- the mood word, which sat it left of centre); its width keeps the
+        -- same clearance on both sides, the larger of the two ends.
+        name:SetPoint("CENTER", pill, "CENTER", 0, 0)
+        function pill.fitName()
+            local room = math.max(28, 9 + (mood:GetStringWidth() or 40) + 6)
+            name:SetWidth(math.max(40, (pill:GetWidth() or 120) - 2 * room))
+        end
         name:SetJustifyH("CENTER")
         name:SetWordWrap(false)
         for _, fs in ipairs({ lvl, mood, name }) do
@@ -826,6 +832,7 @@ function Bars:ApplyPetWell()
     w.pill:ClearAllPoints()
     w.pill:SetPoint("CENTER", w, "BOTTOM", 0, 0)
     w.pill:SetWidth(math.max(120, wl.w - 44))
+    w.pill.fitName()
     local step = s.size + s.gap
     for i, pl in ipairs(w.plates) do
         pl:ClearAllPoints()
