@@ -18,6 +18,14 @@ local STOP = {
     UNIT_SPELLCAST_INTERRUPTED = true, UNIT_SPELLCAST_CHANNEL_STOP = true,
 }
 
+-- Some of the game's own spells carry an internal note in their name
+-- ("Opening - No Text" for opening a basket or chest): shown without it.
+-- (A name the client hides from addons is passed through untouched.)
+local function clean(name)
+    if type(name) ~= "string" or issecretvalue(name) then return name end
+    return (name:gsub("%s*%-%s*No Text$", ""))
+end
+
 local function stop(h)
     h:SetScript("OnUpdate", nil)
     h:Hide()
@@ -36,7 +44,7 @@ local function start(h, channel)
         local dirs = Enum and Enum.StatusBarTimerDirection
         local dir = dirs and (channel and dirs.RemainingTime or dirs.ElapsedTime)
         h.bar:SetTimerDuration(dur, interp, dir)
-        h.name:SetText((info(unit)))
+        h.name:SetText(clean((info(unit))))
         h.path = "duration"
         h:Show()
         return
@@ -48,7 +56,7 @@ local function start(h, channel)
         return stop(h)
     end
     h.bar:SetMinMaxValues(st, et)
-    h.name:SetText(name)
+    h.name:SetText(clean(name))
     h:SetScript("OnUpdate", function(self)
         local now = GetTime() * 1000
         self.bar:SetValue(channel and (st + et - now) or now)
