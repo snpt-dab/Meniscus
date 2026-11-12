@@ -759,6 +759,18 @@ function A:SeatBlizzard()
             if fr then
                 local v, h = fillCorner(fr)
                 local x = (h == "RIGHT") and char.auraX1 or char.auraX0
+                -- Blizzard's frame has a margin between its own edge and
+                -- the first icon. Taken off here, so it's the icons that
+                -- start at the edge (tucked up to the portrait), not the
+                -- frame: that margin was most of a wasted icon's width.
+                local c = fr.AuraContainer
+                local l0, l1, r0, r1 = fr:GetLeft(), c and c:GetLeft(), fr:GetRight(), c and c:GetRight()
+                if l0 and l1 and r0 and r1 then
+                    local k = c:GetEffectiveScale() / fr:GetEffectiveScale()
+                    local pad = (h == "RIGHT") and (r0 - r1 * k) or (l1 * k - l0)
+                    pad = math.max(0, math.min(24, pad))
+                    x = x + ((h == "RIGHT") and pad or -pad)
+                end
                 local y
                 if i == 1 then y = (v == "TOP") and char.auraTop or (char.auraTop - 30)
                 else y = (v == "TOP") and (char.auraBottom + 30) or char.auraBottom end

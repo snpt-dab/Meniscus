@@ -412,7 +412,9 @@ function Bars:Arrange()
             self.charSlot = {
                 well = { x = wx, y = wy, w = cw, h = wh },
                 avD = 60, avX = wx + 12 + 30, avY = cy + 2,       -- portrait: size, center
-                auraX0 = wx + 84, auraX1 = wx + cw - 8,            -- buffs / debuffs: left and right edges
+                -- Buffs / debuffs: where the icons themselves may start and
+                -- end. The left edge is a few pixels off the portrait's rim.
+                auraX0 = wx + 78, auraX1 = wx + cw - 6,
                 auraTop = wy + wh - 6, auraBottom = wy + 10,
             }
         end
