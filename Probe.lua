@@ -666,6 +666,134 @@ ns.commands.winprobe = function(rest)
     end
 end
 
+-- /men bug <what went wrong> : a bug report. The note is saved in
+-- MinimalUIDB.bugs together with what would otherwise have to be asked for:
+-- who and where you are, what is under the mouse, which windows are open,
+-- and the Lua errors logged so far this session (the error log itself starts
+-- fresh every session, so they are copied in). Reports are kept until
+-- "/men bug clear". "/men bug" on its own opens a box to type into.
+local function bugContext()
+    local c = {}
+    local function plain(v)
+        if v == nil or (issecretvalue and issecretvalue(v)) then return nil end
+        return v
+    end
+    local function try(fn, ...)
+        local ok, a, b = pcall(fn, ...)
+        if ok then return plain(a), plain(b) end
+    end
+    c.at = date("%Y-%m-%d %H:%M:%S")
+    c.char = ns.CharKey and ns:CharKey() or "?"
+    c.version = (C_AddOns and C_AddOns.GetAddOnMetadata and try(C_AddOns.GetAddOnMetadata, ns.name, "Version")) or "?"
+    local _, class = try(UnitClass, "player")
+    local _, race = try(UnitRace, "player")
+    c.who = table.concat({ tostring(race), tostring(class), "level " .. tostring(try(UnitLevel, "player")) }, " ")
+    c.zone = tostring(try(GetRealZoneText)) .. " / " .. tostring(try(GetSubZoneText))
+    c.combat = InCombatLockdown() and true or false
+    c.group = (IsInRaid and IsInRaid() and "raid") or (IsInGroup and IsInGroup() and "party") or "solo"
+    c.pet = UnitExists("pet") and true or false
+    c.screen = string.format("%.0fx%.0f scale %.2f", UIParent:GetWidth(), UIParent:GetHeight(), UIParent:GetEffectiveScale())
+    local db = MinimalUIDB
+    c.profile = db and db.chars and db.chars[c.char] or "Default"
+    if UnitExists("target") then
+        c.target = tostring(try(UnitName, "target")) .. (UnitIsPlayer("target") == true and " (player)" or " (npc)")
+    end
+    -- What the mouse is over (and its parents).
+    local foci = (GetMouseFoci and GetMouseFoci()) or { GetMouseFocus and GetMouseFocus() }
+    local mouse = {}
+    for i = 1, math.min(#foci, 3) do
+        local chain, cur = {}, foci[i]
+        for _ = 1, 5 do
+            if not cur then break end
+            chain[#chain + 1] = (cur.GetName and cur:GetName()) or ("<" .. (cur.GetObjectType and cur:GetObjectType() or "?") .. ">")
+            cur = cur.GetParent and cur:GetParent()
+        end
+        mouse[#mouse + 1] = table.concat(chain, " < ")
+    end
+    c.mouse = mouse
+    -- Open windows (named, window-sized, taking the mouse).
+    local open = {}
+    for _, f in ipairs({ UIParent:GetChildren() }) do
+        pcall(function()
+            if f.IsForbidden and f:IsForbidden() then return end
+            local name = f:GetName()
+            if not name or name:find("^ChatFrame") or #open >= 12 then return end
+            if f:IsShown() and f:IsMouseEnabled() and f:GetWidth() >= 280 and f:GetHeight() >= 200
+                and f:GetWidth() < UIParent:GetWidth() * 0.95 and f:GetEffectiveAlpha() > 0.05 then
+                open[#open + 1] = name
+            end
+        end)
+    end
+    c.windows = open
+    -- Errors logged so far this session.
+    local errs = {}
+    for msg, e in pairs((db and db.errors) or {}) do
+        if #errs >= 10 then break end
+        errs[#errs + 1] = { msg = tostring(msg):sub(1, 400), count = e.count, time = e.time,
+                            stack = type(e.stack) == "string" and e.stack:sub(1, 900) or nil }
+    end
+    c.errors = errs
+    return c
+end
+
+local function bugSave(text)
+    if not MinimalUIDB then return end
+    text = (text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then return ns:Print("Nothing written, so nothing was saved.") end
+    local store = MinimalUIDB.bugs or {}
+    MinimalUIDB.bugs = store
+    if #store >= 100 then table.remove(store, 1) end
+    local ok, ctx = pcall(bugContext)
+    store[#store + 1] = { text = text:sub(1, 1000), context = ok and ctx or { at = date("%Y-%m-%d %H:%M:%S"), failed = tostring(ctx) } }
+    ns:Print("Bug report " .. #store .. " saved. Thanks! It is written to disk at your next /reload or logout.")
+end
+
+if StaticPopupDialogs then
+    local function boxOf(self)
+        return self.EditBox or self.editBox or (self.GetEditBox and self:GetEditBox())
+    end
+    StaticPopupDialogs["MENISCUS_BUG"] = {
+        text = "What went wrong? Say what you were doing and what you expected.",
+        button1 = "Save report",
+        button2 = CANCEL or "Cancel",
+        hasEditBox = true, editBoxWidth = 320, maxLetters = 1000,
+        OnShow = function(self) local eb = boxOf(self); if eb then eb:SetText(""); eb:SetFocus() end end,
+        OnAccept = function(self) local eb = boxOf(self); if eb then bugSave(eb:GetText()) end end,
+        EditBoxOnEnterPressed = function(self)
+            local parent = self:GetParent()
+            bugSave(self:GetText())
+            parent:Hide()
+        end,
+        EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+        timeout = 0, whileDead = true, hideOnEscape = true,
+    }
+end
+
+ns.commands.bug = function(rest, raw)
+    if not MinimalUIDB then return end
+    local text = raw or rest or ""
+    local word = (rest or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if word == "clear" then
+        MinimalUIDB.bugs = nil
+        return ns:Print("Bug reports cleared.")
+    elseif word == "list" then
+        local store = MinimalUIDB.bugs or {}
+        if #store == 0 then return ns:Print("No bug reports saved.") end
+        for i, b in ipairs(store) do
+            ns:Print(i .. ". " .. tostring(b.context and b.context.at) .. "  " .. tostring(b.text):sub(1, 120))
+        end
+        return
+    elseif word == "" then
+        if StaticPopup_Show and StaticPopupDialogs and StaticPopupDialogs["MENISCUS_BUG"] then
+            StaticPopup_Show("MENISCUS_BUG")
+        else
+            ns:Print("usage: /men bug <what went wrong>")
+        end
+        return
+    end
+    bugSave(text)
+end
+
 -- /men optprobe : what the game's Options window is made of on this client
 -- (frames with their keys, and each one's art: atlas / file / layer), for
 -- restyling it. Open Options first. Saved in MinimalUIDB.optprobe.
