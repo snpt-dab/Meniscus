@@ -1854,6 +1854,54 @@ local function deepMap()
             c:SetHeight(rh)
             fitting = false
         end
+        -- The scroll bar runs the whole height of the pane, but only the
+        -- text above the rewards scrolls: it is cut to end where the
+        -- rewards begin (and given its full height back when a quest has
+        -- none).
+        local df = q.DetailsFrame
+        local bar = df.__muiBar
+        if bar == nil then
+            local sf = df.ScrollFrame
+            bar = (sf and sf.ScrollBar) or df.ScrollBar or false
+            if not bar then
+                for _, k in ipairs({ df:GetChildren() }) do
+                    if k.Track and (k.Back or k.Forward) then bar = k break end
+                    for _, k2 in ipairs({ k:GetChildren() }) do
+                        if k2.Track and (k2.Back or k2.Forward) then bar = k2 break end
+                    end
+                    if bar then break end
+                end
+            end
+            df.__muiBar = bar
+            if bar then
+                bar.__muiPts = {}
+                for i = 1, bar:GetNumPoints() do bar.__muiPts[i] = { bar:GetPoint(i) } end
+            end
+        end
+        if bar and bar.__muiPts and #bar.__muiPts > 0 then
+            local top, edge = bar:GetTop(), c:IsShown() and c:GetTop()
+            local want = (top and edge) and "short" or "full"
+            if want == "short" then
+                local k = c:GetEffectiveScale() / bar:GetEffectiveScale()
+                local h = top - edge * k - 4
+                if h > 40 and (bar.__muiCut ~= "short" or math.abs((bar.__muiH or 0) - h) > 1) then
+                    local p
+                    for _, e in ipairs(bar.__muiPts) do
+                        if type(e[1]) == "string" and e[1]:find("TOP") then p = e break end
+                    end
+                    if p then
+                        bar.__muiCut, bar.__muiH = "short", h
+                        bar:ClearAllPoints()
+                        bar:SetPoint(p[1], p[2], p[3], p[4], p[5])
+                        bar:SetHeight(h)
+                    end
+                end
+            elseif bar.__muiCut == "short" then
+                bar.__muiCut = "full"
+                bar:ClearAllPoints()
+                for _, e in ipairs(bar.__muiPts) do bar:SetPoint(e[1], e[2], e[3], e[4], e[5]) end
+            end
+        end
     end
     if _G.QuestInfo_Display then
         hooksecurefunc("QuestInfo_Display", function()
