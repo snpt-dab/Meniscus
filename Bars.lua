@@ -529,6 +529,56 @@ local MOOD = {
     { "Content", 0.90, 0.75, 0.30 },
     { "Happy",   0.35, 0.78, 0.40 },
 }
+-- Pet mood (hunter pets). Forever has no GetPetHappiness: the mood is the
+-- pet's "happiness" power (0-1000), a hidden value nothing may compare. So
+-- the client evaluates curves on it: one per word (1 inside that word's
+-- band, 0 outside: used as the word's alpha) and one per ring colour
+-- channel. ns.PetMoodCurves() returns them while you have a pet with a
+-- mood, else nil; ns.PetMoodPct(curve) evaluates one.
+-- Bands: below LOW unhappy, below HIGH content, else happy. (Thirds, the
+-- classic server's split; if the word disagrees with the game's own
+-- tooltip, these are the numbers.)
+local LOW, HIGH, E = 0.333, 0.666, 0.002
+local moodCurves
+local function curve(pts)
+    local ok, c = pcall(C_CurveUtil.CreateCurve)
+    if not ok or not c then return nil end
+    if Enum and Enum.LuaCurveType then pcall(c.SetType, c, Enum.LuaCurveType.Linear) end
+    for _, pt in ipairs(pts) do c:AddPoint(pt[1], pt[2]) end
+    return c
+end
+local function band(lo, hi)
+    local pts = {}
+    if lo > 0 then pts[#pts + 1] = { 0, 0 }; pts[#pts + 1] = { lo - E, 0 } end
+    pts[#pts + 1] = { math.max(lo, 0), 1 }
+    pts[#pts + 1] = { math.min(hi, 1), 1 }
+    if hi < 1 then pts[#pts + 1] = { hi + E, 0 }; pts[#pts + 1] = { 1, 0 } end
+    return curve(pts)
+end
+local function channel(k)
+    local u, c, h = MOOD[1][k + 1] * 0.8, MOOD[2][k + 1] * 0.8, MOOD[3][k + 1] * 0.8
+    return curve({ { 0, u }, { LOW - E, u }, { LOW, c }, { HIGH - E, c }, { HIGH, h }, { 1, h } })
+end
+local HAPPY = (Enum and Enum.PowerType and Enum.PowerType.Happiness) or 27
+function ns.PetMoodPct(c) return UnitPowerPercent("pet", HAPPY, false, c) end
+function ns.PetMoodCurves()
+    local max = UnitPowerMax("pet", HAPPY)
+    local secret = issecretvalue or function() return false end
+    if not (type(max) == "number" and not secret(max) and max > 0) then return nil end
+    if moodCurves == nil then
+        moodCurves = false
+        if UnitPowerPercent and C_CurveUtil and C_CurveUtil.CreateCurve then
+            local c = { band(0, LOW - E), band(LOW, HIGH - E), band(HIGH, 1),
+                        r = channel(1), g = channel(2), b = channel(3) }
+            local ok = true
+            for _, k in ipairs({ 1, 2, 3, "r", "g", "b" }) do if not c[k] then ok = false end end
+            if ok then moodCurves = c end
+        end
+    end
+    return moodCurves or nil
+end
+ns.PET_MOOD = MOOD
+
 -- The pill's ring color says what the pet is:
 --   hunter pets: their mood (green / yellow / red, as the word beside it)
 --   demons: each kind its own color (imp ember, voidwalker deep blue,
@@ -667,45 +717,15 @@ function Bars:ApplyPetWell()
             w.mood()
         end
 
-        -- Bands of the happiness percentage: below LOW unhappy, below HIGH
-        -- content, else happy. (Thirds, the classic server's split; if the
-        -- word disagrees with the game's own tooltip, these are the numbers.)
-        local LOW, HIGH, E = 0.333, 0.666, 0.002
         local curves
-        local function curve(pts)
-            local ok, c = pcall(C_CurveUtil.CreateCurve)
-            if not ok or not c then return nil end
-            if Enum and Enum.LuaCurveType then pcall(c.SetType, c, Enum.LuaCurveType.Linear) end
-            for _, pt in ipairs(pts) do c:AddPoint(pt[1], pt[2]) end
-            return c
-        end
-        local function band(lo, hi)
-            local pts = {}
-            if lo > 0 then pts[#pts + 1] = { 0, 0 }; pts[#pts + 1] = { lo - E, 0 } end
-            pts[#pts + 1] = { math.max(lo, 0), 1 }
-            pts[#pts + 1] = { math.min(hi, 1), 1 }
-            if hi < 1 then pts[#pts + 1] = { hi + E, 0 }; pts[#pts + 1] = { 1, 0 } end
-            return curve(pts)
-        end
-        local function channel(k)
-            local u, c, h = MOOD[1][k + 1] * 0.8, MOOD[2][k + 1] * 0.8, MOOD[3][k + 1] * 0.8
-            return curve({ { 0, u }, { LOW - E, u }, { LOW, c }, { HIGH - E, c }, { HIGH, h }, { 1, h } })
-        end
-        local HAPPY = (Enum and Enum.PowerType and Enum.PowerType.Happiness) or 27
-        local function pct(c) return UnitPowerPercent("pet", HAPPY, false, c) end
+        local pct = ns.PetMoodPct
         local function apply()
             for i = 1, 3 do words[i]:SetAlpha(pct(curves[i])) end
             paintRing(pct(curves.r), pct(curves.g), pct(curves.b), 1)
         end
         function w.mood()
-            local max = UnitPowerMax("pet", HAPPY)
-            local has = type(max) == "number" and not secret(max) and max > 0
-            if has and not curves and UnitPowerPercent and C_CurveUtil and C_CurveUtil.CreateCurve then
-                curves = { band(0, LOW - E), band(LOW, HIGH - E), band(HIGH, 1),
-                           r = channel(1), g = channel(2), b = channel(3) }
-                for _, k in ipairs({ 1, 2, 3, "r", "g", "b" }) do if not curves[k] then curves = false break end end
-            end
-            if has and curves and pcall(apply) then
+            curves = ns.PetMoodCurves()
+            if curves and pcall(apply) then
                 pulse:Show()
                 return
             end

@@ -997,6 +997,16 @@ local function updatePet(page)
         table.insert(parts, string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, h[1]))
         if plain(dmg) then table.insert(parts, string.format("%d%% damage", dmg)) end
     end
+    -- Forever: the mood from the hidden happiness value (see Bars.lua),
+    -- the matching word faded in by the client; not happy pulses.
+    local curves = not h and ns.PetMoodCurves and ns.PetMoodCurves()
+    local shown = false
+    if curves then
+        shown = pcall(function()
+            for i = 1, 3 do page.moodWords[i]:SetAlpha(ns.PetMoodPct(curves[i])) end
+        end)
+    end
+    page.moodBox:SetShown(shown)
     local loyalty = call(GetPetLoyalty)
     if loyalty and not secret(loyalty) then table.insert(parts, loyalty) end
     local tp = call(GetPetTrainingPoints)
@@ -1236,6 +1246,30 @@ local function buildPet(page)
 
     page.status = text(page, 11, false, T.textDim)
     page.status:SetPoint("TOP", page, "TOPLEFT", 220, -342)
+    -- Mood words, stacked in one place (only the matching one is visible).
+    local box = CreateFrame("Frame", nil, page)
+    box:SetSize(200, 16)
+    box:SetPoint("TOP", page, "TOPLEFT", 220, -340)
+    local pulse = CreateFrame("Frame", nil, box)
+    pulse:SetAllPoints()
+    local pag = pulse:CreateAnimationGroup()
+    pag:SetLooping("BOUNCE")
+    local pa = pag:CreateAnimation("Alpha")
+    pa:SetFromAlpha(1); pa:SetToAlpha(0.25); pa:SetDuration(0.6); pa:SetSmoothing("IN_OUT")
+    box:SetScript("OnShow", function() pag:Play() end)
+    page.moodWords = {}
+    for i, m in ipairs(ns.PET_MOOD or HAPPINESS) do
+        local label = type(m[1]) == "string" and m[1] or HAPPINESS[i][1]
+        local fs = text(i == 3 and box or pulse, 12, true)
+        fs:SetPoint("CENTER")
+        fs:SetText(label)
+        local c = HAPPINESS[i][2]
+        fs:SetTextColor(c[1], c[2], c[3])
+        fs:SetAlpha(0)
+        page.moodWords[i] = fs
+    end
+    box:Hide()
+    page.moodBox = box
 end
 
 local function buildListPage(page)
