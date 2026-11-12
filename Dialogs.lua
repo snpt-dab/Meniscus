@@ -125,6 +125,10 @@ local pools, used = {}, {}
 -- that when something changes height after the fact (the speech bubble
 -- being shortened to fit, a reward card whose data arrived late) all that
 -- comes below it can be moved by the difference.
+-- A page is one column, or two when it has a lot of rewards (text on the
+-- left, rewards on the right): "col" is the column being filled, colX its
+-- left edge, yL where the left column ended once the right one is started.
+local col, colX, yL = 1, 0, nil
 local placed, bubbles = {}, {}
 local function take(kind, make)
     pools[kind] = pools[kind] or {}
@@ -133,6 +137,7 @@ local function take(kind, make)
     if not o then o = make(); pools[kind][used[kind]] = o end
     if o.ClearAllPoints then o:ClearAllPoints() end
     o:Show()
+    o.__col = col
     placed[#placed + 1] = o
     return o
 end
@@ -142,13 +147,15 @@ local function resetPools()
 end
 
 local y, CW
--- Move everything laid out after the idx-th object up by dy (down if negative).
+-- Move everything laid out after the idx-th object, in its column, up by
+-- dy (down if negative).
 local ptBuf = {}
 local function shiftAfter(idx, dy)
     if dy == 0 then return end
+    local c = placed[idx] and placed[idx].__col or col
     for i = idx + 1, #placed do
         local o = placed[i]
-        local n = o:GetNumPoints()
+        local n = o.__col == c and o:GetNumPoints() or 0
         local hit = false
         for p = 1, n do
             local a, rel, b, x, yy = o:GetPoint(p)
@@ -165,7 +172,7 @@ local function shiftAfter(idx, dy)
             end
         end
     end
-    y = y + dy
+    if c == col then y = y + dy elseif yL then yL = yL + dy end
 end
 local function fs(size, bold, color)
     local f = take("fs", function() return content:CreateFontString(nil, "OVERLAY") end)
@@ -181,7 +188,7 @@ end
 local function section(label, count)
     local h = fs(11, true, T.textDim)
     h:SetText(count and (label .. "  ·  " .. count) or label)
-    h:SetPoint("TOPLEFT", content, "TOPLEFT", 2, y)
+    h:SetPoint("TOPLEFT", content, "TOPLEFT", colX + 2, y)
     y = y - h:GetStringHeight() - 8
 end
 
@@ -513,7 +520,7 @@ local function rewardCards(list)
         t.kind, t.index, t.it, t.idx = it.kind, it.index, it, #placed
         t.h = 56
         t:SetSize(CW, t.h)
-        t:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+        t:SetPoint("TOPLEFT", content, "TOPLEFT", colX, y)
         y = y - (t.h + 8)
         t.icon:SetTexture(it.tex)
         t.count:SetText(type(it.count) == "number" and it.count > 1 and it.count or "")
@@ -552,6 +559,7 @@ local function rewardCards(list)
     -- never seen before can arrive a moment late, so this runs again then.
     local function details()
         local best, missing = 0, false
+        local low -- some choice sells for less than the best one
         local bestArmor = ns.BestArmor and call(ns.BestArmor)
         for _, t in ipairs(cards) do
             local it = t.it
@@ -576,6 +584,9 @@ local function rewardCards(list)
                 t.price = nil
                 missing = true
             end
+        end
+        for _, t in ipairs(cards) do
+            if t.kind == "choice" and t.price and t.price < best then low = true end
         end
         for _, t in ipairs(cards) do
             local it = t.it
@@ -626,6 +637,11 @@ local function rewardCards(list)
             local rowText = type(rows) == "table" and table.concat(rows, "     ") or ""
             t.rows:SetText(rowText)
             local v = t.price
+            -- The choice that sells for the most: bold and bright (only
+            -- when the choices actually differ).
+            local top = low and t.kind == "choice" and v == best
+            ns:SetFont(t.sell, top and 12 or 10, "", top)
+            if top then t.sell:SetTextColor(1, 1, 1) else t.sell:SetTextColor(unpack(T.textDim)) end
             if v and v > 0 then
                 t.sell:SetText(coins(v))
                 t.sell:SetAlpha((t.kind ~= "choice" or v == best) and 1 or 0.55)
@@ -683,7 +699,7 @@ local function moneyLine(copper, xp)
     if #parts == 0 then return end
     local f = fs(12, true)
     f:SetText(table.concat(parts, "     "))
-    f:SetPoint("TOPLEFT", content, "TOPLEFT", 2, y)
+    f:SetPoint("TOPLEFT", content, "TOPLEFT", colX + 2, y)
     y = y - f:GetStringHeight() - 12
 end
 
@@ -709,9 +725,26 @@ local function setActions(list)
     end
 end
 
+-- The tallest the page may be: what fits between the console and the top
+-- of the screen.
+local function maxBodyH()
+    return math.max(MAX_BODY, UIParent:GetHeight() - 270 - (HEADER_H + 24 + FOOTER_H))
+end
+-- Start the right-hand column: the window widens by one column, and what
+-- is laid out from here on goes beside what came before.
+local COL_GAP = 20
+local function sideBySide()
+    yL, col, colX, y = y, 2, CW + COL_GAP, -4
+    win:SetWidth(W + CW + COL_GAP)
+    content:SetWidth(2 * CW + COL_GAP)
+end
+
 local function begin()
     resetPools()
     CW = W - 36
+    col, colX, yL = 1, 0, nil
+    win:SetWidth(W)
+    content:SetWidth(CW)
     y = -4
     selectedChoice = nil
     win.onChoice = nil
@@ -723,20 +756,25 @@ local function finish()
     -- console and the top of the screen. Past that, the speech text gives
     -- way first (it scrolls in its bubble); only if that isn't enough does
     -- the page itself scroll.
-    local maxBody = math.max(MAX_BODY, UIParent:GetHeight() - 270 - (HEADER_H + 24 + FOOTER_H))
-    local h = -y + 4
-    if h > maxBody then
+    -- (With two columns the bubble's column only has to come down to the
+    -- height of the other one.)
+    local maxBody = maxBodyH()
+    local hL = -(yL or y) + 4
+    local hR = yL and (-y + 4) or 0
+    local floor = math.max(maxBody, hR)
+    if hL > floor then
         local big
         for _, e in ipairs(bubbles) do if not big or e.h > big.h then big = e end end
         if big and big.h > BUBBLE_MIN then
-            local cut = math.min(h - maxBody, big.h - BUBBLE_MIN)
+            local cut = math.min(hL - floor, big.h - BUBBLE_MIN)
             big.h = big.h - cut
             big.b:SetHeight(big.h)
             shiftAfter(big.idx, cut)
-            h = -y + 4
+            hL = -(yL or y) + 4
             C_Timer.After(0, big.b.placeThumb)
         end
     end
+    local h = math.max(hL, hR)
     content:SetHeight(h)
     local bodyH = math.min(h, maxBody)
     body:SetHeight(bodyH)
@@ -882,6 +920,9 @@ local function rewardsSection(includeChoices)
     local list, choices = rewardList(includeChoices)
     local money, xp = call(_G.GetRewardMoney), call(_G.GetRewardXP)
     if #list == 0 and not (money and money > 0) and not (xp and xp > 0) then return 0 end
+    -- Many rewards, or a page that would outgrow the screen: rewards go in
+    -- a column of their own beside the text, so neither has to scroll.
+    if #list > 0 and (#list >= 4 or (-y + #list * 66 + 70) > maxBodyH()) then sideBySide() end
     section(choices > 1 and "Rewards  ·  choose one" or "Rewards")
     if #list > 0 then rewardCards(list) end
     moneyLine(money, xp)
