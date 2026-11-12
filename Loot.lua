@@ -433,6 +433,27 @@ function ns.FloatWarning(tex, label, note)
     pcall(floatPill, tex, label, 1.0, 0.86, 0.84, note, 0.90, 0.35, 0.30, 0.20, 0.07, 0.07)
 end
 
+-- Quest progress ("Restabilization Cog: 3/8", "Leper Gnome slain: 2/10"):
+-- the game prints these in large yellow letters mid-screen. Here they are a
+-- pill in the same stream as loot: the objective, a dim count, a gold ring
+-- (green once the objective is complete). Returns true if it took the
+-- message; anything that isn't a count is left to the game's own text.
+local QUEST_ICON = "Interface/Icons/INV_Misc_Note_01"
+local function floatQuest(msg)
+    if type(msg) ~= "string" or secret(msg) then return false end
+    local what, have, need = msg:match("^(.-)%s*:%s*(%d+)%s*/%s*(%d+)$")
+    if not what or what == "" then return false end
+    if not pcall(floatOrigin) then return false end
+    local done = tonumber(have) >= tonumber(need)
+    local ok
+    if done then
+        ok = pcall(floatPill, QUEST_ICON, what, 0.62, 0.90, 0.66, have .. "/" .. need, 0.35, 0.72, 0.42)
+    else
+        ok = pcall(floatPill, QUEST_ICON, what, T.text[1], T.text[2], T.text[3], have .. "/" .. need, 0.74, 0.60, 0.20)
+    end
+    return ok
+end
+
 local function floatSlot(slot)
     if not (L.db and L.db.float ~= false) then return end
     local e = type(slot) == "number" and slot <= snapN and snap[slot]
@@ -568,6 +589,27 @@ end
 -- ── Wiring ────────────────────────────────────────────────────────────────
 function L:OnInit(db)
     self.db = db
+    -- The game's mid-screen messages ("Out of range", quest progress): in
+    -- our font and a calmer size. Quest progress is taken out of them and
+    -- shown as pills instead (floatQuest); the rest still print there.
+    local ue = _G.UIErrorsFrame
+    if ue then
+        pcall(ns.SetFont, ns, ue, 13, "", true)
+        pcall(ue.SetShadowOffset, ue, 1, -1)
+        pcall(ue.SetShadowColor, ue, 0, 0, 0, 0.9)
+        if db.questFloat ~= false then
+            pcall(ue.UnregisterEvent, ue, "UI_INFO_MESSAGE")
+            local q = CreateFrame("Frame")
+            q:RegisterEvent("UI_INFO_MESSAGE")
+            q:SetScript("OnEvent", function(_, _, kind, msg)
+                if floatQuest(msg) then return end
+                if ue.TryDisplayMessage then
+                    if pcall(ue.TryDisplayMessage, ue, kind, msg, 1, 0.82, 0.25) then return end
+                end
+                pcall(ue.AddMessage, ue, msg, 1, 0.82, 0.25)
+            end)
+        end
+    end
     -- Blizzard's loot window stops listening; ours handles loot events.
     local lf = _G.LootFrame
     if lf then
