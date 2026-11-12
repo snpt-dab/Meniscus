@@ -69,6 +69,7 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
 
 ## Window docks (Windows.lua)
 - Every window, ours or Blizzard's, is listed by global name in `MANAGED` with a side (left / right / center). The manager hooks show / hide, seats the window in its usual dock if free (else the other one; with both full it replaces the window open longest), and owns Esc for our windows (one per press, through `MeniscusEscProxy`; our names are taken out of UISpecialFrames).
+- Pinned windows (`PINNED`, the bags on the right): one fixed dock, never moved across, never closed to make room, not closed by the map; other windows keep out of that dock while one is open.
 - A new window: add its name to `MANAGED`. Don't position it yourself beyond a first-time default; the dock overrides it on show.
 - Protected windows (bags, Blizzard panels) are not moved or hidden in combat; the work is queued until PLAYER_REGEN_ENABLED.
 

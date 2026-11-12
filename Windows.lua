@@ -29,6 +29,11 @@ local MANAGED = {
     CommunitiesFrame = "left", LFGParentFrame = "left", PlayerSpellsFrame = "left",
     WorldMapFrame = "center",
 }
+-- Pinned windows have one place and keep it: they are never moved to the
+-- other dock, never closed to make room, and nothing else is seated in
+-- their dock while they are open. The bags: always on the right, whatever
+-- else is up (the map included).
+local PINNED = { MinimalUIBags = "right" }
 local MARGIN = 18          -- from the screen edge
 local LIFT = 12            -- gap between the wings' top and a window's bottom
 local MAP_FLOOR = 330      -- the map stays above the dome and the target strip
@@ -45,6 +50,7 @@ local function isOurs(name) return name:sub(1, 9) == "MinimalUI" end
 local function locked(f) return InCombatLockdown() and f:IsProtected() end
 
 local function sideOf(name)
+    if PINNED[name] then return PINNED[name] end
     local s = W.db and W.db.sides and W.db.sides[name]
     if MANAGED[name] == "center" then return "center" end
     return (s == "left" or s == "right") and s or MANAGED[name]
@@ -68,6 +74,7 @@ end
 
 local function place(f, side)
     if locked(f) then pending[f] = "place" return end
+    if side == "pin" then side = PINNED[hooked[f]] or "right" end
     local s = f:GetScale()
     if not s or s <= 0 then s = 1 end
     local sh = UIParent:GetHeight()
@@ -129,14 +136,34 @@ local function occupant(side, except)
     end
 end
 local function flip(side) return side == "left" and "right" or "left" end
+-- Is a pinned window holding this dock? (Pinned windows are recorded in
+-- "open" as "pin", so occupant() never returns them: they can't be moved
+-- or picked for closing.)
+local function pinnedOn(side, except)
+    for other, oside in pairs(open) do
+        if oside == "pin" and other ~= except and PINNED[hooked[other]] == side
+            and other:IsShown() and real(other) then return true end
+    end
+    return false
+end
+local function free(side, except) return not occupant(side, except) and not pinnedOn(side, except) end
 
 local function opened(f, forced)
     local name = hooked[f]
     if not name or not real(f) then return end
     local side = sideOf(name)
-    if side == "center" then
-        for other in pairs(open) do
-            if other ~= f and other:IsShown() and real(other) then close(other) end
+    if PINNED[name] then
+        -- Takes its dock. Whatever sits there moves across if there is
+        -- room, and closes otherwise. Nothing else is touched.
+        local occ = occupant(side, f)
+        if occ then
+            if free(flip(side), f) then open[occ] = flip(side); place(occ, flip(side))
+            else close(occ) end
+        end
+        side = "pin"
+    elseif side == "center" then
+        for other, oside in pairs(open) do
+            if other ~= f and oside ~= "pin" and other:IsShown() and real(other) then close(other) end
         end
     else
         for other, oside in pairs(open) do
@@ -144,21 +171,23 @@ local function opened(f, forced)
         end
         if forced then
             side = forced
+            if pinnedOn(side, f) then side = flip(side) end
             local occ = occupant(side, f)
             if occ then
-                if occupant(flip(side), f) then close(occ)
-                else open[occ] = flip(side); place(occ, flip(side)) end
+                if free(flip(side), f) then open[occ] = flip(side); place(occ, flip(side))
+                else close(occ) end
             end
         elseif open[f] and open[f] ~= "center" then
             side = open[f]            -- already docked: stay put
-        else
-            local occ = occupant(side, f)
-            if occ then
-                local occ2 = occupant(flip(side), f)
-                if not occ2 then
-                    side = flip(side)
-                else
-                    local victim = ((order[occ] or 0) <= (order[occ2] or 0)) and occ or occ2
+        elseif not free(side, f) then
+            if free(flip(side), f) then
+                side = flip(side)
+            else
+                -- Both docks in use: the window open longest makes way
+                -- (never a pinned one).
+                local a, b2 = occupant(side, f), occupant(flip(side), f)
+                local victim = (a and b2) and (((order[a] or 0) <= (order[b2] or 0)) and a or b2) or a or b2
+                if victim then
                     side = open[victim]
                     close(victim)
                 end
@@ -183,7 +212,7 @@ end
 local function guessSide(f, name)
     if open[f] then return open[f] end
     local side = sideOf(name)
-    if side ~= "center" and occupant(side, f) and not occupant(flip(side), f) then side = flip(side) end
+    if side ~= "center" and not free(side, f) and free(flip(side), f) then side = flip(side) end
     return side
 end
 
@@ -235,6 +264,11 @@ local function hook(name, f, building)
         -- Dropped after a drag: the half of the screen it is in becomes its side.
         hooksecurefunc(f, "StopMovingOrSizing", function(self)
             if not self:IsShown() or sideOf(name) == "center" then return end
+            if PINNED[name] then
+                -- A pinned window goes back where it lives.
+                C_Timer.After(0, function() if self:IsShown() then opened(self) end end)
+                return
+            end
             local x = self:GetCenter()
             if not x then return end
             local side = (x * self:GetScale() < UIParent:GetWidth() / 2) and "left" or "right"
