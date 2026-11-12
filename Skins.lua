@@ -135,6 +135,14 @@ function ns.SkinButton(b)
     pcall(b.SetNormalFontObject, b, btnFont)
     pcall(b.SetHighlightFontObject, b, btnFont)
     pcall(b.SetDisabledFontObject, b, btnFontDim)
+    -- The label sat high in the pill (Blizzard's templates lift it a pixel,
+    -- and our font's box sits high on its letters): centre it on the pill,
+    -- a pixel low, so the letters look centred.
+    local fs = b:GetFontString()
+    if fs then
+        fs:ClearAllPoints()
+        fs:SetPoint("CENTER", b, "CENTER", 0, -1)
+    end
 end
 
 -- ── Window card ───────────────────────────────────────────────────────────
