@@ -2080,17 +2080,17 @@ local function deepTalents()
                          "DividerHorizontalRight", "DividerVerticalLeft", "DividerVerticalRight" }) do
         fade(tf[k])
     end
-    dim(tf.ClassBackground, 0.26)
-    -- A dark gutter where each gold divider stood, and a hairline under
-    -- the top strip (the faded art still marks the places).
+    dim(tf.ClassBackground, 0.20)
+    -- A hairline where each gold divider stood, between the trees, and one
+    -- under the top strip (the faded art still marks the places).
     for _, k in ipairs({ "DividerVerticalLeft", "DividerVerticalRight" }) do
         local dv = tf[k]
         if dv then
-            local g = tf:CreateTexture(nil, "BORDER")
-            g:SetColorTexture(FILL[1], FILL[2], FILL[3], 1)
-            g:SetWidth(8)
+            local g = tf:CreateTexture(nil, "BORDER", nil, 1)
+            g:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+            g:SetWidth(1)
             g:SetPoint("TOP", dv, "TOP", 0, 0)
-            g:SetPoint("BOTTOM", tf.ClassBackground or dv, "BOTTOM", 0, 0)
+            g:SetPoint("BOTTOM", dv, "BOTTOM", 0, 0)
         end
     end
     local dl, dr = tf.DividerHorizontalLeft, tf.DividerHorizontalRight
@@ -2102,17 +2102,38 @@ local function deepTalents()
         line:SetPoint("RIGHT", dr, "RIGHT", -6, 0)
     end
 
-    pcall(deepEditBox, tf.SearchBox)
-    if tf.SearchBox then pcall(themeFont, tf.SearchBox) end
+    -- Search: our field drawn on the box itself. (Its stock art sits
+    -- higher than the text, so a field drawn where that art was came out
+    -- above the words with the magnifier hanging outside.)
+    local sbx = tf.SearchBox
+    if sbx and not sbx.__muiDeepEB then
+        sbx.__muiDeepEB = true
+        for _, k in ipairs({ "Left", "Middle", "Mid", "Right" }) do fade(sbx[k]) end
+        local h = ours(CreateFrame("Frame", nil, sbx))
+        h:SetPoint("TOPLEFT", sbx, "TOPLEFT", -6, -3)
+        h:SetPoint("BOTTOMRIGHT", sbx, "BOTTOMRIGHT", 0, 3)
+        h:SetFrameLevel(math.max(sbx:GetFrameLevel() - 1, 0))
+        local ring = ns.RoundedRect(h, -8, 0, 11, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(h, -7, 1, 10, 0.05, 0.05, 0.06, 1)
+        sbx:HookScript("OnEditFocusGained", function() ring(unpack(T.accent)) end)
+        sbx:HookScript("OnEditFocusLost", function() ring(T.border[1], T.border[2], T.border[3], 1) end)
+        pcall(themeFont, sbx)
+    end
     if tf.SearchOptionsDropdown then pcall(keepGrey, tf.SearchOptionsDropdown) end
 
     -- "Unspent Talents": the number sits in a pill.
     local cd = tf.ClassCurrencyDisplay
     local box = cd and cd.CurrentAmountContainer
+    if cd then fade(cd.Border) end -- the brown plaque behind the label
     if box and not box.__muiPill then
         box.__muiPill = true
-        ns.RoundedRect(box, -8, 3, 10, T.border[1], T.border[2], T.border[3], 1)
-        ns.RoundedRect(box, -7, 4, 9, 0.05, 0.05, 0.06, 1)
+        fadeRegions(box)             -- the gold box, in nine pieces
+        local pillHold = ours(CreateFrame("Frame", nil, box))
+        pillHold:SetPoint("TOPLEFT", box, "TOPLEFT", 4, -6)
+        pillHold:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -4, 6)
+        pillHold:SetFrameLevel(math.max(box:GetFrameLevel() - 1, 0))
+        ns.RoundedRect(pillHold, -8, 0, 12, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(pillHold, -7, 1, 11, 0.05, 0.05, 0.06, 1)
     end
 
     -- One look at how the pieces we don't know yet are made, for the next
@@ -2129,7 +2150,8 @@ local function deepTalents()
         end
     end
     local function record()
-        if not MinimalUIDB or MinimalUIDB.talentprobe then return end
+        if not MinimalUIDB or MinimalUIDB.talentprobe2 then return end
+        MinimalUIDB.talentprobe = nil
         local out = {}
         local function dump(f, key, d)
             if #out > 120 or d > 2 then return end
@@ -2148,17 +2170,20 @@ local function deepTalents()
             end
             for _, c in ipairs({ f:GetChildren() }) do dump(c, names[c] or "#", d + 1) end
         end
-        if cd then pcall(dump, cd, "ClassCurrencyDisplay", 0) end
         for _, c in ipairs({ tf:GetChildren() }) do
-            if c ~= tf.ButtonsParent and c ~= cd and c:GetWidth() == 48 then pcall(dump, c, "header?", 0) end
-        end
-        local bp = tf.ButtonsParent
-        if bp then
-            for _, c in ipairs({ bp:GetChildren() }) do
-                if not c:IsObjectType("Button") then pcall(dump, c, "edge?", 0) end
+            local w = c:GetWidth()
+            if c ~= tf.ButtonsParent and c ~= cd and type(w) == "number" and w > 40 and w < 60 then
+                pcall(dump, c, "header?", 0)
+                local n = c:GetNumPoints()
+                for i = 1, n do
+                    local p, rel, rp, x, y = c:GetPoint(i)
+                    out[#out + 1] = string.format("    point %s > %s %s %.0f,%.0f", tostring(p),
+                        tostring(rel and (rel.GetName and rel:GetName() or "?")), tostring(rp), x or 0, y or 0)
+                end
             end
         end
-        MinimalUIDB.talentprobe = out
+        if tf.SearchBox then pcall(dump, tf.SearchBox, "SearchBox", 0) end
+        MinimalUIDB.talentprobe2 = out
     end
 
     local bp = tf.ButtonsParent
