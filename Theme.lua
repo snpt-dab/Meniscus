@@ -158,6 +158,41 @@ end
 -- Rounded rectangle (hand-built 9-slice: rounded.tga quarter corners plus
 -- flat bands) drawn as textures on f, so the radius stays round at any size.
 local CORNER_Q = 14 / 64 -- corner region of rounded.tga (radius 14 of 64)
+-- The bands' grain, edge to edge. A band is rounded on one side (top for a
+-- header, bottom for a footer), and a tiled texture can't follow a curve on
+-- its own, so it is laid in pieces: the body, the strip between the two
+-- rounded corners, and one piece per corner cut to the curve with a mask.
+-- (It used to stop 6 px short of each side instead, which left a plain
+-- stripe down both edges of every window.)
+function ns.BandNoise(band, radius, top)
+    local function piece()
+        local t = band:CreateTexture(nil, "BACKGROUND", nil, -4)
+        t:SetTexture("Interface/AddOns/Meniscus/Media/noise.tga", "REPEAT", "REPEAT")
+        t:SetHorizTile(true); t:SetVertTile(true)
+        t:SetVertexColor(1, 1, 1, 0.07)
+        return t
+    end
+    local v, o = top and "TOP" or "BOTTOM", top and "BOTTOM" or "TOP"
+    local body = piece()
+    body:SetPoint(v .. "LEFT", band, v .. "LEFT", 0, top and -radius or radius)
+    body:SetPoint(o .. "RIGHT", band, o .. "RIGHT", 0, 0)
+    local mid = piece()
+    mid:SetPoint(v .. "LEFT", band, v .. "LEFT", radius, 0)
+    mid:SetPoint(v .. "RIGHT", band, v .. "RIGHT", -radius, 0)
+    mid:SetHeight(radius)
+    local size = radius / (14 / 64) -- rounded.tga at the size whose corner is this radius
+    for _, h in ipairs({ "LEFT", "RIGHT" }) do
+        local c = piece()
+        c:SetSize(radius, radius)
+        c:SetPoint(v .. h, band, v .. h, 0, 0)
+        local m = band:CreateMaskTexture()
+        m:SetTexture("Interface/AddOns/Meniscus/Media/rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        m:SetSize(size, size)
+        m:SetPoint(v .. h, band, v .. h, 0, 0)
+        c:AddMaskTexture(m)
+    end
+end
+
 function ns.RoundedRect(f, sub, inset, radius, r, g, b, a, layer)
     layer = layer or "BACKGROUND"
     local corners, bands = {}, {}
