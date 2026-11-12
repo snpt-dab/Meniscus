@@ -520,17 +520,34 @@ function Bars:Arrange()
     -- plates, so these go too, whatever the layout says.
     local mab = _G.MainActionBar or _G.MainMenuBar
     if mab then
+        -- (Forever: the dividers are 12x44 frames from VerticalDividersPool
+        -- and HorizontalDividersPool, children of the bar; /men barprobe.)
         local function noDividers(bar)
-            local pool = bar.dividersPool
-            if pool and pool.EnumerateActive then
-                for d in pool:EnumerateActive() do killRegion(d) end
+            for _, key in ipairs({ "dividersPool", "VerticalDividersPool", "HorizontalDividersPool" }) do
+                local pool = bar[key]
+                if pool and pool.EnumerateActive then
+                    for d in pool:EnumerateActive() do killRegion(d) end
+                end
             end
             for _, k in ipairs({ "ActionBarButtonDividers", "Dividers" }) do killRegion(bar[k]) end
         end
-        safe(noDividers, mab)
-        if mab.UpdateDividers and not mab.__muiDivHook then
-            mab.__muiDivHook = true
-            hooksecurefunc(mab, "UpdateDividers", function(bar) safe(noDividers, bar) end)
+        -- (The other bars have the same pools.)
+        for _, bar in ipairs({ mab, _G.MultiBarBottomLeft, _G.MultiBarBottomRight, _G.MultiBarRight, _G.MultiBarLeft }) do
+            safe(noDividers, bar)
+            if bar.UpdateDividers and not bar.__muiDivHook then
+                bar.__muiDivHook = true
+                hooksecurefunc(bar, "UpdateDividers", function(b) safe(noDividers, b) end)
+            end
+            -- New dividers handed out later (a layout change) are caught too.
+            for _, key in ipairs({ "VerticalDividersPool", "HorizontalDividersPool" }) do
+                local pool = bar[key]
+                if pool and pool.Acquire and not pool.__muiHook then
+                    pool.__muiHook = true
+                    hooksecurefunc(pool, "Acquire", function()
+                        C_Timer.After(0, function() safe(noDividers, bar) end)
+                    end)
+                end
+            end
         end
         killRegion(mab.ActionBarPageNumber)
         for _, n in ipairs({ "ActionBarUpButton", "ActionBarDownButton", "MainMenuBarPageNumber" }) do
