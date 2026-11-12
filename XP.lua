@@ -599,9 +599,9 @@ local function buildBanner()
     f:EnableMouse(false)
     f:Hide()
     ns.RoundedRect(f, -8, 0, 14, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 1)
-    ns.RoundedRect(f, -7, 1, 13, 0.06, 0.06, 0.07, 0.97)
+    ns.RoundedRect(f, -7, 1, 13, 0.06, 0.06, 0.07, 0.80)
 
-    -- Flash: the whole card washed in pale light for a moment.
+    -- Flash: the whole card goes almost white for a moment.
     local fl = CreateFrame("Frame", nil, f)
     fl:SetAllPoints()
     fl:SetFrameLevel(f:GetFrameLevel() + 4)
@@ -668,6 +668,20 @@ local function buildBanner()
     f.bloom:SetBlendMode("ADD")
     f.bloom:SetPoint("CENTER")
     f.bloom:SetAlpha(0)
+    -- A wide streak of light through the badge (the XP bar's spill, turned
+    -- loose), and a small white-hot core at its middle.
+    f.streak = glow:CreateTexture(nil, "ARTWORK", nil, 1)
+    f.streak:SetTexture(MEDIA .. "spot.tga")
+    f.streak:SetVertexColor(0.86, 0.80, 1, 1)
+    f.streak:SetBlendMode("ADD")
+    f.streak:SetPoint("CENTER")
+    f.streak:SetAlpha(0)
+    f.core = glow:CreateTexture(nil, "ARTWORK", nil, 2)
+    f.core:SetTexture(MEDIA .. "spot.tga")
+    f.core:SetVertexColor(1, 1, 1, 1)
+    f.core:SetBlendMode("ADD")
+    f.core:SetPoint("CENTER")
+    f.core:SetAlpha(0)
 
     f:SetScript("OnUpdate", function(self, dt)
         local t = self.t + dt
@@ -679,13 +693,23 @@ local function buildBanner()
         if t >= out + 0.6 then self:Hide() return end
         self:SetAlpha(t < 0.2 and t / 0.2 or (t > out and 1 - (t - out) / 0.6) or 1)
         -- Flash and bloom: sharp attack, long soft decay (as on the XP bar).
-        local fk = t / 0.8
-        local a = fk < 0.15 and fk / 0.15 or (fk < 1 and (1 - (fk - 0.15) / 0.85) ^ 2 or 0)
-        self.flash:SetAlpha(0.30 * a)
-        self.bloom:SetAlpha(0.85 * a)
-        local bs = LV_D * (1.5 + 1.3 * clamp01(fk))
+        -- It hits hard: the card near white, light bursting out past it in
+        -- every direction and in a long streak to either side, then about
+        -- a second and a half of afterglow.
+        local fk = t / 1.5
+        local a = fk < 0.08 and fk / 0.08 or (fk < 1 and (1 - (fk - 0.08) / 0.92) ^ 2 or 0)
+        local k = clamp01(fk)
+        self.flash:SetAlpha(0.90 * a)
+        self.bloom:SetAlpha(a)
+        local bs = LV_D * (2.6 + 3.4 * k)
         self.bloom:SetSize(bs, bs)
-        self.wash:SetAlpha(0.10 + 0.5 * a)
+        self.streak:SetAlpha(0.95 * a)
+        self.streak:SetSize(LV_W * (2.2 + 3.0 * k), 46 - 18 * k)
+        -- The core burns out fastest.
+        local ca = a * a
+        self.core:SetAlpha(ca)
+        self.core:SetSize(LV_D * (1.2 + 0.8 * k), LV_D * (1.2 + 0.8 * k))
+        self.wash:SetAlpha(0.10 + 0.9 * a)
         -- The card grows downward as the lines are written.
         local g = clamp01((t - 0.25) / (written - 0.25))
         local e = 1 - (1 - g) ^ 3
