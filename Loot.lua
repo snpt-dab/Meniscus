@@ -285,9 +285,12 @@ end
 local snap, snapN = {}, 0          -- slot -> { tex, name, qty, quality }
 local floats, active = {}, 0       -- pooled lines; how many are showing
 local floatX, floatY = 0, 0
-local FLOAT_LIFE, FLOAT_IN, FLOAT_OUT, FLOAT_GAP = 2.8, 0.15, 0.8, 0.45
+local FLOAT_LIFE, FLOAT_IN, FLOAT_OUT, FLOAT_GAP = 3.0, 0.15, 0.6, 0.55
 local floatRise, lastStart = 130, 0
 local floatDriver
+local MONEY_SLOT = (Enum and Enum.LootSlotType and Enum.LootSlotType.Money) or 2
+local PILL_H, PILL_PAD = 24, 10
+local COIN = { g = "|cffe6c25ag|r", s = "|cffb8bcc6s|r", c = "|cffc98a52c|r" }
 
 local function snapshot()
     local n = call(GetNumLootItems) or 0
@@ -297,6 +300,7 @@ local function snapshot()
         if not e then e = {}; snap[slot] = e end
         local tex, item, qty, _, quality = call(GetLootSlotInfo, slot)
         e.tex, e.name, e.qty, e.quality = tex, item, qty, quality
+        e.money = (call(GetLootSlotType, slot) == MONEY_SLOT)
     end
     local sc = UIParent:GetEffectiveScale()
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
@@ -317,6 +321,11 @@ local function snapshot()
     floatRise = 130
 end
 
+-- Each line is a small pill in the house style: dark fill, a hairline ring
+-- in the item's quality colour, a round icon set into its left end, the
+-- name, and a dim count. It opens out of its icon (a dot that widens into
+-- the pill), drifts up, and closes back to the dot as it fades.
+local OPEN, CLOSE = 0.28, 0.45
 local function floatTick(_, dt)
     local any = false
     for i = 1, #floats do
@@ -331,11 +340,16 @@ local function floatTick(_, dt)
             elseif t >= 0 then
                 any = true
                 local k = t / FLOAT_LIFE
-                local a = t < FLOAT_IN and t / FLOAT_IN
-                    or (t > FLOAT_LIFE - FLOAT_OUT and (FLOAT_LIFE - t) / FLOAT_OUT) or 1
-                f:SetAlpha(a)
-                -- A steady climb, so lines keep their distance.
-                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + f.rise * k)
+                local left = FLOAT_LIFE - t
+                f:SetAlpha(t < FLOAT_IN and t / FLOAT_IN or (left < FLOAT_OUT and left / FLOAT_OUT) or 1)
+                -- Width: out of the dot (eased), full, back toward the dot.
+                local o = 1
+                if t < OPEN then o = 1 - (1 - t / OPEN) ^ 3
+                elseif left < CLOSE then o = (left / CLOSE) ^ 2 end
+                f:SetWidth(PILL_H + (f.full - PILL_H) * o)
+                -- Rise: a quick lift off the minimap, then a slow drift.
+                local e = 0.25 * (1 - (1 - math.min(1, t / 0.5)) ^ 3) + 0.75 * k
+                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + f.rise * e)
             else
                 any = true
             end
@@ -348,20 +362,28 @@ local function floatLine()
     for i = 1, #floats do if not floats[i].live then return floats[i] end end
     local f = CreateFrame("Frame", nil, UIParent)
     f:SetFrameStrata("HIGH")
-    f:SetSize(10, 20)
+    f:SetSize(PILL_H, PILL_H)
     f:EnableMouse(false)
-    local mask = f:CreateMaskTexture()
-    mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    mask:SetSize(18, 18)
-    mask:SetPoint("LEFT")
-    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f:SetClipsChildren(true)
+    f.ring = ns.RoundedRect(f, -8, 0, PILL_H / 2, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(f, -7, 1, PILL_H / 2 - 1, FILL[1], FILL[2], FILL[3], 0.94)
+    -- (Clipped textures go on a child of the clip frame, not on it.)
+    local inner = CreateFrame("Frame", nil, f)
+    inner:SetPoint("LEFT")
+    inner:SetSize(400, PILL_H)
+    local mask = inner:CreateMaskTexture()
+    mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetSize(PILL_H - 6, PILL_H - 6)
+    mask:SetPoint("LEFT", 3, 0)
+    f.icon = inner:CreateTexture(nil, "ARTWORK")
     f.icon:SetAllPoints(mask)
     f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     f.icon:AddMaskTexture(mask)
-    f.text = text(f, 12, true)
-    f.text:SetPoint("LEFT", mask, "RIGHT", 6, 0)
-    f.text:SetShadowOffset(1, -1)
-    f.text:SetShadowColor(0, 0, 0, 0.9)
+    f.text = text(inner, 11, true)
+    f.text:SetPoint("LEFT", mask, "RIGHT", 7, 0)
+    f.text:SetWordWrap(false)
+    f.count = text(inner, 10, false, T.textDim)
+    f.count:SetPoint("LEFT", f.text, "RIGHT", 6, 0)
     floats[#floats + 1] = f
     return f
 end
@@ -376,12 +398,29 @@ local function floatSlot(slot)
     e.tex = nil -- one line per slot
     local f = floatLine()
     f.icon:SetTexture(tex)
-    -- (Coins come as one amount per line: "1 Silver" / "25 Copper".)
-    name = name:gsub("\n", "  ")
-    if type(qty) == "number" and not secret(qty) and qty > 1 then name = name .. "  x" .. qty end
-    f.text:SetText(name)
-    f.text:SetTextColor(qualityColor(quality))
-    f:SetWidth(18 + 6 + f.text:GetStringWidth())
+    local cr, cg, cb = qualityColor(quality)
+    local fine = type(quality) == "number" and quality >= 2
+    if e.money then
+        -- "1 Silver / 25 Copper" as "1s 25c", coins in their colours.
+        local out = ""
+        for num, word in name:gmatch("(%d+)%s*(%a)") do
+            out = out .. (out ~= "" and " " or "") .. num .. (COIN[word:lower()] or "")
+        end
+        f.text:SetText(out ~= "" and out or (name:gsub("\n", "  ")))
+        f.text:SetTextColor(unpack(T.text))
+        fine = false
+    else
+        f.text:SetText(name)
+        if fine then f.text:SetTextColor(cr, cg, cb) else f.text:SetTextColor(unpack(T.text)) end
+    end
+    local many = type(qty) == "number" and not secret(qty) and qty > 1 and not e.money
+    f.count:SetText(many and ("\195\151" .. qty) or "")
+    -- The ring carries the quality; plain things keep the usual hairline.
+    if fine then f.ring(cr * 0.75, cg * 0.75, cb * 0.75, 1)
+    else f.ring(T.border[1], T.border[2], T.border[3], 1) end
+    f.full = math.ceil((PILL_H - 3) + 7 + f.text:GetStringWidth()
+        + (many and (6 + f.count:GetStringWidth()) or 0) + PILL_PAD)
+    f:SetWidth(PILL_H)
     -- Each line starts from the same spot, a beat after the one before.
     local now = GetTime()
     local start = math.max(now, lastStart + FLOAT_GAP)
