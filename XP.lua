@@ -135,6 +135,56 @@ local FLASH, WAIT, FILL = 0.6, 0.5, 1.5
 local HOLD = FLASH + WAIT
 local GAIN_COLOR = { 0.80, 0.74, 1.00, 0.55 }
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
+
+-- Prismatic light (as on the level-up card): each light of the gain flash
+-- is three copies, red, green and blue, added together. They start pulled
+-- a few pixels apart (colour fringes) and close up into the palette's
+-- tint as the flash fades. A group stands in for a single texture:
+-- SetAlpha / SetVertexColor / SetSize / SetHeight / ClearAllPoints /
+-- SetPoint apply to all three, and Spread(px) sets how far apart they are.
+local PRISM = { { 1.00, 0.12, 0.22 }, { 0.15, 1.00, 0.35 }, { 0.22, 0.38, 1.00 } }
+local PULL = { -1, 0, 1 }
+local PRISM_A = 0.72 -- the three added together are brighter than one
+local Prism = {}
+Prism.__index = Prism
+local function prismGroup(make)
+    local g = setmetatable({ n = 0, pts = {}, spread = 0 }, Prism)
+    for i = 1, 3 do g[i] = make(i) end
+    return g
+end
+function Prism:SetAlpha(a) for i = 1, 3 do self[i]:SetAlpha(a * PRISM_A) end end
+function Prism:SetVertexColor(r, g, b)
+    for i = 1, 3 do
+        local c = PRISM[i]
+        self[i]:SetVertexColor(r * c[1], g * c[2], b * c[3], 1)
+    end
+end
+function Prism:SetSize(w, h) for i = 1, 3 do self[i]:SetSize(w, h) end end
+function Prism:SetHeight(h) for i = 1, 3 do self[i]:SetHeight(h) end end
+function Prism:ClearAllPoints() self.n = 0 end
+function Prism:SetPoint(point, rel, relPoint, x, y)
+    local n = self.n + 1
+    self.n = n
+    local pt = self.pts[n] or {}
+    self.pts[n] = pt
+    pt[1], pt[2], pt[3], pt[4], pt[5] = point, rel, relPoint, x or 0, y or 0
+    self:Place()
+end
+function Prism:Place()
+    for i = 1, 3 do
+        local t, dx = self[i], PULL[i] * self.spread
+        t:ClearAllPoints()
+        for k = 1, self.n do
+            local pt = self.pts[k]
+            t:SetPoint(pt[1], pt[2], pt[3], pt[4] + dx, pt[5])
+        end
+    end
+end
+function Prism:Spread(px)
+    if px == self.spread then return end
+    self.spread = px
+    self:Place()
+end
 local phases, phase, pt, ft = {}, nil, 0, nil
 local power = 1 -- flash strength for the current gain, 0.35..1
 
@@ -255,6 +305,14 @@ local function tick(self, dt)
         self.flash:SetAlpha(0.8 * power * a)
         self.bloom:SetAlpha(0.9 * power * a)
         self.burst:SetAlpha(power * a)
+        -- The three lights start apart and close up (in whole pixels, so
+        -- the layers don't shimmer against each other).
+        local px = self.px or 1
+        local apart = (2 + 6 * power) * (1 - k) ^ 2
+        apart = math.floor(apart / px + 0.5) * px
+        self.flash:Spread(apart)
+        self.bloom:Spread(apart * 1.5)
+        self.burst:Spread(apart * 2)
         -- The burst swells outward as it fades.
         local bs = self.burstSize * (0.7 + 0.6 * k)
         self.burst:SetSize(bs * 2.4, bs)
@@ -347,6 +405,7 @@ function XP:ShowXP(cur, max)
     self.burst:SetPoint("CENTER", p, "LEFT", w * mid, 0)
     self.burstSize = 26 + 40 * power
     self.bloom:SetHeight(10 + 26 * power)
+    self.px = ns.Pixel and ns.Pixel() or 1
     ft = 0
     phase = nil -- a new gain restarts the sequence (flash, wait, fill)
     self.driver:Show()
@@ -472,29 +531,39 @@ function XP:OnInit(db)
     over:SetAllPoints(p)
     over:SetFrameStrata("MEDIUM") -- the spill draws over neighbours, not under them
     over:SetFrameLevel(p:GetFrameLevel() + 6)
-    local flash = over:CreateTexture(nil, "OVERLAY")
-    flash:SetAllPoints(p)
-    flash:SetColorTexture(1, 1, 1, 1) -- white; the palette tints it
-    flash:SetVertexColor(0.85, 0.80, 1, 1)
-    flash:SetBlendMode("ADD")
-    flash:AddMaskTexture(p.mask)
+    local flash = prismGroup(function()
+        local t = over:CreateTexture(nil, "OVERLAY")
+        t:SetColorTexture(1, 1, 1, 1) -- white; the palette tints it
+        t:SetBlendMode("ADD")
+        t:AddMaskTexture(p.mask)
+        return t
+    end)
+    flash:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+    flash:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 0)
+    flash:SetVertexColor(0.85, 0.80, 1)
     flash:SetAlpha(0)
     self.flash = flash
     -- Spill: soft light past the pill's edges (unmasked), plus a burst
     -- where the XP landed. Both scale with the flash strength.
-    local bloom = over:CreateTexture(nil, "OVERLAY", nil, -1)
-    bloom:SetTexture(MEDIA .. "spot.tga")
-    bloom:SetVertexColor(0.72, 0.62, 1, 1)
-    bloom:SetBlendMode("ADD")
+    local bloom = prismGroup(function()
+        local t = over:CreateTexture(nil, "OVERLAY", nil, -1)
+        t:SetTexture(MEDIA .. "spot.tga")
+        t:SetBlendMode("ADD")
+        return t
+    end)
+    bloom:SetVertexColor(0.72, 0.62, 1)
     bloom:SetPoint("LEFT", p, "LEFT", -40, 0)
     bloom:SetPoint("RIGHT", p, "RIGHT", 40, 0)
     bloom:SetHeight(24)
     bloom:SetAlpha(0)
     self.bloom = bloom
-    local burst = over:CreateTexture(nil, "OVERLAY", nil, 1)
-    burst:SetTexture(MEDIA .. "spot.tga")
-    burst:SetVertexColor(0.92, 0.88, 1, 1)
-    burst:SetBlendMode("ADD")
+    local burst = prismGroup(function()
+        local t = over:CreateTexture(nil, "OVERLAY", nil, 1)
+        t:SetTexture(MEDIA .. "spot.tga")
+        t:SetBlendMode("ADD")
+        return t
+    end)
+    burst:SetVertexColor(0.92, 0.88, 1)
     burst:SetSize(80, 32)
     burst:SetPoint("CENTER", p, "LEFT", 0, 0)
     burst:SetAlpha(0)
