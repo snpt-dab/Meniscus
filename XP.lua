@@ -585,6 +585,10 @@ local LV_HEAD = LV_D / 2 + 8 + 24 + 9   -- badge overhang, title, rule
 local LV_COLOR = { 0.66, 0.56, 1.00 }
 local LV_AMBER = { 1.00, 0.80, 0.38 }
 local LV_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
+-- The three lights of the flash, and which way each is pulled (-1 left,
+-- 0 centre, +1 right).
+local LV_PRISM = { { 1.00, 0.12, 0.22 }, { 0.15, 1.00, 0.35 }, { 0.22, 0.38, 1.00 } }
+local LV_PULL = { -1, 0, 1 }
 local banner
 
 local function clamp01(v) return v < 0 and 0 or (v > 1 and 1 or v) end
@@ -602,12 +606,22 @@ local function buildBanner()
     ns.RoundedRect(f, -7, 1, 13, 0.06, 0.06, 0.07, 0.80)
 
     -- Flash: the whole card goes almost white for a moment.
-    local fl = CreateFrame("Frame", nil, f)
-    fl:SetAllPoints()
-    fl:SetFrameLevel(f:GetFrameLevel() + 4)
-    ns.RoundedRect(fl, 1, 0, 14, 0.90, 0.86, 1, 1, "OVERLAY")
-    fl:SetAlpha(0)
-    f.flash = fl
+    -- It is drawn three times, in red, green and blue light, added
+    -- together. Dead on top of each other they make white; pulled apart
+    -- sideways they fringe into colour at the edges, like a lens that
+    -- hasn't focused yet. The flash starts pulled wide and snaps together.
+    f.flashes = {}
+    for i, c in ipairs(LV_PRISM) do
+        local fl = CreateFrame("Frame", nil, f)
+        fl:SetAllPoints()
+        fl:SetFrameLevel(f:GetFrameLevel() + 4)
+        ns.RoundedRect(fl, 1, 0, 14, c[1], c[2], c[3], 1, "OVERLAY")
+        for _, r in ipairs({ fl:GetRegions() }) do
+            if r.SetBlendMode then r:SetBlendMode("ADD") end
+        end
+        fl:SetAlpha(0)
+        f.flashes[i] = fl
+    end
 
     f.title = ns:CreateText(f, 17, T.text)
     ns:SetFont(f.title, 17, "", true)
@@ -662,26 +676,39 @@ local function buildBanner()
     glow:SetFrameLevel(f:GetFrameLevel() + 5)
     glow:SetSize(1, 1)
     glow:SetPoint("CENTER", badge, "CENTER")
-    f.bloom = glow:CreateTexture(nil, "ARTWORK")
-    f.bloom:SetTexture(MEDIA .. "spot.tga")
-    f.bloom:SetVertexColor(0.78, 0.68, 1, 1)
-    f.bloom:SetBlendMode("ADD")
-    f.bloom:SetPoint("CENTER")
-    f.bloom:SetAlpha(0)
-    -- A wide streak of light through the badge (the XP bar's spill, turned
-    -- loose), and a small white-hot core at its middle.
-    f.streak = glow:CreateTexture(nil, "ARTWORK", nil, 1)
-    f.streak:SetTexture(MEDIA .. "spot.tga")
-    f.streak:SetVertexColor(0.86, 0.80, 1, 1)
-    f.streak:SetBlendMode("ADD")
-    f.streak:SetPoint("CENTER")
-    f.streak:SetAlpha(0)
+    -- Bloom and streak, each also in the three lights. The bloom's copies
+    -- part sideways; the streak's part up and down, so it splits into a
+    -- thin rainbow band.
+    f.blooms, f.streaks = {}, {}
+    for i, c in ipairs(LV_PRISM) do
+        local bl = glow:CreateTexture(nil, "ARTWORK")
+        bl:SetTexture(MEDIA .. "spot.tga")
+        bl:SetVertexColor(c[1], c[2], c[3], 1)
+        bl:SetBlendMode("ADD")
+        bl:SetAlpha(0)
+        f.blooms[i] = bl
+        local st = glow:CreateTexture(nil, "ARTWORK", nil, 1)
+        st:SetTexture(MEDIA .. "spot.tga")
+        st:SetVertexColor(c[1], c[2], c[3], 1)
+        st:SetBlendMode("ADD")
+        st:SetAlpha(0)
+        f.streaks[i] = st
+    end
     f.core = glow:CreateTexture(nil, "ARTWORK", nil, 2)
     f.core:SetTexture(MEDIA .. "spot.tga")
     f.core:SetVertexColor(1, 1, 1, 1)
     f.core:SetBlendMode("ADD")
     f.core:SetPoint("CENTER")
     f.core:SetAlpha(0)
+    -- The level number's own fringes: a red and a blue copy behind it.
+    f.ghosts = {}
+    for i, c in ipairs({ LV_PRISM[1], LV_PRISM[3] }) do
+        local g = badge:CreateFontString(nil, "ARTWORK")
+        ns:SetFont(g, 26, "", true)
+        g:SetTextColor(c[1], c[2], c[3])
+        g:SetAlpha(0)
+        f.ghosts[i] = g
+    end
 
     f:SetScript("OnUpdate", function(self, dt)
         local t = self.t + dt
@@ -693,21 +720,43 @@ local function buildBanner()
         if t >= out + 0.6 then self:Hide() return end
         self:SetAlpha(t < 0.2 and t / 0.2 or (t > out and 1 - (t - out) / 0.6) or 1)
         -- Flash and bloom: sharp attack, long soft decay (as on the XP bar).
-        -- It hits hard: the card near white, light bursting out past it in
-        -- every direction and in a long streak to either side, then about
-        -- a second and a half of afterglow.
-        local fk = t / 1.5
-        local a = fk < 0.08 and fk / 0.08 or (fk < 1 and (1 - (fk - 0.08) / 0.92) ^ 2 or 0)
+        -- It hits hard and out of focus: the three lights start pulled well
+        -- apart, so the first instant is a smear of red, green and blue,
+        -- and snap together into white. They never quite meet again, which
+        -- leaves a thin rainbow edge on everything through the afterglow.
+        local fk = t / 1.6
+        local a = fk < 0.07 and fk / 0.07 or (fk < 1 and (1 - (fk - 0.07) / 0.93) ^ 2 or 0)
         local k = clamp01(fk)
-        self.flash:SetAlpha(0.90 * a)
-        self.bloom:SetAlpha(a)
+        local snap = clamp01(t / 0.45)
+        local pull = 26 * (1 - snap) ^ 3 + 5 * (1 - k)           -- pixels apart
+        local wob = 2.5 * math.sin(t * 21) * (1 - k)             -- a shiver as it settles
         local bs = LV_D * (2.6 + 3.4 * k)
-        self.bloom:SetSize(bs, bs)
-        self.streak:SetAlpha(0.95 * a)
-        self.streak:SetSize(LV_W * (2.2 + 3.0 * k), 46 - 18 * k)
+        for i = 1, 3 do
+            local dx = LV_PULL[i] * pull + (i == 2 and wob or 0)
+            local fl = self.flashes[i]
+            fl:ClearAllPoints()
+            fl:SetPoint("TOPLEFT", self, "TOPLEFT", dx, 0)
+            fl:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", dx, 0)
+            fl:SetAlpha(0.85 * a)
+            local bl = self.blooms[i]
+            bl:ClearAllPoints()
+            bl:SetPoint("CENTER", dx * 1.8, 0)
+            bl:SetSize(bs, bs)
+            bl:SetAlpha(a)
+            local st = self.streaks[i]
+            st:ClearAllPoints()
+            st:SetPoint("CENTER", dx * 3, LV_PULL[i] * (pull * 0.45 + 3 * (1 - k)))
+            st:SetSize(LV_W * (2.2 + 3.0 * k), 40 - 16 * k)
+            st:SetAlpha(0.95 * a)
+        end
+        for i = 1, 2 do
+            local g = self.ghosts[i]
+            g:ClearAllPoints()
+            g:SetPoint("CENTER", self.num, "CENTER", (i == 1 and -1 or 1) * (pull * 0.5 + 1.5), 0)
+            g:SetAlpha(clamp01(a * 1.6))
+        end
         -- The core burns out fastest.
-        local ca = a * a
-        self.core:SetAlpha(ca)
+        self.core:SetAlpha(a * a)
         self.core:SetSize(LV_D * (1.2 + 0.8 * k), LV_D * (1.2 + 0.8 * k))
         self.wash:SetAlpha(0.10 + 0.9 * a)
         -- The card grows downward as the lines are written.
@@ -744,6 +793,7 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     if not banner then buildBanner() end
     local f = banner
     f.num:SetText(level)
+    for i = 1, #f.ghosts do f.ghosts[i]:SetText(level) end
     f.title:SetText("Level " .. level)
     local _, tok = UnitPowerType("player")
     local powerName = type(tok) == "string" and _G[tok] or "Power"

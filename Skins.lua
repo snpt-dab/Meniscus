@@ -2069,6 +2069,33 @@ local function styleLabel(f, d)
     for _, c in ipairs({ f:GetChildren() }) do styleLabel(c, d + 1) end
 end
 
+-- A tree's header (icon, name, points spent): the icon rounded in a
+-- hairline ring like the talents under it, the count on a small chip.
+-- (Its gold ring, count box and underline are already gone.)
+local function styleTreeHeader(c)
+    local icon, text = rawget(c, "Icon"), rawget(c, "Text")
+    if c.__muiHead or not (rawget(c, "MainRing") and icon) then return end
+    c.__muiHead = true
+    fade(c.MainRing); fade(rawget(c, "TextBackground")); fade(rawget(c, "Divider"))
+    local ring = c:CreateTexture(nil, "BACKGROUND", nil, 1)
+    ring:SetTexture(ROUND_TGA)
+    ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+    ring:SetPoint("TOPLEFT", icon, "TOPLEFT", -2, 2)
+    ring:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -2)
+    local m = c:CreateMaskTexture()
+    m:SetTexture(ROUND_TGA, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    m:SetAllPoints(icon)
+    icon:AddMaskTexture(m)
+    if text and text.SetFont then
+        pcall(ns.SetFont, ns, text, 11, "", true)
+        local chip = c:CreateTexture(nil, "OVERLAY", nil, -1)
+        chip:SetTexture(ROUND_TGA)
+        chip:SetVertexColor(0.05, 0.05, 0.06, 0.94)
+        chip:SetSize(18, 15)
+        chip:SetPoint("CENTER", text, "CENTER", 0, 0)
+    end
+end
+
 local function deepTalents()
     local psf = _G.PlayerSpellsFrame
     local tf = psf and psf.TalentsFrame
@@ -2145,7 +2172,10 @@ local function deepTalents()
             if c ~= tf.ButtonsParent and c ~= cd and not c:IsObjectType("Button") and not c:IsObjectType("EditBox")
                 and not c:IsObjectType("ModelScene") then
                 local w, h = c:GetWidth(), c:GetHeight()
-                if type(w) == "number" and w >= 30 and w <= 400 and h >= 20 and h <= 120 then pcall(styleLabel, c, 0) end
+                if type(w) == "number" and w >= 30 and w <= 400 and h >= 20 and h <= 120 then
+                    pcall(styleLabel, c, 0)
+                    pcall(styleTreeHeader, c)
+                end
             end
         end
     end
