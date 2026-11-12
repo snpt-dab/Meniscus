@@ -517,9 +517,15 @@ end
 -- Players only (creatures have no race). Set with /men portrait fit.
 local function modelKey(unit)
     if not UnitIsPlayer(unit) then return nil end
-    local _, race = UnitRace(unit)
+    local name, race = UnitRace(unit)
     local sex = UnitSex(unit)
     if type(race) ~= "string" or issecretvalue(race) or type(sex) ~= "number" or issecretvalue(sex) then return nil end
+    -- Skyborne (Forever's own race) look the same in both factions, which
+    -- may be two race entries: one fit for both.
+    if race:lower():find("sky", 1, true)
+        or (type(name) == "string" and not issecretvalue(name) and name:lower():find("skyborne", 1, true)) then
+        race = "Skyborne"
+    end
     return race .. sex
 end
 UF.ModelKey = modelKey
@@ -1749,10 +1755,11 @@ local tuner
 local STEP = { x = 0.01, z = 0.01, dist = 0.05 }
 local function tunerUnit() return "player" end
 
--- The races and genders to fit, and which are still missing. (The classic
--- races; any other race you fit is counted too.)
+-- The races and genders to fit, and which are still missing: the classic
+-- races and Skyborne (one fit for both factions).
 local FIT_RACES = { { "Human", "Human" }, { "Dwarf", "Dwarf" }, { "NightElf", "Night Elf" }, { "Gnome", "Gnome" },
-                    { "Orc", "Orc" }, { "Scourge", "Undead" }, { "Tauren", "Tauren" }, { "Troll", "Troll" } }
+                    { "Orc", "Orc" }, { "Scourge", "Undead" }, { "Tauren", "Tauren" }, { "Troll", "Troll" },
+                    { "Skyborne", "Skyborne" } }
 function UF:FitsMissing()
     local done = (self.db.portrait.byModel) or {}
     local missing, total, have = {}, 0, 0
