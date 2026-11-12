@@ -637,16 +637,52 @@ function Bars:ApplyPetWell()
             local okc, pc = pcall(petColor)
             if okc and pc then r, g, bl = pc[1] * 0.85, pc[2] * 0.85, pc[3] * 0.85 end
             mood:SetText("")
+            local hap
             if GetPetHappiness then
                 local ok, h = pcall(GetPetHappiness)
                 local m = ok and type(h) == "number" and not secret(h) and MOOD[h]
                 if m then
+                    hap = h
                     mood:SetText(m[1])
                     mood:SetTextColor(m[2], m[3], m[4])
                     r, g, bl = m[2] * 0.8, m[3] * 0.8, m[4] * 0.8
                 end
             end
             paintRing(r, g, bl, 1)
+            pill.ringRGB = pill.ringRGB or {}
+            pill.ringRGB[1], pill.ringRGB[2], pill.ringRGB[3] = r, g, bl
+            -- Not happy: the ring and the word pulse (Content slowly,
+            -- Unhappy faster), and a red pill floats up when the mood drops.
+            pill.pulse = (hap == 1 and 4.5) or (hap == 2 and 2.2) or nil
+            pill:SetScript("OnUpdate", pill.pulse and pill.tick or nil)
+            if not pill.pulse then mood:SetAlpha(1) end
+            if hap and pill.lastMood and hap < pill.lastMood and ns.FloatWarning then
+                local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(6991)
+                ns.FloatWarning(icon or 132165, "Pet is " .. MOOD[hap][1]:lower(), "Feed it")
+            elseif hap and hap < 3 and not pill.lastMood and not pill.warnedLogin and ns.FloatWarning then
+                -- Once a session, a little after you come in with a pet that isn't happy.
+                pill.warnedLogin = true
+                C_Timer.After(6, function()
+                    local ok, h = pcall(GetPetHappiness)
+                    if ok and type(h) == "number" and not secret(h) and h < 3 and UnitExists("pet") then
+                        local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(6991)
+                        ns.FloatWarning(icon or 132165, "Pet is " .. MOOD[h][1]:lower(), "Feed it")
+                    end
+                end)
+            end
+            pill.lastMood = hap
+        end
+        local acc = 0
+        function pill.tick(self, dt)
+            acc = acc + dt
+            if acc < 0.033 then return end
+            local t = GetTime()
+            acc = 0
+            local k = 0.5 + 0.5 * math.sin(t * self.pulse)
+            local c = self.ringRGB
+            -- From the mood colour up to near white, and the word dims a little.
+            paintRing(c[1] + (1 - c[1]) * 0.6 * k, c[2] + (1 - c[2]) * 0.6 * k, c[3] + (1 - c[3]) * 0.6 * k, 1)
+            mood:SetAlpha(0.55 + 0.45 * k)
         end
         local ev = CreateFrame("Frame")
         for _, e in ipairs({ "PET_BAR_UPDATE", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD" }) do pcall(ev.RegisterEvent, ev, e) end
