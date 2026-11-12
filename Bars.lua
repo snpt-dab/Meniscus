@@ -740,6 +740,40 @@ function Bars:ApplyPetWell()
             local c = w.baseRing
             if c then paintRing(c[1], c[2], c[3], 1) end
         end
+        -- /men moodprobe: what the curves give and what the words end up at.
+        ns.commands.moodprobe = function()
+            local out = {}
+            local function show(v)
+                if issecretvalue and issecretvalue(v) then return "<secret>" end
+                return tostring(v)
+            end
+            local c = ns.PetMoodCurves()
+            out[#out + 1] = "curves " .. tostring(c and true or false) .. "  max " .. show(UnitPowerMax("pet", 27))
+                .. "  cur " .. show(UnitPower("pet", 27))
+            if c then
+                for _, k in ipairs({ 1, 2, 3, "r", "g", "b" }) do
+                    local ok, v = pcall(ns.PetMoodPct, c[k])
+                    out[#out + 1] = "  pct(" .. k .. ") ok=" .. tostring(ok) .. " -> " .. show(v)
+                    -- Plain evaluation of the curve itself at a few points.
+                    local t = {}
+                    for _, x in ipairs({ 0, 0.2, 0.5, 0.9, 1, 50, 100 }) do
+                        local ok2, y = pcall(c[k].Evaluate, c[k], x)
+                        t[#t + 1] = x .. "=" .. (ok2 and show(y) or "err")
+                    end
+                    out[#out + 1] = "    curve " .. table.concat(t, " ")
+                end
+                local okA, errA = pcall(apply)
+                out[#out + 1] = "apply ok=" .. tostring(okA) .. " " .. tostring(errA)
+            end
+            for i = 1, 3 do
+                local f = words[i]
+                out[#out + 1] = string.format("word %d alpha=%s eff=%s shown=%s visible=%s", i,
+                    show(f:GetAlpha()), show(f:GetEffectiveAlpha()), tostring(f:IsShown()), tostring(f:IsVisible()))
+            end
+            out[#out + 1] = "pulse alpha=" .. show(pulse:GetAlpha())
+            MinimalUIDB.moodprobe = out
+            ns:Print("Pet mood recorded. /reload so it can be read.")
+        end
         local ev = CreateFrame("Frame")
         for _, e in ipairs({ "PET_BAR_UPDATE", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD" }) do pcall(ev.RegisterEvent, ev, e) end
         pcall(ev.RegisterUnitEvent, ev, "UNIT_PET", "player")
