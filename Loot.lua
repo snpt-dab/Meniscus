@@ -8,7 +8,7 @@ local T = ns.Theme
 --           quest marker; click to loot, shift-click to link
 --   rolls   cards stacked above the action bars: item, a draining timer,
 --           Need / Greed / Pass pills (only the rolls you're allowed)
---   text    what you take floats up from where you looted and fades: icon,
+--   text    what you take floats up from above the minimap and fades: icon,
 --           name in its quality colour, count; coins too. With auto-loot
 --           this is all you see, unless something is left on the corpse
 --           (full bags), in which case the window opens with the rest.
@@ -276,13 +276,17 @@ end
 
 -- ── Floating loot text ────────────────────────────────────────────────────
 -- What the corpse held is noted when it opens; each slot that then empties
--- is something you took, and floats up from where the cursor was: a small
--- icon, the name in its quality colour, the count. Lines stack upward, rise
--- a little and fade. Nothing here can be clicked.
+-- is something you took, and floats up from just above the minimap: a small
+-- icon, the name in its quality colour, the count. A line rises by about
+-- the minimap's own height at a steady pace and fades out at the top; the
+-- lines of one corpse follow each other up, a beat apart. Nothing here can
+-- be clicked. (With the minimap up in its corner, where there is no room
+-- above it, the text rises from where the cursor was instead.)
 local snap, snapN = {}, 0          -- slot -> { tex, name, qty, quality }
 local floats, active = {}, 0       -- pooled lines; how many are showing
 local floatX, floatY = 0, 0
-local FLOAT_LIFE, FLOAT_IN, FLOAT_OUT, FLOAT_RISE, FLOAT_STEP = 2.6, 0.15, 0.7, 26, 22
+local FLOAT_LIFE, FLOAT_IN, FLOAT_OUT, FLOAT_GAP = 2.8, 0.15, 0.8, 0.45
+local floatRise, lastStart = 130, 0
 local floatDriver
 
 local function snapshot()
@@ -294,11 +298,23 @@ local function snapshot()
         local tex, item, qty, _, quality = call(GetLootSlotInfo, slot)
         e.tex, e.name, e.qty, e.quality = tex, item, qty, quality
     end
-    local x, y = GetCursorPosition()
     local sc = UIParent:GetEffectiveScale()
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    local mm = _G.Minimap
+    local top = mm and mm:IsVisible() and mm:GetTop()
+    local cx = top and mm:GetCenter()
+    if top and cx then
+        local k = mm:GetEffectiveScale() / sc
+        local mh = mm:GetHeight() * k
+        if top * k + 14 + mh < h - 40 then
+            floatX, floatY, floatRise = cx * k, top * k + 22, mh
+            return
+        end
+    end
+    local x, y = GetCursorPosition()
     floatX = math.max(140, math.min(w - 140, x / sc))
     floatY = math.max(80, math.min(h - 200, y / sc + 30))
+    floatRise = 130
 end
 
 local function floatTick(_, dt)
@@ -318,8 +334,8 @@ local function floatTick(_, dt)
                 local a = t < FLOAT_IN and t / FLOAT_IN
                     or (t > FLOAT_LIFE - FLOAT_OUT and (FLOAT_LIFE - t) / FLOAT_OUT) or 1
                 f:SetAlpha(a)
-                -- Rises quickly, then settles.
-                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + FLOAT_RISE * (1 - (1 - k) ^ 3))
+                -- A steady climb, so lines keep their distance.
+                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + f.rise * k)
             else
                 any = true
             end
@@ -366,9 +382,12 @@ local function floatSlot(slot)
     f.text:SetText(name)
     f.text:SetTextColor(qualityColor(quality))
     f:SetWidth(18 + 6 + f.text:GetStringWidth())
-    -- Each line of a batch sits above the one before and starts a beat later.
-    f.x, f.y = floatX, floatY + active * FLOAT_STEP
-    f.age = -0.06 * active
+    -- Each line starts from the same spot, a beat after the one before.
+    local now = GetTime()
+    local start = math.max(now, lastStart + FLOAT_GAP)
+    lastStart = start
+    f.x, f.y, f.rise = floatX, floatY, floatRise
+    f.age = now - start
     f.live = true
     active = active + 1
     f:SetAlpha(0)
