@@ -233,12 +233,13 @@ local function powerOrb(self)
     local RING, TRACK = 1.2, 2.2 -- (the big orbs: 1.5 and 4, at 120 across)
     local o = CreateFrame("Frame", nil, self)
     o:SetSize(d, d)
-    -- Left end for the target (its target's portrait takes the right end);
-    -- right end for party members (their own portrait is on the left).
+    -- Left end for the target (its target's portrait takes the right end).
+    -- Party members: also on the left, outside their portrait (orbGap
+    -- clears it), which leaves the right end free for buffs and debuffs.
     if self.orbSide == "RIGHT" then
         o:SetPoint("LEFT", hp, "RIGHT", 4, 0)
     else
-        o:SetPoint("RIGHT", hp, "LEFT", -4, 0)
+        o:SetPoint("RIGHT", hp, "LEFT", -(self.orbGap or 4), 0)
     end
     local ring = o:CreateTexture(nil, "BACKGROUND", nil, 0)
     ring:SetAllPoints()
@@ -390,9 +391,9 @@ local function update(self)
         -- In the console's strip there is no power pill at all: players get
         -- the orb, everything else just the health bar.
         self.powerPill:SetShown(not isPlayer and not UF.targetStrip)
-    elseif self.orbSide == "RIGHT" then
-        -- Party members: a power orb on the bar's right end instead of the
-        -- power pill, always.
+    elseif self.orbSide then
+        -- Party members: a power orb beside the bar instead of the power
+        -- pill, always.
         local o = powerOrb(self)
         o.bar:SetMinMaxValues(0, pmax)
         o.bar:SetValue(pcur)
@@ -961,11 +962,11 @@ function UF:LayoutParty()
     if self.db.party.attach and char and self.orbStyleOn then
         -- Console: the party rises out of the console above the character
         -- panel, centered on it, clear of the Quick Buff pill that sits on
-        -- the panel's top edge. (Width: portrait overhang, bar, power orb.)
+        -- the panel's top edge. (Width: power orb, portrait overhang, bar.)
         local wl = char.well
-        local colW = s.D / 2 + s.W + 4 + s.H
+        local colW = s.H + 4 + s.D / 2 + s.W
         a:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
-            wl.x + (wl.w - colW) / 2 + s.D / 2, wl.y + wl.h + 3 + 30 + 10 + (B.stanceLift or 0))
+            wl.x + (wl.w - colW) / 2 + s.H + 4 + s.D / 2, wl.y + wl.h + 3 + 30 + 10 + (B.stanceLift or 0))
     elseif self.db.party.attach then
         -- Pill left edges line up with the player's, so avatars form a column.
         a:SetPoint("BOTTOMLEFT", self.player, "TOPLEFT", 0, PARTY_ATTACH_GAP)
@@ -1328,7 +1329,10 @@ function UF:OnInit(db)
     for i = 1, 4 do
         self.party[i] = create("party" .. i, "Party" .. i, { size = "party", avatar = "3d",
             side = "LEFT", watch = true, events = { "GROUP_ROSTER_UPDATE" } })
-        self.party[i].orbSide = "RIGHT" -- power orb instead of a power pill (see update)
+        -- A power orb instead of a power pill (see update), to the left
+        -- of the portrait.
+        self.party[i].orbSide = "LEFT"
+        self.party[i].orbGap = SIZES.party.D / 2 + 4
     end
     self:LayoutParty()
     pcall(self.CreateRestIndicator, self)

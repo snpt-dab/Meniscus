@@ -5,7 +5,7 @@ local T = ns.Theme
 -- Buffs/debuffs.
 --  * Target / focus: a row of small rounded icons above the health pill
 --    (debuffs first, then buffs).
---  * Party: debuffs only, to the right of each party pill.
+--  * Party: debuffs then buffs, to the right of each party pill.
 --  * Player: Blizzard's own BuffFrame/DebuffFrame are kept (right-click cancel,
 --    weapon enchants, Edit Mode placement) and restyled to match.
 -- Everything that might be secret in combat goes straight into widgets:
@@ -637,7 +637,8 @@ function A:OnInit(db)
             { "PLAYER_FOCUS_CHANGED" }))
     end
     for _, pf in ipairs(UF.party or {}) do
-        table.insert(self.rows, newRow(pf, 4, 18, 3, { HARMFUL }, rightOf(pf), { "GROUP_ROSTER_UPDATE" }))
+        -- Debuffs first (they are what needs acting on), then buffs.
+        table.insert(self.rows, newRow(pf, 8, 18, 3, { HARMFUL, HELPFUL }, rightOf(pf), { "GROUP_ROSTER_UPDATE" }))
     end
 
     if db.playerRows and UF.player then
