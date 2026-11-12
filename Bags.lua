@@ -203,9 +203,19 @@ local function newButton(bag, slot)
     if bag >= 0 then
         if B.interact then b:SetAttribute("*type2", nil) else b:SetAttribute("*type2", "item") end
         b:SetAttribute("item", bag .. " " .. slot)
+        if B.targeting then b:SetAttribute("type1", "item") end
     end
     b.SplitStack = splitStack
+    -- A spell waiting for an item (Feed Pet, enchants): the secure use above
+    -- hands it this item; nothing else should happen on that click.
+    b:SetScript("PreClick", function(self, button, down)
+        local now = button == "LeftButton" and B.targeting and SpellIsTargeting and SpellIsTargeting() or false
+        -- The press may already have fed the spell, so on the release
+        -- targeting is over: remember it from the press.
+        if down then self.aimed = now else self.aimed = self.aimed or now end
+    end)
     b:HookScript("OnClick", function(self, button, down)
+        if self.aimed then return end
         if down then return end
         if button == "RightButton" then
             if B.interact == "mail" then
@@ -777,8 +787,49 @@ function B:SetInteract(kind)
     end
 end
 
+-- While a spell is waiting for an item to be clicked, a left click on a
+-- tile uses the item (securely), which is what gives it to the spell.
+-- Normally left click picks the item up, and a plain pickup ignores the
+-- spell (Feed Pet put the food on the cursor). Out of combat only; it is
+-- cleared as combat starts (Feed Pet can't be cast in combat anyway).
+function B:SetTargeting(on)
+    on = on and true or false
+    if self.targeting == on or InCombatLockdown() then return end
+    self.targeting = on
+    for bag, list in pairs(buttons) do
+        if bag >= 0 then
+            for _, b in pairs(list) do b:SetAttribute("type1", on and "item" or nil) end
+        end
+    end
+end
+
+local FEED_PET = 6991
+function ns.IsFeedingPet()
+    local f = (C_Spell and C_Spell.IsCurrentSpell) or _G.IsCurrentSpell
+    if not f then return false end
+    local ok, on = pcall(f, FEED_PET)
+    return ok and on == true
+end
+
 function B:OnInit(db)
     self.db = db
+    local aim = CreateFrame("Frame")
+    for _, e in ipairs({ "CURRENT_SPELL_CAST_CHANGED", "CURSOR_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+        pcall(aim.RegisterEvent, aim, e)
+    end
+    local queued = false
+    aim:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_REGEN_DISABLED" then B:SetTargeting(false) return end
+        if queued then return end
+        queued = true
+        C_Timer.After(0, function()
+            queued = false
+            local ok, want = pcall(function() return SpellIsTargeting() and SpellCanTargetItem() end)
+            want = ok and want and true or false
+            B:SetTargeting(want)
+            if want and ns.IsFeedingPet() and not InCombatLockdown() then B:Open() end
+        end)
+    end)
     db.cols, db.sepCols, db.mode = db.cols or 10, db.sepCols or 4, db.mode or "combined"
     for _, f in ipairs(blizzardContainers()) do hookContainer(f) end
     for _, fn in ipairs({ "ToggleAllBags", "ToggleBackpack", "ToggleBag" }) do

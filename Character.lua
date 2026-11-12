@@ -1499,7 +1499,8 @@ function C:OnInit(db)
             queued = false
             if not (SpellIsTargeting and SpellCanTargetItem) then return end
             local ok, want = pcall(function() return SpellIsTargeting() and SpellCanTargetItem() end)
-            if ok and want then
+            -- (Feed Pet wants food from your bags, not gear: the bags open.)
+            if ok and want and not (ns.IsFeedingPet and ns.IsFeedingPet()) then
                 if not (win and win:IsShown() and C.tab == "gear") then pcall(C.Open, C, "gear") end
                 -- After the window has laid its tiles out.
                 C_Timer.After(0, function()
