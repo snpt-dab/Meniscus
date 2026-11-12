@@ -711,6 +711,7 @@ ns.commands.help = function()
         "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
         "/men windows  window docking on / off (reload)",
+        "/men levelup  preview the level-up banner",
         "/men perf trace  time every handler, for finding hidden costs (reload; run again to stop)",
         "/men artprobe [clear]  record what the thing under the mouse is drawn with",
         "/men console [wings]  dark plate behind the bottom row; wings = seat chat and damage meter in it",

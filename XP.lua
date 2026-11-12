@@ -569,3 +569,141 @@ function XP:SetSpan(span)
     self.db.span = span
     self:Anchor()
 end
+
+-- ── Level-up banner ───────────────────────────────────────────────────────
+-- In place of the game's gold-lined "You've Reached Level N": a round badge
+-- with the new level, and a dark pill that opens out of it with "Level N"
+-- and what the level gave you (health, power, stats, talent points). It
+-- holds for a few seconds, then closes back into the badge and fades.
+-- The game's own banner is made invisible for as long as ours is up (alpha
+-- only: it still runs, so its sound plays). /men levelup previews it.
+local LV_H, LV_D, LV_LIFE = 56, 74, 6.0
+local LV_COLOR = { 0.66, 0.56, 1.00 }
+local LV_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
+local banner
+
+local function buildBanner()
+    local off = LV_D / 2 - LV_H / 2 -- the pill starts under the badge
+    local f = CreateFrame("Frame", "MeniscusLevelUp", UIParent)
+    f:SetFrameStrata("HIGH")
+    f:SetSize(LV_D, LV_D)
+    f:SetPoint("TOP", UIParent, "TOP", 0, -180)
+    f:EnableMouse(false)
+    f:Hide()
+
+    local pill = CreateFrame("Frame", nil, f)
+    pill:SetSize(LV_H, LV_H)
+    pill:SetPoint("LEFT", f, "LEFT", off, 0)
+    pill:SetClipsChildren(true)
+    ns.RoundedRect(pill, -8, 0, LV_H / 2, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 1)
+    ns.RoundedRect(pill, -7, 1, LV_H / 2 - 1, 0.06, 0.06, 0.07, 0.97)
+    local inner = CreateFrame("Frame", nil, pill)
+    inner:SetPoint("LEFT")
+    inner:SetSize(700, LV_H)
+    local tx = LV_D / 2 + LV_H / 2 + 12
+    f.title = ns:CreateText(inner, 19, T.text)
+    ns:SetFont(f.title, 19, "", true)
+    f.title:SetPoint("BOTTOMLEFT", inner, "LEFT", tx, 0)
+    f.gains = ns:CreateText(inner, 11, T.textDim)
+    f.gains:SetPoint("TOPLEFT", inner, "LEFT", tx, -4)
+
+    local badge = CreateFrame("Frame", nil, f)
+    badge:SetSize(LV_D, LV_D)
+    badge:SetPoint("LEFT")
+    badge:SetFrameLevel(pill:GetFrameLevel() + 3)
+    local function disc(size, sub, r, g, b)
+        local t = badge:CreateTexture(nil, "BACKGROUND", nil, sub)
+        t:SetSize(size, size); t:SetPoint("CENTER")
+        t:SetColorTexture(r, g, b, 1)
+        local m = badge:CreateMaskTexture()
+        m:SetTexture(LV_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        m:SetAllPoints(t)
+        t:AddMaskTexture(m)
+        return t
+    end
+    disc(LV_D, 0, LV_COLOR[1], LV_COLOR[2], LV_COLOR[3])
+    disc(LV_D - 5, 1, 0.07, 0.07, 0.085)
+    f.wash = disc(LV_D - 5, 2, LV_COLOR[1], LV_COLOR[2], LV_COLOR[3])
+    f.num = ns:CreateText(badge, 30, T.text)
+    ns:SetFont(f.num, 30, "", true)
+    f.num:SetPoint("CENTER", 0, 0)
+
+    f.pill, f.off = pill, off
+    f:SetScript("OnUpdate", function(self, dt)
+        local t = self.t + dt
+        self.t = t
+        if t >= LV_LIFE then self:Hide() return end
+        local left = LV_LIFE - t
+        self:SetAlpha(t < 0.25 and t / 0.25 or (left < 0.5 and left / 0.5) or 1)
+        -- Open out of the badge (eased), hold, close back into it.
+        local o = 1
+        if t < 0.2 then o = 0
+        elseif t < 0.75 then o = 1 - (1 - (t - 0.2) / 0.55) ^ 3
+        elseif left < 0.7 then o = math.max(0, (left - 0.2) / 0.5) ^ 2 end
+        local w = LV_H + (self.full - LV_H) * o
+        self.pill:SetWidth(w)
+        self:SetWidth(math.max(LV_D, self.off + w)) -- stays centered as it opens
+        -- The badge's tint: bright at first, settling to a faint wash.
+        self.wash:SetAlpha(0.10 + 0.5 * math.max(0, 1 - t / 0.9) ^ 2)
+    end)
+    f:SetScript("OnHide", function()
+        for _, name in ipairs({ "EventToastManagerFrame", "LevelUpDisplay" }) do
+            local b = _G[name]
+            if b and not (b.IsForbidden and b:IsForbidden()) then b:SetAlpha(1) end
+        end
+    end)
+    banner = f
+end
+
+local function gainText(n, label)
+    if type(n) == "number" and not issecretvalue(n) and n > 0 then return "+" .. n .. " " .. label end
+end
+
+function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
+    if type(level) ~= "number" or issecretvalue(level) then return end
+    if not banner then buildBanner() end
+    local f = banner
+    f.num:SetText(level)
+    f.title:SetText("Level " .. level)
+    local _, tok = UnitPowerType("player")
+    local powerName = type(tok) == "string" and _G[tok] or "Power"
+    local out
+    local function add(s) if s then out = out and (out .. "    " .. s) or s end end
+    add(gainText(health, "Health")); add(gainText(power, powerName))
+    add(gainText(str, "Strength")); add(gainText(agi, "Agility"))
+    add(gainText(sta, "Stamina")); add(gainText(int, "Intellect"))
+    if type(talents) == "number" and not issecretvalue(talents) and talents > 0 then
+        add("+" .. talents .. (talents == 1 and " Talent point" or " Talent points"))
+    end
+    f.gains:SetText(out or "You've reached a new level")
+    f.full = math.ceil(LV_D / 2 + LV_H / 2 + 12
+        + math.max(f.title:GetStringWidth(), f.gains:GetStringWidth()) + 26)
+    f.t = 0
+    f.pill:SetWidth(LV_H)
+    f:SetWidth(LV_D)
+    f:SetAlpha(0)
+    f:Show()
+    -- The game's banner: invisible while ours is up. It can appear a moment
+    -- after the event and set its own alpha, so this is re-applied.
+    local function quiet()
+        if not f:IsShown() then return end
+        for _, name in ipairs({ "EventToastManagerFrame", "LevelUpDisplay" }) do
+            local b = _G[name]
+            if b and not (b.IsForbidden and b:IsForbidden()) then b:SetAlpha(0) end
+        end
+        C_Timer.After(0.1, quiet)
+    end
+    quiet()
+end
+
+local lvEv = CreateFrame("Frame")
+lvEv:RegisterEvent("PLAYER_LEVEL_UP")
+lvEv:SetScript("OnEvent", function(_, _, ...)
+    if not (XP.db and XP.db.enabled ~= false and XP.db.levelBanner ~= false) then return end
+    pcall(XP.ShowLevelUp, XP, ...)
+end)
+
+ns.commands.levelup = function()
+    local lvl = UnitLevel("player")
+    XP:ShowLevelUp(type(lvl) == "number" and not issecretvalue(lvl) and lvl or 10, 17, 12, 0, 0, 1, 2, 1, 0)
+end
