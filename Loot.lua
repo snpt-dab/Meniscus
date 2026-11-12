@@ -394,6 +394,7 @@ end
 -- it, the ring's colour, and an optional fill (a warning's tint).
 local function floatPill(tex, label, tr, tg, tb, note, rr, rg, rb, fr, fg, fb)
     local f = floatLine()
+    f.label, f.quest = label, nil
     f.icon:SetTexture(tex)
     f.text:SetText(label)
     f.text:SetTextColor(tr, tg, tb)
@@ -424,6 +425,33 @@ local function floatPill(tex, label, tr, tg, tb, note, rr, rg, rb, fr, fg, fb)
         floatDriver:SetScript("OnUpdate", floatTick)
     end
     floatDriver:Show()
+    return f
+end
+
+-- A pill with this label that went up within the last moment, if any.
+-- Looting a quest item makes two announcements, the item and the quest
+-- count, a fraction of a second apart and in either order: the second one
+-- is folded into the first's pill instead of adding its own.
+local FOLD = 1.5
+local function recentPill(label)
+    for i = 1, #floats do
+        local f = floats[i]
+        if f.live and f.label == label and f.age < FOLD then return f end
+    end
+end
+-- Put the quest count on a pill: the count as its note, gold ring (green
+-- and green text when that completes the objective).
+local function markQuest(f, have, need)
+    local done = tonumber(have) >= tonumber(need)
+    f.quest = true
+    f.count:SetText(have .. "/" .. need)
+    if done then
+        f.text:SetTextColor(0.62, 0.90, 0.66)
+        f.ring(0.35, 0.72, 0.42, 1)
+    else
+        f.ring(0.74, 0.60, 0.20, 1)
+    end
+    f.full = math.ceil((PILL_H - 3) + 7 + f.text:GetStringWidth() + 6 + f.count:GetStringWidth() + PILL_PAD)
 end
 
 -- For the rest of the addon: a warning pill in the same place and motion
@@ -443,14 +471,16 @@ local function floatQuest(msg)
     if type(msg) ~= "string" or secret(msg) then return false end
     local what, have, need = msg:match("^(.-)%s*:%s*(%d+)%s*/%s*(%d+)$")
     if not what or what == "" then return false end
-    if not pcall(floatOrigin) then return false end
-    local done = tonumber(have) >= tonumber(need)
-    local ok
-    if done then
-        ok = pcall(floatPill, QUEST_ICON, what, 0.62, 0.90, 0.66, have .. "/" .. need, 0.35, 0.72, 0.42)
-    else
-        ok = pcall(floatPill, QUEST_ICON, what, T.text[1], T.text[2], T.text[3], have .. "/" .. need, 0.74, 0.60, 0.20)
+    -- The item was just looted: its pill takes the count.
+    local seen = recentPill(what)
+    if seen then
+        if not seen.quest then pcall(markQuest, seen, have, need) end
+        return true
     end
+    if not pcall(floatOrigin) then return false end
+    local ok, f = pcall(floatPill, QUEST_ICON, what, T.text[1], T.text[2], T.text[3], nil,
+        T.border[1], T.border[2], T.border[3])
+    if ok and f then pcall(markQuest, f, have, need) end
     return ok
 end
 
@@ -472,6 +502,13 @@ local function floatSlot(slot)
         end
         name = out ~= "" and out or (name:gsub("\n", "  "))
         fine = false
+    end
+    -- The quest count for this item is already up: that pill gets the
+    -- item's icon, and no second one is added.
+    local seen = not e.money and recentPill(name)
+    if seen and seen.quest then
+        seen.icon:SetTexture(tex)
+        return
     end
     local many = type(qty) == "number" and not secret(qty) and qty > 1 and not e.money
     -- The ring carries the quality; plain things keep the usual hairline.
