@@ -262,8 +262,16 @@ local function powerOrb(self)
     o.bar:SetStatusBarTexture(T.bar)
     local fill = o.bar:GetStatusBarTexture()
     fill:AddMaskTexture(imask)
-    -- Bright line on the liquid's surface.
-    o.line = o.bar:CreateTexture(nil, "OVERLAY", nil, 0)
+    -- Bright line on the liquid's surface. (In a clip just short of the
+    -- top and bottom, so a full or empty orb shows no stray stroke on its
+    -- rim; see the big orbs.)
+    local lineClip = CreateFrame("Frame", nil, o.bar)
+    lineClip:SetPoint("TOPLEFT", o.bar, "TOPLEFT", 0, -2)
+    lineClip:SetPoint("BOTTOMRIGHT", o.bar, "BOTTOMRIGHT", 0, 2)
+    lineClip:SetClipsChildren(true)
+    local lineHold = CreateFrame("Frame", nil, lineClip)
+    lineHold:SetAllPoints(o.bar)
+    o.line = lineHold:CreateTexture(nil, "OVERLAY", nil, 0)
     o.line:SetHeight(1)
     o.line:SetPoint("BOTTOMLEFT", fill, "TOPLEFT", 0, -1)
     o.line:SetPoint("BOTTOMRIGHT", fill, "TOPRIGHT", 0, -1)

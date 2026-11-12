@@ -169,7 +169,18 @@ local function createOrb(name, size)
     end)
 
     -- Bright meniscus riding the fill level.
-    f.line = f.bar:CreateTexture(nil, "OVERLAY", nil, 0)
+    -- It lives in a clip a few pixels short of the orb's top and bottom:
+    -- a full orb has no surface to draw, and an empty one neither, but the
+    -- line would sit there as a stray stroke on the rim. (The level itself
+    -- can't be asked: health is a secret value. The clip needs no number.)
+    local lineClip = CreateFrame("Frame", nil, f.bar)
+    local lineInset = math.max(2.5, size * 0.035) -- the small pet orbs need less
+    lineClip:SetPoint("TOPLEFT", f.bar, "TOPLEFT", 0, -lineInset)
+    lineClip:SetPoint("BOTTOMRIGHT", f.bar, "BOTTOMRIGHT", 0, lineInset)
+    lineClip:SetClipsChildren(true)
+    local lineHold = CreateFrame("Frame", nil, lineClip)
+    lineHold:SetAllPoints(f.bar)
+    f.line = lineHold:CreateTexture(nil, "OVERLAY", nil, 0)
     f.line:SetHeight(2)
     f.line:SetPoint("BOTTOMLEFT", fill, "TOPLEFT", 0, -1)
     f.line:SetPoint("BOTTOMRIGHT", fill, "TOPRIGHT", 0, -1)
