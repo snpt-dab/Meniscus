@@ -604,14 +604,40 @@ function Bars:ApplyPetWell()
         div:SetSize(1, 8)
         div:SetPoint("LEFT", pill, "LEFT", 22, 0)
         div:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
-        local mood = ns:CreateText(pill, 10, T.textDim)
+        -- The mood: Forever has no GetPetHappiness; the mood is the pet's
+        -- "happiness" power (0-1000), and it is a hidden value, so nothing
+        -- here can compare it. Instead all three words sit in the same
+        -- place and the client sets each one's alpha from a curve on the
+        -- hidden percentage (1 inside that word's band, 0 outside), and the
+        -- ring's colour the same way. Content and Unhappy sit in a holder
+        -- that pulses, so a pet that isn't happy is hard to miss.
+        local mood = ns:CreateText(pill, 10, T.textDim) -- keeps the room for the words
         mood:SetPoint("RIGHT", pill, "RIGHT", -9, 0)
+        mood:SetText("Unhappy")
+        mood:SetAlpha(0)
+        local pulse = CreateFrame("Frame", nil, pill)
+        pulse:SetAllPoints()
+        local pag = pulse:CreateAnimationGroup()
+        pag:SetLooping("BOUNCE")
+        local pa = pag:CreateAnimation("Alpha")
+        pa:SetFromAlpha(1); pa:SetToAlpha(0.25); pa:SetDuration(0.6); pa:SetSmoothing("IN_OUT")
+        pag:Play()
+        pulse:SetScript("OnShow", function() pag:Play() end)
+        local words = {}
+        for i, m in ipairs(MOOD) do
+            local fs = ns:CreateText(i == 3 and pill or pulse, 10)
+            fs:SetPoint("RIGHT", pill, "RIGHT", -9, 0)
+            fs:SetText(m[1])
+            fs:SetTextColor(m[2], m[3], m[4])
+            fs:SetAlpha(0)
+            words[i] = fs
+        end
         local name = ns:CreateText(pill, 11)
         name:SetPoint("LEFT", div, "RIGHT", 6, 0)
         name:SetPoint("RIGHT", mood, "LEFT", -6, 0)
         name:SetJustifyH("CENTER")
         name:SetWordWrap(false)
-        for _, fs in ipairs({ lvl, mood, name }) do
+        for _, fs in ipairs({ lvl, mood, name, words[1], words[2], words[3] }) do
             fs:SetShadowOffset(1, -1)
             fs:SetShadowColor(0, 0, 0, 0.8)
         end
@@ -636,59 +662,74 @@ function Bars:ApplyPetWell()
             local r, g, bl = T.border[1], T.border[2], T.border[3]
             local okc, pc = pcall(petColor)
             if okc and pc then r, g, bl = pc[1] * 0.85, pc[2] * 0.85, pc[3] * 0.85 end
-            mood:SetText("")
-            local hap
-            if GetPetHappiness then
-                local ok, h = pcall(GetPetHappiness)
-                local m = ok and type(h) == "number" and not secret(h) and MOOD[h]
-                if m then
-                    hap = h
-                    mood:SetText(m[1])
-                    mood:SetTextColor(m[2], m[3], m[4])
-                    r, g, bl = m[2] * 0.8, m[3] * 0.8, m[4] * 0.8
-                end
-            end
-            paintRing(r, g, bl, 1)
-            pill.ringRGB = pill.ringRGB or {}
-            pill.ringRGB[1], pill.ringRGB[2], pill.ringRGB[3] = r, g, bl
-            -- Not happy: the ring and the word pulse (Content slowly,
-            -- Unhappy faster), and a red pill floats up when the mood drops.
-            pill.pulse = (hap == 1 and 4.5) or (hap == 2 and 2.2) or nil
-            pill:SetScript("OnUpdate", pill.pulse and pill.tick or nil)
-            if not pill.pulse then mood:SetAlpha(1) end
-            if hap and pill.lastMood and hap < pill.lastMood and ns.FloatWarning then
-                local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(6991)
-                ns.FloatWarning(icon or 132165, "Pet is " .. MOOD[hap][1]:lower(), "Feed it")
-            elseif hap and hap < 3 and not pill.lastMood and not pill.warnedLogin and ns.FloatWarning then
-                -- Once a session, a little after you come in with a pet that isn't happy.
-                pill.warnedLogin = true
-                C_Timer.After(6, function()
-                    local ok, h = pcall(GetPetHappiness)
-                    if ok and type(h) == "number" and not secret(h) and h < 3 and UnitExists("pet") then
-                        local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(6991)
-                        ns.FloatWarning(icon or 132165, "Pet is " .. MOOD[h][1]:lower(), "Feed it")
-                    end
-                end)
-            end
-            pill.lastMood = hap
+            w.baseRing = w.baseRing or {}
+            w.baseRing[1], w.baseRing[2], w.baseRing[3] = r, g, bl
+            w.mood()
         end
-        local acc = 0
-        function pill.tick(self, dt)
-            acc = acc + dt
-            if acc < 0.033 then return end
-            local t = GetTime()
-            acc = 0
-            local k = 0.5 + 0.5 * math.sin(t * self.pulse)
-            local c = self.ringRGB
-            -- From the mood colour up to near white, and the word dims a little.
-            paintRing(c[1] + (1 - c[1]) * 0.6 * k, c[2] + (1 - c[2]) * 0.6 * k, c[3] + (1 - c[3]) * 0.6 * k, 1)
-            mood:SetAlpha(0.55 + 0.45 * k)
+
+        -- Bands of the happiness percentage: below LOW unhappy, below HIGH
+        -- content, else happy. (Thirds, the classic server's split; if the
+        -- word disagrees with the game's own tooltip, these are the numbers.)
+        local LOW, HIGH, E = 0.333, 0.666, 0.002
+        local curves
+        local function curve(pts)
+            local ok, c = pcall(C_CurveUtil.CreateCurve)
+            if not ok or not c then return nil end
+            if Enum and Enum.LuaCurveType then pcall(c.SetType, c, Enum.LuaCurveType.Linear) end
+            for _, pt in ipairs(pts) do c:AddPoint(pt[1], pt[2]) end
+            return c
+        end
+        local function band(lo, hi)
+            local pts = {}
+            if lo > 0 then pts[#pts + 1] = { 0, 0 }; pts[#pts + 1] = { lo - E, 0 } end
+            pts[#pts + 1] = { math.max(lo, 0), 1 }
+            pts[#pts + 1] = { math.min(hi, 1), 1 }
+            if hi < 1 then pts[#pts + 1] = { hi + E, 0 }; pts[#pts + 1] = { 1, 0 } end
+            return curve(pts)
+        end
+        local function channel(k)
+            local u, c, h = MOOD[1][k + 1] * 0.8, MOOD[2][k + 1] * 0.8, MOOD[3][k + 1] * 0.8
+            return curve({ { 0, u }, { LOW - E, u }, { LOW, c }, { HIGH - E, c }, { HIGH, h }, { 1, h } })
+        end
+        local HAPPY = (Enum and Enum.PowerType and Enum.PowerType.Happiness) or 27
+        local function pct(c) return UnitPowerPercent("pet", HAPPY, false, c) end
+        local function apply()
+            for i = 1, 3 do words[i]:SetAlpha(pct(curves[i])) end
+            paintRing(pct(curves.r), pct(curves.g), pct(curves.b), 1)
+        end
+        function w.mood()
+            local max = UnitPowerMax("pet", HAPPY)
+            local has = type(max) == "number" and not secret(max) and max > 0
+            if has and not curves and UnitPowerPercent and C_CurveUtil and C_CurveUtil.CreateCurve then
+                curves = { band(0, LOW - E), band(LOW, HIGH - E), band(HIGH, 1),
+                           r = channel(1), g = channel(2), b = channel(3) }
+                for _, k in ipairs({ 1, 2, 3, "r", "g", "b" }) do if not curves[k] then curves = false break end end
+            end
+            if has and curves and pcall(apply) then
+                pulse:Show()
+                return
+            end
+            -- Not a hunter pet (or no way to read it): no mood, the pet's own colour.
+            for i = 1, 3 do words[i]:SetAlpha(0) end
+            local c = w.baseRing
+            if c then paintRing(c[1], c[2], c[3], 1) end
         end
         local ev = CreateFrame("Frame")
         for _, e in ipairs({ "PET_BAR_UPDATE", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD" }) do pcall(ev.RegisterEvent, ev, e) end
         pcall(ev.RegisterUnitEvent, ev, "UNIT_PET", "player")
         for _, e in ipairs({ "UNIT_LEVEL", "UNIT_NAME_UPDATE", "UNIT_HAPPINESS" }) do pcall(ev.RegisterUnitEvent, ev, e, "pet") end
-        ev:SetScript("OnEvent", function() C_Timer.After(0, w.refresh) end)
+        pcall(ev.RegisterUnitEvent, ev, "UNIT_POWER_UPDATE", "pet")
+        pcall(ev.RegisterUnitEvent, ev, "UNIT_MAXPOWER", "pet")
+        ev:SetScript("OnEvent", function(_, e, _, token)
+            if e == "UNIT_POWER_UPDATE" or e == "UNIT_MAXPOWER" then
+                -- Only the mood (the pet's energy / focus ticks constantly).
+                if token == "HAPPINESS" or (type(token) ~= "string") then
+                    if w:IsShown() then w.mood() end
+                end
+                return
+            end
+            C_Timer.After(0, w.refresh)
+        end)
         self.petWell = w
     end
     local wl = slot.well
