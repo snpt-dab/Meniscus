@@ -1781,20 +1781,30 @@ local function deepMap()
     -- for a parchment page, and with the parchment gone they can't be read.
     -- Any dark text in that pane becomes light (headings white, the rest
     -- our body colour), and the wooden banner behind "Rewards" goes. The
-    -- game re-colours the text each time it shows a quest, so this runs
-    -- after each showing and on the map's slow tick.
+    -- game re-colours the text each time it shows a quest. So each piece of
+    -- text gets a watch on its own colour: the moment it is set dark it is
+    -- set light again, in the same frame, and nothing dark is ever drawn.
+    -- The watches are put on when the map first opens (the pane's text
+    -- exists before any quest is shown), and the slow tick catches any
+    -- text created later.
+    local function light(fs)
+        local cr, cg, cb = fs:GetTextColor()
+        if type(cr) ~= "number" or issecretvalue(cr) or (0.3 * cr + 0.59 * cg + 0.11 * cb) >= 0.4 then return end
+        local _, size = fs:GetFont()
+        if type(size) == "number" and size >= 15 then fs:SetTextColor(TITLE[1], TITLE[2], TITLE[3])
+        else fs:SetTextColor(BODY[1], BODY[2], BODY[3]) end
+        pcall(fs.SetShadowOffset, fs, 0, 0)
+    end
     local function readable(f, d)
         local regs = ns.Regs(f, 13 + d)
         for i = 1, regs.n do
             local r = regs[i]
             if r:IsObjectType("FontString") then
-                local cr, cg, cb = r:GetTextColor()
-                if type(cr) == "number" and not issecretvalue(cr) and (0.3 * cr + 0.59 * cg + 0.11 * cb) < 0.4 then
-                    local _, size = r:GetFont()
-                    if type(size) == "number" and size >= 15 then r:SetTextColor(TITLE[1], TITLE[2], TITLE[3])
-                    else r:SetTextColor(BODY[1], BODY[2], BODY[3]) end
-                    pcall(r.SetShadowOffset, r, 0, 0)
+                if not r.__muiQText then
+                    r.__muiQText = true
+                    hooksecurefunc(r, "SetTextColor", light)
                 end
+                light(r)
             elseif r:IsObjectType("Texture") and not r.__muiQArt then
                 local w, h = r:GetWidth(), r:GetHeight()
                 if type(w) == "number" and not issecretvalue(w) and w > 0 then
@@ -1810,16 +1820,22 @@ local function deepMap()
             if not (c.IsForbidden and c:IsForbidden()) then readable(c, d + 1) end
         end
     end
+    -- (Shown or not: the point is to be there before the first showing.
+    -- The quest text blocks live in QuestInfoFrame and are moved into the
+    -- pane when a quest is displayed.)
     local function questPane()
         local q = _G.QuestMapFrame
         local df = q and q.DetailsFrame
-        if df and df:IsVisible() then readable(df, 0) end
-        local rw = _G.MapQuestInfoRewardsFrame
-        if rw and rw:IsVisible() then readable(rw, 0) end
+        if df then readable(df, 0) end
+        for _, name in ipairs({ "MapQuestInfoRewardsFrame", "QuestInfoFrame", "QuestInfoRewardsFrame" }) do
+            local f = _G[name]
+            if f and not (f.IsForbidden and f:IsForbidden()) then readable(f, 0) end
+        end
     end
     if _G.QuestInfo_Display then
         hooksecurefunc("QuestInfo_Display", function() if wm:IsShown() then pcall(questPane) end end)
     end
+    pcall(questPane)
 
     local tick = ours(CreateFrame("Frame", nil, wm))
     tick:SetSize(1, 1)
@@ -1831,7 +1847,8 @@ local function deepMap()
         if acc < 0.5 then return end
         acc = 0
         pcall(crumbs)
-        pcall(questPane)
+        local qm = _G.QuestMapFrame
+        if qm and qm.DetailsFrame and qm.DetailsFrame:IsVisible() then pcall(questPane) end
         if not coordGone and tries < 12 then tries = tries + 1; pcall(findCoords, wm, 0) end
     end)
     pcall(crumbs)
