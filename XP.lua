@@ -895,7 +895,49 @@ end
 
 local lvEv = CreateFrame("Frame")
 lvEv:RegisterEvent("PLAYER_LEVEL_UP")
+-- Which frame is the game's own level-up banner? Recorded at real level-ups
+-- (the made-up one doesn't bring it up): every visible frame in the upper
+-- middle of the screen, with any text in it. Read from MinimalUIDB.levelprobe.
+local function texts(f, depth, out)
+    if #out >= 4 or depth > 3 then return end
+    for _, r in ipairs({ f:GetRegions() }) do
+        if r.GetText and r:IsVisible() then
+            local t = r:GetText()
+            if type(t) == "string" and not issecretvalue(t) and t ~= "" then out[#out + 1] = t:sub(1, 40) end
+        end
+    end
+    for _, k in ipairs({ f:GetChildren() }) do
+        if k:IsVisible() then texts(k, depth + 1, out) end
+    end
+end
+local function levelProbe(tag)
+    if not MinimalUIDB then return end
+    local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+    local rec = MinimalUIDB.levelprobe or {}
+    MinimalUIDB.levelprobe = rec
+    rec[#rec + 1] = "-- " .. tag .. " at " .. date("%H:%M:%S")
+    for _, f in ipairs({ UIParent:GetChildren() }) do
+        local ok = pcall(function()
+            if f:IsForbidden() or not f:IsVisible() or f == banner then return end
+            local l, b, w, h = f:GetRect()
+            if not (l and w and w > 0 and h > 0) then return end
+            if l + w < W * 0.2 or l > W * 0.8 or b + h < H * 0.4 then return end
+            local tx = {}
+            texts(f, 0, tx)
+            rec[#rec + 1] = string.format("%s %s %s %dx%d @%d,%d a=%.2f %s",
+                f:GetName() or "?", f:GetObjectType(), f:GetFrameStrata(), w, h, l, b,
+                f:GetEffectiveAlpha() or -1, table.concat(tx, " | "))
+        end)
+        local _ = ok
+    end
+    while #rec > 300 do table.remove(rec, 1) end
+end
+
 lvEv:SetScript("OnEvent", function(_, _, ...)
+    if MinimalUIDB then MinimalUIDB.levelprobe = nil end
+    for _, d in ipairs({ 0.3, 1.2, 3 }) do
+        C_Timer.After(d, function() pcall(levelProbe, "+" .. d .. "s") end)
+    end
     if not (XP.db and XP.db.enabled ~= false and XP.db.levelBanner ~= false) then return end
     pcall(XP.ShowLevelUp, XP, ...)
 end)
