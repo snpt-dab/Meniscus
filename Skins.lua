@@ -2008,6 +2008,10 @@ local function styleTalent(b)
         chip:SetVertexColor(0.05, 0.05, 0.06, 0.94)
         chip:SetSize(17, 17)
         chip:SetPoint("CENTER", st, "CENTER", 0, 0)
+        -- The game sets the number right on the icon's bottom-right edge,
+        -- where the disc hung out past the ring: both sit inside the corner.
+        st:ClearAllPoints()
+        st:SetPoint("CENTER", icon, "BOTTOMRIGHT", -8, 8)
         local busy = false
         local function sync()
             local t = st:GetText()
@@ -2093,6 +2097,8 @@ local function styleTreeHeader(c)
         chip:SetVertexColor(0.05, 0.05, 0.06, 0.94)
         chip:SetSize(18, 18)
         chip:SetPoint("CENTER", text, "CENTER", 0, 0)
+        text:ClearAllPoints()
+        text:SetPoint("CENTER", icon, "BOTTOMRIGHT", -8, 8)
     end
 end
 
