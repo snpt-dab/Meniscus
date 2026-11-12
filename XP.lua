@@ -602,8 +602,10 @@ local function buildBanner()
     f:SetPoint("TOP", UIParent, "TOP", 0, -0.30 * UIParent:GetHeight())
     f:EnableMouse(false)
     f:Hide()
-    ns.RoundedRect(f, -8, 0, 14, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 1)
-    ns.RoundedRect(f, -7, 1, 13, 0.06, 0.06, 0.07, 0.80)
+    -- (The ring is a whole rounded shape lying behind the fill, so for the
+    -- card to be see-through both are translucent: together about 84%.)
+    ns.RoundedRect(f, -8, 0, 14, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 0.55)
+    ns.RoundedRect(f, -7, 1, 13, 0.06, 0.06, 0.07, 0.65)
 
     -- Flash: the whole card goes almost white for a moment.
     -- It is drawn three times, in red, green and blue light, added
@@ -710,10 +712,26 @@ local function buildBanner()
         f.ghosts[i] = g
     end
 
+    -- Afterglow motes: small points of the three lights that twinkle over
+    -- the card and drift upward while it is up, and go with it when it
+    -- fades. Each keeps a place on the card (as a share of its width and
+    -- height), a size, a pace and a colour.
+    f.motes = {}
+    for i = 1, 14 do
+        local c = LV_PRISM[(i - 1) % 3 + 1]
+        local m = glow:CreateTexture(nil, "ARTWORK", nil, 3)
+        m:SetTexture(MEDIA .. "spot.tga")
+        m:SetVertexColor(c[1] * 0.6 + 0.4, c[2] * 0.6 + 0.4, c[3] * 0.6 + 0.4, 1)
+        m:SetBlendMode("ADD")
+        m:SetAlpha(0)
+        f.motes[i] = { tex = m, x = 0, y = 0, size = 8, pace = 1, phase = 0, rise = 0 }
+    end
+
     f:SetScript("OnUpdate", function(self, dt)
         local t = self.t + dt
         self.t = t
         local n = self.n
+        local px = self.px or 1
         local written = 0.35 + n * 0.12 + 0.2   -- every line is in
         local turn = written + 2.2              -- amber starts settling to purple
         local out = turn + 1.0 + 0.9            -- the card starts to fade
@@ -728,16 +746,26 @@ local function buildBanner()
         local a = fk < 0.07 and fk / 0.07 or (fk < 1 and (1 - (fk - 0.07) / 0.93) ^ 2 or 0)
         local k = clamp01(fk)
         local snap = clamp01(t / 0.45)
+        -- Afterglow: once the flash has gone, the three lights stay on,
+        -- very faintly and a couple of pixels apart, breathing slowly. The
+        -- card keeps a thin coloured edge until it fades.
+        local glowIn = clamp01((t - 0.6) / 1.2)
+        local after = glowIn * (0.075 + 0.025 * math.sin(t * 1.7))
         local pull = 26 * (1 - snap) ^ 3 + 5 * (1 - k)           -- pixels apart
-        local wob = 2.5 * math.sin(t * 21) * (1 - k)             -- a shiver as it settles
+            + glowIn * (2.5 + 1.0 * math.sin(t * 1.1))
+        -- (Moved in whole screen pixels. The lights used to shiver a little
+        -- as they settled, on fractions of a pixel, and with three layers
+        -- re-snapping against each other the card's edge visibly jittered
+        -- while it grew.)
+        pull = math.floor(pull / px + 0.5) * px
         local bs = LV_D * (2.6 + 3.4 * k)
         for i = 1, 3 do
-            local dx = LV_PULL[i] * pull + (i == 2 and wob or 0)
+            local dx = LV_PULL[i] * pull
             local fl = self.flashes[i]
             fl:ClearAllPoints()
             fl:SetPoint("TOPLEFT", self, "TOPLEFT", dx, 0)
             fl:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", dx, 0)
-            fl:SetAlpha(0.85 * a)
+            fl:SetAlpha(math.max(0.85 * a, after))
             local bl = self.blooms[i]
             bl:ClearAllPoints()
             bl:SetPoint("CENTER", dx * 1.8, 0)
@@ -752,8 +780,8 @@ local function buildBanner()
         for i = 1, 2 do
             local g = self.ghosts[i]
             g:ClearAllPoints()
-            g:SetPoint("CENTER", self.num, "CENTER", (i == 1 and -1 or 1) * (pull * 0.5 + 1.5), 0)
-            g:SetAlpha(clamp01(a * 1.6))
+            g:SetPoint("CENTER", self.num, "CENTER", (i == 1 and -1 or 1) * math.max(px, pull * 0.5), 0)
+            g:SetAlpha(math.max(clamp01(a * 1.6), 0.45 * glowIn)) -- the number keeps its fringe
         end
         -- The core burns out fastest.
         self.core:SetAlpha(a * a)
@@ -762,9 +790,25 @@ local function buildBanner()
         -- The card grows downward as the lines are written.
         local g = clamp01((t - 0.25) / (written - 0.25))
         local e = 1 - (1 - g) ^ 3
-        local body = (n * LV_ROW + 8) * e
-        self:SetHeight(LV_HEAD + body)
+        local body = math.floor((n * LV_ROW + 8) * e / px + 0.5) * px
+        local h = LV_HEAD + body
+        self:SetHeight(h)
         self.holder:SetHeight(math.max(1, body))
+        -- Motes: each twinkles at its own pace and drifts up, wrapping
+        -- round to the bottom of the card.
+        local w = self:GetWidth()
+        for i = 1, #self.motes do
+            local m = self.motes[i]
+            local tw = 0.5 + 0.5 * math.sin(t * m.pace + m.phase)
+            local yy = (m.y + t * m.rise) % 1
+            m.tex:ClearAllPoints()
+            m.tex:SetPoint("CENTER", self, "BOTTOMLEFT", m.x * w, yy * h)
+            local sz = m.size * (0.6 + 0.6 * tw)
+            m.tex:SetSize(sz, sz)
+            -- (Dimmer near the top and bottom, so wrapping round isn't seen.)
+            local edge = math.min(1, yy * 5, (1 - yy) * 5)
+            m.tex:SetAlpha(glowIn * 0.75 * tw * tw * edge)
+        end
         -- Amber, then purple.
         local c = clamp01((t - turn) / 1.0)
         c = c * c * (3 - 2 * c)
@@ -815,6 +859,14 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     end
     f.n = n
     f.t = 0
+    f.px = ns.Pixel and ns.Pixel() or 1
+    for i = 1, #f.motes do
+        local m = f.motes[i]
+        m.x, m.y = -0.04 + 1.08 * math.random(), math.random()
+        m.size = 7 + 12 * math.random()
+        m.pace, m.phase = 1.6 + 2.8 * math.random(), 6.28 * math.random()
+        m.rise = 0.03 + 0.05 * math.random()
+    end
     f:SetHeight(LV_HEAD)
     f.holder:SetHeight(1)
     f:SetAlpha(0)
