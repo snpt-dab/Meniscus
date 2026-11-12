@@ -322,7 +322,13 @@ local function updateTile(b)
     end
 
     if b.slotName == "Ammo" then
-        local n = tex and call(GetInventoryItemCount, "player", id)
+        -- Only real ammunition has a count: an empty slot, or one holding
+        -- something that isn't a projectile, still reports 1.
+        local item = tex and call(GetInventoryItemID, "player", id)
+        local class = plain(item) and item > 0 and C_Item and C_Item.GetItemInfoInstant
+            and select(6, call(C_Item.GetItemInfoInstant, item))
+        local n = class == ((Enum and Enum.ItemClass and Enum.ItemClass.Projectile) or 6)
+            and call(GetInventoryItemCount, "player", id)
         b.count:SetText(plain(n) and n > 0 and n or "")
     end
 

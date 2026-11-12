@@ -2306,8 +2306,19 @@ function Orbs:BuildAmmo()
         if itemIn(AMMO, PROJECTILE) then
             return GetInventoryItemCount("player", AMMO)
         end
-        if itemIn(RANGED, WEAPON, THROWN) then
-            return GetInventoryItemCount("player", RANGED)
+        -- A thrown weapon only has a count worth showing when it comes in a
+        -- stack that gets used up. A permanent one (a single throwing knife
+        -- that is never spent) would just read "1".
+        local thrown = itemIn(RANGED, WEAPON, THROWN)
+        if thrown then
+            local n = GetInventoryItemCount("player", RANGED)
+            local stack = C_Item and C_Item.GetItemMaxStackSizeByID and C_Item.GetItemMaxStackSizeByID(thrown)
+            if type(stack) == "number" then
+                if stack <= 1 then return nil end
+            elseif type(n) == "number" and not (issecretvalue and issecretvalue(n)) and n <= 1 then
+                return nil
+            end
+            return n
         end
         return nil
     end
