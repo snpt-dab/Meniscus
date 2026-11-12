@@ -497,7 +497,11 @@ function UF:LayoutAvatar(av)
     local p = self.db and self.db.portrait or { pop = 0.25 }
     local d = av.D
     m:ClearAllPoints()
-    m:SetSize(0.8 * d, (0.8 + (av.bust and 0 or p.pop)) * d)
+    -- (While the portrait tuner is open the target's bust is framed like
+    -- every other portrait, so what you fit on a target is what players and
+    -- party members of that race will look like.)
+    local bust = av.bust and not UF.tuning
+    m:SetSize(0.8 * d, (0.8 + (bust and 0 or p.pop)) * d)
     m:SetPoint("BOTTOM", av, "CENTER", 0, -0.3 * d)
 end
 
@@ -550,7 +554,7 @@ function UF:RefreshAvatar(av)
             or (p.byModel and p.byModel[key])) or nil
         -- (The bust's own distance, scaled by the race's fit when there is one.)
         local bustDist = (p.sdist or 1.5) * ((o and o.dist and p.dist and p.dist > 0) and (o.dist / p.dist) or 1)
-        pcall(m.SetCamDistanceScale, m, av.bust and bustDist or (o and o.dist) or p.dist)
+        pcall(m.SetCamDistanceScale, m, (av.bust and not UF.tuning) and bustDist or (o and o.dist) or p.dist)
         -- x nudges the model sideways (negative = left) so the face sits
         -- centered in the circle, clear of the model window's straight edges.
         -- (-0.03 was the first, wrong-way guess: positive y moves the model left.)
@@ -1738,6 +1742,10 @@ end
 local function refreshAll()
     eachModel(function(av) pcall(UF.RefreshAvatar, UF, av) end)
 end
+local function setTuning(on)
+    UF.tuning = on or nil
+    eachModel(function(av) pcall(UF.LayoutAvatar, UF, av) end)
+end
 local function tunerLoad()
     local p = UF.db.portrait
     local unit = tunerUnit()
@@ -1827,6 +1835,7 @@ function UF:OpenTuner()
         if ns.SetButtonPrimary then pcall(ns.SetButtonPrimary, save, true) end
         tuner:SetScript("OnHide", function()
             UF.preview = nil
+            setTuning(false)
             tuner.dirty = false
             refreshAll()
         end)
@@ -1838,6 +1847,7 @@ function UF:OpenTuner()
     end
     tuner.dirty = false
     tuner:Show()
+    setTuning(true)
     tunerLoad()
     tunerShow()
 end
