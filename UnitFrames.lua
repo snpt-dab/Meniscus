@@ -507,6 +507,19 @@ local function visible(unit)
     return v
 end
 
+-- Models differ by race and gender (height, head size, where the face sits
+-- in the frame), so the camera can be tuned per race + gender: db.portrait
+-- .byModel["Human3"] = { x =, z =, dist = } overrides the shared values.
+-- Players only (creatures have no race). Set with /men portrait fit.
+local function modelKey(unit)
+    if not UnitIsPlayer(unit) then return nil end
+    local _, race = UnitRace(unit)
+    local sex = UnitSex(unit)
+    if type(race) ~= "string" or issecretvalue(race) or type(sex) ~= "number" or issecretvalue(sex) then return nil end
+    return race .. sex
+end
+UF.ModelKey = modelKey
+
 function UF:RefreshAvatar(av)
     local unit = av.unit
     if not UnitExists(unit) then return end
@@ -528,12 +541,14 @@ function UF:RefreshAvatar(av)
         -- A "bust" avatar (the target strip's, hanging under the bar) pulls
         -- the camera back so the whole head and the shoulders fit inside
         -- the circle, instead of the head rising out of its top.
-        pcall(m.SetCamDistanceScale, m, av.bust and (p.sdist or 1.5) or p.dist)
+        local key = modelKey(unit)
+        local o = key and p.byModel and p.byModel[key] or nil
+        pcall(m.SetCamDistanceScale, m, av.bust and (p.sdist or 1.5) or (o and o.dist) or p.dist)
         -- x nudges the model sideways (negative = left) so the face sits
         -- centered in the circle, clear of the model window's straight edges.
         -- (-0.03 was the first, wrong-way guess: positive y moves the model left.)
         if p.x == nil or p.x == -0.03 then p.x = 0.04 end
-        pcall(m.SetPosition, m, 0, p.x, p.z)
+        pcall(m.SetPosition, m, 0, (o and o.x) or p.x, (o and o.z) or p.z)
         pcall(m.SetFacing, m, p.facing)
         if p.fidget == 0 then pcall(m.SetAnimation, m, 0, 0) end
     else
@@ -1659,6 +1674,27 @@ ns.commands.portrait = function(rest)
     if p.x == nil or p.x == -0.03 then p.x = 0.04 end
     local key, val = (rest or ""):match("^(%S+)%s+(%S+)$")
     val = tonumber(val)
+    -- /men portrait fit <x|z|dist> <number>: for the race + gender of your
+    -- target (or yourself with no player targeted). "fit clear" drops it.
+    local fk, fv = (rest or ""):match("^fit%s+(%S+)%s*(%S*)$")
+    if fk then
+        local unit = (UnitExists("target") and UnitIsPlayer("target")) and "target" or "player"
+        local mk = modelKey(unit)
+        if not mk then return ns:Print("Can't tell that model's race and gender.") end
+        p.byModel = p.byModel or {}
+        if fk == "clear" then
+            p.byModel[mk] = nil
+        elseif (fk == "x" or fk == "z" or fk == "dist") and tonumber(fv) then
+            p.byModel[mk] = p.byModel[mk] or {}
+            p.byModel[mk][fk] = tonumber(fv)
+        else
+            return ns:Print("usage: /men portrait fit <x|z|dist> <number>  |  /men portrait fit clear")
+        end
+        eachModel(function(av) UF:RefreshAvatar(av) end)
+        local o = p.byModel[mk] or {}
+        return ns:Print(string.format("%s (%s): x %s  z %s  dist %s  (blank = shared value)", mk,
+            unit == "target" and "your target" or "you", tostring(o.x or "-"), tostring(o.z or "-"), tostring(o.dist or "-")))
+    end
     if rest == "reset" then
         if InCombatLockdown() then return ns:Print("Can't resize avatars in combat.") end
         p.zoom, p.dist, p.z, p.facing, p.pop, p.fidget, p.x = 1.0, 1.2, 0, 0, 0.45, 0, 0.06
@@ -1670,7 +1706,7 @@ ns.commands.portrait = function(rest)
         p[key] = val
         eachModel(function(av) UF:LayoutAvatar(av); UF:RefreshAvatar(av) end)
     elseif rest and rest ~= "" then
-        ns:Print("usage: /men portrait <zoom|dist|sdist|bust3d|x|z|facing|pop|fidget> <number>  |  /men portrait reset")
+        ns:Print("usage: /men portrait <zoom|dist|sdist|bust3d|x|z|facing|pop|fidget> <number>  |  /men portrait reset  |  /men portrait fit <x|z|dist> <number> (your target's race and gender)")
     end
     ns:Print(string.format("portrait zoom %.2f  dist %.2f  x %.2f  z %.2f  facing %.2f  pop %.2f  fidget %d  |  target strip dist (sdist) %.2f",
         p.zoom, p.dist, p.x, p.z, p.facing, p.pop, p.fidget, p.sdist or 1.5))

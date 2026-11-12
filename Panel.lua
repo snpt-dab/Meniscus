@@ -723,6 +723,7 @@ ns.commands.help = function()
         "/men orbs  toggle orbs      /men actionbars  toggle bar styling (reload)",
         "/men char | bags [combined|separate] | spells | quests  open windows / bag layout",
         "/men portrait [reset | <zoom|dist|x|z|facing|pop|fidget> <n>]",
+        "/men portrait fit <x|z|dist> <n>  camera for your target's race and gender (yourself with no player targeted); fit clear",
         "/men profile [use | copy | delete <name>]  layouts per character",
         "/men font | orbcolor | rage | energy [drip] | mana [fsr|burst] | combo | reloadbtn | minimap | keyring | errors | chat",
         "/men probe | uiprobe | charprobe | bars | scales  diagnostics",
