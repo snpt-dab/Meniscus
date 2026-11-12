@@ -471,10 +471,11 @@ local function floatQuest(msg)
     if type(msg) ~= "string" or secret(msg) then return false end
     local what, have, need = msg:match("^(.-)%s*:%s*(%d+)%s*/%s*(%d+)$")
     if not what or what == "" then return false end
-    -- The item was just looted: its pill takes the count.
+    -- The item was just looted (or the same count just went up, two kills
+    -- in a breath): that pill takes the new count.
     local seen = recentPill(what)
     if seen then
-        if not seen.quest then pcall(markQuest, seen, have, need) end
+        pcall(markQuest, seen, have, need)
         return true
     end
     if not pcall(floatOrigin) then return false end
