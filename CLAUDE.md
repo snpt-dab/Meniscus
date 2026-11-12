@@ -20,6 +20,16 @@ SavedVariables: `_forever_/WTF/Account/<ACCOUNT>/SavedVariables/Meniscus.lua` (M
 - **Line endings are LF.** Patch scripts must write with `open(p, 'w', encoding='utf-8', newline='
 ')`; plain `open(p, 'w')` on Windows writes CRLF and makes every line show as changed.
 
+## When to ask for the bigger model
+The user runs day-to-day sessions on Opus and switches to Fable for harder work. You cannot switch models yourself. If you are not Fable and one of these is true, stop and say so in one or two lines ("This is one for Fable: <reason>"), before doing the work, and let the user decide:
+- The request is a performance pass, a cleanup / refactor pass across files, or a new module or Blizzard-window takeover.
+- The fix touches secure frames, taint, or combat-lockdown behaviour beyond following an existing pattern in this file.
+- A bug has no logged error and no obvious cause after one round of looking (a probe is fine to add first).
+- Two attempts at the same fix have failed. Do not make a third guess; say what was tried and ask.
+- You would have to guess at how more than one module interacts and cannot settle it by reading the code.
+
+Small, well-specified changes (move, restyle, reword, fix a visible glitch with a clear cause) do not need it. Don't ask out of caution.
+
 ## Module skeleton
 ```lua
 local _, ns = ...
