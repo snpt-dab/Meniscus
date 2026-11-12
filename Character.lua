@@ -1260,13 +1260,17 @@ local function buildPet(page)
     page.moodWords = {}
     for i, m in ipairs(ns.PET_MOOD or HAPPINESS) do
         local label = type(m[1]) == "string" and m[1] or HAPPINESS[i][1]
-        local fs = text(i == 3 and box or pulse, 12, true)
+        -- (In its own frame: the curve's hidden alpha works on frames, not
+        -- on font strings.)
+        local wf = CreateFrame("Frame", nil, i == 3 and box or pulse)
+        wf:SetAllPoints(box)
+        wf:SetAlpha(0)
+        local fs = text(wf, 12, true)
         fs:SetPoint("CENTER")
         fs:SetText(label)
         local c = HAPPINESS[i][2]
         fs:SetTextColor(c[1], c[2], c[3])
-        fs:SetAlpha(0)
-        page.moodWords[i] = fs
+        page.moodWords[i] = wf
     end
     box:Hide()
     page.moodBox = box

@@ -673,21 +673,27 @@ function Bars:ApplyPetWell()
         pa:SetFromAlpha(1); pa:SetToAlpha(0.25); pa:SetDuration(0.6); pa:SetSmoothing("IN_OUT")
         pag:Play()
         pulse:SetScript("OnShow", function() pag:Play() end)
-        local words = {}
+        -- Each word in its own frame, and the frame's alpha is what the
+        -- curve sets: a hidden value given to a font string's SetAlpha was
+        -- ignored (all three words showed), while frames take it (the orbs'
+        -- flash works that way).
+        local words, wordText = {}, {}
         for i, m in ipairs(MOOD) do
-            local fs = ns:CreateText(i == 3 and pill or pulse, 10)
+            local wf = CreateFrame("Frame", nil, i == 3 and pill or pulse)
+            wf:SetAllPoints(pill)
+            wf:SetAlpha(0)
+            local fs = ns:CreateText(wf, 10)
             fs:SetPoint("RIGHT", pill, "RIGHT", -9, 0)
             fs:SetText(m[1])
             fs:SetTextColor(m[2], m[3], m[4])
-            fs:SetAlpha(0)
-            words[i] = fs
+            words[i], wordText[i] = wf, fs
         end
         local name = ns:CreateText(pill, 11)
         name:SetPoint("LEFT", div, "RIGHT", 6, 0)
         name:SetPoint("RIGHT", mood, "LEFT", -6, 0)
         name:SetJustifyH("CENTER")
         name:SetWordWrap(false)
-        for _, fs in ipairs({ lvl, mood, name, words[1], words[2], words[3] }) do
+        for _, fs in ipairs({ lvl, mood, name, wordText[1], wordText[2], wordText[3] }) do
             fs:SetShadowOffset(1, -1)
             fs:SetShadowColor(0, 0, 0, 0.8)
         end
