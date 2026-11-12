@@ -560,24 +560,29 @@ local function rewardCards(list)
             local it = t.it
             local why = it.link and ns.ItemUnusable and call(ns.ItemUnusable, it.link)
             local cant = type(why) == "string" or it.usable == false
+            -- Armor weight is shown by colouring the armor type's own word,
+            -- with no verdict in words: green for the heaviest kind you can
+            -- wear, blue for a lighter one. Whether the piece is better is
+            -- for the comparison rows to say.
+            local tint
+            if not cant and it.weight and bestArmor then
+                if it.weight == bestArmor then tint = "|cff73d980"
+                elseif it.weight < bestArmor then tint = "|cff73b3f2" end
+            end
             local what
             if it.slotName then
                 what = it.slotName
-                if type(it.sub) == "string" and it.sub ~= "" and it.sub ~= it.slotName then what = what .. "  \194\183  " .. it.sub end
+                if type(it.sub) == "string" and it.sub ~= "" and it.sub ~= it.slotName then
+                    what = what .. "  \194\183  " .. (tint and (tint .. it.sub .. "|r") or it.sub)
+                end
             else
                 what = type(it.typ) == "string" and it.typ or ""
             end
             if cant then
-                t.what:SetText("Can't equip" ..(type(why) == "string" and ("  \194\183  " .. why) or ""))
+                -- Gear you can't wear, or anything else you can't use.
+                t.what:SetText((it.slotName and "Can't equip" or "Can't use")
+                    .. (type(why) == "string" and ("  \194\183  " .. why) or ""))
                 t.what:SetTextColor(0.90, 0.45, 0.45)
-            elseif it.weight and bestArmor and it.weight == bestArmor then
-                -- The heaviest armor you can wear: the kind meant for you.
-                t.what:SetText("Optimal  \194\183  " .. what)
-                t.what:SetTextColor(0.45, 0.85, 0.50)
-            elseif it.weight and bestArmor and it.weight < bestArmor then
-                -- Wearable, but lighter than you could be wearing.
-                t.what:SetText("Suboptimal  \194\183  " .. what)
-                t.what:SetTextColor(0.45, 0.70, 0.95)
             else
                 t.what:SetText(what)
                 t.what:SetTextColor(unpack(T.textDim))
