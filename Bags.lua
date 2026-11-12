@@ -326,18 +326,28 @@ local function newButton(bag, slot)
     b.junk:Hide()
     -- Starts a quest you don't have yet: a gold disc with "!" in the top-left
     -- corner (and a gold ring). Items for a quest you're on get the ring only.
-    b.bang = over:CreateTexture(nil, "OVERLAY")
-    b.bang:SetSize(14, 14)
-    b.bang:SetPoint("TOPLEFT", b, "TOPLEFT", 2, -2)
-    b.bang:SetTexture(MEDIA .. "circle.tga")
-    b.bang:SetVertexColor(1.0, 0.80, 0.20, 1)
-    b.bang:Hide()
-    b.bangText = over:CreateFontString(nil, "OVERLAY", nil, 1)
-    ns:SetFont(b.bangText, 11, "", true)
-    b.bangText:SetPoint("CENTER", b.bang, "CENTER", 0.5, 0)
-    b.bangText:SetTextColor(0.10, 0.07, 0.02, 1)
-    b.bangText:SetText("!")
-    b.bangText:Hide()
+    -- A small badge sitting on the tile's corner (over the ring, not over
+    -- the picture): a dark rim, a gold disc, and the drawn "!" from the
+    -- micro menu's quest icon in dark.
+    local bang = CreateFrame("Frame", nil, over)
+    bang:SetSize(13, 13)
+    bang:SetPoint("CENTER", b, "TOPLEFT", 3.5, -3.5)
+    local rim = bang:CreateTexture(nil, "OVERLAY", nil, 0)
+    rim:SetTexture(MEDIA .. "circle.tga")
+    rim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    rim:SetAllPoints()
+    local disc = bang:CreateTexture(nil, "OVERLAY", nil, 1)
+    disc:SetTexture(MEDIA .. "circle.tga")
+    disc:SetVertexColor(1.0, 0.80, 0.20, 1)
+    disc:SetPoint("TOPLEFT", 1.5, -1.5)
+    disc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local mark = bang:CreateTexture(nil, "OVERLAY", nil, 2)
+    mark:SetTexture(MEDIA .. "micro_quest.tga")
+    mark:SetVertexColor(0.10, 0.07, 0.02, 1)
+    mark:SetPoint("TOPLEFT", 0.5, -0.5)
+    mark:SetPoint("BOTTOMRIGHT", -0.5, 0.5)
+    bang:Hide()
+    b.bang = bang
 
     -- New-item glow: an accent halo one level BELOW the tile (only the rim
     -- around the tile shows), breathing until hovered.
@@ -414,7 +424,6 @@ local function updateButton(b)
         if isQuest then b.ring(1.0, 0.80, 0.20, 1)
         elseif c then b.ring(c.r, c.g, c.b, 1) else b.ring(T.border[1], T.border[2], T.border[3], 1) end
         b.bang:SetShown(starts)
-        b.bangText:SetShown(starts)
         b.junk:SetShown(q == 0 and not info.hasNoValue and not starts)
         local link = info.hyperlink
         local lvl = link and not secret(link) and isGear(link) and itemLevel(link)
@@ -431,7 +440,6 @@ local function updateButton(b)
         b.ring(T.border[1] * 0.8, T.border[2] * 0.8, T.border[3] * 0.8, 1)
         b.junk:Hide()
         b.bang:Hide()
-        b.bangText:Hide()
         b.ilvl:SetText("")
         b.glow:Hide()
     end
