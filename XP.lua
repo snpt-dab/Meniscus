@@ -589,6 +589,7 @@ local LV_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 -- 0 centre, +1 right).
 local LV_PRISM = { { 1.00, 0.12, 0.22 }, { 0.15, 1.00, 0.35 }, { 0.22, 0.38, 1.00 } }
 local LV_PULL = { -1, 0, 1 }
+local LV_SEG = 28 -- segments in each light of the afterglow line
 local banner
 
 local function clamp01(v) return v < 0 and 0 or (v > 1 and 1 or v) end
@@ -712,20 +713,26 @@ local function buildBanner()
         f.ghosts[i] = g
     end
 
-    -- Afterglow motes: small points of the three lights that twinkle over
-    -- the card and drift upward while it is up, and go with it when it
-    -- fades. Each keeps a place on the card (as a share of its width and
-    -- height), a size, a pace and a colour.
-    f.motes = {}
-    for i = 1, 14 do
-        local c = LV_PRISM[(i - 1) % 3 + 1]
-        local m = glow:CreateTexture(nil, "ARTWORK", nil, 3)
-        m:SetTexture(MEDIA .. "spot.tga")
-        m:SetVertexColor(c[1] * 0.6 + 0.4, c[2] * 0.6 + 0.4, c[3] * 0.6 + 0.4, 1)
-        m:SetBlendMode("ADD")
-        m:SetAlpha(0)
-        f.motes[i] = { tex = m, x = 0, y = 0, size = 8, pace = 1, phase = 0, rise = 0 }
+    -- Afterglow: a thin line of light through the badge, along the card's
+    -- top edge. It arrives straight with the flash; as it fades its ends
+    -- sink and it bows into a shallow arc, the way the last light of a
+    -- star wraps the rim of a planet passing in front of it. It is drawn
+    -- in the three lights, and each bends a little more than the last
+    -- (red least, blue most), so it is white at the middle and opens into
+    -- colour toward its tips. Each light is a chain of short segments.
+    f.arcs = {}
+    for i, c in ipairs(LV_PRISM) do
+        local segs = {}
+        for j = 1, LV_SEG do
+            local ln = glow:CreateLine(nil, "ARTWORK", nil, 3)
+            ln:SetColorTexture(c[1], c[2], c[3], 1)
+            pcall(ln.SetBlendMode, ln, "ADD")
+            ln:SetAlpha(0)
+            segs[j] = ln
+        end
+        f.arcs[i] = segs
     end
+    f.arcAt = glow
 
     f:SetScript("OnUpdate", function(self, dt)
         local t = self.t + dt
@@ -794,20 +801,31 @@ local function buildBanner()
         local h = LV_HEAD + body
         self:SetHeight(h)
         self.holder:SetHeight(math.max(1, body))
-        -- Motes: each twinkles at its own pace and drifts up, wrapping
-        -- round to the bottom of the card.
-        local w = self:GetWidth()
-        for i = 1, #self.motes do
-            local m = self.motes[i]
-            local tw = 0.5 + 0.5 * math.sin(t * m.pace + m.phase)
-            local yy = (m.y + t * m.rise) % 1
-            m.tex:ClearAllPoints()
-            m.tex:SetPoint("CENTER", self, "BOTTOMLEFT", m.x * w, yy * h)
-            local sz = m.size * (0.6 + 0.6 * tw)
-            m.tex:SetSize(sz, sz)
-            -- (Dimmer near the top and bottom, so wrapping round isn't seen.)
-            local edge = math.min(1, yy * 5, (1 - yy) * 5)
-            m.tex:SetAlpha(glowIn * 0.75 * tw * tw * edge)
+        -- The line: straight and bright at the flash, then dimmer, shorter
+        -- and more bowed all the way to the fade.
+        local life = clamp01((t - 0.4) / (out + 0.6 - 0.4))
+        local bow = 30 * (life * life * (3 - 2 * life))              -- how far the tips sink
+        local half = LV_W * (1.9 - 0.55 * life)                      -- half its length
+        local la = math.max(a, glowIn * (0.62 - 0.30 * life))
+        local thick = math.max(px, 2.4 - 1.2 * life)
+        local at = self.arcAt
+        for i = 1, 3 do
+            local segs = self.arcs[i]
+            local bend = bow * (0.82 + 0.18 * i) + LV_PULL[i] * 0.6 * (1 - life)
+            local x0, y0 = -half, -bend
+            for j = 1, LV_SEG do
+                local u = -1 + 2 * j / LV_SEG                         -- -1 .. 1 along the line
+                local x1, y1 = u * half, -bend * u * u
+                local ln = segs[j]
+                ln:SetStartPoint("CENTER", at, x0, y0)
+                ln:SetEndPoint("CENTER", at, x1, y1)
+                ln:SetThickness(thick)
+                -- Brightest at the middle, tapering to nothing at the tips.
+                local m = u - 1 / LV_SEG
+                local taper = 1 - m * m
+                ln:SetAlpha(la * taper * taper)
+                x0, y0 = x1, y1
+            end
         end
         -- Amber, then purple.
         local c = clamp01((t - turn) / 1.0)
@@ -860,13 +878,6 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     f.n = n
     f.t = 0
     f.px = ns.Pixel and ns.Pixel() or 1
-    for i = 1, #f.motes do
-        local m = f.motes[i]
-        m.x, m.y = -0.04 + 1.08 * math.random(), math.random()
-        m.size = 7 + 12 * math.random()
-        m.pace, m.phase = 1.6 + 2.8 * math.random(), 6.28 * math.random()
-        m.rise = 0.03 + 0.05 * math.random()
-    end
     f:SetHeight(LV_HEAD)
     f.holder:SetHeight(1)
     f:SetAlpha(0)
