@@ -232,6 +232,37 @@ local function skin(b, fontSize, thick)
             ns:SetFont(b.HotKey, fontSize, "OUTLINE")
             b.HotKey:ClearAllPoints()
             b.HotKey:SetPoint("TOPRIGHT", -2, -2)
+            -- A button with no key bound shows the game's range mark in
+            -- that corner instead: a "●" character, white in range and
+            -- red out of it. Our font has no such character, so it came
+            -- out as an empty box. The character is hidden and a small
+            -- red dot of our own shows while the target is out of range.
+            if not b.__muiRangeDot then
+                b.__muiRangeDot = true
+                local hk = b.HotKey
+                local dot = b:CreateTexture(nil, "OVERLAY", nil, 2)
+                dot:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga")
+                dot:SetSize(7, 7)
+                dot:SetPoint("TOPRIGHT", -4, -4)
+                dot:SetVertexColor(0.92, 0.30, 0.26, 1)
+                dot:Hide()
+                local mark = _G.RANGE_INDICATOR
+                local function sync()
+                    local t = hk:GetText()
+                    local isMark = type(t) == "string" and not issecretvalue(t) and mark ~= nil and t == mark
+                    hk:SetAlpha(isMark and 0 or 1)
+                    local far = false
+                    if isMark and hk:IsShown() then
+                        local r, g = hk:GetTextColor()
+                        far = type(r) == "number" and not issecretvalue(r) and r > 0.8 and g < 0.35
+                    end
+                    dot:SetShown(far)
+                end
+                for _, m in ipairs({ "SetText", "SetVertexColor", "SetTextColor", "Show", "Hide", "SetShown" }) do
+                    if hk[m] then hooksecurefunc(hk, m, sync) end
+                end
+                sync()
+            end
         end
         if b.Count then
             ns:SetFont(b.Count, fontSize + 1, "OUTLINE")
