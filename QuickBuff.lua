@@ -503,7 +503,19 @@ function QB:Refresh()
     btn.nameText:SetText(who)
     btn.more:SetText(count > 1 and ("+" .. (count - 1)) or "")
     -- Grow to fit: icon cap + spell + arrow + name + "+n" + right cap (out of combat only).
-    local textW = btn.spellText:GetStringWidth() + 6 + ARROW_W + 6 + btn.nameText:GetStringWidth() + 4
+    local sw, nw = btn.spellText:GetStringWidth() or 0, btn.nameText:GetStringWidth() or 0
+    if sw < 1 or (nw < 1 and who ~= "") then
+        -- The text hasn't been measured yet (right after a cold start the
+        -- font isn't in, and the widths read as zero, which left the pill
+        -- at its shortest with the name hanging outside). Fit again
+        -- shortly instead of keeping this size.
+        shown.spell = nil
+        if not QB.refit then
+            QB.refit = true
+            C_Timer.After(0.5, function() QB.refit = nil; QB:Refresh() end)
+        end
+    end
+    local textW = sw + 6 + ARROW_W + 6 + nw + 4
     local w = 3 + (H - 6) + 6 + textW
         + (count > 1 and (4 + btn.more:GetStringWidth()) or 0) + H / 2 + 2
     btn:SetWidth(math.max(math.floor(w + 0.5), H * 3))
