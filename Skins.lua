@@ -1929,6 +1929,268 @@ local function deepMap()
     deepDriver(wm, "WorldMapFrame")
 end
 
+-- ── Talents (PlayerSpellsFrame.TalentsFrame) ──────────────────────────────
+-- The game's own talent window, restyled in place (its trees run on the
+-- trait system: staged points, prerequisites, Apply Changes; none of that
+-- is touched). What changes is the dressing:
+--   frame     the brown page, gold inner frame, dividers, clouds and dust go;
+--             the class painting stays as a faint tint behind the trees,
+--             with a dark gutter between them and a hairline under the top
+--             strip
+--   talents   rounded icon in a hairline ring that carries the state the
+--             game's gold / neon-green squares did (accent: can be learned,
+--             amber: full, grey: not yet); no drop shadow or glow; the rank
+--             in a small dark chip
+--   the rest  tree headers and "Unspent Talents" in our font, the count in
+--             a pill, search box and its filter button like the others
+-- Talent buttons are pooled and made as the trees are laid out, so a slow
+-- tick styles new ones while the window is open.
+local function dim(o, a)
+    if not o or not o.SetAlpha or o.__muiDim then return end
+    o.__muiDim = true
+    o:SetAlpha(a)
+    hooksecurefunc(o, "SetAlpha", function(self, v) if type(v) == "number" and v > a + 0.001 then self:SetAlpha(a) end end)
+end
+
+local TALENT_FULL, TALENT_BAD, TALENT_SPENT = { 0.86, 0.72, 0.36 }, { 0.88, 0.36, 0.32 }, { 0.50, 0.50, 0.56 }
+local function talentRing(atlas)
+    if type(atlas) ~= "string" then return T.border end
+    atlas = atlas:lower()
+    if atlas:find("green", 1, true) then return T.accent end
+    if atlas:find("yellow", 1, true) or atlas:find("gold", 1, true) then return TALENT_FULL end
+    if atlas:find("red", 1, true) then return TALENT_BAD end
+    if atlas:find("gray", 1, true) or atlas:find("grey", 1, true) then return TALENT_SPENT end
+    return T.border
+end
+
+local function styleTalent(b)
+    if b.__muiTalent then return end
+    local sb, icon = rawget(b, "StateBorder"), rawget(b, "Icon")
+    if not (sb and icon and sb.GetAtlas) then return end
+    b.__muiTalent = true
+    for _, k in ipairs({ "Shadow", "StateBorder", "StateBorderHover", "Glow", "SelectableGlow", "BorderSheen" }) do
+        fade(rawget(b, k))
+    end
+    -- The ring: a rounded square just larger than the icon, behind it.
+    local ring = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    ring:SetTexture(ROUND_TGA)
+    ring:SetPoint("TOPLEFT", icon, "TOPLEFT", -2, 2)
+    ring:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -2)
+    local over = false
+    local function paint()
+        local c = talentRing(sb:GetAtlas())
+        if over then ring:SetVertexColor(math.min(1, c[1] + 0.22), math.min(1, c[2] + 0.22), math.min(1, c[3] + 0.22), 1)
+        else ring:SetVertexColor(c[1], c[2], c[3], 1) end
+    end
+    hooksecurefunc(sb, "SetAtlas", paint)
+    b:HookScript("OnEnter", function() over = true; paint() end)
+    b:HookScript("OnLeave", function() over = false; paint() end)
+    paint()
+    pcall(roundIcon, b)
+    local ov = rawget(b, "DisabledOverlay")
+    if ov and ov.AddMaskTexture and not ov.__muiRound then
+        ov.__muiRound = true
+        local m = b:CreateMaskTexture()
+        m:SetTexture(ROUND_TGA, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        m:SetAllPoints(icon)
+        ov:AddMaskTexture(m)
+    end
+    -- Rank: our font on a small dark chip (the game stacks four offset
+    -- copies of the number as an outline; those go).
+    local st = rawget(b, "SpendText")
+    if st and st.SetFont then
+        for i = 1, 4 do fade(rawget(b, "SpendTextShadow" .. i)) end
+        pcall(ns.SetFont, ns, st, 11, "", true)
+        pcall(st.SetShadowOffset, st, 1, -1)
+        pcall(st.SetShadowColor, st, 0, 0, 0, 0.9)
+        local chip = b:CreateTexture(nil, "OVERLAY", nil, -1)
+        chip:SetTexture(ROUND_TGA)
+        chip:SetVertexColor(0.05, 0.05, 0.06, 0.94)
+        chip:SetSize(17, 15)
+        chip:SetPoint("CENTER", st, "CENTER", 0, 0)
+        local busy = false
+        local function sync()
+            local t = st:GetText()
+            chip:SetShown(type(t) == "string" and not issecretvalue(t) and t ~= "")
+            if busy then return end
+            -- The game's pure green becomes the accent.
+            local r, g, bl = st:GetTextColor()
+            if type(r) == "number" and not issecretvalue(r) and g > 0.9 and r < 0.4 and bl < 0.4 then
+                busy = true
+                st:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
+                busy = false
+            end
+        end
+        hooksecurefunc(st, "SetText", sync)
+        hooksecurefunc(st, "SetTextColor", sync)
+        sync()
+    end
+end
+
+-- Text and art of a small label frame (a tree's header, the unspent
+-- count): our font, gold and neon green to our colours, frames and glows
+-- gone, icons kept.
+local function styleLabel(f, d)
+    if not f or (f.IsForbidden and f:IsForbidden()) then return end
+    for _, r in ipairs({ f:GetRegions() }) do
+        if r:IsObjectType("FontString") then
+            if not r.__muiTalentFont then
+                r.__muiTalentFont = true
+                local _, size = r:GetFont()
+                pcall(ns.SetFont, ns, r, math.max(11, math.min(type(size) == "number" and size or 13, 17)), "", true)
+                pcall(r.SetShadowOffset, r, 1, -1)
+                local busy = false
+                local function recolor()
+                    if busy then return end
+                    local cr, cg, cb = r:GetTextColor()
+                    if type(cr) ~= "number" or issecretvalue(cr) then return end
+                    busy = true
+                    if cg > 0.9 and cr < 0.4 and cb < 0.4 then r:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
+                    elseif cr > 0.9 and cg > 0.65 and cg < 0.9 and cb < 0.3 then r:SetTextColor(T.text[1], T.text[2], T.text[3]) end
+                    busy = false
+                end
+                hooksecurefunc(r, "SetTextColor", recolor)
+                recolor()
+            end
+        elseif r:IsObjectType("Texture") and not r.__muiTalentArt then
+            r.__muiTalentArt = true
+            local a = r:GetAtlas()
+            a = type(a) == "string" and a:lower() or ""
+            if a ~= "" and not a:find("icon", 1, true)
+                and (a:find("border", 1, true) or a:find("frame", 1, true) or a:find("ring", 1, true)
+                     or a:find("glow", 1, true) or a:find("divider", 1, true) or a:find("line", 1, true)
+                     or a:find("bg", 1, true) or a:find("background", 1, true) or a:find("shadow", 1, true)
+                     or a:find("header", 1, true) or a:find("currency", 1, true)) then
+                fade(r)
+            end
+        end
+    end
+    if d >= 2 then return end
+    for _, c in ipairs({ f:GetChildren() }) do styleLabel(c, d + 1) end
+end
+
+local function deepTalents()
+    local psf = _G.PlayerSpellsFrame
+    local tf = psf and psf.TalentsFrame
+    if not tf or tf.__muiTalents then return end
+    tf.__muiTalents = true
+    fadeRegions(psf)
+    for _, k in ipairs({ "Background", "OverlayBackgroundRight", "OverlayBackgroundMid", "Clouds1", "Clouds2",
+                         "AirParticlesClose", "AirParticlesFar", "BackgroundBorder", "DividerHorizontalLeft",
+                         "DividerHorizontalRight", "DividerVerticalLeft", "DividerVerticalRight" }) do
+        fade(tf[k])
+    end
+    dim(tf.ClassBackground, 0.26)
+    -- A dark gutter where each gold divider stood, and a hairline under
+    -- the top strip (the faded art still marks the places).
+    for _, k in ipairs({ "DividerVerticalLeft", "DividerVerticalRight" }) do
+        local dv = tf[k]
+        if dv then
+            local g = tf:CreateTexture(nil, "BORDER")
+            g:SetColorTexture(FILL[1], FILL[2], FILL[3], 1)
+            g:SetWidth(8)
+            g:SetPoint("TOP", dv, "TOP", 0, 0)
+            g:SetPoint("BOTTOM", tf.ClassBackground or dv, "BOTTOM", 0, 0)
+        end
+    end
+    local dl, dr = tf.DividerHorizontalLeft, tf.DividerHorizontalRight
+    if dl and dr then
+        local line = tf:CreateTexture(nil, "BORDER", nil, 1)
+        line:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+        line:SetHeight(1)
+        line:SetPoint("LEFT", dl, "LEFT", 6, 0)
+        line:SetPoint("RIGHT", dr, "RIGHT", -6, 0)
+    end
+
+    pcall(deepEditBox, tf.SearchBox)
+    if tf.SearchBox then pcall(themeFont, tf.SearchBox) end
+    if tf.SearchOptionsDropdown then pcall(keepGrey, tf.SearchOptionsDropdown) end
+
+    -- "Unspent Talents": the number sits in a pill.
+    local cd = tf.ClassCurrencyDisplay
+    local box = cd and cd.CurrentAmountContainer
+    if box and not box.__muiPill then
+        box.__muiPill = true
+        ns.RoundedRect(box, -8, 3, 10, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(box, -7, 4, 9, 0.05, 0.05, 0.06, 1)
+    end
+
+    -- One look at how the pieces we don't know yet are made, for the next
+    -- round of tuning (tree headers, the unspent count).
+    local seen = 0
+    local function labels()
+        pcall(styleLabel, cd, 0)
+        for _, c in ipairs({ tf:GetChildren() }) do
+            if c ~= tf.ButtonsParent and c ~= cd and not c:IsObjectType("Button") and not c:IsObjectType("EditBox")
+                and not c:IsObjectType("ModelScene") then
+                local w, h = c:GetWidth(), c:GetHeight()
+                if type(w) == "number" and w >= 30 and w <= 400 and h >= 20 and h <= 120 then pcall(styleLabel, c, 0) end
+            end
+        end
+    end
+    local function record()
+        if not MinimalUIDB or MinimalUIDB.talentprobe then return end
+        local out = {}
+        local function dump(f, key, d)
+            if #out > 120 or d > 2 then return end
+            out[#out + 1] = string.rep("  ", d) .. key .. " [" .. f:GetObjectType() .. "] "
+                .. string.format("%.0fx%.0f", f:GetWidth(), f:GetHeight()) .. (f:IsShown() and "" or " hidden")
+            local names = {}
+            for k, v in pairs(f) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+            for _, r in ipairs({ f:GetRegions() }) do
+                local line = string.rep("  ", d + 1) .. "- " .. (names[r] or "#") .. " <" .. r:GetObjectType() .. ">"
+                if r:IsObjectType("Texture") then line = line .. " atlas=" .. tostring(r:GetAtlas()) .. " " .. tostring(r:GetDrawLayer())
+                elseif r:IsObjectType("FontString") then
+                    local t = r:GetText()
+                    line = line .. ' "' .. ((type(t) == "string" and not issecretvalue(t)) and t:sub(1, 24) or "") .. '"'
+                end
+                out[#out + 1] = line .. string.format(" %.0fx%.0f a=%.2f", r:GetWidth(), r:GetHeight(), r:GetAlpha())
+            end
+            for _, c in ipairs({ f:GetChildren() }) do dump(c, names[c] or "#", d + 1) end
+        end
+        if cd then pcall(dump, cd, "ClassCurrencyDisplay", 0) end
+        for _, c in ipairs({ tf:GetChildren() }) do
+            if c ~= tf.ButtonsParent and c ~= cd and c:GetWidth() == 48 then pcall(dump, c, "header?", 0) end
+        end
+        local bp = tf.ButtonsParent
+        if bp then
+            for _, c in ipairs({ bp:GetChildren() }) do
+                if not c:IsObjectType("Button") then pcall(dump, c, "edge?", 0) end
+            end
+        end
+        MinimalUIDB.talentprobe = out
+    end
+
+    local bp = tf.ButtonsParent
+    if bp then ours(bp) end -- the generic deep pass keeps out: these are styled here
+    local count, acc = -1, 1
+    local tick = ours(CreateFrame("Frame", nil, tf))
+    tick:SetSize(1, 1)
+    tick:SetPoint("TOPLEFT")
+    tick:SetScript("OnShow", function() acc = 1 end)
+    tick:SetScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc < 0.5 then return end
+        acc = 0
+        if bp then
+            local n = bp:GetNumChildren()
+            if n ~= count then
+                count = n
+                local kids = ns.Kids(bp, 13)
+                for i = 1, kids.n do
+                    local b = kids[i]
+                    if b:IsObjectType("Button") then pcall(styleTalent, b) end
+                end
+            end
+        end
+        if seen < 6 then
+            seen = seen + 1
+            pcall(labels)
+            if seen == 3 then pcall(record) end
+        end
+    end)
+end
+
 -- ── Damage meter (Blizzard's built-in one) ────────────────────────────────
 -- First pass, generic: its rows are pooled and appear as fights happen, so
 -- a slow scan (twice a second, only while the meter is shown) styles
@@ -2104,12 +2366,12 @@ end)
 local lod = CreateFrame("Frame")
 lod:RegisterEvent("ADDON_LOADED")
 lod:SetScript("OnEvent", function()
-    if S.db and S.db.enabled ~= false then pcall(skinOthers); pcall(skinTabard); pcall(deepMap) end
+    if S.db and S.db.enabled ~= false then pcall(skinOthers); pcall(skinTabard); pcall(deepMap); pcall(deepTalents) end
 end)
 
 function S:OnInit(db)
     self.db = db
-    for _, step in ipairs({ skinGameMenu, skinDialogs, skinMerchant, skinMap, deepMap, skinOthers, skinPopups,
+    for _, step in ipairs({ skinGameMenu, skinDialogs, skinMerchant, skinMap, deepMap, deepTalents, skinOthers, skinPopups,
                             skinTabard, skinMenus }) do
         local ok, err = pcall(step)
         if not ok then ns:Print("Skins: " .. tostring(err)) end
