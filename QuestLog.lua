@@ -214,8 +214,8 @@ end
 
 -- ── Detail pane ───────────────────────────────────────────────────────────
 -- Pooled widgets laid out top-down in a scroll child.
-local pool = { fs = {}, check = {}, tile = {} }
-local used = { fs = 0, check = 0, tile = 0 }
+local pool = { fs = {}, check = {}, tile = {}, card = {} }
+local used = { fs = 0, check = 0, tile = 0, card = 0 }
 
 local function takeFS(size, bold, color)
     used.fs = used.fs + 1
@@ -302,6 +302,72 @@ local function takeTile()
     return t
 end
 
+-- A reward card, as in the quest giver's window: icon, name, vendor value,
+-- what it is (or why you can't use it), and how it compares with what you
+-- are wearing. Full width, as tall as its text.
+local function takeCard()
+    used.card = used.card + 1
+    local t = pool.card[used.card]
+    if not t then
+        t = CreateFrame("Button", nil, detail.content)
+        t.ring = ns.RoundedRect(t, -8, 0, 12, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(t, -7, 1, 11, unpack(CARD))
+        local box = CreateFrame("Frame", nil, t)
+        box:SetSize(36, 36)
+        box:SetPoint("TOPLEFT", 10, -10)
+        local mask = box:CreateMaskTexture()
+        mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints()
+        t.icon = box:CreateTexture(nil, "ARTWORK")
+        t.icon:SetAllPoints()
+        t.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        t.icon:AddMaskTexture(mask)
+        t.count = box:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(t.count, 10, "OUTLINE", true)
+        t.count:SetPoint("BOTTOMRIGHT", -1, 1)
+        t.sell = text(t, 10, false, T.textDim)
+        t.sell:SetPoint("TOPRIGHT", t, "TOPRIGHT", -12, -12)
+        t.sell:SetJustifyH("RIGHT")
+        t.name = text(t, 12, true)
+        t.name:SetPoint("TOPLEFT", box, "TOPRIGHT", 10, 0)
+        t.name:SetJustifyH("LEFT"); t.name:SetJustifyV("TOP")
+        t.name:SetWordWrap(true)
+        t.what = text(t, 10, false, T.textDim)
+        t.what:SetPoint("TOPLEFT", t.name, "BOTTOMLEFT", 0, -3)
+        t.what:SetJustifyH("LEFT")
+        t.what:SetWordWrap(true)
+        t.rows = text(t, 11)
+        t.rows:SetPoint("TOPLEFT", t.what, "BOTTOMLEFT", 0, -6)
+        t.rows:SetJustifyH("LEFT"); t.rows:SetJustifyV("TOP")
+        t.rows:SetSpacing(3)
+        t.rows:SetWordWrap(true)
+        t:SetScript("OnEnter", function(self)
+            ns.TipAnchor(self)
+            if not pcall(GameTooltip.SetQuestLogItem, GameTooltip, self.kind, self.index, self.questID) then
+                GameTooltip:SetText(self.name:GetText() or "")
+            end
+            GameTooltip:Show()
+        end)
+        t:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        t:SetScript("OnClick", function(self)
+            if IsModifiedClick() and self.link and HandleModifiedItemClick then HandleModifiedItemClick(self.link) end
+        end)
+        pool.card[used.card] = t
+    end
+    t:ClearAllPoints()
+    t:Show()
+    return t
+end
+
+local function coinText(v)
+    local g, s, c = math.floor(v / 10000), math.floor(v / 100) % 100, v % 100
+    local out = ""
+    if g > 0 then out = out .. g .. "|cffe6c25ag|r " end
+    if s > 0 then out = out .. s .. "|cffb8bcc6s|r " end
+    if c > 0 then out = out .. c .. "|cffc98a52c|r" end
+    return out
+end
+
 local function resetPool()
     for k, list in pairs(pool) do
         for i = 1, #list do list[i]:Hide() end
@@ -319,7 +385,9 @@ local function moneyText(c)
     return table.concat(parts, "  ")
 end
 
-local function showDetail(e)
+local showDetail
+showDetail = function(e, retried)
+    Q.detailEntry = e
     resetPool()
     local content = detail.content
     local w = content:GetWidth()
@@ -406,24 +474,71 @@ local function showDetail(e)
     local xp = call(_G.GetQuestLogRewardXP, id)
     if #tiles > 0 or money or (type(xp) == "number" and xp > 0) then
         section(nChoice and nChoice > 1 and "Rewards (choose one of the first " .. nChoice .. ")" or "Rewards")
-        local col = 0
-        for _, r in ipairs(tiles) do
-            local t = takeTile()
-            t.kind, t.index, t.questID = r.kind, r.index, id
-            t.link = call(_G.GetQuestLogItemLink, r.kind, r.index, id)
+        -- The best-selling choice is marked, when the choices differ.
+        local infos, bestPrice, differ, missing = {}, 0, false, false
+        for i, r in ipairs(tiles) do
+            r.link = call(_G.GetQuestLogItemLink, r.kind, r.index, id)
+            local info = ns.RewardInfo and call(ns.RewardInfo, r.link, r.count)
+            infos[i] = info
+            if not info or not info.price then missing = true end
+            if info and info.price and r.kind == "choice" and info.price > bestPrice then bestPrice = info.price end
+        end
+        for i, r in ipairs(tiles) do
+            local p = infos[i] and infos[i].price
+            if r.kind == "choice" and p and p < bestPrice then differ = true end
+        end
+        for i, r in ipairs(tiles) do
+            local info = infos[i]
+            local t = takeCard()
+            t.kind, t.index, t.questID, t.link = r.kind, r.index, id, r.link
             t.icon:SetTexture(r.tex)
-            t.name:SetText(r.name)
             t.count:SetText(type(r.count) == "number" and r.count > 1 and r.count or "")
+            t.name:SetText(r.name)
             local q = r.quality
             local c = type(q) == "number" and q >= 2 and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
-            if c then t.ring(c.r, c.g, c.b, 1); t.name:SetTextColor(c.r, c.g, c.b)
-            else t.ring(T.border[1], T.border[2], T.border[3], 1); t.name:SetTextColor(unpack(T.text)) end
-            t:SetWidth((w - 8) / 2)
-            t:SetPoint("TOPLEFT", content, "TOPLEFT", col * ((w - 8) / 2 + 8), y)
-            col = col + 1
-            if col == 2 then col = 0; y = y - 46 end
+            local cant = info and info.cant
+            t.icon:SetDesaturated(cant and true or false)
+            if cant then t.name:SetTextColor(0.55, 0.55, 0.60)
+            elseif c then t.name:SetTextColor(c.r, c.g, c.b)
+            else t.name:SetTextColor(unpack(T.text)) end
+            if c then t.ring(c.r * 0.7, c.g * 0.7, c.b * 0.7, 1) else t.ring(T.border[1], T.border[2], T.border[3], 1) end
+            t.what:SetText(info and info.what or "")
+            local rowText = info and info.rows or ""
+            t.rows:SetText(rowText)
+            local v = info and info.price
+            local top = differ and r.kind == "choice" and v == bestPrice
+            ns:SetFont(t.sell, top and 12 or 10, "", top)
+            if top then t.sell:SetTextColor(1, 1, 1) else t.sell:SetTextColor(unpack(T.textDim)) end
+            if v and v > 0 then
+                t.sell:SetText(coinText(v))
+                t.sell:SetAlpha((r.kind ~= "choice" or v == bestPrice) and 1 or 0.55)
+            elseif v == 0 then
+                t.sell:SetText("No sell value"); t.sell:SetAlpha(0.55)
+            else
+                t.sell:SetText("")
+            end
+            -- (Explicit widths: a string's height can't be measured from
+            -- anchors that haven't been resolved yet.)
+            local textW = w - 56 - 12
+            t.name:SetWidth(math.max(80, textW - t.sell:GetStringWidth() - 10))
+            t.what:SetWidth(textW)
+            t.rows:SetWidth(textW)
+            local whatText = t.what:GetText()
+            local h = 10 + t.name:GetStringHeight()
+                + ((whatText and whatText ~= "") and (3 + t.what:GetStringHeight()) or 0)
+                + (rowText ~= "" and (6 + t.rows:GetStringHeight()) or 0) + 12
+            h = math.max(56, math.ceil(h))
+            t:SetSize(w, h)
+            t:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+            y = y - (h + 8)
         end
-        if col == 1 then y = y - 46 end
+        -- Data for an item never seen before arrives a moment late: draw
+        -- the pane once more then.
+        if missing and not retried then
+            C_Timer.After(0.6, function()
+                if win and win:IsShown() and Q.detailEntry == e then showDetail(e, true) end
+            end)
+        end
         local extras = {}
         if money then table.insert(extras, money) end
         if type(xp) == "number" and xp > 0 then table.insert(extras, BreakUpLargeNumbers and BreakUpLargeNumbers(xp) .. " XP" or (xp .. " XP")) end

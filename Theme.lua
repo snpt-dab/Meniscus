@@ -681,6 +681,62 @@ function ns.AddCompare(tip, link)
     tip:Show() -- resize for the added lines
 end
 
+-- What a reward card says about an item, for any window that lists rewards
+-- (the quest log's cards; the quest giver's in Dialogs.lua say the same):
+--   what   "Wrist  ·  Mail" (the armor type green when it is the heaviest
+--          you can wear, blue when lighter), a weapon's type, or the item's
+--          kind; with "(Can't equip)" in red when you can't use it
+--   cant   true when you can't use it
+--   rows   how it differs from what you wear, as one string ("" if nothing)
+--   price  what a vendor pays for the stack, or nil if not known yet
+-- Returns nil while the item's data hasn't arrived.
+local CARD_SINGULAR = { Staves = "Staff", Thrown = "Thrown", Miscellaneous = "Miscellaneous" }
+function ns.RewardInfo(link, count, usable)
+    if type(link) ~= "string" or issecretvalue(link) or not (C_Item and C_Item.GetItemInfoInstant) then return nil end
+    local ok, _, typ, sub, loc, _, classID, subID = pcall(C_Item.GetItemInfoInstant, link)
+    if not ok then return nil end
+    local weapon = classID == 2 or (classID == 4 and subID == 6)
+    local weight = (classID == 4 and type(subID) == "number" and subID >= 1 and subID <= 4
+        and loc ~= "INVTYPE_CLOAK") and subID or nil
+    local sn = type(loc) == "string" and loc ~= "" and _G[loc]
+    local slotName = (type(sn) == "string" and sn ~= "") and sn or nil
+    local why = ns.ItemUnusable(link)
+    local cant = type(why) == "string" or usable == false
+    local best = ns.BestArmor()
+    local RED = "|cffe57373"
+    local tint
+    if cant then
+        if why == sub or (weight and best and weight > best) then tint = RED end
+    elseif weight and best then
+        if weight == best then tint = "|cff73d980" elseif weight < best then tint = "|cff73b3f2" end
+    end
+    local what
+    if weapon and type(sub) == "string" and sub ~= "" then
+        what = CARD_SINGULAR[sub] or (sub:gsub("s$", ""))
+    elseif slotName then
+        what = slotName
+        if type(sub) == "string" and sub ~= "" and sub ~= slotName then
+            what = what .. "  \194\183  " .. (tint and (tint .. sub .. "|r") or sub)
+        end
+    else
+        what = type(typ) == "string" and typ or ""
+    end
+    if cant then
+        local note = slotName and "Can't equip" or "Can't use"
+        if type(why) == "string" and why ~= "" and why ~= sub and why ~= slotName then note = note .. "  \194\183  " .. why end
+        what = what .. (what ~= "" and "  " or "") .. RED .. "(" .. note .. ")|r"
+    end
+    local rows = (not cant) and ns.CompareRows(link, 6) or nil
+    local price
+    if C_Item.GetItemInfo then
+        local okp, p = pcall(function() return (select(11, C_Item.GetItemInfo(link))) end)
+        if okp and type(p) == "number" and not issecretvalue(p) then
+            price = p * ((type(count) == "number" and not issecretvalue(count) and count > 1) and count or 1)
+        end
+    end
+    return { what = what, cant = cant, rows = type(rows) == "table" and table.concat(rows, "     ") or "", price = price }
+end
+
 -- Hide a non-secure Blizzard region/frame and keep it hidden.
 function ns.Kill(obj)
     if not obj or obj.__muiKilled then return end
