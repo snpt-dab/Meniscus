@@ -752,21 +752,30 @@ end
 -- "icons per row" value, and Blizzard's layout is run again. Whenever
 -- Blizzard lays the frame out afresh (which puts its own value back) ours
 -- is restored. What the frame offers is noted in MinimalUIDB.buffwrap.
-local wraps, rooms, wrapping = {}, {}, false
+local wraps, rooms, ups, wrapping = {}, {}, {}, false
 local wrapTo
 local function applyWrap(fr)
     local n = wraps[fr]
     local c = fr and fr.AuraContainer
     if not (n and c) or wrapping then return end
-    if type(c.iconStride) ~= "number" or c.iconStride == n then return end
+    local changed = false
+    if type(c.iconStride) == "number" and c.iconStride ~= n then c.iconStride = n; changed = true end
+    -- Rows that must grow upward (the buffs above the panel), whatever
+    -- Edit Mode's direction setting says.
+    if ups[fr] and type(c.addIconsToTop) == "boolean" and not c.addIconsToTop then
+        c.addIconsToTop = true
+        changed = true
+    end
+    if not changed then return end
     wrapping = true
-    c.iconStride = n
+    if fr.UpdateAuraContainerAnchor then pcall(fr.UpdateAuraContainerAnchor, fr) end
     if fr.UpdateGridLayout then pcall(fr.UpdateGridLayout, fr) end
     wrapping = false
 end
-wrapTo = function(fr, room)
+wrapTo = function(fr, room, up)
     local c = fr and fr.AuraContainer
     if not c or type(room) ~= "number" then return end
+    if up ~= nil then ups[fr] = up and true or nil end
     -- A protected frame is left alone: a value of ours in its layout would
     -- get its icons blocked in combat.
     local prot = fr.IsProtected and fr:IsProtected()
@@ -783,7 +792,13 @@ wrapTo = function(fr, room)
         -- (Also the moment to measure, if no icon was showing before.)
         hooksecurefunc(fr, "UpdateGridLayout", function(self)
             if wrapping then return end
-            if wraps[self] then applyWrap(self) elseif rooms[self] then pcall(wrapTo, self, rooms[self]) end
+            if wraps[self] then
+                applyWrap(self)
+            elseif rooms[self] then
+                pcall(wrapTo, self, rooms[self])
+                -- Measured at last: seat again, by the corner it now fills from.
+                if wraps[self] then C_Timer.After(0.1, function() A:SeatBlizzard() end) end
+            end
         end)
     end
     local ui = UIParent:GetEffectiveScale()
@@ -812,9 +827,10 @@ wrapTo = function(fr, room)
     if MinimalUIDB then
         MinimalUIDB.buffwrap = MinimalUIDB.buffwrap or {}
         MinimalUIDB.buffwrap[fr:GetName() or "?"] = string.format(
-            "room %.0f width %.1f pitch %.1f -> %d per row; iconStride=%s iconPadding=%s isHorizontal=%s UpdateGridLayout=%s",
+            "room %.0f width %.1f pitch %.1f -> %d per row; iconStride=%s iconPadding=%s isHorizontal=%s addIconsToTop=%s addIconsToRight=%s UpdateGridLayout=%s UpdateAuraContainerAnchor=%s",
             room, width, pitch, n, tostring(c.iconStride), tostring(c.iconPadding), tostring(c.isHorizontal),
-            type(fr.UpdateGridLayout))
+            tostring(c.addIconsToTop), tostring(c.addIconsToRight), type(fr.UpdateGridLayout),
+            type(fr.UpdateAuraContainerAnchor))
     end
     wraps[fr] = n
     applyWrap(fr)
@@ -828,31 +844,41 @@ function A:SeatBlizzard()
     local slots = B and B.Slots and B:Slots()
     local char = B and B.charSlot
     if char then
-        -- Character panel: to the right of the portrait, buffs from the top
-        -- of the well, debuffs along its bottom. Each frame is pinned by the
-        -- corner it fills from.
-        for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
-            if fr then
-                local v, h = fillCorner(fr)
-                local x = (h == "RIGHT") and char.auraX1 or char.auraX0
-                -- Blizzard's frame has a margin between its own edge and
-                -- the first icon. Taken off here, so it's the icons that
-                -- start at the edge (tucked up to the portrait), not the
-                -- frame: that margin was most of a wasted icon's width.
-                local c = fr.AuraContainer
-                local l0, l1, r0, r1 = fr:GetLeft(), c and c:GetLeft(), fr:GetRight(), c and c:GetRight()
-                if l0 and l1 and r0 and r1 then
-                    local k = c:GetEffectiveScale() / fr:GetEffectiveScale()
-                    local pad = (h == "RIGHT") and (r0 - r1 * k) or (l1 * k - l0)
-                    pad = math.max(0, math.min(24, pad))
-                    x = x + ((h == "RIGHT") and pad or -pad)
-                end
-                local y
-                if i == 1 then y = (v == "TOP") and char.auraTop or (char.auraTop - 30)
-                else y = (v == "TOP") and (char.auraBottom + 30) or char.auraBottom end
-                seat(fr, v .. h, UIParent, "BOTTOMLEFT", x, y)
-                pcall(wrapTo, fr, char.auraX1 - char.auraX0)
+        -- Character panel. Buffs sit on top of the panel, as wide as it is,
+        -- and grow upward: there are many of them and they can take the
+        -- room. Debuffs, the urgent ones, are inside the panel beside the
+        -- portrait, from its top. Each frame is pinned by the corner it
+        -- fills from.
+        local wl = char.well
+        -- Blizzard's frame has a margin between its own edge and the first
+        -- icon. Taken off, so it's the icons that start at the edge.
+        local function edge(fr, h, x0, x1)
+            local x = (h == "RIGHT") and x1 or x0
+            local c = fr.AuraContainer
+            local l0, l1, r0, r1 = fr:GetLeft(), c and c:GetLeft(), fr:GetRight(), c and c:GetRight()
+            if l0 and l1 and r0 and r1 then
+                local k = c:GetEffectiveScale() / fr:GetEffectiveScale()
+                local pad = (h == "RIGHT") and (r0 - r1 * k) or (l1 * k - l0)
+                pad = math.max(0, math.min(24, pad))
+                x = x + ((h == "RIGHT") and pad or -pad)
             end
+            return x
+        end
+        if BuffFrame then
+            local fr = BuffFrame
+            pcall(wrapTo, fr, wl.w, true)
+            local v, h = fillCorner(fr)
+            -- Clear of what sits half out of the panel's top edge (the
+            -- status marks, stance buttons).
+            local base = wl.y + wl.h + 16 + ((B and B.stanceLift) or 0)
+            seat(fr, v .. h, UIParent, "BOTTOMLEFT", edge(fr, h, wl.x, wl.x + wl.w), (v == "BOTTOM") and base or (base + 62))
+        end
+        if DebuffFrame then
+            local fr = DebuffFrame
+            pcall(wrapTo, fr, char.auraX1 - char.auraX0)
+            local v, h = fillCorner(fr)
+            local top = char.auraTop - 12
+            seat(fr, v .. h, UIParent, "BOTTOMLEFT", edge(fr, h, char.auraX0, char.auraX1), (v == "TOP") and top or (top - 44))
         end
     elseif slots and (slots.left.x1 - slots.left.x0) >= 100 then
         -- Console layout: seated in the plate's left slot (between the chat

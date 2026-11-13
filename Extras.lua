@@ -3,7 +3,9 @@ local CreateFrame = ns.CreateFrame
 local T = ns.Theme
 
 -- Extras: small helpers that surface what the game already knows.
---   notices    a row of round marks above the console's left wing that only
+--   tray       food, water, healing potion and bandage buttons in the
+--              character panel, each picking the best one you carry
+--   notices    a row of round marks on the character panel's top edge that only
 --              appear when there is something to say: gear wearing out, mail
 --              waiting, a whisper you haven't answered
 --   owned      "you own" counts on item tooltips: bags, bank, other characters
@@ -42,6 +44,14 @@ local function placeStrip()
     local B = ns.modules.Bars
     local plate = B and B.plate
     local x, y
+    local char = B and B.charSlot
+    if char then
+        -- On the character panel's top edge, left end, half in and half
+        -- out (the stance buttons sit the same way at its right end).
+        strip:ClearAllPoints()
+        strip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", char.well.x + 12, char.well.y + char.well.h - 11)
+        return
+    end
     if plate and plate:IsShown() then
         local well = plate.chatWell
         x = (well and well:IsShown() and well:GetRight()) or plate:GetLeft()
@@ -717,8 +727,213 @@ local function buildWhisper()
     end)
 end
 
+-- ── Consumables tray ──────────────────────────────────────────────────────
+-- Four buttons along the bottom of the character panel: food, water, a
+-- healing potion, a bandage. Each finds the best one in your bags that your
+-- level can use (the highest-level one), shows how many you carry, and uses
+-- it when clicked. What an item is comes from its kind and, for food
+-- against drink, from whether its tooltip talks about health or mana.
+local TRAY = {
+    { key = "food", label = "food", none = "No food in your bags" },
+    { key = "water", label = "water", none = "Nothing to drink in your bags" },
+    { key = "potion", label = "potion", none = "No healing potion in your bags" },
+    { key = "bandage", label = "aid", none = "No bandages in your bags" },
+}
+local kindOf = {} -- itemID -> "food" / "water" / "potion" / "bandage" / false
+local scanTip
+local function tipText(id)
+    local TI = _G.C_TooltipInfo
+    local out = ""
+    if TI and (TI.GetItemByID or TI.GetHyperlink) then
+        local ok, data
+        if TI.GetItemByID then ok, data = pcall(TI.GetItemByID, id) else ok, data = pcall(TI.GetHyperlink, "item:" .. id) end
+        if ok and type(data) == "table" and type(data.lines) == "table" then
+            for _, ln in ipairs(data.lines) do
+                if type(ln.leftText) == "string" and not secret(ln.leftText) then out = out .. " " .. ln.leftText end
+            end
+            return out:lower()
+        end
+    end
+    if not scanTip then
+        local ok, tip = pcall(CreateFrame, "GameTooltip", "MeniscusTrayScan", UIParent, "GameTooltipTemplate")
+        if not ok then return "" end
+        scanTip = tip
+    end
+    scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+    if not pcall(scanTip.SetHyperlink, scanTip, "item:" .. id) then return "" end
+    for i = 2, scanTip:NumLines() do
+        local fs = _G["MeniscusTrayScanTextLeft" .. i]
+        local t = fs and fs:GetText()
+        if type(t) == "string" and not secret(t) then out = out .. " " .. t end
+    end
+    return out:lower()
+end
+local function trayKind(id)
+    local k = kindOf[id]
+    if k ~= nil then return k end
+    local f = C_Item and C_Item.GetItemInfoInstant
+    if not f then return false end
+    local ok, _, _, _, _, _, classID, subID = pcall(f, id)
+    if not ok or classID ~= 0 then kindOf[id] = false; return false end
+    if subID == 7 then kindOf[id] = "bandage"; return "bandage" end
+    if subID ~= 5 and subID ~= 1 then kindOf[id] = false; return false end
+    local text = tipText(id)
+    if text == "" then return false end -- not loaded yet: asked again next time
+    local health, mana = text:find("health", 1, true) ~= nil, text:find("mana", 1, true) ~= nil
+    if subID == 5 then
+        k = (health and "food") or (mana and "water") or false
+    else
+        k = (health and text:find("restore", 1, true) ~= nil) and "potion" or false
+    end
+    kindOf[id] = k
+    return k
+end
+
+local function buildTray()
+    local buttons, best = {}, {}
+    for i, def in ipairs(TRAY) do
+        local b = CreateFrame("Button", "MeniscusTray" .. i, UIParent, "SecureActionButtonTemplate")
+        b:SetSize(30, 30)
+        b:SetFrameStrata("LOW")
+        b:SetFrameLevel(12)
+        b:RegisterForClicks("AnyDown", "AnyUp")
+        b:SetAttribute("type", "item")
+        b.ring = ns.RoundedRect(b, -8, 0, 8, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(b, -7, 1, 7, 0.06, 0.06, 0.07, 0.97)
+        local mask = b:CreateMaskTexture()
+        mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetPoint("TOPLEFT", 2, -2); mask:SetPoint("BOTTOMRIGHT", -2, 2)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetAllPoints(mask)
+        b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        b.icon:AddMaskTexture(mask)
+        b.cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+        b.cd:SetAllPoints(mask)
+        pcall(b.cd.SetDrawEdge, b.cd, false)
+        local over = CreateFrame("Frame", nil, b)
+        over:SetAllPoints()
+        over:SetFrameLevel(b.cd:GetFrameLevel() + 1)
+        b.count = over:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(b.count, 10, "OUTLINE", true)
+        b.count:SetPoint("BOTTOMRIGHT", -3, 3)
+        b.label = ns:CreateText(over, 8, T.textDim)
+        b.label:SetPoint("CENTER")
+        b.label:SetText(def.label)
+        b.def = def
+        b:SetScript("OnEnter", function(self)
+            self.ring(unpack(T.accent))
+            GameTooltip:SetOwner(self, "ANCHOR_TOP", 0, 4)
+            if self.itemID then
+                if not pcall(GameTooltip.SetItemByID, GameTooltip, self.itemID) then GameTooltip:SetText(itemName(self.itemID)) end
+            else
+                GameTooltip:SetText(self.def.none, 0.86, 0.86, 0.89)
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function(self)
+            self.ring(T.border[1], T.border[2], T.border[3], 1)
+            GameTooltip:Hide()
+        end)
+        b:Hide()
+        buttons[i] = b
+    end
+
+    local function survey()
+        for k in pairs(best) do best[k] = nil end
+        local lvl = UnitLevel("player")
+        lvl = num(lvl) and lvl or 1
+        local getInfo = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+        for bag = 0, (_G.NUM_BAG_SLOTS or 4) do
+            local n = call(CC.GetContainerNumSlots or _G.GetContainerNumSlots, bag)
+            for slot = 1, (num(n) and n or 0) do
+                local info = CC.GetContainerItemInfo and call(CC.GetContainerItemInfo, bag, slot)
+                local id = type(info) == "table" and info.itemID
+                local kind = num(id) and trayKind(id)
+                if kind then
+                    local _, _, _, _, need = call(getInfo, id)
+                    need = num(need) and need or 0
+                    if need <= lvl then
+                        local cur = best[kind]
+                        if not cur or need > cur.need then best[kind] = { id = id, need = need } end
+                    end
+                end
+            end
+        end
+    end
+    local function showCooldowns()
+        local f = (CC.GetItemCooldown) or _G.GetItemCooldown
+        for _, b in ipairs(buttons) do
+            local start, dur = nil, nil
+            if b.itemID and f then start, dur = call(f, b.itemID) end
+            if num(start) and num(dur) and dur > 1.5 then b.cd:SetCooldown(start, dur) else b.cd:Clear() end
+        end
+    end
+    local pendingAttr = false
+    local function refresh()
+        survey()
+        for i, b in ipairs(buttons) do
+            local pick = best[TRAY[i].key]
+            local id = pick and pick.id
+            b.itemID = id
+            if id then
+                local icon = C_Item and C_Item.GetItemIconByID and call(C_Item.GetItemIconByID, id)
+                b.icon:SetTexture(icon or 134400)
+                b.icon:Show(); b.label:Hide()
+                local n = itemCount(id)
+                b.count:SetText(n)
+                if n < 5 then b.count:SetTextColor(0.95, 0.76, 0.32) else b.count:SetTextColor(1, 1, 1) end
+            else
+                b.icon:Hide(); b.label:Show()
+                b.count:SetText("")
+            end
+        end
+        showCooldowns()
+        -- What the click uses can only change out of combat.
+        if InCombatLockdown() then pendingAttr = true return end
+        pendingAttr = false
+        for _, b in ipairs(buttons) do
+            local want = b.itemID and ("item:" .. b.itemID) or nil
+            if b:GetAttribute("item") ~= want then b:SetAttribute("item", want) end
+        end
+    end
+    local function place()
+        if InCombatLockdown() then return end
+        local B = ns.modules.Bars
+        local char = B and B.charSlot
+        for i, b in ipairs(buttons) do
+            if char then
+                b:ClearAllPoints()
+                b:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", char.auraX0 + (i - 1) * 38, char.well.y + 12)
+                b:Show()
+            else
+                b:Hide()
+            end
+        end
+    end
+
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "PLAYER_LEVEL_UP",
+                         "BAG_UPDATE_COOLDOWN", "GET_ITEM_INFO_RECEIVED", "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    local queued = false
+    f:SetScript("OnEvent", function(_, e)
+        if e == "BAG_UPDATE_COOLDOWN" then pcall(showCooldowns) return end
+        if e == "PLAYER_ENTERING_WORLD" or e == "UI_SCALE_CHANGED" or e == "DISPLAY_SIZE_CHANGED" then
+            C_Timer.After(1.2, place); C_Timer.After(4, place)
+        elseif e == "PLAYER_REGEN_ENABLED" then
+            place()
+            if not pendingAttr then return end
+        end
+        if queued then return end
+        queued = true
+        C_Timer.After(0.6, function() queued = false; ns.Timed("Extras tray", refresh) end)
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.tray ~= false then pcall(buildTray) end
     if db.durability ~= false then pcall(buildDurability) end
     if db.mail ~= false then pcall(buildMail) end
     if db.whisper ~= false then pcall(buildWhisper) end
