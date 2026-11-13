@@ -12,7 +12,7 @@ local T = ns.Theme
 -- size the game made it and scales the frame (so its dots and the areas
 -- that answer the mouse stay in step); "size" resizes it (dots keep their
 -- full size, but their hover areas drifted toward the middle of the map).
-local MM = ns:NewModule("Minimap", { enabled = true, dome = true, domeD = 130, domeMode = "scale" })
+local MM = ns:NewModule("Minimap", { enabled = true, dome = true, domeD = 130, domeMode = "size", domeGap = 2 })
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
 
 -- Blizzard art to remove. Names differ between client generations, so each
@@ -183,18 +183,28 @@ function MM:ApplyDome()
     self.domeUnclipped = unclipped
     local placing = false
     local native = self.native
-    local byScale = self.db.domeMode ~= "size" and type(native) == "number" and native > 20
-    local want = byScale and native or D -- the frame's own size
+    -- (Scaling the map instead of resizing it was tried: everything on it
+    -- shrank and the tooltips were no better. Kept only as /men dome try.)
+    if self.db.domeMode ~= "size" then self.db.domeMode = "size" end
+    local byScale = false
+    local want = D -- the frame's own size
     local function seat()
         if placing then return end
         placing = true
         Minimap:ClearAllPoints()
         Minimap:SetPoint("CENTER", h, "CENTER")
         Minimap:SetSize(want, want)
-        if byScale then Minimap:SetScale(D / native) end
+        Minimap:SetScale(byScale and (D / native) or 1)
         placing = false
     end
     seat()
+    -- For trying the ways of fitting the map without a reload.
+    function MM:TryDome(mode)
+        if mode == "scale" and type(native) == "number" and native > 20 then byScale, want = true, native
+        elseif mode == "native" and type(native) == "number" and native > 20 then byScale, want = false, native
+        else byScale, want = false, D end
+        seat()
+    end
     -- Blizzard's cluster layout re-anchors (and re-sizes) the map now and
     -- then. Each time it is put back, its hover areas need settling again
     -- (see settle, below): without that the gold dots' tooltips sat beside
@@ -205,12 +215,12 @@ function MM:ApplyDome()
     end)
     hooksecurefunc(Minimap, "SetSize", function(_, w)
         if placing then return end
-        if type(w) == "number" and math.abs(w - want) > 0.5 then seat() end
-        if settleSoon then settleSoon() end
+        -- (Only when the game really changed the size.)
+        if type(w) == "number" and math.abs(w - want) > 0.5 then
+            seat()
+            if settleSoon then settleSoon() end
+        end
     end)
-    for _, m in ipairs({ "SetWidth", "SetHeight", "SetScale" }) do
-        hooksecurefunc(Minimap, m, function() if not placing and settleSoon then settleSoon() end end)
-    end
     -- The map only takes on its new size, for drawing its markers AND for
     -- working out which marker the mouse is over, after a zoom change that
     -- it actually gets to process. Flipping the zoom there and back inside
@@ -218,17 +228,29 @@ function MM:ApplyDome()
     -- areas at the old size, so tooltips appeared beside the marker they
     -- belonged to. So: one step now, the step back a moment later, and the
     -- same again whenever the world is (re)entered.
-    local function settle()
+    -- The step back has to come well after the step out. With 0.3 s
+    -- between them the map was drawn at the old zoom again but the hover
+    -- areas stayed at the stepped-out zoom: the dots' tooltips then sat
+    -- closer to the middle than the dots, worse toward the rim. The client
+    -- seems to take only one zoom change at a time for the hover areas, so
+    -- the second one waits (db.domeGap seconds; /men dome fix <seconds>
+    -- runs one by hand).
+    local settling = false
+    local function settle(gap)
+        if settling then return end
         local ok, z = pcall(Minimap.GetZoom, Minimap)
         if not ok or type(z) ~= "number" then return end
         local other = z > 0 and z - 1 or z + 1
+        settling = true
         pcall(Minimap.SetZoom, Minimap, other)
-        C_Timer.After(0.3, function()
+        C_Timer.After(gap or MM.db.domeGap or 2, function()
+            settling = false
             -- (Unless you zoomed yourself in the meantime.)
             local ok2, now = pcall(Minimap.GetZoom, Minimap)
             if ok2 and now == other then pcall(Minimap.SetZoom, Minimap, z) end
         end)
     end
+    MM.SettleDome = function(_, gap) settle(gap) end
     -- One settle for any burst of changes, a moment after the last one.
     local settleAt, settleQueued = 0, false
     settleSoon = function()
@@ -244,8 +266,8 @@ function MM:ApplyDome()
     end
     C_Timer.After(0.5, settle)
     local sev = CreateFrame("Frame")
-    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED",
-                         "EDIT_MODE_LAYOUTS_UPDATED", "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do
+    -- (Not on every sub-zone change: each settle shows as a zoom step.)
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do
         pcall(sev.RegisterEvent, sev, e)
     end
     sev:SetScript("OnEvent", function() settleSoon() end)
@@ -639,12 +661,28 @@ ns.commands.dome = function(rest)
         MM:ProbeDome()
         return ns:Print("Minimap state saved; /reload so it can be read.")
     end
-    if rest:find("scale") or rest:find("size") then
-        MM.db.domeMode = rest:find("scale") and "scale" or "size"
-        ns.needsReload = true
-        return ns:Print("Minimap dome: " .. (MM.db.domeMode == "scale"
-            and "the map is scaled (dots and tooltips in step, dots a little smaller)"
-            or "the map is resized (full-size dots; tooltips can sit beside them)") .. ". /reload to apply.")
+    -- /men dome fix [seconds] : settle the hover areas now (zoom one step,
+    -- wait, step back); /men dome gap <seconds> keeps that wait.
+    local fixGap = rest:match("fix%s*([%d%.]*)")
+    if fixGap then
+        if not MM.SettleDome then return ns:Print("Turn the dome on first: /men dome") end
+        local g = tonumber(fixGap)
+        MM:SettleDome(g)
+        return ns:Print("Minimap: zoom stepped, stepping back in " .. tostring(g or MM.db.domeGap or 2) .. " s. Then point at a dot.")
+    end
+    local keepGap = rest:match("gap%s*([%d%.]+)")
+    if keepGap and tonumber(keepGap) then
+        MM.db.domeGap = math.max(0.2, math.min(10, tonumber(keepGap)))
+        return ns:Print("Minimap: the settle wait is now " .. MM.db.domeGap .. " s.")
+    end
+    -- /men dome try size | scale | native : other ways of fitting the map,
+    -- until the next reload (for finding out what this client wants).
+    local try = rest:match("try%s*(%a+)")
+    if try then
+        if not MM.TryDome then return ns:Print("Turn the dome on first: /men dome") end
+        MM:TryDome(try)
+        return ns:Print("Minimap fitted by '" .. try .. "' until you reload (the map's own size here is "
+            .. tostring(MM.native and math.floor(MM.native + 0.5)) .. "). /men dome fix settles it.")
     end
     if rest:find("reset") then
         MM.db.domePos = nil
