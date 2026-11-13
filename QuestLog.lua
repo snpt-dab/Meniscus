@@ -477,7 +477,7 @@ showDetail = function(e, retried)
         -- quest giver's wording); what you get regardless follows under
         -- its own heading.
         local choosing = type(nChoice) == "number" and nChoice > 1
-        section(choosing and "Rewards  9483  choose one" or "Rewards")
+        section(choosing and "Rewards  ·  choose one" or "Rewards")
         local saidAlso = false
         -- The best-selling choice is marked, when the choices differ.
         local infos, bestPrice, differ, missing = {}, 0, false, false
