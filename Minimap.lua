@@ -394,6 +394,15 @@ function MM:BuildZonePill(h)
     fadeOut(C.ZoneTextButton)
     fadeOut(_G.TimeManagerClockButton)
     fadeOut(C.BorderTop)
+    -- Blizzard's "you have mail" envelope stays behind in the corner when
+    -- the map moves (our own mail mark is on the character panel).
+    local ind = C.IndicatorFrame
+    if ind then
+        fadeOut(ind)
+        fadeOut(ind.MailFrame)
+        fadeOut(ind.CraftingOrderFrame)
+    end
+    fadeOut(_G.MiniMapMailFrame)
     for _, r in ipairs({ C:GetRegions() }) do pcall(r.SetAlpha, r, 0) end
     local cont = C.MinimapContainer
     fadeOut(cont and cont.PlayerCoords)
