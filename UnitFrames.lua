@@ -190,6 +190,114 @@ local function moltenRing(av)
     return fx
 end
 
+-- The crest: what makes an elite, rare or boss target impossible to miss.
+-- A second ring just outside the portrait's own, with ornaments per kind
+-- (art from dist/crest.py), a slow shimmer running round the ring, a name
+-- tag on top, and a short "snap" when such a target is picked:
+--   elite       gold ring, four gold studs
+--   rare        silver ring, four silver stars that twinkle
+--   rare elite  gold ring and studs, silver stars
+--   boss        ember ring of spikes that turns slowly and breathes to gold
+-- Only on portraits big enough to carry it; nothing glows past the art.
+local CREST_RING_R = 0.80 -- the ring's outer edge in the textures (dist/crest.py)
+local CREST_LABEL = { elite = "Elite", rare = "Rare", rareelite = "Rare Elite", boss = "Boss" }
+local function crestOf(av)
+    if av.crest then return av.crest end
+    local d = av.D or 0
+    if d < 36 then return nil end
+    local c = CreateFrame("Frame", nil, av)
+    local S = (d + 9) / CREST_RING_R
+    c:SetSize(S, S)
+    c:SetPoint("CENTER")
+    c:SetFrameLevel(av:GetFrameLevel())
+    local function tex(file, sub)
+        local t = c:CreateTexture(nil, "ARTWORK", nil, sub)
+        t:SetAllPoints()
+        t:SetTexture(MEDIA .. file)
+        return t
+    end
+    c.ring = tex("crest_ring.tga", 1)
+    c.studs = tex("crest_studs.tga", 2)
+    c.stars = tex("crest_stars.tga", 3)
+    -- The spikes turn, so they get a holder of their own.
+    c.spikes = tex("crest_spikes.tga", 0)
+    -- Shimmer: bright streaks moving round, only where the ring is.
+    c.fx = c:CreateTexture(nil, "ARTWORK", nil, 4)
+    c.fx:SetAllPoints()
+    c.fx:SetTexture(SWIRL_TEX, "REPEAT", "REPEAT")
+    local mask = c:CreateMaskTexture()
+    mask:SetTexture(MEDIA .. "crest_ring.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints()
+    c.fx:AddMaskTexture(mask)
+    -- Name tag: a small dark pill sitting on the top of the ring.
+    local tag = CreateFrame("Frame", nil, c)
+    tag:SetFrameLevel(av:GetFrameLevel() + 12)
+    tag:SetHeight(12)
+    tag:SetPoint("CENTER", av, "TOP", 0, 5)
+    tag.ring = ns.RoundedRect(tag, -8, 0, 6, 1, 1, 1, 1)
+    ns.RoundedRect(tag, -7, 1, 5, 0.05, 0.05, 0.06, 0.97)
+    tag.text = tag:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(tag.text, 8, "", true)
+    tag.text:SetPoint("CENTER", 0, 0)
+    c.tag = tag
+    -- The snap: the crest lands from a little larger, fading in.
+    local ag = c:CreateAnimationGroup()
+    local sc = ag:CreateAnimation("Scale")
+    sc:SetScaleFrom(1.35, 1.35); sc:SetScaleTo(1, 1); sc:SetDuration(0.28); sc:SetSmoothing("OUT")
+    local al = ag:CreateAnimation("Alpha")
+    al:SetFromAlpha(0); al:SetToAlpha(1); al:SetDuration(0.2)
+    c.snap = ag
+    local ph = 0
+    c:SetScript("OnUpdate", function(self, dt)
+        ph = ph + dt
+        local kind = self.kind
+        local speed = (kind == "rare") and 0.16 or 0.09
+        local u, v = ph * speed, ph * speed * 0.6
+        self.fx:SetTexCoord(u, u + 0.8, v, v + 0.8)
+        if kind == "rare" or kind == "rareelite" then
+            -- Twinkle: the stars brighten and dim, never fully out.
+            local k = 0.62 + 0.38 * math.sin(ph * 3.1)
+            self.stars:SetVertexColor(SILVER[1], SILVER[2], SILVER[3], k)
+        elseif kind == "boss" then
+            self.spikes:SetRotation(ph * 0.12)
+            local k = 0.5 + 0.5 * math.sin(ph * 1.6)
+            local r, g, b = EMBER[1] + (GOLD[1] - EMBER[1]) * k, EMBER[2] + (GOLD[2] - EMBER[2]) * k,
+                EMBER[3] + (GOLD[3] - EMBER[3]) * k
+            self.spikes:SetVertexColor(r, g, b, 1)
+            self.ring:SetVertexColor(r, g, b, 1)
+        end
+    end)
+    c:Hide()
+    av.crest = c
+    return c
+end
+
+local function showCrest(av, kind)
+    if kind == "normal" then
+        if av.crest then av.crest:Hide() end
+        return
+    end
+    local c = crestOf(av)
+    if not c then return end
+    c.kind = kind
+    local main = (kind == "rare") and SILVER or (kind == "boss") and EMBER or GOLD
+    c.ring:SetVertexColor(main[1], main[2], main[3], 1)
+    c.studs:SetShown(kind == "elite" or kind == "rareelite")
+    c.studs:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 1)
+    c.stars:SetShown(kind == "rare" or kind == "rareelite")
+    c.stars:SetVertexColor(SILVER[1], SILVER[2], SILVER[3], 1)
+    c.spikes:SetShown(kind == "boss")
+    c.spikes:SetRotation(0)
+    -- (The shimmer: pale, over the ring's own colour.)
+    c.fx:SetVertexColor(1, 0.96, 0.86, kind == "boss" and 0.75 or 0.55)
+    c.tag.text:SetText(string.upper(CREST_LABEL[kind] or ""))
+    c.tag.text:SetTextColor(main[1], main[2], main[3], 1)
+    c.tag.ring(main[1] * 0.8, main[2] * 0.8, main[3] * 0.8, 1)
+    c.tag:SetWidth(math.max(26, (c.tag.text:GetStringWidth() or 20) + 12))
+    c:Show()
+    c.snap:Stop(); c.snap:Play()
+end
+
 local function styleClass(self, unit)
     local av = self.avatar
     if not av then return end
@@ -204,6 +312,7 @@ local function styleClass(self, unit)
     if av.lipRing then av.lipRing:SetVertexColor(c[1], c[2], c[3], 1) end
     local bar = (kind == "rareelite") and SILVER or c
     if self.healthPill and self.healthPill.SetRingColor then self.healthPill:SetRingColor(bar[1], bar[2], bar[3], 1) end
+    pcall(showCrest, av, kind)
     local boss = kind == "boss"
     if boss or av.molten then
         local fx = moltenRing(av)

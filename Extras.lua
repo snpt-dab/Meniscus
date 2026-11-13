@@ -4,7 +4,8 @@ local T = ns.Theme
 
 -- Extras: small helpers that surface what the game already knows.
 --   notices    a row of round marks above the console's left wing that only
---              appear when there is something to say (gear wearing out, ...)
+--              appear when there is something to say: gear wearing out, mail
+--              waiting, a whisper you haven't answered
 --   owned      "you own" counts on item tooltips: bags, bank, other characters
 --   restock    per-item amounts to keep in your bags; one pill at a vendor
 --              buys up to them (Alt-click a vendor item to set its amount)
@@ -126,6 +127,7 @@ function EX:Chip(icon)
         GameTooltip:Show()
     end)
     c:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    c:SetScript("OnClick", function(self) if self.click then self.click() end end)
     c:Hide()
     chips[#chips + 1] = c
     return c
@@ -653,9 +655,73 @@ local function buildPetFood()
     end)
 end
 
+-- ── Mail waiting ──────────────────────────────────────────────────────────
+local function buildMail()
+    local chip = EX:Chip("micro_mail.tga")
+    local function refresh()
+        local has = _G.HasNewMail and call(_G.HasNewMail)
+        chip:Set(has == true, 0.95, 0.80, 0.35, false)
+    end
+    chip.tip = function(tip)
+        tip:AddLine("You have mail", 1, 1, 1)
+        if _G.GetLatestThreeSenders then
+            local a, b, c = call(_G.GetLatestThreeSenders)
+            for _, who in ipairs({ a, b, c }) do
+                if type(who) == "string" and not secret(who) then tip:AddLine("From " .. who, 0.86, 0.86, 0.89) end
+            end
+        end
+        tip:AddLine("Collect it at any mailbox.", 0.6, 0.6, 0.65)
+    end
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "UPDATE_PENDING_MAIL", "PLAYER_ENTERING_WORLD", "MAIL_CLOSED", "MAIL_INBOX_UPDATE" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    f:SetScript("OnEvent", function() C_Timer.After(1, function() pcall(refresh) end) end)
+end
+
+-- ── Whispers you haven't answered ─────────────────────────────────────────
+-- Lights up when someone whispers you; goes out when you whisper back (to
+-- anyone) or click it, which also opens a reply.
+local function buildWhisper()
+    local chip = EX:Chip("micro_chat.tga")
+    local from, count = {}, 0
+    local function refresh() chip:Set(count > 0, T.accent[1], T.accent[2], T.accent[3], false) end
+    local function clear() count = 0; wipe(from); refresh() end
+    chip.tip = function(tip)
+        tip:AddLine(count == 1 and "A whisper you haven't answered" or (count .. " whispers you haven't answered"), 1, 1, 1)
+        for i = math.max(1, #from - 2), #from do tip:AddLine("From " .. from[i], 0.86, 0.86, 0.89) end
+        tip:AddLine("Click to reply.", 0.6, 0.6, 0.65)
+    end
+    chip.click = function()
+        local reply = (_G.ChatFrameUtil and _G.ChatFrameUtil.ReplyTell) or _G.ChatFrame_ReplyTell
+        clear()
+        GameTooltip:Hide()
+        if reply then pcall(reply) end
+    end
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "CHAT_MSG_WHISPER", "CHAT_MSG_BN_WHISPER", "CHAT_MSG_WHISPER_INFORM", "CHAT_MSG_BN_WHISPER_INFORM" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    f:SetScript("OnEvent", function(_, e, _, sender)
+        if e == "CHAT_MSG_WHISPER" or e == "CHAT_MSG_BN_WHISPER" then
+            count = count + 1
+            local who = (type(sender) == "string" and not secret(sender)) and (Ambiguate and Ambiguate(sender, "short") or sender) or "someone"
+            if from[#from] ~= who then
+                if #from >= 6 then table.remove(from, 1) end
+                from[#from + 1] = who
+            end
+            refresh()
+        else
+            clear()
+        end
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
     if db.durability ~= false then pcall(buildDurability) end
+    if db.mail ~= false then pcall(buildMail) end
+    if db.whisper ~= false then pcall(buildWhisper) end
     if db.owned ~= false then pcall(buildOwned) end
     if db.petFood ~= false then pcall(buildPetFood) end
 end

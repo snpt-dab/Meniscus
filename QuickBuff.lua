@@ -49,7 +49,12 @@ local CLASS_BUFFS = {
         { name = "Demon Armor", self = true, any = { "Demon Armor", "Demon Skin" } },
     },
     WARRIOR = { { name = "Battle Shout", self = true } },
-    HUNTER = { { name = "Trueshot Aura", self = true } },
+    HUNTER = {
+        { name = "Aspect of the Hawk", self = true,
+          any = { "Aspect of the Hawk", "Aspect of the Monkey", "Aspect of the Cheetah", "Aspect of the Pack",
+                  "Aspect of the Wild", "Aspect of the Beast", "Aspect of the Viper" } },
+        { name = "Trueshot Aura", self = true },
+    },
     PALADIN = {}, -- blessings: see blessingFor
 }
 

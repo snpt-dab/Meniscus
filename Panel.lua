@@ -422,6 +422,15 @@ local PAGES = {
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.owned ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.owned = d.owned == false end end },
         } },
+        { title = "Marks above the console", items = {
+            { "Mail waiting", kind = "switch", reload = true,
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.mail ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.mail = d.mail == false end end },
+            { "Unanswered whispers", kind = "switch", reload = true,
+              note = "Click the mark to reply",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.whisper ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.whisper = d.whisper == false end end },
+        } },
         { title = "Hunter", items = {
             { "Pet food button", kind = "switch", reload = true,
               note = "Feedings left, above the pet's pill; click to feed",
