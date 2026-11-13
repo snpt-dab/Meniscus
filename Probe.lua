@@ -666,6 +666,121 @@ ns.commands.winprobe = function(rest)
     end
 end
 
+-- Combat facts, for the helpers still to be built (range / mana tint,
+-- interruptible casts, aggro ring, swing timer, corpse arrow, mail mark):
+-- which of the values they need this client gives plainly, and which are
+-- hidden. Recorded on its own into MinimalUIDB.combatprobe, once per
+-- session each: a couple of seconds into a fight, the first time your
+-- target casts, and when you die. "/men combatprobe" records right now.
+do
+    local function show(v)
+        if issecretvalue and issecretvalue(v) then return "<secret>" end
+        return tostring(v)
+    end
+    local function rec(tag, fn)
+        if not MinimalUIDB then return end
+        local out = { "at " .. date("%H:%M:%S") }
+        local function add(label, ...)
+            local t = { ... }
+            for i = 1, select("#", ...) do t[i] = show((select(i, ...))) end
+            out[#out + 1] = label .. ": " .. table.concat(t, ", ")
+        end
+        local function try(label, f, ...)
+            if type(f) ~= "function" then out[#out + 1] = label .. ": missing"; return end
+            local r = { pcall(f, ...) }
+            if not r[1] then out[#out + 1] = label .. ": error " .. tostring(r[2]); return end
+            local t = {}
+            for i = 2, math.min(#r, 12) do t[#t + 1] = show(r[i]) end
+            out[#out + 1] = label .. ": " .. (#t > 0 and table.concat(t, ", ") or "(nothing)")
+        end
+        pcall(fn, add, try)
+        MinimalUIDB.combatprobe = MinimalUIDB.combatprobe or {}
+        MinimalUIDB.combatprobe[tag] = out
+    end
+    local function fight(add, try)
+        try("UnitThreatSituation player", UnitThreatSituation, "player")
+        try("UnitThreatSituation player,target", UnitThreatSituation, "player", "target")
+        try("UnitDetailedThreatSituation", UnitDetailedThreatSituation, "player", "target")
+        try("UnitIsUnit targettarget,player", UnitIsUnit, "targettarget", "player")
+        try("UnitClassification target", UnitClassification, "target")
+        try("UnitAttackSpeed player", UnitAttackSpeed, "player")
+        try("UnitRangedDamage player", UnitRangedDamage, "player")
+        try("UnitPower player", UnitPower, "player")
+        try("IsCurrentSpell autoshot 75", C_Spell and C_Spell.IsCurrentSpell, 75)
+        try("IsAutoRepeatSpell 75", C_Spell and C_Spell.IsAutoRepeatSpell, 75)
+        for slot = 1, 12 do
+            local kind, id = GetActionInfo(slot)
+            if kind then
+                try("slot " .. slot .. " " .. tostring(kind) .. " " .. tostring(id) .. " IsActionInRange", IsActionInRange, slot)
+                try("  IsUsableAction", IsUsableAction, slot)
+                try("  C_ActionBar.IsUsableAction", C_ActionBar and C_ActionBar.IsUsableAction, slot)
+                try("  ActionHasRange", ActionHasRange, slot)
+            end
+        end
+        try("C_Spell.IsSpellInRange 75,target", C_Spell and C_Spell.IsSpellInRange, 75, "target")
+        try("CheckInteractDistance target,4", CheckInteractDistance, "target", 4)
+    end
+    local function cast(add, try)
+        try("UnitCastingInfo target", UnitCastingInfo, "target")
+        try("UnitChannelInfo target", UnitChannelInfo, "target")
+        local nb = _G.TargetFrameSpellBar or (_G.TargetFrame and _G.TargetFrame.spellbar)
+        add("TargetFrame spellbar", nb and "exists" or "none", nb and nb.notInterruptible, nb and nb.BorderShield and nb.BorderShield:IsShown())
+    end
+    local function dead(add, try)
+        try("C_DeathInfo.GetCorpseMapPosition", C_DeathInfo and C_DeathInfo.GetCorpseMapPosition, C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player"))
+        try("C_Map.GetBestMapForUnit", C_Map and C_Map.GetBestMapForUnit, "player")
+        try("C_Map.GetPlayerMapPosition", C_Map and C_Map.GetPlayerMapPosition, C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player"), "player")
+        try("GetPlayerFacing", GetPlayerFacing)
+        try("UnitPosition player", UnitPosition, "player")
+        try("C_Map.GetMapWorldSize", C_Map and C_Map.GetMapWorldSize, C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player"))
+        try("UnitIsGhost", UnitIsGhost, "player")
+    end
+    local function misc(add, try)
+        try("HasNewMail", HasNewMail)
+        try("GetLatestThreeSenders", GetLatestThreeSenders)
+        try("GetWeaponEnchantInfo", GetWeaponEnchantInfo)
+        try("GetShapeshiftForm", GetShapeshiftForm)
+        try("GetNumShapeshiftForms", GetNumShapeshiftForms)
+        for i = 1, 8 do
+            local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not ok or not a then break end
+            add("  aura", a.name, a.spellId, a.isFromPlayerOrPlayerPet)
+        end
+    end
+    local seen = {}
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_REGEN_DISABLED")
+    f:RegisterEvent("PLAYER_DEAD")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    pcall(f.RegisterUnitEvent, f, "UNIT_SPELLCAST_START", "target")
+    pcall(f.RegisterUnitEvent, f, "UNIT_SPELLCAST_CHANNEL_START", "target")
+    f:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_REGEN_DISABLED" then
+            if seen.fight then return end
+            seen.fight = true
+            C_Timer.After(2.5, function() rec("fight", fight) end)
+        elseif e == "PLAYER_DEAD" then
+            if seen.dead then return end
+            seen.dead = true
+            C_Timer.After(2, function() rec("dead", dead) end)
+            C_Timer.After(12, function() rec("ghost", dead) end)
+        elseif e == "PLAYER_ENTERING_WORLD" then
+            if seen.misc then return end
+            seen.misc = true
+            C_Timer.After(6, function() rec("misc", misc) end)
+        else
+            if seen.cast then return end
+            seen.cast = true
+            rec("cast", cast)
+        end
+    end)
+    ns.commands = ns.commands or {}
+    ns.commands.combatprobe = function()
+        rec("fight", fight); rec("cast", cast); rec("dead", dead); rec("misc", misc)
+        ns:Print("Combat facts recorded. /reload to save them.")
+    end
+end
+
 -- /men bug <what went wrong> : a bug report. The note is saved in
 -- MinimalUIDB.bugs together with what would otherwise have to be asked for:
 -- who and where you are, what is under the mouse, which windows are open,

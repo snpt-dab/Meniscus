@@ -797,6 +797,7 @@ ns.commands.help = function()
         "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
         "/men version  your version, and whether a newer one has been seen on another player",
+        "/men combatprobe  record what the client reveals in combat (also recorded on its own)",
         "/men bug <what went wrong>  save a bug report (on its own: a box to type in; list / clear)",
         "/men optprobe  record what the game's Options window is made of (open it first)",
         "/men blizzopts  the game's Options window without our skin (and back); needs a reload",
