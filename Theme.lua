@@ -182,6 +182,19 @@ fontLoader:SetScript("OnEvent", function(self, _, name)
     else
         Theme.font, Theme.fontBold = db.fontPath, db.fontBold or db.fontPath
     end
+    -- Warm the font files up now. The client loads a font file the first
+    -- time it is used, and for a moment after that first use the string has
+    -- no font: the unit frames (the first module to draw text, at login)
+    -- got exactly that, every time, and a label that set its text straight
+    -- away raised "Font not set". Two hidden strings ask for both weights
+    -- here, a little before anything is built.
+    for _, path in ipairs({ Theme.font, Theme.fontBold }) do
+        if type(path) == "string" then
+            local warm = UIParent:CreateFontString(nil, "BACKGROUND")
+            warm:SetAlpha(0)
+            if pcall(warm.SetFont, warm, path, 12, "") then pcall(warm.SetText, warm, "Aa") end
+        end
+    end
 end)
 
 -- /men font : what Meniscus is using right now.

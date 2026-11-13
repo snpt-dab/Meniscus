@@ -8,7 +8,11 @@ local T = ns.Theme
 -- mail/queue indicators are left alone.
 
 -- dome = true: a round map sitting on the main action bar (see MM:ApplyDome).
-local MM = ns:NewModule("Minimap", { enabled = true, dome = true, domeD = 130 })
+-- domeMode: how the dome's map gets its size. "scale" keeps the map at the
+-- size the game made it and scales the frame (so its dots and the areas
+-- that answer the mouse stay in step); "size" resizes it (dots keep their
+-- full size, but their hover areas drifted toward the middle of the map).
+local MM = ns:NewModule("Minimap", { enabled = true, dome = true, domeD = 130, domeMode = "scale" })
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
 
 -- Blizzard art to remove. Names differ between client generations, so each
@@ -27,6 +31,9 @@ end
 function MM:OnInit(db)
     self.db = db
     if not Minimap then return end
+    -- The size the game gave the map, before anything here touches it.
+    self.native = Minimap:GetWidth()
+    if MinimalUIDB then MinimalUIDB.domeNative = self.native end
 
     -- Square shape (rounded corners via the mask). Addons that place minimap
     -- buttons ask GetMinimapShape().
@@ -175,12 +182,16 @@ function MM:ApplyDome()
     end
     self.domeUnclipped = unclipped
     local placing = false
+    local native = self.native
+    local byScale = self.db.domeMode ~= "size" and type(native) == "number" and native > 20
+    local want = byScale and native or D -- the frame's own size
     local function seat()
         if placing then return end
         placing = true
         Minimap:ClearAllPoints()
         Minimap:SetPoint("CENTER", h, "CENTER")
-        Minimap:SetSize(D, D)
+        Minimap:SetSize(want, want)
+        if byScale then Minimap:SetScale(D / native) end
         placing = false
     end
     seat()
@@ -194,7 +205,7 @@ function MM:ApplyDome()
     end)
     hooksecurefunc(Minimap, "SetSize", function(_, w)
         if placing then return end
-        if type(w) == "number" and math.abs(w - D) > 0.5 then seat() end
+        if type(w) == "number" and math.abs(w - want) > 0.5 then seat() end
         if settleSoon then settleSoon() end
     end)
     for _, m in ipairs({ "SetWidth", "SetHeight", "SetScale" }) do
@@ -627,6 +638,13 @@ ns.commands.dome = function(rest)
     if rest:find("probe") then
         MM:ProbeDome()
         return ns:Print("Minimap state saved; /reload so it can be read.")
+    end
+    if rest:find("scale") or rest:find("size") then
+        MM.db.domeMode = rest:find("scale") and "scale" or "size"
+        ns.needsReload = true
+        return ns:Print("Minimap dome: " .. (MM.db.domeMode == "scale"
+            and "the map is scaled (dots and tooltips in step, dots a little smaller)"
+            or "the map is resized (full-size dots; tooltips can sit beside them)") .. ". /reload to apply.")
     end
     if rest:find("reset") then
         MM.db.domePos = nil
