@@ -914,9 +914,12 @@ local function updateRadar(card, unit)
         end
     end
     local top = 0
-    for i, tile in ipairs(card.attrs) do
+    for i, src in ipairs(card.attrs) do
+        local tile = card.corners[i]
         tile.bare, tile.gear, tile.buff = nil, nil, nil
-        local eff, pos, neg = tile.eff, tile.pos, tile.neg
+        local eff, pos, neg = src.eff, src.pos, src.neg
+        tile.eff, tile.pos, tile.neg, tile.unit, tile.index = eff, pos, neg, src.unit, src.index
+        tile.value:SetText(fmt(eff, "%d") or "0")
         if not (plain(eff) and plain(pos) and plain(neg)) then rd.shapes:Hide(); card.radarScale:SetText(""); return end
         local bare = math.max(0, eff - pos - neg)
         local g = math.min(math.max(pos, 0), gear[i])
@@ -1396,21 +1399,129 @@ local function makeStatsCard(page, top)
     card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
     ns.RoundedRect(card, -6, 0, 10, unpack(CARD))
 
+    -- Attribute tiles: the top row.
+    card.attrs = {}
+    local TW, TH, TG = 44, 54, 6
+    local ATTR_ROW = TH + 8
+    local ax0 = (W - 20 - 440) / 2 - (#ATTRS * TW + (#ATTRS - 1) * TG) / 2
+    for i, a in ipairs(ATTRS) do
+        local tile = CreateFrame("Frame", nil, card)
+        tile:SetSize(TW, TH)
+        tile:SetPoint("TOPLEFT", card, "TOPLEFT", ax0 + (i - 1) * (TW + TG), -8)
+        ns.RoundedRect(tile, -4, 0, 7, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(tile, -3, 1, 6, unpack(FILL))
+        -- Its icon in the attribute's colour, the value, a small label.
+        local glyph = tile:CreateTexture(nil, "ARTWORK")
+        glyph:SetTexture(MEDIA .. a[4])
+        glyph:SetSize(17, 17)
+        glyph:SetPoint("TOP", 0, -6)
+        glyph:SetVertexColor(a[3][1], a[3][2], a[3][3], 1)
+        tile.value = text(tile, 13, true)
+        tile.value:SetPoint("TOP", glyph, "BOTTOM", 0, -3)
+        local label = text(tile, 9, false, T.textDim)
+        label:SetPoint("BOTTOM", 0, 5)
+        label:SetText(a[1])
+        tile:EnableMouse(true)
+        tile:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(a[2], a[3][1], a[3][2], a[3][3])
+            if self.eff ~= nil then GameTooltip:AddLine(fmt(self.eff, "%d"), 1, 1, 1) end
+            if plain(self.base) then GameTooltip:AddDoubleLine("Base", string.format("%d", self.base), 0.6, 0.6, 0.65, 1, 1, 1) end
+            if plain(self.pos) and self.pos > 0 then
+                GameTooltip:AddDoubleLine("Bonus", string.format("+%d", self.pos), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3])
+            end
+            if plain(self.neg) and self.neg < 0 then
+                GameTooltip:AddDoubleLine("Penalty", string.format("%d", self.neg), 0.6, 0.6, 0.65, RED[1], RED[2], RED[3])
+            end
+            -- What it gives this character.
+            local ok, fx = pcall(attrEffects, self.index or i, self.unit or "player", self.eff)
+            if ok and #fx > 0 then
+                GameTooltip:AddLine(" ")
+                for _, e in ipairs(fx) do
+                    GameTooltip:AddDoubleLine(e[1], e[2], a[3][1], a[3][2], a[3][3], 1, 1, 1)
+                end
+            end
+            GameTooltip:Show()
+        end)
+        tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        card.attrs[i] = tile
+    end
+
+    -- "Resistances": a divider (icon, word, hairline), then a pill for each
+    -- school under the tiles: the school's icon in its colour and the value.
+    local divY = -8 - TH - 12
+    local dg = card:CreateTexture(nil, "ARTWORK")
+    dg:SetTexture(MEDIA .. "micro_stat_resist.tga")
+    dg:SetSize(14, 14)
+    dg:SetPoint("LEFT", card, "TOPLEFT", ax0, divY)
+    dg:SetVertexColor(0.72, 0.72, 0.76, 1)
+    local dl = text(card, 10, true, T.textDim)
+    dl:SetPoint("LEFT", dg, "RIGHT", 6, 0)
+    dl:SetText("Resistances")
+    local dr = card:CreateTexture(nil, "ARTWORK")
+    dr:SetHeight(1)
+    dr:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    dr:SetPoint("LEFT", dl, "RIGHT", 8, 0)
+    dr:SetPoint("RIGHT", card, "TOPLEFT", ax0 + #ATTRS * TW + (#ATTRS - 1) * TG, divY)
+    card.resists = {}
+    local CH = 20
+    for i, r in ipairs(RESISTS) do
+        local chip = CreateFrame("Frame", nil, card)
+        chip:SetSize(TW, CH)
+        chip:SetPoint("TOPLEFT", card, "TOPLEFT", ax0 + (i - 1) * (TW + TG), divY - 12)
+        ns.RoundedRect(chip, -4, 0, CH / 2, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(chip, -3, 1, CH / 2 - 1, unpack(FILL))
+        local glyph = chip:CreateTexture(nil, "ARTWORK")
+        glyph:SetTexture(MEDIA .. r[4])
+        glyph:SetSize(13, 13)
+        glyph:SetPoint("LEFT", 6, 0)
+        glyph:SetVertexColor(r[3][1], r[3][2], r[3][3], 1)
+        chip.fs = text(chip, 10, true)
+        chip.fs:SetPoint("LEFT", glyph, "RIGHT", 2, 0)
+        chip.fs:SetPoint("RIGHT", -5, 0)
+        chip.fs:SetJustifyH("CENTER")
+        chip.school = r[1]
+        chip:EnableMouse(true)
+        chip:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText((_G["RESISTANCE" .. r[1] .. "_NAME"] or (r[2] .. " Resistance")), r[3][1], r[3][2], r[3][3])
+            if self.value ~= nil then GameTooltip:AddLine(fmt(self.value, "%d"), 1, 1, 1) end
+            GameTooltip:Show()
+        end)
+        chip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        table.insert(card.resists, chip)
+    end
+
+    local cardW, cardH = W - 20 - 440, H - PAGE_TOP + top - 16
+    local listTop = 8 + TH + 12 + 12 + CH + 8 + 20 -- tiles, divider, pills, a gap, the view switch
+    -- (As wide as the row of tiles, plus the 8 the rows keep clear on the
+    -- right for the scroll thumb.)
+    local tilesW = #ATTRS * TW + (#ATTRS - 1) * TG
+    local listH = cardH - listTop - 6
+    card.list = makeList(card, tilesW + 8, listH, 20)
+    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -listTop)
+
     -- The five attributes as a graph: a pentagon with a corner for each,
     -- and three shapes drawn one inside the next: what you have with
     -- nothing on (dim), with your gear (silver), and with buffs as well
     -- (the green outline). The gap between two shapes is that bonus. The
     -- outer edge is your highest attribute, rounded up, so the shape shows
     -- how the five compare, not how strong you are. Each corner has the
-    -- attribute's icon and its total; hover it for the split.
-    card.attrs = {}
-    local TW, TG = 44, 6
-    local RR, LR = 42, 62           -- the pentagon's radius; how far out the corner labels sit
-    local TH = 150                  -- the height the graph takes
-    local ax0 = (W - 20 - 440) / 2 - (#ATTRS * TW + (#ATTRS - 1) * TG) / 2
-    local holder = CreateFrame("Frame", nil, card)
+    -- attribute's icon and its total; hover it for the split. It is the
+    -- card's second view, in the list's place: "Details" / "Graph" above
+    -- the list switch between them.
+    card.corners = {}
+    local graph = CreateFrame("Frame", nil, card)
+    graph:SetSize(tilesW, listH)
+    graph:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -listTop)
+    card.graph = graph
+    -- As large as the space allows: how far out the corner labels sit, and
+    -- the pentagon's radius inside them.
+    local LR = math.max(40, math.min(86, (listH - 36) / 1.81))
+    local RR = LR - 22
+    local holder = CreateFrame("Frame", nil, graph)
     holder:SetSize(2, 2)
-    holder:SetPoint("CENTER", card, "TOPLEFT", (W - 20 - 440) / 2, -8 - 80)
+    holder:SetPoint("CENTER", graph, "TOP", 0, -(LR + 18))
     local ux, uy = {}, {}
     for i = 1, 5 do
         local ang = math.rad(90 - (i - 1) * 72)
@@ -1490,19 +1601,19 @@ local function makeStatsCard(page, top)
     -- What each shape is.
     local LEGEND = { { "Buffs", LAYERS[1].edge }, { "Gear", LAYERS[2].edge }, { "Base", LAYERS[3].edge } }
     for n, e in ipairs(LEGEND) do
-        local sw = card:CreateTexture(nil, "ARTWORK")
+        local sw = graph:CreateTexture(nil, "ARTWORK")
         sw:SetColorTexture(e[2][1], e[2][2], e[2][3], 1)
         sw:SetSize(7, 2)
-        sw:SetPoint("LEFT", card, "TOPLEFT", ax0, -14 - (n - 1) * 11)
-        local fs = text(card, 9, false, T.textDim)
+        sw:SetPoint("LEFT", graph, "TOPLEFT", 0, -8 - (n - 1) * 11)
+        local fs = text(graph, 9, false, T.textDim)
         fs:SetPoint("LEFT", sw, "RIGHT", 4, 0)
         fs:SetText(e[1])
     end
-    card.radarScale = text(card, 9, false, T.textDim)
-    card.radarScale:SetPoint("RIGHT", card, "TOPLEFT", ax0 + #ATTRS * TW + (#ATTRS - 1) * TG, -14)
+    card.radarScale = text(graph, 9, false, T.textDim)
+    card.radarScale:SetPoint("RIGHT", graph, "TOPRIGHT", 0, -8)
     -- The corners: icon and total, and the hover.
     for i, a in ipairs(ATTRS) do
-        local tile = CreateFrame("Frame", nil, card)
+        local tile = CreateFrame("Frame", nil, graph)
         tile:SetSize(40, 32)
         tile:SetPoint("CENTER", holder, "CENTER", LR * ux[i], LR * uy[i])
         local glyph = tile:CreateTexture(nil, "ARTWORK")
@@ -1542,61 +1653,42 @@ local function makeStatsCard(page, top)
             GameTooltip:Show()
         end)
         tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        card.attrs[i] = tile
+        card.corners[i] = tile
     end
 
-    -- "Resistances": a divider (icon, word, hairline), then a pill for each
-    -- school under the tiles: the school's icon in its colour and the value.
-    local divY = -8 - TH - 12
-    local dg = card:CreateTexture(nil, "ARTWORK")
-    dg:SetTexture(MEDIA .. "micro_stat_resist.tga")
-    dg:SetSize(14, 14)
-    dg:SetPoint("LEFT", card, "TOPLEFT", ax0, divY)
-    dg:SetVertexColor(0.72, 0.72, 0.76, 1)
-    local dl = text(card, 10, true, T.textDim)
-    dl:SetPoint("LEFT", dg, "RIGHT", 6, 0)
-    dl:SetText("Resistances")
-    local dr = card:CreateTexture(nil, "ARTWORK")
-    dr:SetHeight(1)
-    dr:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
-    dr:SetPoint("LEFT", dl, "RIGHT", 8, 0)
-    dr:SetPoint("RIGHT", card, "TOPLEFT", ax0 + #ATTRS * TW + (#ATTRS - 1) * TG, divY)
-    card.resists = {}
-    local CH = 20
-    for i, r in ipairs(RESISTS) do
-        local chip = CreateFrame("Frame", nil, card)
-        chip:SetSize(TW, CH)
-        chip:SetPoint("TOPLEFT", card, "TOPLEFT", ax0 + (i - 1) * (TW + TG), divY - 12)
-        ns.RoundedRect(chip, -4, 0, CH / 2, T.border[1], T.border[2], T.border[3], 1)
-        ns.RoundedRect(chip, -3, 1, CH / 2 - 1, unpack(FILL))
-        local glyph = chip:CreateTexture(nil, "ARTWORK")
-        glyph:SetTexture(MEDIA .. r[4])
-        glyph:SetSize(13, 13)
-        glyph:SetPoint("LEFT", 6, 0)
-        glyph:SetVertexColor(r[3][1], r[3][2], r[3][3], 1)
-        chip.fs = text(chip, 10, true)
-        chip.fs:SetPoint("LEFT", glyph, "RIGHT", 2, 0)
-        chip.fs:SetPoint("RIGHT", -5, 0)
-        chip.fs:SetJustifyH("CENTER")
-        chip.school = r[1]
-        chip:EnableMouse(true)
-        chip:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText((_G["RESISTANCE" .. r[1] .. "_NAME"] or (r[2] .. " Resistance")), r[3][1], r[3][2], r[3][3])
-            if self.value ~= nil then GameTooltip:AddLine(fmt(self.value, "%d"), 1, 1, 1) end
-            GameTooltip:Show()
-        end)
-        chip:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        table.insert(card.resists, chip)
+    -- The switch between the two views.
+    local tabs = {}
+    local function setView(v)
+        if C.db then C.db.statsView = v end
+        local isGraph = v == "graph"
+        graph:SetShown(isGraph)
+        card.list:SetShown(not isGraph)
+        for key, t in pairs(tabs) do
+            local on = key == v
+            local c = on and T.text or T.textDim
+            t.fs:SetTextColor(c[1], c[2], c[3])
+            t.bar:SetShown(on)
+        end
     end
+    local tx = ax0
+    for _, def in ipairs({ { "details", "Details" }, { "graph", "Graph" } }) do
+        local t = CreateFrame("Button", nil, card)
+        t.fs = text(t, 10, true, T.textDim)
+        t.fs:SetPoint("LEFT")
+        t.fs:SetText(def[2])
+        t:SetSize(math.max(30, (t.fs:GetStringWidth() or 30)) + 2, 16)
+        t:SetPoint("TOPLEFT", card, "TOPLEFT", tx, -(listTop - 20))
+        t.bar = t:CreateTexture(nil, "ARTWORK")
+        t.bar:SetHeight(1)
+        t.bar:SetColorTexture(T.text[1], T.text[2], T.text[3], 0.8)
+        t.bar:SetPoint("BOTTOMLEFT", 0, 0)
+        t.bar:SetPoint("BOTTOMRIGHT", -2, 0)
+        t:SetScript("OnClick", function() setView(def[1]) end)
+        tabs[def[1]] = t
+        tx = tx + t:GetWidth() + 12
+    end
+    setView(C.db and C.db.statsView == "graph" and "graph" or "details")
 
-    local cardW, cardH = W - 20 - 440, H - PAGE_TOP + top - 16
-    local listTop = 8 + TH + 12 + 12 + CH + 8 -- graph, divider, pills, a gap
-    -- (As wide as the row of tiles, plus the 8 the rows keep clear on the
-    -- right for the scroll thumb.)
-    local tilesW = #ATTRS * TW + (#ATTRS - 1) * TG
-    card.list = makeList(card, tilesW + 8, cardH - listTop - 6, 20)
-    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -listTop)
     return card
 end
 
