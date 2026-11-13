@@ -144,6 +144,9 @@ end
 -- Fixed pool of rows; data is a flat array of
 --   { kind = "header", text, collapsed, onClick, indent }
 --   { kind = "stat",   label, value, color, tooltip }
+--   { kind = "pair",   a, b }   two stats side by side (each as a "stat")
+-- A header may carry glyph = a Media icon: it is then drawn with that icon
+-- and a hairline running out to the right, instead of the chevron.
 --   { kind = "bar",    label, min, max, value, text, color, onClick, tooltip, indent, active }
 local function chevron(row, collapsed)
     local a, b = row.chev[1], row.chev[2]
@@ -202,7 +205,49 @@ local function makeRow(list, i)
     end)
     row:SetScript("OnLeave", function(self) self.hl(1, 1, 1, 0); GameTooltip:Hide() end)
     row:SetScript("OnClick", function(self) if self.data and self.data.onClick then self.data.onClick() end end)
+    row.glyph = row:CreateTexture(nil, "ARTWORK")
+    row.glyph:SetSize(14, 14)
+    row.glyph:SetPoint("LEFT", row, "LEFT", 6, 0)
+    row.glyph:Hide()
+    row.rule = row:CreateTexture(nil, "ARTWORK")
+    row.rule:SetHeight(1)
+    row.rule:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    row.rule:Hide()
     return row
+end
+
+-- The two halves of a "pair" row: each its own hover and tooltip.
+local function pairCells(row)
+    if row.cells then return row.cells end
+    row.cells = {}
+    for i = 1, 2 do
+        local c = CreateFrame("Button", nil, row)
+        c.hl = ns.RoundedRect(c, -8, 0, 6, 1, 1, 1, 0)
+        c.label = text(c, 11, false, T.textDim)
+        c.label:SetPoint("LEFT", c, "LEFT", 6, 0)
+        c.label:SetJustifyH("LEFT")
+        c.label:SetWordWrap(false)
+        c.value = text(c, 11, true)
+        c.value:SetPoint("RIGHT", c, "RIGHT", -6, 0)
+        c.value:SetJustifyH("RIGHT")
+        c.label:SetPoint("RIGHT", c.value, "LEFT", -4, 0)
+        -- A faint line under each, as a ledger has.
+        local under = c:CreateTexture(nil, "BACKGROUND")
+        under:SetHeight(1)
+        under:SetPoint("BOTTOMLEFT", 4, 0); under:SetPoint("BOTTOMRIGHT", -4, 0)
+        under:SetColorTexture(1, 1, 1, 0.045)
+        c:SetScript("OnEnter", function(self)
+            local d = self.data
+            if not (d and d.tooltip) then return end
+            self.hl(1, 1, 1, 0.05)
+            ns.TipAnchor(self)
+            d.tooltip(GameTooltip)
+            GameTooltip:Show()
+        end)
+        c:SetScript("OnLeave", function(self) self.hl(1, 1, 1, 0); GameTooltip:Hide() end)
+        row.cells[i] = c
+    end
+    return row.cells
 end
 
 local function fillRow(row, d)
@@ -216,6 +261,45 @@ local function fillRow(row, d)
     row.value:Hide()
     row.chev[1]:Hide(); row.chev[2]:Hide()
     row.icon:Hide()
+    row.glyph:Hide(); row.rule:Hide()
+    if row.cells then row.cells[1]:Hide(); row.cells[2]:Hide() end
+    if d.kind == "pair" then
+        row.label:SetText("")
+        local cells = pairCells(row)
+        local rw = row:GetWidth()
+        if not rw or rw < 20 then rw = (row:GetParent():GetWidth() or 240) - 8 end
+        local w = (rw - 8) / 2
+        for i = 1, 2 do
+            local c, s = cells[i], (i == 1) and d.a or d.b
+            c.data = s
+            c.hl(1, 1, 1, 0)
+            if s then
+                c:ClearAllPoints()
+                c:SetPoint("LEFT", row, "LEFT", 2 + (i - 1) * (w + 4), 0)
+                c:SetSize(w, row:GetHeight())
+                c.label:SetText(s.label)
+                c.value:SetText(s.value)
+                c.value:SetTextColor(unpack(s.color or T.text))
+                c:Show()
+            end
+        end
+        return
+    end
+    if d.kind == "header" and d.glyph then
+        local dim = d.collapsed and 0.55 or 1
+        row.glyph:SetTexture(MEDIA .. d.glyph)
+        row.glyph:SetVertexColor(0.72 * dim, 0.72 * dim, 0.76 * dim, 1)
+        row.glyph:Show()
+        ns:SetFont(row.label, 10, "", true)
+        row.label:SetTextColor(T.textDim[1] * dim, T.textDim[2] * dim, T.textDim[3] * dim)
+        row.label:SetPoint("LEFT", row, "LEFT", 26, 0)
+        row.label:SetText(d.text)
+        row.rule:ClearAllPoints()
+        row.rule:SetPoint("LEFT", row, "LEFT", 26 + row.label:GetStringWidth() + 8, 0)
+        row.rule:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+        row.rule:Show()
+        return
+    end
     if d.icon and d.kind ~= "header" then
         row.icon:SetTexture(d.icon)
         row.icon:ClearAllPoints()
@@ -560,6 +644,16 @@ local function armorTip(unit, armor, base, pos, neg)
 end
 
 -- ── Stats ─────────────────────────────────────────────────────────────────
+local SECTION_GLYPH = { Melee = "micro_stat_melee.tga", Ranged = "micro_stat_ranged.tga",
+                        Spell = "micro_stat_spell.tga", Defense = "micro_stat_defense.tga" }
+-- Armor's cut of a physical hit from an attacker of your level, as a stat
+-- of its own beside Armor.
+local function reductionStat(rows, unit, armor, tip)
+    local cut = armorCut(armor, UnitLevel(unit))
+    if cut then
+        table.insert(rows, { kind = "stat", label = "Reduction", value = string.format("%.1f%%", cut), tooltip = tip })
+    end
+end
 local function statsData(unit)
     unit = unit or "player"
     local pet = unit == "pet"
@@ -568,9 +662,12 @@ local function statsData(unit)
         if #rows == 0 then return end
         key = (pet and "pet_" or "") .. key
         local col = C.db.collapsed[key]
-        table.insert(d, { kind = "header", text = title, collapsed = col,
+        table.insert(d, { kind = "header", text = title, collapsed = col, glyph = SECTION_GLYPH[title],
             onClick = function() C.db.collapsed[key] = not col; C:Refresh() end })
-        if not col then for _, r in ipairs(rows) do table.insert(d, r) end end
+        -- Two stats to a line.
+        if not col then
+            for i = 1, #rows, 2 do table.insert(d, { kind = "pair", a = rows[i], b = rows[i + 1] }) end
+        end
     end
     local function stat(rows, label, value, color, tooltip)
         if value ~= nil then
@@ -633,6 +730,7 @@ local function statsData(unit)
         rows = {}
         local aBase, armor, _, aPos, aNeg = call(UnitArmor, unit)
         stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg), armorTip(unit, armor, aBase, aPos, aNeg))
+        reductionStat(rows, unit, armor, armorTip(unit, armor, aBase, aPos, aNeg))
         section("defense", "Defense", rows)
         return d
     end
@@ -702,6 +800,7 @@ local function statsData(unit)
     rows = {}
     local aBase, armor, _, aPos, aNeg = call(UnitArmor, "player")
     stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg), armorTip("player", armor, aBase, aPos, aNeg))
+    reductionStat(rows, "player", armor, armorTip("player", armor, aBase, aPos, aNeg))
     local dBase, dMod = call(UnitDefense, "player")
     if plain(dBase) then
         local def = dBase + (plain(dMod) and dMod or 0)
@@ -732,20 +831,20 @@ local function statsData(unit)
 end
 
 local RESISTS = {
-    { 2, "Fire", { 1.00, 0.50, 0.25 } }, { 3, "Nature", { 0.45, 0.85, 0.35 } },
-    { 4, "Frost", { 0.45, 0.75, 1.00 } }, { 5, "Shadow", { 0.68, 0.48, 0.95 } },
-    { 6, "Arcane", { 0.95, 0.88, 0.55 } },
+    { 2, "Fire", { 1.00, 0.50, 0.25 }, "micro_stat_fire.tga" }, { 3, "Nature", { 0.45, 0.85, 0.35 }, "micro_stat_nature.tga" },
+    { 4, "Frost", { 0.45, 0.75, 1.00 }, "micro_stat_frost.tga" }, { 5, "Shadow", { 0.68, 0.48, 0.95 }, "micro_stat_shadow.tga" },
+    { 6, "Arcane", { 0.95, 0.88, 0.55 }, "micro_stat_arcane.tga" },
 }
 
 -- The five primary attributes, as a row of tiles across the top of the stats
 -- card: a short colored label over the buffed value (green when raised by
 -- buffs or gear effects, red when lowered). Hover for the breakdown.
 local ATTRS = {
-    { "STR", SPELL_STAT1_NAME or "Strength",  { 0.92, 0.48, 0.38 } },
-    { "AGI", SPELL_STAT2_NAME or "Agility",   { 0.58, 0.85, 0.42 } },
-    { "STA", SPELL_STAT3_NAME or "Stamina",   { 0.95, 0.72, 0.32 } },
-    { "INT", SPELL_STAT4_NAME or "Intellect", { 0.42, 0.66, 1.00 } },
-    { "SPI", SPELL_STAT5_NAME or "Spirit",    { 0.76, 0.62, 0.96 } },
+    { "Str", SPELL_STAT1_NAME or "Strength",  { 0.92, 0.48, 0.38 }, "micro_stat_str.tga" },
+    { "Agi", SPELL_STAT2_NAME or "Agility",   { 0.58, 0.85, 0.42 }, "micro_stat_agi.tga" },
+    { "Sta", SPELL_STAT3_NAME or "Stamina",   { 0.95, 0.72, 0.32 }, "micro_stat_sta.tga" },
+    { "Int", SPELL_STAT4_NAME or "Intellect", { 0.42, 0.66, 1.00 }, "micro_stat_int.tga" },
+    { "Spi", SPELL_STAT5_NAME or "Spirit",    { 0.76, 0.62, 0.96 }, "micro_stat_spi.tga" },
 }
 
 -- What an attribute is worth to this character right now, as tooltip lines:
@@ -1261,7 +1360,7 @@ local function makeStatsCard(page, top)
 
     -- Attribute tiles: the top row.
     card.attrs = {}
-    local TW, TH, TG = 44, 38, 6
+    local TW, TH, TG = 44, 54, 6
     local ATTR_ROW = TH + 8
     local ax0 = (W - 20 - 440) / 2 - (#ATTRS * TW + (#ATTRS - 1) * TG) / 2
     for i, a in ipairs(ATTRS) do
@@ -1270,16 +1369,17 @@ local function makeStatsCard(page, top)
         tile:SetPoint("TOPLEFT", card, "TOPLEFT", ax0 + (i - 1) * (TW + TG), -8)
         ns.RoundedRect(tile, -4, 0, 7, T.border[1], T.border[2], T.border[3], 1)
         ns.RoundedRect(tile, -3, 1, 6, unpack(FILL))
-        local label = text(tile, 9, true, a[3])
-        label:SetPoint("TOP", 0, -5)
-        label:SetText(a[1])
-        -- A short stroke in the attribute's color under its label.
-        local stroke = tile:CreateTexture(nil, "ARTWORK")
-        stroke:SetSize(14, 1)
-        stroke:SetPoint("TOP", label, "BOTTOM", 0, -2)
-        stroke:SetColorTexture(a[3][1], a[3][2], a[3][3], 0.55)
+        -- Its icon in the attribute's colour, the value, a small label.
+        local glyph = tile:CreateTexture(nil, "ARTWORK")
+        glyph:SetTexture(MEDIA .. a[4])
+        glyph:SetSize(17, 17)
+        glyph:SetPoint("TOP", 0, -6)
+        glyph:SetVertexColor(a[3][1], a[3][2], a[3][3], 1)
         tile.value = text(tile, 13, true)
-        tile.value:SetPoint("BOTTOM", 0, 5)
+        tile.value:SetPoint("TOP", glyph, "BOTTOM", 0, -3)
+        local label = text(tile, 9, false, T.textDim)
+        label:SetPoint("BOTTOM", 0, 5)
+        label:SetText(a[1])
         tile:EnableMouse(true)
         tile:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1306,21 +1406,39 @@ local function makeStatsCard(page, top)
         card.attrs[i] = tile
     end
 
+    -- "Resistances": a divider (icon, word, hairline), then a pill for each
+    -- school under the tiles: the school's icon in its colour and the value.
+    local divY = -8 - TH - 12
+    local dg = card:CreateTexture(nil, "ARTWORK")
+    dg:SetTexture(MEDIA .. "micro_stat_resist.tga")
+    dg:SetSize(14, 14)
+    dg:SetPoint("LEFT", card, "TOPLEFT", ax0, divY)
+    dg:SetVertexColor(0.72, 0.72, 0.76, 1)
+    local dl = text(card, 10, true, T.textDim)
+    dl:SetPoint("LEFT", dg, "RIGHT", 6, 0)
+    dl:SetText("Resistances")
+    local dr = card:CreateTexture(nil, "ARTWORK")
+    dr:SetHeight(1)
+    dr:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    dr:SetPoint("LEFT", dl, "RIGHT", 8, 0)
+    dr:SetPoint("RIGHT", card, "TOPLEFT", ax0 + #ATTRS * TW + (#ATTRS - 1) * TG, divY)
     card.resists = {}
-    local D, step = 28, 40
-    local x0 = (W - 20 - 440) / 2 - (#RESISTS - 1) * step / 2
+    local CH = 20
     for i, r in ipairs(RESISTS) do
         local chip = CreateFrame("Frame", nil, card)
-        chip:SetSize(D, D)
-        chip:SetPoint("CENTER", card, "TOPLEFT", x0 + (i - 1) * step, -24 - ATTR_ROW)
-        local ring = circle(chip, D, "ARTWORK", 1)
-        ring:SetPoint("CENTER")
-        ring:SetColorTexture(r[3][1], r[3][2], r[3][3], 0.9)
-        local inner = circle(chip, D - 4, "ARTWORK", 2)
-        inner:SetPoint("CENTER")
-        inner:SetColorTexture(unpack(FILL))
-        chip.fs = text(chip, 10, true, r[3])
-        chip.fs:SetPoint("CENTER", 0, 0)
+        chip:SetSize(TW, CH)
+        chip:SetPoint("TOPLEFT", card, "TOPLEFT", ax0 + (i - 1) * (TW + TG), divY - 12)
+        ns.RoundedRect(chip, -4, 0, CH / 2, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(chip, -3, 1, CH / 2 - 1, unpack(FILL))
+        local glyph = chip:CreateTexture(nil, "ARTWORK")
+        glyph:SetTexture(MEDIA .. r[4])
+        glyph:SetSize(13, 13)
+        glyph:SetPoint("LEFT", 6, 0)
+        glyph:SetVertexColor(r[3][1], r[3][2], r[3][3], 1)
+        chip.fs = text(chip, 10, true)
+        chip.fs:SetPoint("LEFT", glyph, "RIGHT", 2, 0)
+        chip.fs:SetPoint("RIGHT", -5, 0)
+        chip.fs:SetJustifyH("CENTER")
         chip.school = r[1]
         chip:EnableMouse(true)
         chip:SetScript("OnEnter", function(self)
@@ -1334,8 +1452,9 @@ local function makeStatsCard(page, top)
     end
 
     local cardW, cardH = W - 20 - 440, H - PAGE_TOP + top - 16
-    card.list = makeList(card, cardW - 12, cardH - 52 - ATTR_ROW, 18)
-    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -46 - ATTR_ROW)
+    local listTop = 8 + TH + 12 + 12 + CH + 8 -- tiles, divider, pills, a gap
+    card.list = makeList(card, cardW - 12, cardH - listTop - 6, 20)
+    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -listTop)
     return card
 end
 

@@ -131,6 +131,58 @@ def icons():
     I['buff'] = Icon().line([(12, 4.4), (14.2, 9.8), (19.6, 12), (14.2, 14.2), (12, 19.6), (9.8, 14.2), (4.4, 12), (9.8, 9.8)], w=2.2, close=True)
     # drumstick: pet food
     I['food'] = Icon().dot(9.6, 9.6, 4.6).line([(12.6, 12.6), (18.2, 18.2)], w=2.6).dot(18.6, 18.6, 1.8)
+    # ── character stats page ──
+    # strength: a flexed arm (upper arm, forearm up to a fist, the bicep's bulge)
+    I['stat_str'] = (Icon().line([(20, 18.2), (9, 18.2), (9, 9.6)], w=2.6)
+                     .box(6.2, 4.4, 12.6, 9.8, rad=2.2, fill=True)
+                     .arc(14.6, 18.2, 4.7, 0, 180, w=2.5))
+    # agility: a bolt
+    I['stat_agi'] = Icon().line([(13.4, 4.6), (7.4, 13.2), (11.8, 13.2), (10.6, 19.4), (16.6, 10.8), (12.2, 10.8)], w=2.1, close=True)
+    # stamina: a heart
+    heart = []
+    for i in range(40):
+        t = 2 * math.pi * i / 40
+        hx = 16 * math.sin(t) ** 3
+        hy = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        heart.append((12 + hx * 0.44, 11.4 - hy * 0.44))
+    I['stat_sta'] = Icon().line(heart, w=2.2, close=True)
+    # intellect: a lit bulb
+    I['stat_int'] = Icon().ring(12, 10, 5.2).line([(9.8, 17.4), (14.2, 17.4)], w=2.2).line([(10.6, 20), (13.4, 20)], w=2.0)
+    # spirit: a four-point spark
+    I['stat_spi'] = Icon().line([(12, 4.4), (14.2, 9.8), (19.6, 12), (14.2, 14.2), (12, 19.6), (9.8, 14.2), (4.4, 12), (9.8, 9.8)], w=2.2, close=True)
+    # fire: a flame
+    I['stat_fire'] = Icon().line([(12, 4.4), (15.6, 9), (17.2, 13.6), (15.8, 17.4), (12, 19.4), (8.2, 17.4), (6.8, 13.6), (8.8, 10.2), (10.6, 12.2)], w=2.2, close=True)
+    # nature: a leaf with its vein
+    I['stat_nature'] = (Icon().line([(5.4, 18.6), (5.8, 11.2), (10.8, 6), (18.6, 5.4), (18, 13.2), (12.8, 18.2)], w=2.2, close=True)
+                        .line([(5.4, 18.6), (13.4, 10.6)], w=2.0))
+    # frost: a six-armed flake
+    flake = Icon()
+    for ang in (90, 30, 150):
+        a = math.radians(ang)
+        dx, dy = 7.4 * math.cos(a), 7.4 * math.sin(a)
+        flake.line([(12 - dx, 12 + dy), (12 + dx, 12 - dy)], w=2.1)
+    I['stat_frost'] = flake.dot(12, 12, 1.6)
+    # shadow: a crescent moon
+    I['stat_shadow'] = Icon().arc(11.4, 12, 7.2, 62, 298, w=2.3).arc(16.2, 12, 6.2, 118, 242, w=2.3)
+    # arcane: a five-point star
+    star = []
+    for i in range(10):
+        a = math.radians(90 + i * 36)
+        r = 7.8 if i % 2 == 0 else 3.4
+        star.append((12 + r * math.cos(a), 12.6 - r * math.sin(a)))
+    I['stat_arcane'] = Icon().line(star, w=2.0, close=True)
+    # melee: a sword (blade, guard, pommel)
+    I['stat_melee'] = Icon().line([(8.6, 15.4), (18.6, 5.4)], w=2.5).line([(6.4, 12.4), (11.6, 17.6)], w=2.3).dot(5.8, 18.2, 1.7)
+    # ranged: a bow, its string, an arrow
+    I['stat_ranged'] = (Icon().arc(5.6, 12, 8.8, -52, 52, w=2.3).line([(11, 5.1), (11, 18.9)], w=1.7)
+                        .line([(5, 12), (19.6, 12)], w=2.0).line([(16.6, 9.2), (19.6, 12), (16.6, 14.8)], w=2.0))
+    # spell: a wand and a spark at its tip
+    I['stat_spell'] = (Icon().line([(5.6, 18.4), (14.2, 9.8)], w=2.6)
+                       .line([(17.4, 3.8), (17.4, 9.6)], w=1.9).line([(14.5, 6.7), (20.3, 6.7)], w=1.9))
+    # defense: a shield
+    I['stat_defense'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True)
+    # resistances: a halved shield
+    I['stat_resist'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True).line([(12, 5.2), (12, 19)], w=2.0)
     return I
 
 
