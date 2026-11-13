@@ -885,7 +885,10 @@ local function buildBanner()
         -- all the way to the fade. Always straight.
         local life = clamp01((t - 0.4) / (out + 0.6 - 0.4))
         local half = LV_W * (1.9 - 0.55 * life)                      -- half its length
-        local la = math.max(a, glowIn * (0.62 - 0.30 * life))
+        -- (Gone before the card moves off: it fades out over the half
+        -- second after the last line is written.)
+        local lineOut = 1 - clamp01((t - written) / 0.45)
+        local la = math.max(a, glowIn * (0.62 - 0.30 * life)) * lineOut
         local thick = math.max(px, 2.4 - 1.2 * life)
         local at = self.beamAt
         for i = 1, 3 do
@@ -986,10 +989,15 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     end
     f.n = n
     f.t = 0
-    -- Start in the middle; parked, its middle is 22% of the way across.
+    -- Start in the middle; parked, it stands at the left of the screen,
+    -- its left edge in line with the chat panel's.
     f.mv = nil
     f.topY = -0.30 * UIParent:GetHeight()
-    f.slide = UIParent:GetWidth() * 0.28
+    local left = 20
+    local B = ns.modules.Bars
+    local well = B and B.plate and B.plate.chatWell
+    if well and well:IsShown() and well:GetLeft() then left = math.max(8, well:GetLeft()) end
+    f.slide = UIParent:GetWidth() / 2 - (left + LV_W / 2)
     f:ClearAllPoints()
     f:SetPoint("TOP", UIParent, "TOP", 0, f.topY)
     f.px = ns.Pixel and ns.Pixel() or 1
