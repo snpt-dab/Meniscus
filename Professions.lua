@@ -134,6 +134,13 @@ local function itemNameIcon(id)
         local n, _, _, _, _, _, _, _, _, ic = call(GetItemInfo, id)
         name, icon = n, icon or ic
     end
+    -- (The name-by-ID call only answers from what is already known, and
+    -- for an item this character has never held nothing is: the full
+    -- lookup both answers when it can and asks the server when it can't.)
+    if not name and C_Item and C_Item.GetItemInfo then
+        local n = call(C_Item.GetItemInfo, id)
+        if type(n) == "string" and n ~= "" then name = n end
+    end
     if not name and C_Item and C_Item.RequestLoadItemDataByID then call(C_Item.RequestLoadItemDataByID, id) end
     return name, icon
 end
@@ -475,6 +482,7 @@ local function buildDetail()
 end
 
 local missingNames = false
+local nameTries = 0
 local DETAIL_PARTS = { "box", "name", "sub", "info", "desc", "section" }
 local RING_SHORT = { 0.42, 0.20, 0.20, 1 }
 function showDetail()
@@ -550,6 +558,14 @@ function showDetail()
         if rg then
             local name, icon = itemNameIcon(rg.itemID)
             if not name then missingNames = true end
+            if not name and _G.Item and Item.CreateFromItemID then
+                -- Told when this one's data arrives, whatever event the
+                -- client does or doesn't send for it.
+                pcall(function()
+                    local it = Item:CreateFromItemID(rg.itemID)
+                    it:ContinueOnItemLoad(function() P:QueueDetail() end)
+                end)
+            end
             t.itemID = rg.itemID
             t.box.icon:SetTexture(icon or 134400)
             t.name:SetText(name or "…")
@@ -566,6 +582,13 @@ function showDetail()
             t.itemID = nil
             t:Hide()
         end
+    end
+    -- And a plain second look, a few times, while a name is still missing.
+    if missingNames then
+        nameTries = (nameTries or 0) + 1
+        if nameTries <= 6 then C_Timer.After(0.6, function() if missingNames then P:QueueDetail() end end) end
+    else
+        nameTries = 0
     end
 
     -- Footer: quantity, Create all, Create (or Stop while repeating).
