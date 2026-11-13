@@ -806,6 +806,7 @@ wrapTo = function(fr, room)
         hooked[c] = true
         -- (Also the moment to measure, if no icon was showing before.)
         hooksecurefunc(fr, "UpdateGridLayout", function(self)
+            if targets[self] then alignSoon(self) end
             if wrapping then return end
             -- Growing a different way than when it was seated (an Edit Mode
             -- change): seat it again by the new corner.
@@ -854,6 +855,52 @@ wrapTo = function(fr, room)
     applyWrap(fr)
 end
 
+-- Where the icons really are. Pinning Blizzard's frame by a corner depends
+-- on how the frame arranges things inside itself (its height, where it puts
+-- the container the icons hang from), and that came out wrong more than
+-- once: the buffs ended up a row or three above the panel. So after the
+-- frame is seated, the block of icons that is actually showing is measured
+-- and the frame is moved by whatever the difference is: the block's top (or
+-- bottom) edge onto the wanted line, and its left or right edge, whichever
+-- one the icons start from, onto the wanted side. Done again after every
+-- layout Blizzard runs, so it also follows rows being added and removed.
+local targets, aligning = {}, false
+local function alignNow(fr)
+    local t = targets[fr]
+    local s = seats[fr]
+    if not (t and s) or aligning then return end
+    local ui = UIParent:GetEffectiveScale()
+    local l, r, top, bot
+    for _, b in ipairs(fr.auraFrames or {}) do
+        if b:IsShown() and b:GetLeft() then
+            local k = b:GetEffectiveScale() / ui
+            local bl, br, bt, bb = b:GetLeft() * k, b:GetRight() * k, b:GetTop() * k, b:GetBottom() * k
+            if not l or bl < l then l = bl end
+            if not r or br > r then r = br end
+            if not top or bt > top then top = bt end
+            if not bot or bb < bot then bot = bb end
+        end
+    end
+    if not l then return end
+    local c = fr.AuraContainer
+    local toRight = not (c and c.addIconsToRight == false)
+    local dx = toRight and (t.x0 - l) or (t.x1 - r)
+    local dy = t.top and (t.top - top) or (t.bottom - bot)
+    if math.abs(dx) < 0.5 and math.abs(dy) < 0.5 then return end
+    aligning = true
+    s[4], s[5] = s[4] + dx, s[5] + dy
+    reseat(fr)
+    aligning = false
+    if MinimalUIDB then
+        MinimalUIDB.buffalign = MinimalUIDB.buffalign or {}
+        MinimalUIDB.buffalign[fr:GetName() or "?"] = string.format("moved %.0f, %.0f at %s (point %s)", dx, dy, date("%H:%M:%S"), tostring(s[1]))
+    end
+end
+local function alignSoon(fr)
+    C_Timer.After(0, function() pcall(alignNow, fr) end)
+    C_Timer.After(0.3, function() pcall(alignNow, fr) end)
+end
+
 -- Buffs in the character panel: full size up to twelve, small beyond that
 -- (back to full size at ten or fewer, so it doesn't flicker at the line).
 fitBuffs = function()
@@ -887,6 +934,7 @@ function A:SeatBlizzard()
     local ROW = 46 -- one row of Blizzard's icons with its timer text
     local slots = B and B.Slots and B:Slots()
     local char = B and B.charSlot
+    for k in pairs(targets) do targets[k] = nil end -- (set again below, in the panel layout only)
     if char then
         -- Character panel: to the right of the portrait, buffs from the top
         -- of the well, debuffs along its bottom. Each frame is pinned by the
@@ -913,6 +961,12 @@ function A:SeatBlizzard()
                 if i == 1 then y = (v == "TOP") and char.auraTop or (char.auraTop - 30)
                 else y = (v == "TOP") and (char.auraBottom + 30) or char.auraBottom end
                 seat(fr, v .. h, UIParent, "BOTTOMLEFT", x, y)
+                -- Buffs hang from the top of the room beside the portrait,
+                -- debuffs stand on its bottom.
+                targets[fr] = { x0 = char.auraX0, x1 = char.auraX1,
+                                top = (i == 1) and char.auraTop or nil, bottom = (i == 2) and char.auraBottom or nil }
+                alignSoon(fr)
+                C_Timer.After(1.5, function() pcall(alignNow, fr) end)
             end
         end
     elseif slots and (slots.left.x1 - slots.left.x0) >= 100 then
