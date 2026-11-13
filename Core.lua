@@ -272,6 +272,58 @@ ns.commands.defaults = function()
     end
 end
 
+-- UI scale. The layout was designed at a UI scale of 0.65 and the game's
+-- own default is far larger. The addon never changes the scale by itself:
+-- the first time it finds a different one it asks, once per account
+-- (MinimalUIDB.scaleAsked), and "/men scale" asks again.
+local WANT_SCALE = 0.65
+local function scaleNow()
+    local s = UIParent and UIParent:GetEffectiveScale()
+    return type(s) == "number" and s or nil
+end
+local function setScale()
+    if InCombatLockdown() then return ns:Print("Not in combat: try /men scale again after the fight.") end
+    local set = (C_CVar and C_CVar.SetCVar) or _G.SetCVar
+    if not set then return ns:Print("This client won't let the UI scale be set from here: Esc > Options > Graphics > Use UI Scale.") end
+    pcall(set, "useUiScale", "1")
+    pcall(set, "uiScale", tostring(WANT_SCALE))
+    ReloadUI()
+end
+if StaticPopupDialogs then
+    StaticPopupDialogs["MENISCUS_SCALE"] = {
+        text = "Meniscus is laid out for a UI scale of 0.65. Yours is %s, so things will look too large or too small.\n\nSet the UI scale to 0.65 now? The interface reloads. (You can change it back under Esc > Options > Graphics.)",
+        button1 = "Set to 0.65",
+        button2 = "Keep mine",
+        OnAccept = function() setScale() end,
+        timeout = 0, whileDead = true, hideOnEscape = true,
+    }
+end
+local function offerScale(force)
+    local db = MinimalUIDB
+    local s = scaleNow()
+    if not (db and s) then return end
+    if math.abs(s - WANT_SCALE) < 0.02 then
+        if force then ns:Print("The UI scale is already " .. string.format("%.2f", s) .. ".") end
+        return
+    end
+    if db.scaleAsked and not force then return end
+    db.scaleAsked = true
+    if StaticPopup_Show and StaticPopupDialogs and StaticPopupDialogs["MENISCUS_SCALE"] then
+        StaticPopup_Show("MENISCUS_SCALE", string.format("%.2f", s))
+    else
+        ns:Print("Meniscus is laid out for a UI scale of 0.65 (yours is " .. string.format("%.2f", s) .. "). /men scale sets it.")
+    end
+end
+ns.commands.scale = function() offerScale(true) end
+do
+    local sf = CreateFrame("Frame")
+    sf:RegisterEvent("PLAYER_ENTERING_WORLD")
+    sf:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        C_Timer.After(5, function() if not InCombatLockdown() then pcall(offerScale) end end)
+    end)
+end
+
 ns.commands.profile = function(_, raw)
     local verb, name = (raw or ""):match("^(%S*)%s*(.-)%s*$")
     verb = verb:lower()

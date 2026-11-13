@@ -1,4 +1,4 @@
-Meniscus 0.1.223 (alpha) - a clean, dark, minimal UI for WoW: Forever
+Meniscus 0.1.224 (alpha) - a clean, dark, minimal UI for WoW: Forever
 
 INSTALL
 1. Close the game.
@@ -17,9 +17,9 @@ INSTALL
 GAME SETTINGS IT EXPECTS
 Meniscus places things itself and doesn't need a special Edit Mode layout:
 the default one is fine. Three game settings do matter:
-1. UI scale: Esc > Options > Graphics > tick "Use UI Scale" and set it to
-   0.65. The layout was designed at that scale; at the default scale
-   everything is much larger and the bottom row may not fit.
+1. UI scale 0.65. The first time you log in, Meniscus offers to set it
+   for you (it never changes it without asking); /men scale offers again.
+   By hand: Esc > Options > Graphics > tick "Use UI Scale", set 0.65.
 2. Action bars: Esc > Options > Action Bars > tick Action Bar 2 and
    Action Bar 3. They become the two small blocks beside the orbs.
 3. After changing either, type /reload.

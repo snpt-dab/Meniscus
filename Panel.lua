@@ -273,6 +273,9 @@ local PAGES = {
               set = function(k) ns:ApplyFont(k) end },
         } },
         { title = "Screen", items = {
+            { "UI scale", kind = "action", action = "Set to 0.65",
+              note = "The scale the layout is designed for; asks first, then reloads",
+              run = function() cmd("scale", "") end },
             { "Health and power orbs", kind = "switch",
               get = function() local O = ns.modules.Orbs; return O.health and O.health:IsShown() end,
               set = function() cmd("orbs") end },
@@ -828,6 +831,7 @@ ns.commands.help = function()
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
         "/men version  your version, and whether a newer one has been seen on another player",
         "/men defaults  put every setting back to a new install's (asks first)",
+        "/men scale  set the game's UI scale to 0.65, the one the layout is designed for (asks first)",
         "/men skillup  show a sample skill-up pill",
         "/men combatprobe  record what the client reveals in combat (also recorded on its own)",
         "/men bug <what went wrong>  save a bug report (on its own: a box to type in; list / clear)",
