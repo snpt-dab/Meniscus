@@ -456,12 +456,10 @@ local function place()
         local dome = _G.MinimalUI_MinimapDome
         local char = B.charSlot
         if char then
-            -- Console: your buffs rise from the top of the character panel
-            -- and your debuffs fill the room inside it, so the pill sits
-            -- just to the right of the buffs, above the side action bar,
-            -- on the same line as the first row of buffs.
+            -- Console: on top of the character panel, where your buffs are
+            -- (the name pill is on its bottom edge).
             local wl = char.well
-            btn:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", wl.x + wl.w + 8, wl.y + wl.h + 14 + (B.stanceLift or 0))
+            btn:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", wl.x + wl.w / 2, wl.y + wl.h + 3 + (B.stanceLift or 0))
         elseif B.split and dome then
             -- Minimap dome in the middle: sit right on top of it.
             btn:SetPoint("BOTTOM", dome, "TOP", 0, 6)

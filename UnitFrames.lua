@@ -1128,12 +1128,12 @@ function UF:LayoutParty()
     local char = B and B.charSlot
     if self.db.party.attach and char and self.orbStyleOn then
         -- Console: the party rises out of the console above the character
-        -- panel, centered on it, clear of two rows of your buffs, which sit
-        -- on the panel's top edge. (Width: power orb, portrait overhang, bar.)
+        -- panel, centered on it, clear of the Quick Buff pill that sits on
+        -- the panel's top edge. (Width: power orb, portrait overhang, bar.)
         local wl = char.well
         local colW = s.H + 4 + s.D / 2 + s.W
         a:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
-            wl.x + (wl.w - colW) / 2 + s.H + 4 + s.D / 2, wl.y + wl.h + 16 + 62 + 6 + (B.stanceLift or 0))
+            wl.x + (wl.w - colW) / 2 + s.H + 4 + s.D / 2, wl.y + wl.h + 3 + 30 + 10 + (B.stanceLift or 0))
     elseif self.db.party.attach then
         -- Pill left edges line up with the player's, so avatars form a column.
         a:SetPoint("BOTTOMLEFT", self.player, "TOPLEFT", 0, PARTY_ATTACH_GAP)

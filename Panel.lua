@@ -414,7 +414,7 @@ local PAGES = {
     { key = "helpers", title = "Helpers", groups = {
         { title = "Gear and bags", items = {
             { "Durability warning", kind = "switch", reload = true,
-              note = "A wrench on the character panel when gear is at 30% or less",
+              note = "A wrench above the console when gear is at 30% or less",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.durability ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.durability = d.durability == false end end },
             { "What you own, on item tooltips", kind = "switch", reload = true,
@@ -422,13 +422,7 @@ local PAGES = {
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.owned ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.owned = d.owned == false end end },
         } },
-        { title = "Character panel", items = {
-            { "Consumables tray", kind = "switch", reload = true,
-              note = "Food, water, healing potion and bandage buttons",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.tray ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.tray = d.tray == false end end },
-        } },
-        { title = "Marks on the character panel", items = {
+        { title = "Marks above the console", items = {
             { "Mail waiting", kind = "switch", reload = true,
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.mail ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.mail = d.mail == false end end },
