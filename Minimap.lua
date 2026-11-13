@@ -672,6 +672,66 @@ ns.commands.dome = function(rest)
         MM:ProbeDome()
         return ns:Print("Minimap state saved; /reload so it can be read.")
     end
+    -- /men dome measure : find out how the dots and their tooltips are
+    -- related. For a minute it watches the mouse over the map. Hold the
+    -- pointer still on the middle of a dot (about two seconds), then move
+    -- to where that dot's tooltip shows and hold still there. Each pair is
+    -- printed and kept in MinimalUIDB.domemeasure: how far from the map's
+    -- middle the dot is, how far the tooltip spot is, and the ratio.
+    if rest:find("measure") then
+        if MM.measure then MM.measure:Hide(); MM.measure = nil; return ns:Print("Measuring stopped.") end
+        local f = CreateFrame("Frame")
+        MM.measure = f
+        local ui = UIParent:GetEffectiveScale()
+        local function where()
+            local cx, cy = GetCursorPosition()
+            cx, cy = cx / ui, cy / ui
+            local mx, my = Minimap:GetCenter()
+            local k = Minimap:GetEffectiveScale() / ui
+            return cx - mx * k, cy - my * k
+        end
+        local out = { string.format("map %.0fx%.0f scale %.2f zoom %s of %s native %s at %s", Minimap:GetWidth(),
+            Minimap:GetHeight(), Minimap:GetScale(), tostring(Minimap:GetZoom()), tostring(Minimap:GetZoomLevels()),
+            tostring(MM.native), date("%H:%M:%S")) }
+        MinimalUIDB.domemeasure = out
+        local ax, ay, since, acc, total, said = nil, nil, 0, 0, 0, false
+        local dot -- the last still point with no tooltip
+        f:SetScript("OnUpdate", function(self, dt)
+            acc, total = acc + dt, total + dt
+            if total > 75 then self:Hide(); MM.measure = nil; ns:Print("Measuring finished. /reload saves it.") return end
+            if acc < 0.1 then return end
+            local step = acc
+            acc = 0
+            local x, y = where()
+            if math.abs(x) > 160 or math.abs(y) > 160 then ax = nil return end
+            if ax and math.abs(x - ax) < 1.2 and math.abs(y - ay) < 1.2 then
+                since = since + step
+                if since >= 1.4 and not said then
+                    said = true
+                    local tip = GameTooltip:IsShown() and (GameTooltip:IsOwned(Minimap) or GameTooltip:GetOwner() == Minimap)
+                    local r = math.sqrt(x * x + y * y)
+                    if tip then
+                        local line = string.format("tooltip at %.1f, %.1f (%.1f from the middle)", x, y, r)
+                        if dot then
+                            line = line .. string.format("; dot was at %.1f, %.1f (%.1f): ratio %.2f, shift %.1f, %.1f",
+                                dot[1], dot[2], dot[3], dot[3] > 1 and r / dot[3] or 0, x - dot[1], y - dot[2])
+                            dot = nil
+                        end
+                        out[#out + 1] = line
+                        ns:Print(line)
+                    else
+                        dot = { x, y, r }
+                        local line = string.format("dot marked at %.1f, %.1f (%.1f from the middle)", x, y, r)
+                        out[#out + 1] = line
+                        ns:Print(line .. ". Now hold still where its tooltip shows.")
+                    end
+                end
+            else
+                ax, ay, since, said = x, y, 0, false
+            end
+        end)
+        return ns:Print("Measuring for a minute: hold the pointer still on a dot, then still where its tooltip shows. Repeat for a few dots.")
+    end
     -- /men dome fix [seconds] : settle the hover areas now (zoom one step,
     -- wait, step back); /men dome gap <seconds> keeps that wait.
     local fixGap = rest:match("fix%s*([%d%.]*)")

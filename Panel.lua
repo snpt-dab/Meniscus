@@ -817,6 +817,7 @@ ns.commands.help = function()
         "/men console [wings]  dark plate behind the bottom row; wings = seat chat and damage meter in it",
         "/men dome [move | reset]  round minimap on the action bar; move = drag it",
         "/men dome fix [seconds]  re-align the minimap's tooltips with its dots now",
+        "/men dome measure  measure how far the minimap's tooltips are from its dots",
         "/men noportrait  no player frame: your portrait moves to the console's character panel",
         "/men orbs  toggle orbs      /men actionbars  toggle bar styling (reload)",
         "/men char | bags [combined|separate] | spells | quests  open windows / bag layout",
