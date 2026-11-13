@@ -893,6 +893,8 @@ function A:SeatBlizzard()
         -- corner it fills from.
         for i, fr in ipairs({ BuffFrame, DebuffFrame }) do
             if fr then
+                -- (First: this can change which way the frame fills.)
+                pcall(wrapTo, fr, char.auraX1 - char.auraX0)
                 local v, h = fillCorner(fr)
                 local x = (h == "RIGHT") and char.auraX1 or char.auraX0
                 -- Blizzard's frame has a margin between its own edge and
@@ -911,7 +913,6 @@ function A:SeatBlizzard()
                 if i == 1 then y = (v == "TOP") and char.auraTop or (char.auraTop - 30)
                 else y = (v == "TOP") and (char.auraBottom + 30) or char.auraBottom end
                 seat(fr, v .. h, UIParent, "BOTTOMLEFT", x, y)
-                pcall(wrapTo, fr, char.auraX1 - char.auraX0)
             end
         end
     elseif slots and (slots.left.x1 - slots.left.x0) >= 100 then

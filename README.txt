@@ -1,4 +1,4 @@
-Meniscus 0.1.193 (alpha) - a clean, dark, minimal UI for WoW: Forever
+Meniscus 0.1.194 (alpha) - a clean, dark, minimal UI for WoW: Forever
 
 INSTALL
 1. Close the game.
