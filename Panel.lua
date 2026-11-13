@@ -574,6 +574,9 @@ local PAGES = {
                   if k == ns.profile then return end
                   if k == "\001copy" then ns:UseProfile(ns:CharKey(), true) else ns:UseProfile(k) end
               end },
+            { "Reset to defaults", kind = "action", action = "Reset",
+              note = "Every setting back to a new install's; asks first, then reloads",
+              run = function() cmd("defaults", "") end },
         } },
     } },
 }
@@ -820,6 +823,7 @@ ns.commands.help = function()
         "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
         "/men version  your version, and whether a newer one has been seen on another player",
+        "/men defaults  put every setting back to a new install's (asks first)",
         "/men skillup  show a sample skill-up pill",
         "/men combatprobe  record what the client reveals in combat (also recorded on its own)",
         "/men bug <what went wrong>  save a bug report (on its own: a box to type in; list / clear)",

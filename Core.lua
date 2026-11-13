@@ -188,6 +188,36 @@ end
 -- /men profile use <name>      switch this character (reloads)
 -- /men profile copy <name>     copy the current profile to <name> and use it
 -- /men profile delete <name>   remove a profile (not the one in use / Default)
+-- Put the active profile back to the built-in settings: every module's
+-- options, window and frame positions, and the font. What the addon has
+-- learned or been told is kept (what your characters own, restock amounts,
+-- what your pet eats, bug reports). Reloads at once; the modules fill the
+-- emptied profile with their defaults as they start.
+function ns:ResetProfile()
+    local db = MinimalUIDB
+    if not db or not ns.profile then return end
+    db.profiles[ns.profile] = {}
+    db.font, db.fontPath, db.fontBold, db.fontInterMigrated = nil, nil, nil, nil
+    db.panelPage = nil
+    ReloadUI()
+end
+if StaticPopupDialogs then
+    StaticPopupDialogs["MENISCUS_RESET"] = {
+        text = "Reset Meniscus to its default settings?\n\nEvery option, frame position and the font go back to how a new install starts, for every character using the profile \"%s\". The interface reloads.",
+        button1 = "Reset",
+        button2 = CANCEL or "Cancel",
+        OnAccept = function() ns:ResetProfile() end,
+        timeout = 0, whileDead = true, hideOnEscape = true, showAlert = true,
+    }
+end
+ns.commands.defaults = function()
+    if StaticPopup_Show and StaticPopupDialogs and StaticPopupDialogs["MENISCUS_RESET"] then
+        StaticPopup_Show("MENISCUS_RESET", tostring(ns.profile))
+    else
+        ns:ResetProfile()
+    end
+end
+
 ns.commands.profile = function(_, raw)
     local verb, name = (raw or ""):match("^(%S*)%s*(.-)%s*$")
     verb = verb:lower()
