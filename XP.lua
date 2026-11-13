@@ -823,8 +823,9 @@ local function buildBanner()
         if mv ~= self.mv then
             self.mv = mv
             local x = -self.slide * mv
+            local y = self.topY + (self.endY - self.topY) * mv
             self:ClearAllPoints()
-            self:SetPoint("TOP", UIParent, "TOP", math.floor(x / px + 0.5) * px, self.topY)
+            self:SetPoint("TOP", UIParent, "TOP", math.floor(x / px + 0.5) * px, math.floor(y / px + 0.5) * px)
         end
         self:SetAlpha(t < 0.2 and t / 0.2 or (t > out and 1 - (t - out) / 0.6) or 1)
         -- Flash and bloom: sharp attack, long soft decay (as on the XP bar).
@@ -992,15 +993,23 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     end
     f.n = n
     f.t = 0
-    -- Start in the middle; parked, it stands at the left of the screen,
-    -- its left edge in line with the chat panel's.
+    -- Start in the middle. Parked, it rests just above the chat panel,
+    -- centred on it (down and to the left); without the panel, at the
+    -- left of the screen at the same height.
     f.mv = nil
-    f.topY = -0.30 * UIParent:GetHeight()
-    local left = 20
+    local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+    f.topY = -0.30 * sh
+    f.endY = f.topY
+    local cx = 20 + LV_W / 2
     local B = ns.modules.Bars
     local well = B and B.plate and B.plate.chatWell
-    if well and well:IsShown() and well:GetLeft() then left = math.max(8, well:GetLeft()) end
-    f.slide = UIParent:GetWidth() / 2 - (left + LV_W / 2)
+    if well and well:IsShown() and well:GetLeft() and well:GetTop() then
+        cx = math.max(8 + LV_W / 2, (well:GetLeft() + well:GetRight()) / 2)
+        -- (The card's full height once its lines are written.)
+        local fullH = LV_HEAD + n * LV_ROW + 8
+        f.endY = (well:GetTop() + 12 + fullH) - sh
+    end
+    f.slide = sw / 2 - cx
     f:ClearAllPoints()
     f:SetPoint("TOP", UIParent, "TOP", 0, f.topY)
     f.px = ns.Pixel and ns.Pixel() or 1
