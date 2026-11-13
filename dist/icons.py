@@ -60,6 +60,24 @@ class Icon:
         self.shapes.append(d)
         return self
 
+    def poly(self, pts):
+        # A filled polygon (for silhouettes, which read better than line
+        # art at very small sizes).
+        pts = list(pts)
+        n = len(pts)
+        def d(px, py):
+            inside = False
+            best = 1e9
+            for i in range(n):
+                ax, ay = pts[i]
+                bx, by = pts[(i + 1) % n]
+                best = min(best, seg_dist(px, py, ax, ay, bx, by))
+                if (ay > py) != (by > py) and px < (bx - ax) * (py - ay) / (by - ay) + ax:
+                    inside = not inside
+            return -best if inside else best
+        self.shapes.append(d)
+        return self
+
     def arc(self, cx, cy, r, a0, a1, w=STROKE):
         return self.line(arc_points(cx, cy, r, a0, a1), w)
 
@@ -132,10 +150,16 @@ def icons():
     # drumstick: pet food
     I['food'] = Icon().dot(9.6, 9.6, 4.6).line([(12.6, 12.6), (18.2, 18.2)], w=2.6).dot(18.6, 18.6, 1.8)
     # ── character stats page ──
-    # strength: a flexed arm (upper arm, forearm up to a fist, the bicep's bulge)
-    I['stat_str'] = (Icon().line([(20, 18.2), (9, 18.2), (9, 9.6)], w=2.6)
-                     .box(6.2, 4.4, 12.6, 9.8, rad=2.2, fill=True)
-                     .arc(14.6, 18.2, 4.7, 0, 180, w=2.5))
+    # strength: a flexed arm, in outline: the fist curled in at the top, the bicep's swell at the right
+    def fit(pts, k=0.86):
+        return [(12 + (x - 12) * k, 12 + (y - 12) * k) for x, y in pts]
+    I['stat_str'] = (Icon()
+        .line(fit([(12.4, 13.0), (13.5, 11.2), (15.5, 10.2), (17.6, 10.1), (19.8, 11.0), (21.4, 12.8), (22, 15),
+                   (21.2, 17.8), (19, 20), (16, 21.5), (13, 22), (8.5, 21.6), (4.8, 20.6), (2.6, 19.5), (2.0, 18.2),
+                   (2.2, 13), (3.2, 8), (5.2, 4.4), (7.6, 2.6), (10, 2), (12, 2.8), (13, 5), (12.4, 6.4), (11, 7),
+                   (9.6, 6.7), (9, 6)]), w=1.9)
+        .line(fit([(15, 14), (13, 12.9), (10.5, 13.2), (8.5, 14.4), (7.4, 16)]), w=1.7)
+        .line(fit([(9.96, 6.8), (9.0, 8.5), (9.2, 11.5), (8.7, 13.5), (8, 15)]), w=1.7))
     # agility: a bolt
     I['stat_agi'] = Icon().line([(13.4, 4.6), (7.4, 13.2), (11.8, 13.2), (10.6, 19.4), (16.6, 10.8), (12.2, 10.8)], w=2.1, close=True)
     # stamina: a heart

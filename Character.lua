@@ -207,7 +207,7 @@ local function makeRow(list, i)
     row:SetScript("OnClick", function(self) if self.data and self.data.onClick then self.data.onClick() end end)
     row.glyph = row:CreateTexture(nil, "ARTWORK")
     row.glyph:SetSize(14, 14)
-    row.glyph:SetPoint("LEFT", row, "LEFT", 6, 0)
+    row.glyph:SetPoint("LEFT", row, "LEFT", 2, 0)
     row.glyph:Hide()
     row.rule = row:CreateTexture(nil, "ARTWORK")
     row.rule:SetHeight(1)
@@ -224,17 +224,17 @@ local function pairCells(row)
         local c = CreateFrame("Button", nil, row)
         c.hl = ns.RoundedRect(c, -8, 0, 6, 1, 1, 1, 0)
         c.label = text(c, 11, false, T.textDim)
-        c.label:SetPoint("LEFT", c, "LEFT", 6, 0)
+        c.label:SetPoint("LEFT", c, "LEFT", 3, 0)
         c.label:SetJustifyH("LEFT")
         c.label:SetWordWrap(false)
         c.value = text(c, 11, true)
-        c.value:SetPoint("RIGHT", c, "RIGHT", -6, 0)
+        c.value:SetPoint("RIGHT", c, "RIGHT", -3, 0)
         c.value:SetJustifyH("RIGHT")
         c.label:SetPoint("RIGHT", c.value, "LEFT", -4, 0)
         -- A faint line under each, as a ledger has.
         local under = c:CreateTexture(nil, "BACKGROUND")
         under:SetHeight(1)
-        under:SetPoint("BOTTOMLEFT", 4, 0); under:SetPoint("BOTTOMRIGHT", -4, 0)
+        under:SetPoint("BOTTOMLEFT", 2, 0); under:SetPoint("BOTTOMRIGHT", -2, 0)
         under:SetColorTexture(1, 1, 1, 0.045)
         c:SetScript("OnEnter", function(self)
             local d = self.data
@@ -268,14 +268,14 @@ local function fillRow(row, d)
         local cells = pairCells(row)
         local rw = row:GetWidth()
         if not rw or rw < 20 then rw = (row:GetParent():GetWidth() or 240) - 8 end
-        local w = (rw - 8) / 2
+        local w = (rw - 8) / 2 -- two cells and an 8 gap between them
         for i = 1, 2 do
             local c, s = cells[i], (i == 1) and d.a or d.b
             c.data = s
             c.hl(1, 1, 1, 0)
             if s then
                 c:ClearAllPoints()
-                c:SetPoint("LEFT", row, "LEFT", 2 + (i - 1) * (w + 4), 0)
+                c:SetPoint("LEFT", row, "LEFT", (i - 1) * (w + 8), 0)
                 c:SetSize(w, row:GetHeight())
                 c.label:SetText(s.label)
                 c.value:SetText(s.value)
@@ -292,11 +292,11 @@ local function fillRow(row, d)
         row.glyph:Show()
         ns:SetFont(row.label, 10, "", true)
         row.label:SetTextColor(T.textDim[1] * dim, T.textDim[2] * dim, T.textDim[3] * dim)
-        row.label:SetPoint("LEFT", row, "LEFT", 26, 0)
+        row.label:SetPoint("LEFT", row, "LEFT", 22, 0)
         row.label:SetText(d.text)
         row.rule:ClearAllPoints()
-        row.rule:SetPoint("LEFT", row, "LEFT", 26 + row.label:GetStringWidth() + 8, 0)
-        row.rule:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+        row.rule:SetPoint("LEFT", row, "LEFT", 22 + row.label:GetStringWidth() + 8, 0)
+        row.rule:SetPoint("RIGHT", row, "RIGHT", -2, 0)
         row.rule:Show()
         return
     end
@@ -646,14 +646,6 @@ end
 -- ── Stats ─────────────────────────────────────────────────────────────────
 local SECTION_GLYPH = { Melee = "micro_stat_melee.tga", Ranged = "micro_stat_ranged.tga",
                         Spell = "micro_stat_spell.tga", Defense = "micro_stat_defense.tga" }
--- Armor's cut of a physical hit from an attacker of your level, as a stat
--- of its own beside Armor.
-local function reductionStat(rows, unit, armor, tip)
-    local cut = armorCut(armor, UnitLevel(unit))
-    if cut then
-        table.insert(rows, { kind = "stat", label = "Reduction", value = string.format("%.1f%%", cut), tooltip = tip })
-    end
-end
 local function statsData(unit)
     unit = unit or "player"
     local pet = unit == "pet"
@@ -730,7 +722,6 @@ local function statsData(unit)
         rows = {}
         local aBase, armor, _, aPos, aNeg = call(UnitArmor, unit)
         stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg), armorTip(unit, armor, aBase, aPos, aNeg))
-        reductionStat(rows, unit, armor, armorTip(unit, armor, aBase, aPos, aNeg))
         section("defense", "Defense", rows)
         return d
     end
@@ -800,7 +791,6 @@ local function statsData(unit)
     rows = {}
     local aBase, armor, _, aPos, aNeg = call(UnitArmor, "player")
     stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg), armorTip("player", armor, aBase, aPos, aNeg))
-    reductionStat(rows, "player", armor, armorTip("player", armor, aBase, aPos, aNeg))
     local dBase, dMod = call(UnitDefense, "player")
     if plain(dBase) then
         local def = dBase + (plain(dMod) and dMod or 0)
@@ -1453,8 +1443,11 @@ local function makeStatsCard(page, top)
 
     local cardW, cardH = W - 20 - 440, H - PAGE_TOP + top - 16
     local listTop = 8 + TH + 12 + 12 + CH + 8 -- tiles, divider, pills, a gap
-    card.list = makeList(card, cardW - 12, cardH - listTop - 6, 20)
-    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -listTop)
+    -- (As wide as the row of tiles, plus the 8 the rows keep clear on the
+    -- right for the scroll thumb.)
+    local tilesW = #ATTRS * TW + (#ATTRS - 1) * TG
+    card.list = makeList(card, tilesW + 8, cardH - listTop - 6, 20)
+    card.list:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -listTop)
     return card
 end
 
