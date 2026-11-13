@@ -804,6 +804,70 @@ local function buildBanner()
     end
     f.beamAt = glow
 
+    -- Close mark: an X in the card's top-right corner, there only once the
+    -- card has come to rest. It arrives the opposite way to the card: not
+    -- a burst of light but a blot of black that swells and thins out, with
+    -- the X's three colours pulled apart inside it; they close on each
+    -- other and leave the plain X. Clicking it fades the card at once (it
+    -- still goes on its own if you leave it).
+    local xb = CreateFrame("Button", nil, f)
+    xb:SetSize(22, 22)
+    xb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    xb:SetFrameLevel(f:GetFrameLevel() + 10)
+    xb:Hide()
+    local blot = xb:CreateTexture(nil, "BACKGROUND", nil, 0)
+    blot:SetTexture("Interface/AddOns/Meniscus/Media/spot.tga")
+    blot:SetVertexColor(0, 0, 0, 1)
+    blot:SetPoint("CENTER")
+    local disc = xb:CreateTexture(nil, "BACKGROUND", nil, 1)
+    disc:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga")
+    disc:SetVertexColor(0.16, 0.16, 0.18, 1)
+    disc:SetSize(18, 18)
+    disc:SetPoint("CENTER")
+    local function cross(layer, sub)
+        local pair = {}
+        for i = 1, 2 do
+            local ln = xb:CreateLine(nil, layer, nil, sub)
+            ln:SetThickness(1.6)
+            pair[i] = ln
+        end
+        return pair
+    end
+    local function setCross(pair, dx, dy, r, g, b, a)
+        local s1, s2 = pair[1], pair[2]
+        s1:SetStartPoint("CENTER", xb, dx - 4, dy + 4); s1:SetEndPoint("CENTER", xb, dx + 4, dy - 4)
+        s2:SetStartPoint("CENTER", xb, dx - 4, dy - 4); s2:SetEndPoint("CENTER", xb, dx + 4, dy + 4)
+        s1:SetColorTexture(r, g, b, 1); s2:SetColorTexture(r, g, b, 1)
+        s1:SetAlpha(a); s2:SetAlpha(a)
+    end
+    local fringe = {}
+    for i = 1, 3 do
+        fringe[i] = cross("ARTWORK", i)
+        for _, ln in ipairs(fringe[i]) do pcall(ln.SetBlendMode, ln, "ADD") end
+    end
+    local plain = cross("OVERLAY", 0)
+    local hover = false
+    xb:SetScript("OnEnter", function() hover = true; f.xDone = false end)
+    xb:SetScript("OnLeave", function() hover = false; f.xDone = false end)
+    xb:SetScript("OnClick", function() f.dismiss = true end)
+    -- k: 0 as it starts to form, 1 once it is the plain X.
+    function f.drawX(k)
+        local e = 1 - (1 - k) ^ 2
+        -- The blot: up fast to its darkest, then swelling and thinning.
+        local ba = k < 0.25 and (k / 0.25) or (1 - (k - 0.25) / 0.75)
+        blot:SetSize(14 + 44 * e, 14 + 44 * e)
+        blot:SetAlpha(0.95 * ba)
+        disc:SetAlpha(e)
+        local pull = 9 * (1 - e)
+        for i = 1, 3 do
+            local c = LV_PRISM[i]
+            setCross(fringe[i], LV_PULL[i] * pull, -LV_PULL[i] * pull * 0.35, c[1], c[2], c[3], (1 - e) * 0.95)
+        end
+        if hover then setCross(plain, 0, 0, 1, 1, 1, e)
+        else setCross(plain, 0, 0, 0.72, 0.72, 0.76, e) end
+    end
+    f.xb = xb
+
     f:SetScript("OnUpdate", function(self, dt)
         local t = self.t + dt
         self.t = t
@@ -815,23 +879,41 @@ local function buildBanner()
         -- and once its lines are written it slides off to the left and
         -- stays there a while longer (LV_LINGER), out of the way.
         local out = turn + 1.0 + 0.9 + LV_LINGER -- the card starts to fade
+        -- (Closed by its X: straight to the fade.)
+        if self.dismiss and t < out then t = out; self.t = t end
         if t >= out + 0.6 then self:Hide() return end
         -- (It waits LV_CENTER seconds in the middle first, then sets off
         -- gently, picks up, and settles just as gently: two seconds, slow
         -- at both ends.)
-        local mv = clamp01((t - (written + 0.5 + LV_CENTER)) / 2.0)
+        local landAt = written + 0.5 + LV_CENTER + 2.0
+        local mv = clamp01((t - (landAt - 2.0)) / 2.0)
         mv = mv * mv * mv * (mv * (mv * 6 - 15) + 10)
         if mv ~= self.mv then
             self.mv = mv
-            local x = -self.slide * mv
-            -- A slight arc, not a straight line: the path bows upward in
-            -- the middle (by an eighth of the distance travelled), like
-            -- something tossed gently to its place.
+            -- The path of something tossed to its place: it leaves almost
+            -- level, lifting a little, travels most of the way across
+            -- before it starts to drop, and comes down onto its spot. (A
+            -- curve through three points: where it starts, a point above
+            -- and most of the way over, and where it rests.)
             local dy = self.endY - self.topY
-            local bow = 0.125 * math.sqrt(self.slide * self.slide + dy * dy)
-            local y = self.topY + dy * mv + bow * math.sin(math.pi * mv)
+            local dist = math.sqrt(self.slide * self.slide + dy * dy)
+            local cx, cy = -self.slide * 0.72, self.topY + 0.10 * dist
+            local u = 1 - mv
+            local x = 2 * u * mv * cx + mv * mv * (-self.slide)
+            local y = u * u * self.topY + 2 * u * mv * cy + mv * mv * self.endY
             self:ClearAllPoints()
             self:SetPoint("TOP", UIParent, "TOP", math.floor(x / px + 0.5) * px, math.floor(y / px + 0.5) * px)
+        end
+        -- The close mark forms once the card has landed.
+        local xk = clamp01((t - landAt) / 0.55)
+        if xk <= 0 then
+            if self.xb:IsShown() then self.xb:Hide() end
+        else
+            if not self.xb:IsShown() then self.xb:Show(); self.xDone = false end
+            if not self.xDone then
+                self.drawX(xk)
+                self.xDone = xk >= 1
+            end
         end
         self:SetAlpha(t < 0.2 and t / 0.2 or (t > out and 1 - (t - out) / 0.6) or 1)
         -- Flash and bloom: sharp attack, long soft decay (as on the XP bar).
@@ -999,6 +1081,8 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     end
     f.n = n
     f.t = 0
+    f.dismiss, f.xDone = false, false
+    f.xb:Hide()
     -- Start in the middle. Parked, it rests just above the chat panel,
     -- centred on it (down and to the left); without the panel, at the
     -- left of the screen at the same height.
