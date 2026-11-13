@@ -659,6 +659,7 @@ local LV_CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
 local LV_PRISM = { { 1.00, 0.12, 0.22 }, { 0.15, 1.00, 0.35 }, { 0.22, 0.38, 1.00 } }
 local LV_PULL = { -1, 0, 1 }
 local LV_SEG = 24 -- segments in each light of the afterglow line
+local LV_LINGER = 4 -- extra seconds the card stays, parked on the left
 local banner
 
 local function clamp01(v) return v < 0 and 0 or (v > 1 and 1 or v) end
@@ -809,8 +810,19 @@ local function buildBanner()
         local px = self.px or 1
         local written = 0.35 + n * 0.12 + 0.2   -- every line is in
         local turn = written + 2.2              -- amber starts settling to purple
-        local out = turn + 1.0 + 0.9            -- the card starts to fade
+        -- It flashes in the middle of the screen, where you can't miss it,
+        -- and once its lines are written it slides off to the left and
+        -- stays there a while longer (LV_LINGER), out of the way.
+        local out = turn + 1.0 + 0.9 + LV_LINGER -- the card starts to fade
         if t >= out + 0.6 then self:Hide() return end
+        local mv = clamp01((t - (written + 0.5)) / 0.9)
+        mv = mv * mv * (3 - 2 * mv)
+        if mv ~= self.mv then
+            self.mv = mv
+            local x = -self.slide * mv
+            self:ClearAllPoints()
+            self:SetPoint("TOP", UIParent, "TOP", math.floor(x / px + 0.5) * px, self.topY)
+        end
         self:SetAlpha(t < 0.2 and t / 0.2 or (t > out and 1 - (t - out) / 0.6) or 1)
         -- Flash and bloom: sharp attack, long soft decay (as on the XP bar).
         -- It hits hard and out of focus: the three lights start pulled well
@@ -974,6 +986,12 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     end
     f.n = n
     f.t = 0
+    -- Start in the middle; parked, its middle is 22% of the way across.
+    f.mv = nil
+    f.topY = -0.30 * UIParent:GetHeight()
+    f.slide = UIParent:GetWidth() * 0.28
+    f:ClearAllPoints()
+    f:SetPoint("TOP", UIParent, "TOP", 0, f.topY)
     f.px = ns.Pixel and ns.Pixel() or 1
     f:SetHeight(LV_HEAD)
     f.holder:SetHeight(1)
