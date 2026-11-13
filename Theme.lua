@@ -525,6 +525,14 @@ local function gearLevel(link)
     local ok, l = pcall(f, link)
     if ok and type(l) == "number" and not issecretvalue(l) then return l end
 end
+-- Weapon subclasses that are tools: 14 miscellaneous (skinning knife,
+-- mining pick, blacksmith hammer), 20 fishing poles.
+local TOOL_WEAPON = { [14] = true, [20] = true }
+local function weaponDps(link)
+    local st = itemStats(link)
+    local d = st and st.ITEM_MOD_DAMAGE_PER_SECOND_SHORT
+    if type(d) == "number" and not issecretvalue(d) then return d end
+end
 local function equipLocOf(link)
     local ok, _, _, _, loc, _, classID, subID = pcall(C_Item.GetItemInfoInstant, link)
     if ok then return loc, classID, subID end
@@ -541,8 +549,17 @@ function ns.IsUpgrade(link)
     local res = false
     local wrongArmor = classID == 4 and type(subID) == "number" and subID >= 1 and subID <= 4
         and loc ~= "INVTYPE_CLOAK" and subID ~= ns.BestArmor()
-    if not wrongArmor then
+    -- Tools that go in a weapon slot (a skinning knife, a mining pick, a
+    -- fishing pole) are never an upgrade: they have a higher item level
+    -- than starter weapons, but with one in hand your weapon abilities
+    -- stop working.
+    local isWeapon = classID == 2
+    local tool = isWeapon and TOOL_WEAPON[subID]
+    -- Weapons are judged by their damage per second, not their item level.
+    local newDps = isWeapon and weaponDps(link) or nil
+    if not wrongArmor and not tool then
         local lowest, empty, same = nil, false, false
+        local beats = false
         local main = GetInventoryItemLink("player", 16)
         local mainLoc = main and equipLocOf(main)
         for _, slot in ipairs(slots) do
@@ -562,13 +579,21 @@ function ns.IsUpgrade(link)
                 if not worn then empty = true
                 elseif worn == link then same = true
                 else
-                    local l = gearLevel(worn)
-                    if l and (not lowest or l < lowest) then lowest = l end
+                    local _, wClass, wSub = equipLocOf(worn)
+                    local wornDps = isWeapon and wClass == 2 and weaponDps(worn) or nil
+                    if isWeapon and wClass == 2 and TOOL_WEAPON[wSub] then
+                        beats = true -- any real weapon beats a tool
+                    elseif newDps and wornDps then
+                        if newDps > wornDps + 0.05 then beats = true end
+                    else
+                        local l = gearLevel(worn)
+                        if l and (not lowest or l < lowest) then lowest = l end
+                    end
                 end
             end
         end
         if same then res = false
-        elseif empty then res = true
+        elseif empty or beats then res = true
         elseif lowest and new > lowest then res = true end
         if res and ns.ItemUnusable(link) then res = false end
     end
@@ -654,9 +679,13 @@ end
 
 function ns.AddCompare(tip, link)
     if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return end
-    local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
+    local ok, _, _, _, loc, _, classID, subID = pcall(C_Item.GetItemInfoInstant, link)
     local slots = ok and SLOTS[loc]
     if not slots then return end
+    if classID == 2 and TOOL_WEAPON[subID] then
+        tip:AddLine(" ")
+        tip:AddLine("A tool, not a fighting weapon: your weapon abilities don't work while it is in your hand.", 0.95, 0.76, 0.32, true)
+    end
     local new = itemStats(link)
     if not new then return end
     local shownAny = false
@@ -738,6 +767,10 @@ function ns.RewardInfo(link, count, usable)
         local note = slotName and "Can't equip" or "Can't use"
         if type(why) == "string" and why ~= "" and why ~= sub and why ~= slotName then note = note .. "  \194\183  " .. why end
         what = what .. (what ~= "" and "  " or "") .. RED .. "(" .. note .. ")|r"
+    end
+    -- A tool in a weapon slot: say so, where the comparison would be.
+    if classID == 2 and TOOL_WEAPON[subID] and not cant then
+        what = what .. (what ~= "" and "  " or "") .. "|cfff2c252(Tool: weapon abilities don't work with it)|r"
     end
     local rows = (not cant) and ns.CompareRows(link, 6) or nil
     local price
