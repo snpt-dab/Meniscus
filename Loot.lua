@@ -287,8 +287,8 @@ local floatRise = 130
 -- along, so you know what a pill is from where it is:
 --   left    what you loot, beside your left shoulder (the pill ends there
 --           and reaches out to the left)
---   right   quest progress, beside your right shoulder (reaching right)
---   center  skill-ups and warnings, above your head
+--   right   skill-ups, beside your right shoulder (reaching right)
+--   center  quest progress and warnings, above your head
 -- Each rail keeps its own beat, so a burst of loot doesn't hold a quest
 -- pill back. (Above the minimap there is one line for everything.)
 local RAILS = {
@@ -566,7 +566,7 @@ local function floatSkill(msg)
     local r, g, b = T.accent[1], T.accent[2], T.accent[3]
     if gold then r, g, b = 0.95, 0.78, 0.32 end
     local icon = skillIcon(name)
-    floatRail = "center"
+    floatRail = "right"
     local ok, f = pcall(floatPill, icon or (MEDIA .. "micro_up.tga"), name, 1, 1, 1, level and tostring(level) or nil,
         r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
     if not (ok and f) then return end
@@ -612,7 +612,7 @@ local function floatQuest(msg)
         return true
     end
     if not pcall(floatOrigin) then return false end
-    floatRail = "right"
+    floatRail = "center"
     local ok, f = pcall(floatPill, QUEST_ICON, what, T.text[1], T.text[2], T.text[3], nil,
         T.border[1], T.border[2], T.border[3])
     if ok and f then pcall(markQuest, f, have, need) end
