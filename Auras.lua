@@ -725,6 +725,18 @@ end
 local function seat(frame, point, rel, rp, x, y)
     if not frame or not rel then return end
     seats[frame] = { point, rel, rp, x, y }
+    -- Blizzard keeps these frames wholly on screen. The buff frame is 189
+    -- tall and the panel's top is 112 above the screen's bottom edge, so a
+    -- frame hung from there was pushed 77 up to fit: that is how far above
+    -- the panel the buffs sat. Seated frames may hang off the screen.
+    if frame.SetClampedToScreen then
+        pcall(frame.SetClampedToScreen, frame, false)
+        if not hooked[frame] then
+            hooksecurefunc(frame, "SetClampedToScreen", function(self, on)
+                if on and seats[self] then pcall(self.SetClampedToScreen, self, false) end
+            end)
+        end
+    end
     if not hooked[frame] then
         hooked[frame] = true
         hooksecurefunc(frame, "SetPoint", function(self, _, r)
