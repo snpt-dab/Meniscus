@@ -184,10 +184,22 @@ function MM:ApplyDome()
         placing = false
     end
     seat()
-    -- Blizzard's cluster layout re-anchors the map now and then.
+    -- Blizzard's cluster layout re-anchors (and re-sizes) the map now and
+    -- then. Each time it is put back, its hover areas need settling again
+    -- (see settle, below): without that the gold dots' tooltips sat beside
+    -- the dots until the next loading screen.
+    local settleSoon
     hooksecurefunc(Minimap, "SetPoint", function(_, _, rel)
-        if not placing and rel ~= h then seat() end
+        if not placing and rel ~= h then seat(); if settleSoon then settleSoon() end end
     end)
+    hooksecurefunc(Minimap, "SetSize", function(_, w)
+        if placing then return end
+        if type(w) == "number" and math.abs(w - D) > 0.5 then seat() end
+        if settleSoon then settleSoon() end
+    end)
+    for _, m in ipairs({ "SetWidth", "SetHeight", "SetScale" }) do
+        hooksecurefunc(Minimap, m, function() if not placing and settleSoon then settleSoon() end end)
+    end
     -- The map only takes on its new size, for drawing its markers AND for
     -- working out which marker the mouse is over, after a zoom change that
     -- it actually gets to process. Flipping the zoom there and back inside
@@ -206,11 +218,26 @@ function MM:ApplyDome()
             if ok2 and now == other then pcall(Minimap.SetZoom, Minimap, z) end
         end)
     end
+    -- One settle for any burst of changes, a moment after the last one.
+    local settleAt, settleQueued = 0, false
+    settleSoon = function()
+        settleAt = GetTime() + 0.8
+        if settleQueued then return end
+        settleQueued = true
+        local function run()
+            if GetTime() < settleAt - 0.05 then C_Timer.After(settleAt - GetTime(), run) return end
+            settleQueued = false
+            settle()
+        end
+        C_Timer.After(0.8, run)
+    end
     C_Timer.After(0.5, settle)
     local sev = CreateFrame("Frame")
-    sev:RegisterEvent("PLAYER_ENTERING_WORLD")
-    sev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-    sev:SetScript("OnEvent", function() C_Timer.After(1, settle) end)
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED",
+                         "EDIT_MODE_LAYOUTS_UPDATED", "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do
+        pcall(sev.RegisterEvent, sev, e)
+    end
+    sev:SetScript("OnEvent", function() settleSoon() end)
 
     -- Glass glare, as on the orbs (never takes the mouse).
     local glass = CreateFrame("Frame", nil, h)
