@@ -272,20 +272,22 @@ function MM:ApplyDome()
     end
     sev:SetScript("OnEvent", function() settleSoon() end)
 
-    -- Glass glare, as on the orbs (never takes the mouse).
-    local glass = CreateFrame("Frame", nil, h)
-    glass:SetAllPoints(Minimap)
-    -- One strata above the map, not "a few levels above": opening the addon
-    -- menu raises the whole minimap cluster, which put the map over anything
-    -- that was only a few levels higher.
-    glass:SetFrameStrata("MEDIUM")
-    glass:SetFrameLevel(0)
-    glass:EnableMouse(false)
-    local gloss = glass:CreateTexture(nil, "OVERLAY")
-    gloss:SetAllPoints()
+    -- Glass glare, as on the orbs. Drawn on the map's own frame, as one of
+    -- its textures. It used to be a frame of its own laid over the map, one
+    -- strata up: where that frame covered the map, the dots' tooltips no
+    -- longer lined up with the dots (outside it they did), even though the
+    -- frame took no mouse input.
+    local gloss = Minimap:CreateTexture(nil, "OVERLAY", nil, 7)
+    gloss:SetPoint("CENTER", Minimap, "CENTER")
+    gloss:SetSize(D, D)
     gloss:SetTexture(MEDIA .. "orb_glare.tga")
     gloss:SetAlpha(0.55)
-    gloss:AddMaskTexture(circleMask(glass, D))
+    local glossMask = Minimap:CreateMaskTexture()
+    glossMask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    glossMask:SetPoint("CENTER", Minimap, "CENTER")
+    glossMask:SetSize(D, D)
+    gloss:AddMaskTexture(glossMask)
+    self.domeGloss = gloss
 
     -- With the map moved out, Blizzard's cluster is an empty shell left
     -- where Edit Mode puts it, and it still takes the mouse: on a fresh
