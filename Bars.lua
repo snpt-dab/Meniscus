@@ -512,6 +512,15 @@ function Bars:Arrange()
     for _, bar in ipairs({ MainActionBar, MultiBarBottomLeft, MultiBarBottomRight, StanceBar, PetActionBar }) do
         if bar then
             for _, k in ipairs({ "BorderArt", "EndCaps", "Background" }) do killRegion(bar[k]) end
+            -- The bar's own frame (not its buttons, which are placed one by
+            -- one) still lies where Blizzard put it, invisible, and takes
+            -- the mouse: the main bar's lay across the top of the minimap
+            -- dome, so dots under it gave no tooltip. Only the buttons need
+            -- the mouse. (A protected frame: out of combat only; arranging
+            -- runs again after a fight.)
+            if bar.EnableMouse and bar.IsMouseEnabled and bar:IsMouseEnabled() and not InCombatLockdown() then
+                pcall(bar.EnableMouse, bar, false)
+            end
         end
     end
     -- With Edit Mode's "hide bar art" off (any fresh character's default
