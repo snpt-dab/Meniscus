@@ -882,7 +882,7 @@ function Bars:ApplyPetWell()
     w:SetSize(wl.w, wl.h)
     w.pill:ClearAllPoints()
     w.pill:SetPoint("CENTER", w, "BOTTOM", 0, 0)
-    w.pill:SetWidth(math.max(120, wl.w - 44))
+    w.pill:SetWidth(math.max(120, wl.w)) -- as wide as the well, for long names
     w.pill.fitName()
     local step = s.size + s.gap
     for i, pl in ipairs(w.plates) do
@@ -1018,7 +1018,7 @@ function Bars:ApplyCharWell()
     w:SetSize(wl.w, wl.h)
     w.pill:ClearAllPoints()
     w.pill:SetPoint("CENTER", w, "BOTTOM", 0, 0)
-    w.pill:SetWidth(math.max(120, wl.w - 44))
+    w.pill:SetWidth(math.max(120, wl.w)) -- as wide as the well, for long names
     w:Show()
     w.refresh()
     w.refreshXP()
