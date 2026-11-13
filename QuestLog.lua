@@ -473,7 +473,12 @@ showDetail = function(e, retried)
     local money = moneyText(call(_G.GetQuestLogRewardMoney, id))
     local xp = call(_G.GetQuestLogRewardXP, id)
     if #tiles > 0 or money or (type(xp) == "number" and xp > 0) then
-        section(nChoice and nChoice > 1 and "Rewards (choose one of the first " .. nChoice .. ")" or "Rewards")
+        -- With several choices, they come first under "choose one" (the
+        -- quest giver's wording); what you get regardless follows under
+        -- its own heading.
+        local choosing = type(nChoice) == "number" and nChoice > 1
+        section(choosing and "Rewards  9483  choose one" or "Rewards")
+        local saidAlso = false
         -- The best-selling choice is marked, when the choices differ.
         local infos, bestPrice, differ, missing = {}, 0, false, false
         for i, r in ipairs(tiles) do
@@ -489,6 +494,11 @@ showDetail = function(e, retried)
         end
         for i, r in ipairs(tiles) do
             local info = infos[i]
+            if choosing and r.kind == "reward" and not saidAlso then
+                saidAlso = true
+                y = y - 2
+                section("You also get")
+            end
             local t = takeCard()
             t.kind, t.index, t.questID, t.link = r.kind, r.index, id, r.link
             t.icon:SetTexture(r.tex)
