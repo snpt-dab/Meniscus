@@ -463,6 +463,82 @@ function ns.CompareRows(link, max)
     return rows
 end
 
+-- Is this piece an upgrade? A quick yes / no for a mark on a tile (the
+-- tooltip's stat comparison is the detail): gear you can use, of the armor
+-- type you wear, with a higher item level than what is in its slot (the
+-- weaker of the two for rings and trinkets), or for a slot that is empty.
+-- Answers are remembered per link until your gear or level changes.
+local upCache = {}
+local OFFHAND = { INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true, INVTYPE_WEAPONOFFHAND = true }
+local function gearLevel(link)
+    local f = (C_Item and C_Item.GetDetailedItemLevelInfo) or _G.GetDetailedItemLevelInfo
+    if not f then return nil end
+    local ok, l = pcall(f, link)
+    if ok and type(l) == "number" and not issecretvalue(l) then return l end
+end
+local function equipLocOf(link)
+    local ok, _, _, _, loc, _, classID, subID = pcall(C_Item.GetItemInfoInstant, link)
+    if ok then return loc, classID, subID end
+end
+function ns.IsUpgrade(link)
+    if type(link) ~= "string" or issecretvalue(link) or not (C_Item and C_Item.GetItemInfoInstant) then return false end
+    local known = upCache[link]
+    if known ~= nil then return known end
+    local loc, classID, subID = equipLocOf(link)
+    local slots = loc and SLOTS[loc]
+    if not slots then upCache[link] = false; return false end
+    local new = gearLevel(link)
+    if not new then return false end -- its data hasn't arrived: ask again later
+    local res = false
+    local wrongArmor = classID == 4 and type(subID) == "number" and subID >= 1 and subID <= 4
+        and loc ~= "INVTYPE_CLOAK" and subID ~= ns.BestArmor()
+    if not wrongArmor then
+        local lowest, empty, same = nil, false, false
+        local main = GetInventoryItemLink("player", 16)
+        local mainLoc = main and equipLocOf(main)
+        for _, slot in ipairs(slots) do
+            local worn = GetInventoryItemLink("player", slot)
+            local count = true
+            if slot == 17 then
+                if loc == "INVTYPE_WEAPON" then
+                    -- A one-hander is only compared with the off hand when
+                    -- a weapon is held there (dual wielding).
+                    local wl = worn and equipLocOf(worn)
+                    count = wl == "INVTYPE_WEAPON" or wl == "INVTYPE_WEAPONOFFHAND"
+                elseif not worn and OFFHAND[loc] and mainLoc == "INVTYPE_2HWEAPON" then
+                    count = false -- the off hand is empty because of a two-hander
+                end
+            end
+            if count then
+                if not worn then empty = true
+                elseif worn == link then same = true
+                else
+                    local l = gearLevel(worn)
+                    if l and (not lowest or l < lowest) then lowest = l end
+                end
+            end
+        end
+        if same then res = false
+        elseif empty then res = true
+        elseif lowest and new > lowest then res = true end
+        if res and ns.ItemUnusable(link) then res = false end
+    end
+    upCache[link] = res
+    return res
+end
+do
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "SPELLS_CHANGED" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    f:SetScript("OnEvent", function()
+        if next(upCache) == nil then return end
+        wipe(upCache)
+        local B = ns.modules and ns.modules.Bags
+        if B and B.Refresh then C_Timer.After(0.1, function() pcall(B.Refresh, B) end) end
+    end)
+end
+
 -- Can this character use the item? The game marks what stops you in red in
 -- the item's tooltip (an armor type you can't wear, a level or class
 -- requirement): returns that red line's text, or nil when nothing is red.

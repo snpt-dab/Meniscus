@@ -226,6 +226,10 @@ local function newButton(bag, slot)
         -- The press may already have fed the spell, so on the release
         -- targeting is over: remember it from the press.
         if down then self.aimed = now else self.aimed = self.aimed or now end
+        if now and ns.IsFeedingPet and ns.IsFeedingPet() then
+            local fed = itemInfo(self.bag, self.slot)
+            if fed and num(fed.itemID) then ns.lastFed, ns.lastFedAt = fed.itemID, GetTime() end
+        end
         -- Right-clicking gear: Blizzard's secure "use item" equips gear BY
         -- NAME, so with two of the same item it put on the first one in
         -- your bags, not the one clicked. Out of combat the secure action
@@ -372,6 +376,20 @@ local function newButton(bag, slot)
     b.junk:SetPoint("TOPLEFT", b, "TOPLEFT", 3, -3)
     b.junk:SetTexture("Interface/Buttons/UI-GroupLoot-Coin-Up")
     b.junk:Hide()
+    -- Better than what you're wearing: a green arrow in the bottom-left
+    -- corner (a dark copy behind it keeps it readable on any picture).
+    local upBack = over:CreateTexture(nil, "OVERLAY", nil, 1)
+    upBack:SetTexture(MEDIA .. "micro_up.tga")
+    upBack:SetVertexColor(0, 0, 0, 0.9)
+    upBack:SetSize(15, 15)
+    upBack:SetPoint("CENTER", b, "BOTTOMLEFT", 8.5, 8.5)
+    b.up = over:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.up:SetTexture(MEDIA .. "micro_up.tga")
+    b.up:SetVertexColor(0.42, 0.92, 0.50, 1)
+    b.up:SetSize(12, 12)
+    b.up:SetPoint("CENTER", upBack, "CENTER", 0, 0)
+    b.upBack = upBack
+    b.up:Hide(); upBack:Hide()
     -- Starts a quest you don't have yet: a gold disc with "!" in the top-left
     -- corner (and a gold ring). Items for a quest you're on get the ring only.
     -- A small badge sitting on the tile's corner (over the ring, not over
@@ -476,6 +494,8 @@ local function updateButton(b)
         local link = info.hyperlink
         local lvl = link and not secret(link) and isGear(link) and itemLevel(link)
         b.ilvl:SetText(lvl and string.format("%d", lvl) or "")
+        local up = lvl and ns.IsUpgrade and ns.IsUpgrade(link) or false
+        b.up:SetShown(up); b.upBack:SetShown(up)
         b.glow:SetShown(C_NewItems and call(C_NewItems.IsNewItem, b.bag, b.slot) == true or false)
         local m = matches(info)
         b.icon:SetAlpha(m and 1 or 0.2)
@@ -489,6 +509,7 @@ local function updateButton(b)
         b.junk:Hide()
         b.bang:Hide()
         b.ilvl:SetText("")
+        b.up:Hide(); b.upBack:Hide()
         b.glow:Hide()
     end
     local start, dur, enable = call(CC.GetContainerItemCooldown or _G.GetContainerItemCooldown, b.bag, b.slot)

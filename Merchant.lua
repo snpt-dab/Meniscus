@@ -128,6 +128,12 @@ local function newCard(i)
         if M.tab ~= "buyback" and _G.GetMerchantItemLink then
             pcall(ns.AddCompare, GameTooltip, call(_G.GetMerchantItemLink, self.index))
         end
+        if M.tab ~= "buyback" and ns.Restock then
+            local keep = ns.Restock.Get(ns.Restock.MerchantID(self.index))
+            GameTooltip:AddLine(keep and ("Restock: keeping " .. keep .. " in your bags (Alt-click to change)")
+                or "Alt-click: keep a set amount of this in your bags", 0.6, 0.6, 0.65)
+            GameTooltip:Show()
+        end
         -- The coin "buy" pointer, as the game's own vendor window shows it
         -- (its functions pick the right one: buy, or greyed when unaffordable).
         if not CursorHasItem() then
@@ -146,6 +152,7 @@ local function newCard(i)
         if CursorHasItem() then call(_G.PickupMerchantItem, 0); return end -- sell what's on the cursor
         local i = self.index
         if M.tab == "buyback" then call(_G.BuybackItem, i); return end
+        if IsAltKeyDown() and ns.Restock then ns.Restock.Ask(i); return end
         if IsModifiedClick() then
             local link = call(_G.GetMerchantItemLink, i)
             if link and HandleModifiedItemClick and HandleModifiedItemClick(link) then return end
@@ -249,6 +256,16 @@ function M:Refresh()
     win.junk:ClearAllPoints()
     if win.repair:IsShown() then win.junk:SetPoint("RIGHT", win.repair, "LEFT", -6, 0)
     else win.junk:SetPoint("BOTTOMRIGHT", sh.band, "BOTTOMRIGHT", -14, 14) end
+    -- Restock: only while this vendor sells something you are short of.
+    local short = ns.Restock and ns.Restock.Pending() or 0
+    win.restock:SetShown(short > 0)
+    if short > 0 then
+        win.restock:SetLabel(string.format("Restock (%d)", short))
+        win.restock:ClearAllPoints()
+        local left = (win.junk:IsShown() and win.junk) or (win.repair:IsShown() and win.repair) or nil
+        if left then win.restock:SetPoint("RIGHT", left, "LEFT", -6, 0)
+        else win.restock:SetPoint("BOTTOMRIGHT", sh.band, "BOTTOMRIGHT", -14, 14) end
+    end
 end
 
 local function build()
@@ -285,7 +302,11 @@ local function build()
         local MF = C_MerchantFrame
         if MF and MF.SellAllJunkItems then pcall(MF.SellAllJunkItems) end
     end)
-    win.shell:Lift(win.repair, win.junk)
+    win.restock = pill(win, "Restock", function()
+        if ns.Restock then ns.Restock.Run() end
+        C_Timer.After(0.5, function() M:Refresh() end)
+    end)
+    win.shell:Lift(win.repair, win.junk, win.restock)
 
     local x = 18
     for _, t in ipairs({ { "buy", MERCHANT or "Buy" }, { "buyback", BUYBACK or "Buy back" } }) do

@@ -411,6 +411,24 @@ local PAGES = {
               set = function(k) ns.modules.Bags:SetMode(k) end },
         } },
     } },
+    { key = "helpers", title = "Helpers", groups = {
+        { title = "Gear and bags", items = {
+            { "Durability warning", kind = "switch", reload = true,
+              note = "A wrench above the console when gear is at 30% or less",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.durability ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.durability = d.durability == false end end },
+            { "What you own, on item tooltips", kind = "switch", reload = true,
+              note = "Bags, bank and your other characters",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.owned ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.owned = d.owned == false end end },
+        } },
+        { title = "Hunter", items = {
+            { "Pet food button", kind = "switch", reload = true,
+              note = "Feedings left, above the pet's pill; click to feed",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.petFood ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.petFood = d.petFood == false end end },
+        } },
+    } },
     { key = "windows", title = "Windows", groups = {
         { title = "Replacement windows", items = {
             moduleSwitch("Character window", "Character"),

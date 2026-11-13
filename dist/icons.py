@@ -116,6 +116,21 @@ def icons():
     # question mark: a hook, a stem, a dot
     hook = arc_points(12, 9, 3.8, 180, -45, 24) + [(12, 14.6)]
     I['help'] = Icon().line(hook, w=2.5).dot(12, 18.8, 1.7)
+    # ── marks used outside the micro menu (heavier: drawn at 10-12 px) ──
+    # up arrow: "better than what you wear"
+    I['up'] = Icon().line([(5.5, 12.5), (12, 6), (18.5, 12.5)], w=3.6).line([(12, 7), (12, 19)], w=3.6)
+    # wrench: gear needs repair
+    I['repair'] = Icon().arc(8.6, 8.6, 4.0, 180, 450, w=3.0).line([(11.4, 11.4), (18.6, 18.6)], w=3.4)
+    # envelope: mail waiting
+    I['mail'] = Icon().box(4.2, 6.6, 19.8, 17.4, rad=2).line([(5.2, 8.2), (12, 13.2), (18.8, 8.2)], w=2.0)
+    # speech bubble: a whisper you haven't answered
+    I['chat'] = Icon().box(4.2, 5, 19.8, 15.6, rad=3.2).line([(8.4, 15.6), (8.4, 19.6), (12.6, 15.6)], w=2.0)
+    # arrowhead (points up; turned in game): the way to your corpse
+    I['pointer'] = Icon().line([(12, 4.6), (18.2, 18.6), (12, 15.2), (5.8, 18.6)], w=2.6, close=True)
+    # star burst: a self-buff has dropped
+    I['buff'] = Icon().line([(12, 4.4), (14.2, 9.8), (19.6, 12), (14.2, 14.2), (12, 19.6), (9.8, 14.2), (4.4, 12), (9.8, 9.8)], w=2.2, close=True)
+    # drumstick: pet food
+    I['food'] = Icon().dot(9.6, 9.6, 4.6).line([(12.6, 12.6), (18.2, 18.2)], w=2.6).dot(18.6, 18.6, 1.8)
     return I
 
 
