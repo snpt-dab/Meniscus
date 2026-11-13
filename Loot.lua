@@ -282,8 +282,24 @@ local snap, snapN = {}, 0          -- slot -> { tex, name, qty, quality }
 local floats, active = {}, 0       -- pooled lines; how many are showing
 local floatX, floatY = 0, 0
 local FLOAT_LIFE, FLOAT_IN, FLOAT_OUT, FLOAT_GAP = 3.0, 0.15, 0.6, 0.55
-local floatRise, lastStart = 130, 0
-local FLOAT_SPREAD, floatSpread = 110, 0 -- how far left / right of centre a pill may start
+local floatRise = 130
+-- Rails. Above your character each kind of pill has its own line to rise
+-- along, so you know what a pill is from where it is:
+--   left    what you loot, beside your left shoulder (the pill ends there
+--           and reaches out to the left)
+--   right   quest progress, beside your right shoulder (reaching right)
+--   center  skill-ups and warnings, above your head
+-- Each rail keeps its own beat, so a burst of loot doesn't hold a quest
+-- pill back. (Above the minimap there is one line for everything.)
+local RAILS = {
+    left   = { dx = -64, dy = 0,  anchor = "RIGHT" },
+    right  = { dx = 64,  dy = 0,  anchor = "LEFT" },
+    center = { dx = 0,   dy = 74, anchor = "CENTER" },
+}
+local ONE_RAIL = { dx = 0, dy = 0, anchor = "CENTER" }
+local floatRails = false       -- true while pills rise above the character
+local floatRail = "center"     -- which rail the next pill takes
+local lastStart = {}           -- per rail: when its last pill set off
 local floatDriver
 local MONEY_SLOT = (Enum and Enum.LootSlotType and Enum.LootSlotType.Money) or 2
 local PILL_H, PILL_PAD = 24, 10
@@ -308,12 +324,11 @@ local function floatOrigin()
     local sc = UIParent:GetEffectiveScale()
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
     local mm = _G.Minimap
-    floatSpread = 0
-    -- Above your character (the default): from a little over the middle of
-    -- the screen, each pill at its own spot within FLOAT_SPREAD either side
-    -- of the centre line, so a handful of them don't stack into a column.
+    floatRails = false
+    -- Above your character (the default): on the rails, from shoulder
+    -- height at the middle of the screen.
     if not (L.db and L.db.floatChar == false) then
-        floatX, floatY, floatRise, floatSpread = w / 2, h * 0.58, 120, FLOAT_SPREAD
+        floatX, floatY, floatRise, floatRails = w / 2, h * 0.52, 120, true
         return
     end
     local top = mm and mm:IsVisible() and mm:GetTop()
@@ -360,7 +375,7 @@ local function floatTick(_, dt)
                 f:SetWidth(PILL_H + (f.full - PILL_H) * o)
                 -- A steady climb: every line moves at the same speed, so
                 -- the distance between two of them never changes.
-                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + f.rise * k)
+                f:SetPoint(f.anchor or "CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + f.rise * k)
             else
                 any = true
             end
@@ -441,16 +456,18 @@ local function floatPill(tex, label, tr, tg, tb, note, rr, rg, rb, fr, fg, fb)
     -- a pill's height and a little air.)
     local now = GetTime()
     local gap = math.max(FLOAT_GAP, (PILL_H + 5) / (math.max(floatRise, 40) / FLOAT_LIFE))
-    local start = math.max(now, lastStart + gap)
-    lastStart = start
+    local railKey = floatRails and floatRail or "one"
+    local rail = floatRails and RAILS[floatRail] or ONE_RAIL
+    local start = math.max(now, (lastStart[railKey] or 0) + gap)
+    lastStart[railKey] = start
     f.x, f.y, f.rise = floatX, floatY, floatRise
-    if floatSpread > 0 then f.x = floatX + (math.random() * 2 - 1) * floatSpread end
+    f.x, f.y, f.anchor = floatX + rail.dx, floatY + rail.dy, rail.anchor
     f.age = now - start
     f.live = true
     active = active + 1
     f:SetAlpha(0)
     f:ClearAllPoints()
-    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y)
+    f:SetPoint(f.anchor, UIParent, "BOTTOMLEFT", f.x, f.y)
     f:Show()
     if not floatDriver then
         floatDriver = CreateFrame("Frame")
@@ -490,6 +507,7 @@ end
 -- as loot (red ring, dark red fill). Used for low ammunition.
 function ns.FloatWarning(tex, label, note)
     if not pcall(floatOrigin) then return end
+    floatRail = "center"
     pcall(floatPill, tex, label, 1.0, 0.86, 0.84, note, 0.90, 0.35, 0.30, 0.20, 0.07, 0.07)
 end
 
@@ -548,6 +566,7 @@ local function floatSkill(msg)
     local r, g, b = T.accent[1], T.accent[2], T.accent[3]
     if gold then r, g, b = 0.95, 0.78, 0.32 end
     local icon = skillIcon(name)
+    floatRail = "center"
     local ok, f = pcall(floatPill, icon or (MEDIA .. "micro_up.tga"), name, 1, 1, 1, level and tostring(level) or nil,
         r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
     if not (ok and f) then return end
@@ -593,6 +612,7 @@ local function floatQuest(msg)
         return true
     end
     if not pcall(floatOrigin) then return false end
+    floatRail = "right"
     local ok, f = pcall(floatPill, QUEST_ICON, what, T.text[1], T.text[2], T.text[3], nil,
         T.border[1], T.border[2], T.border[3])
     if ok and f then pcall(markQuest, f, have, need) end
@@ -630,6 +650,7 @@ local function floatSlot(slot)
     local tr, tg, tb = T.text[1], T.text[2], T.text[3]
     local rr, rg, rb = T.border[1], T.border[2], T.border[3]
     if fine then tr, tg, tb, rr, rg, rb = cr, cg, cb, cr * 0.75, cg * 0.75, cb * 0.75 end
+    floatRail = "left"
     floatPill(tex, name, tr, tg, tb, many and ("\195\151" .. qty) or nil, rr, rg, rb)
 end
 
