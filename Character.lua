@@ -887,6 +887,53 @@ local function attrEffects(i, unit, eff)
     return out
 end
 
+-- The graph's three shapes. The game gives one bonus per attribute, gear
+-- and buffs together; the gear's share is added up here from what is worn
+-- (the item's own stats: an enchant counts with the buffs), and the rest is
+-- called buffs. Only the player has gear to add up.
+local GEAR_KEY = { "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_STAMINA_SHORT",
+                   "ITEM_MOD_INTELLECT_SHORT", "ITEM_MOD_SPIRIT_SHORT" }
+local function updateRadar(card, unit)
+    local rd = card.radar
+    if not rd then return end
+    local gear = rd.gear
+    for i = 1, 5 do gear[i] = 0 end
+    local getStats = (C_Item and C_Item.GetItemStats) or _G.GetItemStats
+    if unit == "player" and getStats then
+        for slot = 1, 19 do
+            local link = GetInventoryItemLink("player", slot)
+            if link then
+                local ok, st = pcall(getStats, link)
+                if ok and type(st) == "table" then
+                    for i = 1, 5 do
+                        local v = st[GEAR_KEY[i]]
+                        if plain(v) then gear[i] = gear[i] + v end
+                    end
+                end
+            end
+        end
+    end
+    local top = 0
+    for i, tile in ipairs(card.attrs) do
+        tile.bare, tile.gear, tile.buff = nil, nil, nil
+        local eff, pos, neg = tile.eff, tile.pos, tile.neg
+        if not (plain(eff) and plain(pos) and plain(neg)) then rd.shapes:Hide(); card.radarScale:SetText(""); return end
+        local bare = math.max(0, eff - pos - neg)
+        local g = math.min(math.max(pos, 0), gear[i])
+        tile.bare, tile.gear, tile.buff = bare, g, math.max(0, pos - g)
+        rd.v[3][i], rd.v[2][i], rd.v[1][i] = bare, bare + g, math.max(0, eff)
+        top = math.max(top, eff, bare + g)
+    end
+    if top <= 0 then rd.shapes:Hide(); card.radarScale:SetText(""); return end
+    local scale = math.ceil(top / 10) * 10
+    for n = 1, 3 do
+        for i = 1, 5 do rd.v[n][i] = math.min(1, rd.v[n][i] / scale) end
+        rd.draw(rd.layers[n], rd.v[n])
+    end
+    card.radarScale:SetText("edge " .. scale)
+    rd.shapes:Show()
+end
+
 -- Returns whether the unit reports any attributes (some pets, demons on
 -- this client, report none: their tiles are hidden).
 local function updateAttrs(card, unit)
@@ -902,6 +949,7 @@ local function updateAttrs(card, unit)
     end
     local show = any or (unit or "player") == "player"
     for _, tile in ipairs(card.attrs) do tile:SetShown(show) end
+    pcall(updateRadar, card, unit or "player")
     return any
 end
 
@@ -1348,35 +1396,136 @@ local function makeStatsCard(page, top)
     card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
     ns.RoundedRect(card, -6, 0, 10, unpack(CARD))
 
-    -- Attribute tiles: the top row.
+    -- The five attributes as a graph: a pentagon with a corner for each,
+    -- and three shapes drawn one inside the next: what you have with
+    -- nothing on (dim), with your gear (silver), and with buffs as well
+    -- (the green outline). The gap between two shapes is that bonus. The
+    -- outer edge is your highest attribute, rounded up, so the shape shows
+    -- how the five compare, not how strong you are. Each corner has the
+    -- attribute's icon and its total; hover it for the split.
     card.attrs = {}
-    local TW, TH, TG = 44, 54, 6
-    local ATTR_ROW = TH + 8
+    local TW, TG = 44, 6
+    local RR, LR = 42, 62           -- the pentagon's radius; how far out the corner labels sit
+    local TH = 150                  -- the height the graph takes
     local ax0 = (W - 20 - 440) / 2 - (#ATTRS * TW + (#ATTRS - 1) * TG) / 2
+    local holder = CreateFrame("Frame", nil, card)
+    holder:SetSize(2, 2)
+    holder:SetPoint("CENTER", card, "TOPLEFT", (W - 20 - 440) / 2, -8 - 80)
+    local ux, uy = {}, {}
+    for i = 1, 5 do
+        local ang = math.rad(90 - (i - 1) * 72)
+        ux[i], uy[i] = math.cos(ang), math.sin(ang)
+    end
+    local function line(layer, sub, r, g, bl, al, thick)
+        local l = holder:CreateLine(nil, layer, nil, sub or 0)
+        l:SetThickness(thick or 1)
+        l:SetColorTexture(r, g, bl, al)
+        return l
+    end
+    local function span(l, x1, y1, x2, y2)
+        l:SetStartPoint("CENTER", holder, x1, y1)
+        l:SetEndPoint("CENTER", holder, x2, y2)
+    end
+    -- The grid: three rings and the five spokes.
+    for ring = 1, 3 do
+        local r = RR * ring / 3
+        for i = 1, 5 do
+            local j = i % 5 + 1
+            span(line("BORDER", 0, T.border[1], T.border[2], T.border[3], ring == 3 and 1 or 0.55),
+                r * ux[i], r * uy[i], r * ux[j], r * uy[j])
+        end
+    end
+    for i = 1, 5 do
+        span(line("BORDER", 0, T.border[1], T.border[2], T.border[3], 0.55), 0, 0, RR * ux[i], RR * uy[i])
+    end
+    -- The shapes. A filled wedge is a square texture with its corners
+    -- moved: two onto the middle, two onto the shape's corners.
+    local BOX = 4
+    local shapes = CreateFrame("Frame", nil, holder)
+    shapes:SetAllPoints()
+    local LAYERS = {
+        { fill = { GREEN[1], GREEN[2], GREEN[3], 0.20 }, edge = { GREEN[1], GREEN[2], GREEN[3], 0.95 }, sub = 1 }, -- total
+        { fill = { 0.80, 0.83, 0.90, 0.30 }, edge = { 0.80, 0.83, 0.90, 0.80 }, sub = 2 },                         -- with gear
+        { fill = { 0.42, 0.44, 0.50, 0.55 }, edge = { 0.55, 0.57, 0.63, 0.80 }, sub = 3 },                         -- bare
+    }
+    local canFill = true
+    for _, L in ipairs(LAYERS) do
+        L.tri, L.line = {}, {}
+        for i = 1, 5 do
+            local t = shapes:CreateTexture(nil, "BACKGROUND", nil, L.sub)
+            t:SetColorTexture(1, 1, 1, 1)
+            t:SetVertexColor(L.fill[1], L.fill[2], L.fill[3], L.fill[4])
+            t:SetSize(BOX, BOX)
+            t:SetPoint("CENTER", holder, "CENTER")
+            if not t.SetVertexOffset then canFill = false; t:Hide() end
+            L.tri[i] = t
+            local l = shapes:CreateLine(nil, "ARTWORK", nil, L.sub)
+            l:SetThickness(1.2)
+            l:SetColorTexture(L.edge[1], L.edge[2], L.edge[3], L.edge[4])
+            L.line[i] = l
+        end
+    end
+    local px, py = {}, {}
+    -- vals[layer][i] in 0..1
+    local function drawShape(L, v)
+        for i = 1, 5 do
+            local r = RR * (0.05 + 0.95 * v[i])
+            px[i], py[i] = r * ux[i], r * uy[i]
+        end
+        for i = 1, 5 do
+            local j = i % 5 + 1
+            L.line[i]:SetStartPoint("CENTER", holder, px[i], py[i])
+            L.line[i]:SetEndPoint("CENTER", holder, px[j], py[j])
+            if canFill then
+                local t, h = L.tri[i], BOX / 2
+                t:SetVertexOffset(1, h, -h)                     -- upper left  -> the middle
+                t:SetVertexOffset(3, -h, -h)                    -- upper right -> the middle
+                t:SetVertexOffset(2, px[i] + h, py[i] + h)      -- lower left  -> one corner
+                t:SetVertexOffset(4, px[j] - h, py[j] + h)      -- lower right -> the next
+            end
+        end
+    end
+    card.radar = { shapes = shapes, layers = LAYERS, draw = drawShape,
+                   v = { {}, {}, {} }, gear = {}, tmp = {} }
+    -- What each shape is.
+    local LEGEND = { { "Buffs", LAYERS[1].edge }, { "Gear", LAYERS[2].edge }, { "Base", LAYERS[3].edge } }
+    for n, e in ipairs(LEGEND) do
+        local sw = card:CreateTexture(nil, "ARTWORK")
+        sw:SetColorTexture(e[2][1], e[2][2], e[2][3], 1)
+        sw:SetSize(7, 2)
+        sw:SetPoint("LEFT", card, "TOPLEFT", ax0, -14 - (n - 1) * 11)
+        local fs = text(card, 9, false, T.textDim)
+        fs:SetPoint("LEFT", sw, "RIGHT", 4, 0)
+        fs:SetText(e[1])
+    end
+    card.radarScale = text(card, 9, false, T.textDim)
+    card.radarScale:SetPoint("RIGHT", card, "TOPLEFT", ax0 + #ATTRS * TW + (#ATTRS - 1) * TG, -14)
+    -- The corners: icon and total, and the hover.
     for i, a in ipairs(ATTRS) do
         local tile = CreateFrame("Frame", nil, card)
-        tile:SetSize(TW, TH)
-        tile:SetPoint("TOPLEFT", card, "TOPLEFT", ax0 + (i - 1) * (TW + TG), -8)
-        ns.RoundedRect(tile, -4, 0, 7, T.border[1], T.border[2], T.border[3], 1)
-        ns.RoundedRect(tile, -3, 1, 6, unpack(FILL))
-        -- Its icon in the attribute's colour, the value, a small label.
+        tile:SetSize(40, 32)
+        tile:SetPoint("CENTER", holder, "CENTER", LR * ux[i], LR * uy[i])
         local glyph = tile:CreateTexture(nil, "ARTWORK")
         glyph:SetTexture(MEDIA .. a[4])
-        glyph:SetSize(17, 17)
-        glyph:SetPoint("TOP", 0, -6)
+        glyph:SetSize(15, 15)
+        glyph:SetPoint("TOP", 0, -1)
         glyph:SetVertexColor(a[3][1], a[3][2], a[3][3], 1)
-        tile.value = text(tile, 13, true)
-        tile.value:SetPoint("TOP", glyph, "BOTTOM", 0, -3)
-        local label = text(tile, 9, false, T.textDim)
-        label:SetPoint("BOTTOM", 0, 5)
-        label:SetText(a[1])
+        tile.value = text(tile, 12, true)
+        tile.value:SetPoint("TOP", glyph, "BOTTOM", 0, -2)
         tile:EnableMouse(true)
         tile:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText(a[2], a[3][1], a[3][2], a[3][3])
             if self.eff ~= nil then GameTooltip:AddLine(fmt(self.eff, "%d"), 1, 1, 1) end
-            if plain(self.base) then GameTooltip:AddDoubleLine("Base", string.format("%d", self.base), 0.6, 0.6, 0.65, 1, 1, 1) end
-            if plain(self.pos) and self.pos > 0 then
+            if plain(self.bare) then
+                GameTooltip:AddDoubleLine("Base", string.format("%d", self.bare), 0.6, 0.6, 0.65, 1, 1, 1)
+                if self.gear and self.gear > 0 then
+                    GameTooltip:AddDoubleLine("From gear", string.format("+%d", self.gear), 0.6, 0.6, 0.65, 0.80, 0.83, 0.90)
+                end
+                if self.buff and self.buff > 0 then
+                    GameTooltip:AddDoubleLine("From buffs", string.format("+%d", self.buff), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3])
+                end
+            elseif plain(self.pos) and self.pos > 0 then
                 GameTooltip:AddDoubleLine("Bonus", string.format("+%d", self.pos), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3])
             end
             if plain(self.neg) and self.neg < 0 then
@@ -1442,7 +1591,7 @@ local function makeStatsCard(page, top)
     end
 
     local cardW, cardH = W - 20 - 440, H - PAGE_TOP + top - 16
-    local listTop = 8 + TH + 12 + 12 + CH + 8 -- tiles, divider, pills, a gap
+    local listTop = 8 + TH + 12 + 12 + CH + 8 -- graph, divider, pills, a gap
     -- (As wide as the row of tiles, plus the 8 the rows keep clear on the
     -- right for the scroll thumb.)
     local tilesW = #ATTRS * TW + (#ATTRS - 1) * TG
