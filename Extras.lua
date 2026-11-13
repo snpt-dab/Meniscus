@@ -905,6 +905,9 @@ local function buildWaypoint()
         if F.IconBorder then F.IconBorder:SetAlpha(0) end
         if F.Arrow then
             pcall(F.Arrow.SetScale, F.Arrow, 0.55)
+            -- The game's arrow art is gold itself: a tint only multiplies
+            -- it, so the colour is taken out first.
+            pcall(F.Arrow.SetDesaturated, F.Arrow, true)
             F.Arrow:SetVertexColor(GR, GG, GB)
             F.Arrow:SetAlpha(0.75)
         end
