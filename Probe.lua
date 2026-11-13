@@ -1073,3 +1073,75 @@ ns.commands.barprobe = function()
     MinimalUIDB.barprobe = out
     ns:Print("Action bar recorded. /reload so it can be read.")
 end
+
+-- /men navprobe : does this client have the game's own in-world waypoint
+-- (the marker that sits over a tracked quest's objective)? Records which of
+-- its functions exist, the setting that turns it on, and what its frame is
+-- made of, into MinimalUIDB.navprobe. Best run with a quest tracked.
+ns.commands.navprobe = function()
+    if not MinimalUIDB then return end
+    local out = {}
+    local function s(v) if issecretvalue and issecretvalue(v) then return "<secret>" end return tostring(v) end
+    local function api(tname)
+        local t = _G[tname]
+        if type(t) ~= "table" then out[#out + 1] = tname .. ": missing"; return end
+        local names = {}
+        for k, v in pairs(t) do if type(v) == "function" then names[#names + 1] = k end end
+        table.sort(names)
+        out[#out + 1] = tname .. ": " .. table.concat(names, ", ")
+    end
+    api("C_SuperTrack"); api("C_Navigation")
+    local function call(label, fn, ...)
+        if type(fn) ~= "function" then out[#out + 1] = label .. ": no function"; return end
+        local r = { pcall(fn, ...) }
+        local parts = {}
+        for i = 2, math.min(#r, 6) do parts[#parts + 1] = s(r[i]) end
+        out[#out + 1] = label .. ": " .. (r[1] and "ok " or "ERR ") .. table.concat(parts, " | ")
+    end
+    local getcv = (C_CVar and C_CVar.GetCVar) or _G.GetCVar
+    call("cvar showInGameNavigation", getcv, "showInGameNavigation")
+    local ST, NV = _G.C_SuperTrack or {}, _G.C_Navigation or {}
+    call("IsSuperTrackingAnything", ST.IsSuperTrackingAnything)
+    call("IsSuperTrackingQuest", ST.IsSuperTrackingQuest)
+    call("GetSuperTrackedQuestID", ST.GetSuperTrackedQuestID)
+    call("GetHighestPrioritySuperTrackingType", ST.GetHighestPrioritySuperTrackingType)
+    call("Nav.GetDistance", NV.GetDistance)
+    call("Nav.HasValidScreenPosition", NV.HasValidScreenPosition)
+    call("Nav.WasClampedToScreen", NV.WasClampedToScreen)
+    call("Nav.GetTargetState", NV.GetTargetState)
+    call("Nav.GetFrame", NV.GetFrame)
+    call("C_Map.HasUserWaypoint", C_Map and C_Map.HasUserWaypoint)
+    call("C_Map.CanSetUserWaypointOnMap", C_Map and C_Map.CanSetUserWaypointOnMap, C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player"))
+    call("C_QuestLog.GetNextWaypoint", C_QuestLog and C_QuestLog.GetNextWaypoint, ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID() or 0)
+    call("QuestPOIGetIconInfo", _G.QuestPOIGetIconInfo, ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID() or 0)
+    local watched = {}
+    pcall(function()
+        for i = 1, (C_QuestLog.GetNumQuestWatches() or 0) do
+            watched[#watched + 1] = s(C_QuestLog.GetQuestIDForQuestWatchIndex(i))
+        end
+    end)
+    out[#out + 1] = "watched quests: " .. table.concat(watched, ", ")
+    local F = _G.SuperTrackedFrame
+    if not F then
+        out[#out + 1] = "SuperTrackedFrame: missing"
+    else
+        pcall(function()
+            out[#out + 1] = "SuperTrackedFrame: " .. (F:IsShown() and "shown" or "hidden")
+                .. string.format(" %.0fx%.0f alpha %.2f", F:GetWidth(), F:GetHeight(), F:GetAlpha())
+                .. " parent " .. s(F:GetParent() and F:GetParent():GetName())
+            for k, v in pairs(F) do
+                if type(k) == "string" and type(v) == "table" and v.GetObjectType then
+                    local extra = ""
+                    if v.GetAtlas then extra = " atlas " .. s(v:GetAtlas()) end
+                    if v.GetText then extra = extra .. " text " .. s(v:GetText()) end
+                    out[#out + 1] = "  ." .. k .. " [" .. v:GetObjectType() .. "]"
+                        .. (v:IsShown() and "" or " hidden") .. extra
+                elseif type(k) == "string" and type(v) ~= "function" and type(v) ~= "table" then
+                    out[#out + 1] = "  ." .. k .. " = " .. s(v)
+                end
+            end
+        end)
+    end
+    MinimalUIDB.navprobe = out
+    ns:Print("Waypoint facts recorded (" .. #out .. " lines). /reload to save them.")
+end
