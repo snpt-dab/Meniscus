@@ -742,6 +742,14 @@ end
 local function fillCorner(frame)
     local c = frame.AuraContainer
     local v, h = "TOP", "RIGHT"
+    -- The frame says which way it grows; that is the answer when it is
+    -- there. (Working it out from where the container sits went wrong right
+    -- after the direction was changed in Edit Mode: the buffs were pinned
+    -- by the bottom while filling from the top, and hung in the air above
+    -- the panel.)
+    if c and type(c.addIconsToTop) == "boolean" and type(c.addIconsToRight) == "boolean" then
+        return c.addIconsToTop and "BOTTOM" or "TOP", c.addIconsToRight and "LEFT" or "RIGHT"
+    end
     pcall(function()
         if not c then return end
         local cy, cx = (c:GetTop() + c:GetBottom()) / 2, (c:GetLeft() + c:GetRight()) / 2
@@ -766,9 +774,17 @@ local function applyWrap(fr)
     local n = wraps[fr]
     local c = fr and fr.AuraContainer
     if not (n and c) or wrapping then return end
-    if type(c.iconStride) ~= "number" or c.iconStride == n then return end
+    local changed = false
+    if type(c.iconStride) == "number" and c.iconStride ~= n then c.iconStride = n; changed = true end
+    -- Buffs in the panel start at its top and fill downward, whatever Edit
+    -- Mode's direction setting says (growing up, they left the panel).
+    if fr == BuffFrame and type(c.addIconsToTop) == "boolean" and c.addIconsToTop then
+        c.addIconsToTop = false
+        changed = true
+    end
+    if not changed then return end
     wrapping = true
-    c.iconStride = n
+    if fr.UpdateAuraContainerAnchor then pcall(fr.UpdateAuraContainerAnchor, fr) end
     if fr.UpdateGridLayout then pcall(fr.UpdateGridLayout, fr) end
     wrapping = false
 end
@@ -791,6 +807,16 @@ wrapTo = function(fr, room)
         -- (Also the moment to measure, if no icon was showing before.)
         hooksecurefunc(fr, "UpdateGridLayout", function(self)
             if wrapping then return end
+            -- Growing a different way than when it was seated (an Edit Mode
+            -- change): seat it again by the new corner.
+            local s = seats[self]
+            if s then
+                local v, h = fillCorner(self)
+                if s[1] ~= v .. h and not A.reseating then
+                    A.reseating = true
+                    C_Timer.After(0.1, function() A.reseating = false; A:SeatBlizzard() end)
+                end
+            end
             if wraps[self] then applyWrap(self) elseif rooms[self] then pcall(wrapTo, self, rooms[self]) end
         end)
     end
