@@ -864,8 +864,136 @@ local function buildOrbText()
     end)
 end
 
+-- ── A dot over the quest objective ────────────────────────────────────────
+-- An addon can't draw in the world, but the game can: its own waypoint sits
+-- over the objective of the quest being followed, and slides to the edge of
+-- the screen when that is behind you. It is off by default in this client
+-- and nothing chooses a quest for it. So: the game setting is turned on,
+-- the nearest quest on your watch list is followed (a quest or map pin you
+-- pick yourself is left alone), and the game's large marker is redrawn as a
+-- small gold dot with the distance under it.
+local function buildWaypoint()
+    local ST, NV, F = _G.C_SuperTrack, _G.C_Navigation, _G.SuperTrackedFrame
+    if not (ST and NV and F and ST.SetSuperTrackedQuestID and C_QuestLog) then return end
+    local setcv = (C_CVar and C_CVar.SetCVar) or _G.SetCVar
+    if setcv then pcall(setcv, "showInGameNavigation", "1") end
+    EX.db.waypointSet = true
+
+    local GR, GG, GB = 1.00, 0.82, 0.30
+    local halo = F:CreateTexture(nil, "ARTWORK")
+    halo:SetTexture(MEDIA .. "spot.tga")
+    halo:SetSize(30, 30)
+    halo:SetPoint("CENTER")
+    halo:SetVertexColor(GR, GG, GB)
+    halo:SetAlpha(0.30)
+    halo:SetBlendMode("ADD")
+    local dot = F:CreateTexture(nil, "OVERLAY")
+    dot:SetTexture(MEDIA .. "circle.tga")
+    dot:SetSize(9, 9)
+    dot:SetPoint("CENTER")
+    dot:SetVertexColor(GR, GG, GB)
+    dot:SetAlpha(0.95)
+    pcall(function()
+        local ag = halo:CreateAnimationGroup()
+        ag:SetLooping("BOUNCE")
+        local a = ag:CreateAnimation("Alpha")
+        a:SetFromAlpha(0.16); a:SetToAlpha(0.42); a:SetDuration(1.6); a:SetSmoothing("IN_OUT")
+        ag:Play()
+    end)
+    local function restyle()
+        if F.Icon then F.Icon:SetAlpha(0) end
+        if F.IconBorder then F.IconBorder:SetAlpha(0) end
+        if F.Arrow then
+            pcall(F.Arrow.SetScale, F.Arrow, 0.55)
+            F.Arrow:SetVertexColor(GR, GG, GB)
+            F.Arrow:SetAlpha(0.75)
+        end
+        local d = F.DistanceText
+        if d then
+            ns:SetFont(d, 11, "OUTLINE")
+            d:SetTextColor(T.text[1], T.text[2], T.text[3])
+            d:SetAlpha(0.65)
+            d:ClearAllPoints()
+            d:SetPoint("TOP", dot, "BOTTOM", 0, -6)
+        end
+    end
+    restyle()
+    if type(F.UpdateIcon) == "function" then pcall(hooksecurefunc, F, "UpdateIcon", restyle) end
+
+    -- Which quest to follow: the nearest one being watched.
+    local mine
+    local function watched(id)
+        for i = 1, (C_QuestLog.GetNumQuestWatches() or 0) do
+            if C_QuestLog.GetQuestIDForQuestWatchIndex(i) == id then return true end
+        end
+    end
+    local function pick()
+        local rec = { at = date("%H:%M:%S") }
+        if MinimalUIDB then MinimalUIDB.waypoint = rec end
+        local cur = ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID()
+        if secret(cur) then return end
+        if cur == 0 then cur = nil end
+        rec.cur = cur
+        -- Something you chose yourself: leave it.
+        if (ST.IsSuperTrackingMapPin and ST.IsSuperTrackingMapPin())
+            or (ST.IsSuperTrackingUserWaypoint and ST.IsSuperTrackingUserWaypoint())
+            or (ST.IsSuperTrackingCorpse and ST.IsSuperTrackingCorpse()) then rec.left = "pin"; return end
+        if cur and cur ~= mine and watched(cur) then rec.left = "yours"; return end
+        local best, bestD
+        if C_QuestLog.GetDistanceSqToQuest then
+            for i = 1, (C_QuestLog.GetNumQuestWatches() or 0) do
+                local id = C_QuestLog.GetQuestIDForQuestWatchIndex(i)
+                if id then
+                    local ok, d, here = pcall(C_QuestLog.GetDistanceSqToQuest, id)
+                    rec[#rec + 1] = tostring(id) .. " " .. (ok and (secret(d) and "secret" or tostring(d)) or "err") .. " " .. tostring(here)
+                    if ok and num(d) and d > 0 and here ~= false and (not bestD or d < bestD) then best, bestD = id, d end
+                end
+            end
+        else
+            rec.nodist = true
+        end
+        rec.best = best
+        if best and best ~= cur then
+            mine = best
+            pcall(ST.SetSuperTrackedQuestID, best)
+        elseif best then
+            mine = best
+        end
+        pcall(function()
+            rec.frame = NV.GetFrame and NV.GetFrame() ~= nil
+            local dist = NV.GetDistance and NV.GetDistance()
+            rec.dist = secret(dist) and "secret" or dist
+            rec.shown = F:IsShown()
+        end)
+    end
+    local due = false
+    local function soon()
+        if due then return end
+        due = true
+        C_Timer.After(0.5, function() due = false; pcall(pick) end)
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "QUEST_WATCH_LIST_CHANGED", "QUEST_LOG_UPDATE",
+                         "ZONE_CHANGED_NEW_AREA", "QUEST_POI_UPDATE", "SUPER_TRACKING_CHANGED" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "SUPER_TRACKING_CHANGED" then restyle() end
+        soon()
+    end)
+    C_Timer.NewTicker(5, soon)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.waypoint ~= false then
+        pcall(buildWaypoint)
+    elseif db.waypointSet then
+        -- Switched off: hand the game's setting back.
+        db.waypointSet = nil
+        local setcv = (C_CVar and C_CVar.SetCVar) or _G.SetCVar
+        if setcv then pcall(setcv, "showInGameNavigation", "0") end
+    end
     if db.orbText ~= false then pcall(buildOrbText) end
     if db.aggro ~= false then pcall(buildAggro) end
     if db.durability ~= false then pcall(buildDurability) end
