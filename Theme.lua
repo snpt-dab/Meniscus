@@ -169,6 +169,11 @@ fontLoader:SetScript("OnEvent", function(self, _, name)
             db.fontInterMigrated, db.font, db.fontPath, db.fontBold = true, INTER.key, INTER.path, INTER.bold
         end
     end
+    if db and db.font and BUNDLED[db.font] and db.font ~= INTER.key and not db.fontPath then
+        -- (A bundled family named without its files, as the defaults
+        -- migration in Core.lua leaves it: filled in just below.)
+        db.fontPath = BUNDLED[db.font].path
+    end
     if not db or not db.font or db.font == INTER.key or not db.fontPath then
         Theme.font, Theme.fontBold = INTER.path, INTER.bold
         if db then db.font = INTER.key end

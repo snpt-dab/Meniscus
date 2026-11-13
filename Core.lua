@@ -103,6 +103,59 @@ function ns:Print(...)
     print("|cff4fc3f7Meniscus|r", ...)
 end
 
+-- When the built-in defaults change, installs that already exist don't see
+-- it: their profile was filled in with the defaults of the day and saved.
+-- So each change of defaults is listed here as a revision: for every
+-- profile that hasn't had it yet, a setting that still holds the OLD
+-- default is moved to the new one (a setting someone changed themselves is
+-- left as they set it). MinimalUIDB.defaultsRev[profile] remembers how far
+-- a profile has come.
+local DEFAULT_REVS = {
+    -- 1 (2026-11-13): the author's own setup became the default.
+    {
+        { "Bags", "mode", "combined", "separate" },
+        { "Minimap", "dome", false, true },
+        { "XP", "span", "orbs", "bars" },
+        { "UnitFrames", "hideBlizzard", false, true },
+        { "UnitFrames", "playerStyle", "frame", "none" },
+        { "UnitFrames", "player.x", -180, -310 }, { "UnitFrames", "player.y", -180, -354 },
+        { "UnitFrames", "target.x", 180, 310 }, { "UnitFrames", "target.y", -180, -354 },
+        { "UnitFrames", "focus.x", 196, 326 }, { "UnitFrames", "focus.y", -96, -249 },
+        { "UnitFrames", "boss.x", 560, 326 }, { "UnitFrames", "boss.y", 140, 0 },
+        { "UnitFrames", "portrait.dist", 1.2, 1.0 }, { "UnitFrames", "portrait.pop", 0.45, 0.35 },
+        { "UnitFrames", "portrait.x", 0.06, 0.01 },
+        font = { "inter", "manrope" },
+    },
+}
+local function applyDefaultRevs(db)
+    db.defaultsRev = db.defaultsRev or {}
+    local fontDone = false
+    for name, profile in pairs(db.profiles) do
+        local have = db.defaultsRev[name] or 0
+        for rev = have + 1, #DEFAULT_REVS do
+            local list = DEFAULT_REVS[rev]
+            for _, m in ipairs(list) do
+                local t = profile[m[1]]
+                local a, b = m[2]:match("^(.-)%.(.+)$")
+                if t and a then t = t[a] end
+                local key = b or m[2]
+                if type(t) == "table" then
+                    local cur = t[key]
+                    local same = cur == m[3]
+                        or (type(cur) == "number" and type(m[3]) == "number" and math.abs(cur - m[3]) < 0.0001)
+                    if same then t[key] = m[4] end
+                end
+            end
+            -- The font is one setting for the whole account.
+            if list.font and not fontDone and db.font == list.font[1] then
+                fontDone = true
+                db.font, db.fontPath, db.fontBold = list.font[2], nil, nil
+            end
+        end
+        db.defaultsRev[name] = #DEFAULT_REVS
+    end
+end
+
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
 f:RegisterEvent("PLAYER_LOGIN")
@@ -111,6 +164,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
         MinimalUIDB = MinimalUIDB or {}
         merge(MinimalUIDB, defaults)
         activateProfile()
+        pcall(applyDefaultRevs, MinimalUIDB)
     elseif event == "PLAYER_LOGIN" then
         for _, name in ipairs(ns.order) do
             local mod = ns.modules[name]
@@ -358,6 +412,16 @@ do
                 C_Timer.After(10, function()
                     if ns.NewerVersion() and not told then told = true; say() end
                 end)
+                -- Said once after each update, so it is plain that the
+                -- new version is the one running.
+                if db and ns.version ~= "?" and db.lastVersion ~= ns.version then
+                    local was = db.lastVersion
+                    db.lastVersion = ns.version
+                    C_Timer.After(6, function()
+                        ns:Print(was and ("Updated: now running version " .. ns.version .. " (was " .. was .. ").")
+                            or ("Running version " .. ns.version .. "."))
+                    end)
+                end
             end
             C_Timer.After(8, announce)
         else
