@@ -307,7 +307,9 @@ local function floatOrigin()
     local sc = UIParent:GetEffectiveScale()
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
     local mm = _G.Minimap
-    local top = mm and mm:IsVisible() and mm:GetTop()
+    -- (db.floatCursor: always from where the cursor is, i.e. from the
+    -- corpse or node you just clicked.)
+    local top = not (L.db and L.db.floatCursor) and mm and mm:IsVisible() and mm:GetTop()
     local cx = top and mm:GetCenter()
     if top and cx then
         local k = mm:GetEffectiveScale() / sc
@@ -386,6 +388,24 @@ local function floatLine()
     f.text:SetWordWrap(false)
     f.count = text(inner, 10, false, T.textDim)
     f.count:SetPoint("LEFT", f.text, "RIGHT", 6, 0)
+    -- A soft light that crosses the pill once, for the rarer kinds (a
+    -- skill going up). On the clipped child, so it stays inside the pill.
+    local sheen = inner:CreateTexture(nil, "OVERLAY")
+    sheen:SetTexture(MEDIA .. "spot.tga")
+    sheen:SetBlendMode("ADD")
+    sheen:SetSize(46, PILL_H * 2.4)
+    sheen:SetPoint("CENTER", inner, "LEFT", -30, 0)
+    sheen:SetAlpha(0)
+    local ag = sheen:CreateAnimationGroup()
+    local fadeIn = ag:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0); fadeIn:SetToAlpha(0.55); fadeIn:SetDuration(0.15); fadeIn:SetStartDelay(OPEN); fadeIn:SetOrder(1)
+    local move = ag:CreateAnimation("Translation")
+    move:SetDuration(0.8); move:SetSmoothing("IN_OUT"); move:SetOrder(2)
+    local fadeOut = ag:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(0.55); fadeOut:SetToAlpha(0); fadeOut:SetDuration(0.2); fadeOut:SetOrder(3)
+    ag:SetScript("OnPlay", function() sheen:SetAlpha(0) end)
+    ag:SetScript("OnFinished", function() sheen:SetAlpha(0) end)
+    f.sheen, f.sheenMove = ag, move
     floats[#floats + 1] = f
     return f
 end
@@ -396,10 +416,14 @@ local function floatPill(tex, label, tr, tg, tb, note, rr, rg, rb, fr, fg, fb)
     local f = floatLine()
     f.label, f.quest = label, nil
     f.icon:SetTexture(tex)
+    f.icon:SetVertexColor(1, 1, 1, 1)
+    f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    f.sheen:Stop()
     f.text:SetText(label)
     f.text:SetTextColor(tr, tg, tb)
     local hasNote = type(note) == "string" and note ~= ""
     f.count:SetText(hasNote and note or "")
+    f.count:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
     f.ring(rr, rg, rb, 1)
     if fr then f.fill(fr, fg, fb, 0.96) else f.fill(FILL[1], FILL[2], FILL[3], 0.94) end
     f.full = math.ceil((PILL_H - 3) + 7 + f.text:GetStringWidth()
@@ -459,6 +483,88 @@ end
 function ns.FloatWarning(tex, label, note)
     if not pcall(floatOrigin) then return end
     pcall(floatPill, tex, label, 1.0, 0.86, 0.84, note, 0.90, 0.35, 0.30, 0.20, 0.07, 0.07)
+end
+
+-- A skill going up ("Your skill in Herbalism has increased to 76."): rarer
+-- than loot, so it is dressed differently from it. Accent ring and a
+-- tinted fill, the skill's own icon (our up-arrow for skills that have
+-- none), the new level as the note, and a light that crosses the pill
+-- once. Every 25th point, and the last point of a tier, is gold.
+local SKILL_PATTERN
+local function skillPattern()
+    if SKILL_PATTERN == nil then
+        local g = _G.ERR_SKILL_UP_SI
+        if type(g) == "string" then
+            -- "Your skill in %s has increased to %d." -> a pattern
+            local p = g:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+            p = p:gsub("%%%d?%$?s", "(.+)"):gsub("%%%d?%$?d", "(%%d+)")
+            SKILL_PATTERN = "^" .. p .. "$"
+        else
+            SKILL_PATTERN = false
+        end
+    end
+    return SKILL_PATTERN
+end
+local skillIcons
+local function skillIcon(name)
+    if not skillIcons then
+        skillIcons = {}
+        if _G.GetProfessions and _G.GetProfessionInfo then
+            local list = { call(GetProfessions) }
+            for i = 1, 8 do
+                local idx = list[i]
+                if idx then
+                    local n, icon = call(GetProfessionInfo, idx)
+                    if type(n) == "string" and icon then skillIcons[n] = icon end
+                end
+            end
+        end
+    end
+    local icon = skillIcons[name]
+    if icon then return icon end
+    local f = C_Spell and C_Spell.GetSpellTexture
+    icon = f and call(f, name)
+    if icon and not secret(icon) then skillIcons[name] = icon return icon end
+    return nil
+end
+local function floatSkill(msg)
+    if not (L.db and L.db.skillFloat ~= false) then return end
+    if type(msg) ~= "string" or secret(msg) then return end
+    local pat = skillPattern()
+    if not pat then return end
+    local name, level = msg:match(pat)
+    if not name then return end
+    level = tonumber(level)
+    if not pcall(floatOrigin) then return end
+    local gold = level and (level % 25 == 0)
+    local r, g, b = T.accent[1], T.accent[2], T.accent[3]
+    if gold then r, g, b = 0.95, 0.78, 0.32 end
+    local icon = skillIcon(name)
+    local ok, f = pcall(floatPill, icon or (MEDIA .. "micro_up.tga"), name, 1, 1, 1, level and tostring(level) or nil,
+        r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
+    if not (ok and f) then return end
+    if not icon then
+        f.icon:SetTexCoord(0, 1, 0, 1)
+        f.icon:SetVertexColor(r, g, b, 1)
+    end
+    f.count:SetTextColor(r, g, b)
+    f.skill = true
+    f.sheenMove:SetOffset(f.full + 60, 0)
+    f.sheen:Play()
+end
+
+-- /men skillup : show a sample skill-up pill (and a gold one).
+ns.commands = ns.commands or {}
+ns.commands.skillup = function()
+    local fmt = _G.ERR_SKILL_UP_SI or "Your skill in %s has increased to %d."
+    local name = "Herbalism"
+    if _G.GetProfessions and _G.GetProfessionInfo then
+        local first = call(GetProfessions)
+        local n = first and call(GetProfessionInfo, first)
+        if type(n) == "string" then name = n end
+    end
+    floatSkill(fmt:format(name, 74))
+    floatSkill(fmt:format(name, 75))
 end
 
 -- Quest progress ("Restabilization Cog: 3/8", "Leper Gnome slain: 2/10"):
@@ -675,6 +781,13 @@ function L:OnInit(db)
                          "START_LOOT_ROLL", "CANCEL_LOOT_ROLL" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
+    local sk = CreateFrame("Frame")
+    sk:RegisterEvent("CHAT_MSG_SKILL")
+    sk:RegisterEvent("SKILL_LINES_CHANGED")
+    sk:SetScript("OnEvent", function(_, e, msg)
+        if e == "SKILL_LINES_CHANGED" then skillIcons = nil return end
+        pcall(floatSkill, msg)
+    end)
     ev:SetScript("OnEvent", function(_, e, a1, a2)
         if e == "LOOT_OPENED" then
             closeLootWindow()
