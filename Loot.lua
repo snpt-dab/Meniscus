@@ -283,6 +283,7 @@ local floats, active = {}, 0       -- pooled lines; how many are showing
 local floatX, floatY = 0, 0
 local FLOAT_LIFE, FLOAT_IN, FLOAT_OUT, FLOAT_GAP = 3.0, 0.15, 0.6, 0.55
 local floatRise, lastStart = 130, 0
+local FLOAT_SPREAD, floatSpread = 110, 0 -- how far left / right of centre a pill may start
 local floatDriver
 local MONEY_SLOT = (Enum and Enum.LootSlotType and Enum.LootSlotType.Money) or 2
 local PILL_H, PILL_PAD = 24, 10
@@ -307,9 +308,15 @@ local function floatOrigin()
     local sc = UIParent:GetEffectiveScale()
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
     local mm = _G.Minimap
-    -- (db.floatCursor: always from where the cursor is, i.e. from the
-    -- corpse or node you just clicked.)
-    local top = not (L.db and L.db.floatCursor) and mm and mm:IsVisible() and mm:GetTop()
+    floatSpread = 0
+    -- Above your character (the default): from a little over the middle of
+    -- the screen, each pill at its own spot within FLOAT_SPREAD either side
+    -- of the centre line, so a handful of them don't stack into a column.
+    if not (L.db and L.db.floatChar == false) then
+        floatX, floatY, floatRise, floatSpread = w / 2, h * 0.58, 120, FLOAT_SPREAD
+        return
+    end
+    local top = mm and mm:IsVisible() and mm:GetTop()
     local cx = top and mm:GetCenter()
     if top and cx then
         local k = mm:GetEffectiveScale() / sc
@@ -437,6 +444,7 @@ local function floatPill(tex, label, tr, tg, tb, note, rr, rg, rb, fr, fg, fb)
     local start = math.max(now, lastStart + gap)
     lastStart = start
     f.x, f.y, f.rise = floatX, floatY, floatRise
+    if floatSpread > 0 then f.x = floatX + (math.random() * 2 - 1) * floatSpread end
     f.age = now - start
     f.live = true
     active = active + 1
