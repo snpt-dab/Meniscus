@@ -669,9 +669,9 @@ local function buildBanner()
     local f = CreateFrame("Frame", "MeniscusLevelUp", UIParent)
     f:SetFrameStrata("HIGH")
     f:SetSize(LV_W, LV_HEAD)
-    -- Centered, the card's top edge 30% of the way down the screen (the
+    -- Centered, the card's top edge 15% of the way down the screen (the
     -- badge sits half above that).
-    f:SetPoint("TOP", UIParent, "TOP", 0, -0.30 * UIParent:GetHeight())
+    f:SetPoint("TOP", UIParent, "TOP", 0, -0.15 * UIParent:GetHeight())
     f:EnableMouse(false)
     f:Hide()
     -- (The ring is a whole rounded shape lying behind the fill, so for the
@@ -1004,7 +1004,7 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     -- left of the screen at the same height.
     f.mv = nil
     local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
-    f.topY = -0.30 * sh
+    f.topY = -0.15 * sh
     f.endY = f.topY
     local cx = 20 + LV_W / 2
     local B = ns.modules.Bars
