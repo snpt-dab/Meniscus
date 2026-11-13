@@ -376,20 +376,36 @@ local function newButton(bag, slot)
     b.junk:SetPoint("TOPLEFT", b, "TOPLEFT", 3, -3)
     b.junk:SetTexture("Interface/Buttons/UI-GroupLoot-Coin-Up")
     b.junk:Hide()
-    -- Better than what you're wearing: a green arrow in the bottom-left
-    -- corner (a dark copy behind it keeps it readable on any picture).
-    local upBack = over:CreateTexture(nil, "OVERLAY", nil, 1)
-    upBack:SetTexture(MEDIA .. "micro_up.tga")
-    upBack:SetVertexColor(0, 0, 0, 0.9)
-    upBack:SetSize(15, 15)
-    upBack:SetPoint("CENTER", b, "BOTTOMLEFT", 8.5, 8.5)
-    b.up = over:CreateTexture(nil, "OVERLAY", nil, 2)
-    b.up:SetTexture(MEDIA .. "micro_up.tga")
-    b.up:SetVertexColor(0.42, 0.92, 0.50, 1)
-    b.up:SetSize(12, 12)
-    b.up:SetPoint("CENTER", upBack, "CENTER", 0, 0)
-    b.upBack = upBack
-    b.up:Hide(); upBack:Hide()
+    -- Better than what you're wearing: a badge on the tile's bottom-left
+    -- corner, built like the quest mark at the top (dark rim, coloured
+    -- disc, dark glyph): a bright green disc with an up arrow, which bobs
+    -- gently so it catches the eye. (It was a bare arrow over the picture,
+    -- and got lost on busy icons.)
+    local upf = CreateFrame("Frame", nil, over)
+    upf:SetSize(16, 16)
+    upf:SetPoint("CENTER", b, "BOTTOMLEFT", 5, 5)
+    local upRim = upf:CreateTexture(nil, "OVERLAY", nil, 0)
+    upRim:SetTexture(MEDIA .. "circle.tga")
+    upRim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    upRim:SetAllPoints()
+    local upDisc = upf:CreateTexture(nil, "OVERLAY", nil, 1)
+    upDisc:SetTexture(MEDIA .. "circle.tga")
+    upDisc:SetVertexColor(0.36, 0.92, 0.46, 1)
+    upDisc:SetPoint("TOPLEFT", 1.5, -1.5)
+    upDisc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local upArrow = upf:CreateTexture(nil, "OVERLAY", nil, 2)
+    upArrow:SetTexture(MEDIA .. "micro_up.tga")
+    upArrow:SetVertexColor(0.03, 0.16, 0.06, 1)
+    upArrow:SetPoint("TOPLEFT", 2, -2)
+    upArrow:SetPoint("BOTTOMRIGHT", -2, 2)
+    local upBob = upf:CreateAnimationGroup()
+    upBob:SetLooping("BOUNCE")
+    local upMove = upBob:CreateAnimation("Translation")
+    upMove:SetOffset(0, 2.5); upMove:SetDuration(0.7); upMove:SetSmoothing("IN_OUT")
+    upf:SetScript("OnShow", function() upBob:Play() end)
+    upf:SetScript("OnHide", function() upBob:Stop() end)
+    upf:Hide()
+    b.up, b.upBack = upf, upf
     -- Starts a quest you don't have yet: a gold disc with "!" in the top-left
     -- corner (and a gold ring). Items for a quest you're on get the ring only.
     -- A small badge sitting on the tile's corner (over the ring, not over
