@@ -933,7 +933,7 @@ local function updateRadar(card, unit)
         for i = 1, 5 do rd.v[n][i] = math.min(1, rd.v[n][i] / scale) end
         rd.draw(rd.layers[n], rd.v[n])
     end
-    card.radarScale:SetText("edge " .. scale)
+    card.radarScale:SetText("Outer ring: " .. scale)
     rd.shapes:Show()
 end
 
