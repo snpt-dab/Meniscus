@@ -233,3 +233,98 @@ SlashCmdList.MINIMALUI = function(msg)
         ns:Print("Unknown command. /men opens the panel, /men help lists commands.")
     end
 end
+
+-- ── Version, and noticing a newer one ─────────────────────────────────────
+-- An addon can't reach the internet, so it can't look for updates itself.
+-- What it can do is tell other players' copies which version it is (hidden
+-- addon messages to party / raid / guild) and listen for theirs. Hearing a
+-- higher one is remembered (MinimalUIDB.newer*) and said in chat once per
+-- session, until this copy has caught up. Updating itself happens outside
+-- the game: "Update Meniscus.bat" in the addon folder.
+do
+    local PREFIX = "Meniscus"
+    local meta = C_AddOns and C_AddOns.GetAddOnMetadata
+    local okv, v = pcall(function() return meta and meta(ns.name, "Version") end)
+    ns.version = (okv and type(v) == "string" and v) or "?"
+    -- The last number of the version counts changes ("0.1.172" -> 172).
+    ns.build = tonumber(ns.version:match("(%d+)$")) or 0
+
+    local HOW = "To update: close the game and double-click \"Update Meniscus\" in the Meniscus addon folder."
+    function ns.NewerVersion()
+        local db = MinimalUIDB
+        if db and (db.newerBuild or 0) > ns.build then return db.newerVersion or "?", db.newerFrom end
+    end
+    local function say()
+        local nv, from = ns.NewerVersion()
+        if nv then
+            ns:Print("|cffffd36bA newer version is out:|r " .. nv .. " (you have " .. ns.version .. ")"
+                .. (from and (", seen on " .. from) or "") .. ". " .. HOW)
+        else
+            ns:Print("Version " .. ns.version .. ". No newer version seen from other players. " .. HOW)
+        end
+    end
+    ns.commands = ns.commands or {}
+    ns.commands.version = say
+
+    local lastSend = {}
+    local function send(channel, target)
+        if ns.build == 0 or not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return end
+        local key, now = channel .. (target or ""), GetTime()
+        if lastSend[key] and now - lastSend[key] < 60 then return end
+        lastSend[key] = now
+        pcall(C_ChatInfo.SendAddonMessage, PREFIX, "V:" .. ns.build .. ":" .. ns.version, channel, target)
+    end
+    local function announce()
+        if IsInRaid and IsInRaid() then send("RAID") elseif IsInGroup and IsInGroup() then send("PARTY") end
+        if IsInGuild and IsInGuild() then send("GUILD") end
+    end
+
+    local told = false
+    local function heard(msg, sender)
+        if type(msg) ~= "string" or (issecretvalue and (issecretvalue(msg) or issecretvalue(sender))) then return end
+        local b, ver = msg:match("^V:(%d+):(%S+)")
+        b = tonumber(b)
+        if not b or not MinimalUIDB then return end
+        local who = type(sender) == "string" and (Ambiguate and Ambiguate(sender, "short") or sender) or nil
+        if who and who == UnitName("player") then return end
+        if b > ns.build then
+            if b > (MinimalUIDB.newerBuild or 0) then
+                MinimalUIDB.newerBuild, MinimalUIDB.newerVersion, MinimalUIDB.newerFrom = b, ver:sub(1, 20), who
+            end
+            if not told then told = true; say() end
+        elseif b < ns.build and type(sender) == "string" then
+            -- Theirs is older: tell them directly, so they hear about it
+            -- even if they joined after our last announcement.
+            send("WHISPER", sender)
+        end
+    end
+
+    local ef = CreateFrame("Frame")
+    ef:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ef:RegisterEvent("GROUP_ROSTER_UPDATE")
+    ef:RegisterEvent("CHAT_MSG_ADDON")
+    local first = true
+    ef:SetScript("OnEvent", function(_, event, prefix, msg, _, sender)
+        if event == "CHAT_MSG_ADDON" then
+            if prefix == PREFIX then pcall(heard, msg, sender) end
+        elseif event == "PLAYER_ENTERING_WORLD" then
+            if first then
+                first = false
+                if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+                    pcall(C_ChatInfo.RegisterAddonMessagePrefix, PREFIX)
+                end
+                local db = MinimalUIDB
+                if db and db.newerBuild and db.newerBuild <= ns.build then
+                    db.newerBuild, db.newerVersion, db.newerFrom = nil, nil, nil
+                end
+                -- A reminder at login while this copy is still behind.
+                C_Timer.After(10, function()
+                    if ns.NewerVersion() and not told then told = true; say() end
+                end)
+            end
+            C_Timer.After(8, announce)
+        else
+            C_Timer.After(2, announce)
+        end
+    end)
+end

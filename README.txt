@@ -1,4 +1,4 @@
-Meniscus 0.1.0 (alpha) - a clean, dark, minimal UI for WoW: Forever
+Meniscus 0.1.172 (alpha) - a clean, dark, minimal UI for WoW: Forever
 
 INSTALL
 1. Close the game.
@@ -19,6 +19,15 @@ This is an early test build. Some windows are replaced with new ones
 trainer, loot). If something looks broken or a game window is missing a
 feature, please note what you were doing and send a screenshot, plus the
 output of /men errors.
+
+UPDATING
+Close the game, open the Meniscus folder and double-click "Update Meniscus".
+It downloads the latest version and replaces the addon's files; your
+settings are kept. In game, /men version shows your version, and the addon
+tells you in chat when it meets a player running a newer one.
+
+REPORTING A BUG
+/men bug <what went wrong>   (or just /men bug for a box to type in)
 
 TO REMOVE
 Delete the Meniscus folder. Your settings are kept in

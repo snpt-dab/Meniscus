@@ -462,6 +462,12 @@ local PAGES = {
     -- Tools for testing and for finding out how the client works. Probes
     -- write into the saved variables, which are only on disk after a reload.
     { key = "debug", title = "Debug", groups = {
+        { title = "Version", items = {
+            { "Meniscus " .. tostring(ns.version or "?"), kind = "action", action = "Check",
+              note = "To update: close the game, double-click Update Meniscus in the addon folder",
+              actionLabel = function() return ns.NewerVersion and ns.NewerVersion() and "Update available" or "Check" end,
+              run = function() cmd("version", "") end },
+        } },
         { title = "Monitor", items = {
             { "Performance monitor", kind = "action", action = "Show / hide", note = "CPU and memory per module",
               run = function() cmd("perf", "") end },
@@ -772,6 +778,7 @@ ns.commands.help = function()
         "/men blizz  toggle Blizzard unit frames",
         "/men petorbs | petgrid  pet orbs instead of the pet frame / show empty pet action slots",
         "/men winprobe [clear]  record the Blizzard window that is open, for restyling",
+        "/men version  your version, and whether a newer one has been seen on another player",
         "/men bug <what went wrong>  save a bug report (on its own: a box to type in; list / clear)",
         "/men optprobe  record what the game's Options window is made of (open it first)",
         "/men blizzopts  the game's Options window without our skin (and back); needs a reload",
