@@ -432,6 +432,10 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.whisper = d.whisper == false end end },
         } },
         { title = "Combat", items = {
+            { "Damage and avoidance on the health orb", kind = "switch", reload = true,
+              note = "Hits, heals, dodges, parries and blocks rise out of the orb",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.orbText ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.orbText = d.orbText == false end end },
             { "Aggro ring on the health orb", kind = "switch", reload = true,
               note = "In a group: amber when close to pulling, red once it is on you",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.aggro ~= false end,

@@ -764,8 +764,109 @@ local function buildAggro()
     ev:SetScript("OnEvent", function() pcall(refresh) end)
 end
 
+-- ── What hits you, on the health orb ──────────────────────────────────────
+-- Damage you take, heals you receive, and what you avoid (dodge, parry,
+-- block, miss, resist, absorb) rise out of the health orb and fade: the
+-- number or the word, where your health already is. Damage is red (magic
+-- in its school's colour), heals green, avoidance pale blue; a critical
+-- hit is larger. The amounts can be hidden values in combat: they go
+-- straight into the text, unformatted when they are.
+local ORB_WORDS = { DODGE = "Dodge", PARRY = "Parry", BLOCK = "Block", MISS = "Miss", RESIST = "Resist",
+                    ABSORB = "Absorb", IMMUNE = "Immune", EVADE = "Evade", DEFLECT = "Deflect", REFLECT = "Reflect" }
+local SCHOOL_TINT = { [2] = { 1.00, 0.90, 0.50 }, [4] = { 1.00, 0.55, 0.25 }, [8] = { 0.55, 0.90, 0.40 },
+                      [16] = { 0.55, 0.80, 1.00 }, [32] = { 0.72, 0.55, 1.00 }, [64] = { 0.95, 0.70, 0.95 } }
+local function buildOrbText()
+    local O = ns.modules.Orbs
+    local orb = O and O.health
+    if not orb then return end
+    local holder = CreateFrame("Frame", nil, orb)
+    holder:SetAllPoints()
+    holder:SetFrameLevel(orb:GetFrameLevel() + 30)
+    holder:Hide()
+    local LIFE, RISE = 1.1, 38
+    local pool, turn = {}, 0
+    for i = 1, 8 do
+        local fs = holder:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(fs, 16, "OUTLINE", true)
+        fs:SetShadowOffset(1, -1)
+        fs:SetShadowColor(0, 0, 0, 0.9)
+        fs:Hide()
+        pool[i] = fs
+    end
+    holder:SetScript("OnUpdate", function(self, dt)
+        local any = false
+        for i = 1, #pool do
+            local fs = pool[i]
+            if fs.age then
+                fs.age = fs.age + dt
+                local k = fs.age / LIFE
+                if k >= 1 then
+                    fs.age = nil
+                    fs:Hide()
+                else
+                    any = true
+                    -- Up quickly, then slowing; fading over the last 40%.
+                    local e = 1 - (1 - k) ^ 2
+                    fs:SetPoint("CENTER", orb, "CENTER", fs.x, fs.y + RISE * e)
+                    fs:SetAlpha(k < 0.08 and k / 0.08 or (k > 0.6 and (1 - k) / 0.4) or 1)
+                end
+            end
+        end
+        if not any then self:Hide() end
+    end)
+    -- set(fs) writes the text; big = a critical.
+    local function pop(set, r, g, b, big)
+        turn = turn % #pool + 1
+        local fs = pool[turn]
+        ns:SetFont(fs, big and 22 or 16, "OUTLINE", true)
+        set(fs)
+        fs:SetTextColor(r, g, b)
+        fs.age = 0
+        -- Alternating sides of the middle, so quick hits don't overprint.
+        fs.x = ((turn % 2 == 0) and 1 or -1) * (6 + math.random() * 16)
+        fs.y = -4 + math.random() * 10
+        fs:ClearAllPoints()
+        fs:SetPoint("CENTER", orb, "CENTER", fs.x, fs.y)
+        fs:SetAlpha(0)
+        fs:Show()
+        holder:Show()
+    end
+    local ev = CreateFrame("Frame")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_COMBAT", "player")
+    ev:SetScript("OnEvent", function(_, _, _, action, indicator, amount, school)
+        if secret(action) then
+            -- Nothing to go on but the number itself.
+            if amount ~= nil then pop(function(fs) fs:SetText(amount) end, 1.0, 0.86, 0.84, false) end
+            return
+        end
+        local big = not secret(indicator) and (indicator == "CRITICAL" or indicator == "CRUSHING")
+        if action == "WOUND" then
+            if num(amount) and amount <= 0 then
+                -- A hit for nothing: what took it is in the indicator.
+                local w = not secret(indicator) and ORB_WORDS[indicator]
+                if w then pop(function(fs) fs:SetText(w) end, 0.80, 0.90, 1.00, false) end
+                return
+            end
+            local c = num(school) and SCHOOL_TINT[school]
+            local r, g, b = 1.0, 0.36, 0.32
+            if c then r, g, b = c[1], c[2], c[3] end
+            pop(function(fs)
+                if not pcall(fs.SetFormattedText, fs, "-%d", amount) then fs:SetText(amount) end
+            end, r, g, b, big)
+        elseif action == "HEAL" then
+            pop(function(fs)
+                if not pcall(fs.SetFormattedText, fs, "+%d", amount) then fs:SetText(amount) end
+            end, 0.45, 0.92, 0.52, big)
+        else
+            local w = ORB_WORDS[action]
+            if w then pop(function(fs) fs:SetText(w) end, 0.80, 0.90, 1.00, false) end
+        end
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.orbText ~= false then pcall(buildOrbText) end
     if db.aggro ~= false then pcall(buildAggro) end
     if db.durability ~= false then pcall(buildDurability) end
     if db.mail ~= false then pcall(buildMail) end
