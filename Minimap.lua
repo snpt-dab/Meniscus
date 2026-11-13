@@ -8,11 +8,8 @@ local T = ns.Theme
 -- mail/queue indicators are left alone.
 
 -- dome = true: a round map sitting on the main action bar (see MM:ApplyDome).
--- domeMode: how the dome's map gets its size. "scale" keeps the map at the
--- size the game made it and scales the frame (so its dots and the areas
--- that answer the mouse stay in step); "size" resizes it (dots keep their
--- full size, but their hover areas drifted toward the middle of the map).
-local MM = ns:NewModule("Minimap", { enabled = true, dome = true, domeD = 130, domeMode = "size", domeGap = 2 })
+-- domeGap: seconds between the two zoom steps of a hover-area settle.
+local MM = ns:NewModule("Minimap", { enabled = true, dome = true, domeD = 130, domeGap = 2 })
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
 
 -- Blizzard art to remove. Names differ between client generations, so each
@@ -184,8 +181,8 @@ function MM:ApplyDome()
     local placing = false
     local native = self.native
     -- (Scaling the map instead of resizing it was tried: everything on it
-    -- shrank and the tooltips were no better. Kept only as /men dome try.)
-    if self.db.domeMode ~= "size" then self.db.domeMode = "size" end
+    -- shrank. The tooltip trouble that prompted it turned out to be
+    -- Blizzard's invisible action bar frame lying over the dome: Bars.lua.)
     local byScale = false
     local want = D -- the frame's own size
     local function seat()
@@ -207,13 +204,6 @@ function MM:ApplyDome()
         if MinimalUIDB then MinimalUIDB.domeBlips = type(Minimap.UpdateBlips) end
     end
     seat()
-    -- For trying the ways of fitting the map without a reload.
-    function MM:TryDome(mode)
-        if mode == "scale" and type(native) == "number" and native > 20 then byScale, want = true, native
-        elseif mode == "native" and type(native) == "number" and native > 20 then byScale, want = false, native
-        else byScale, want = false, D end
-        seat()
-    end
     -- Blizzard's cluster layout re-anchors (and re-sizes) the map now and
     -- then. Each time it is put back, its hover areas need settling again
     -- (see settle, below): without that the gold dots' tooltips sat beside
@@ -682,88 +672,14 @@ ns.commands.dome = function(rest)
         MM:ProbeDome()
         return ns:Print("Minimap state saved; /reload so it can be read.")
     end
-    -- /men dome measure : find out how the dots and their tooltips are
-    -- related. For a minute it watches the mouse over the map. Hold the
-    -- pointer still on the middle of a dot (about two seconds), then move
-    -- to where that dot's tooltip shows and hold still there. Each pair is
-    -- printed and kept in MinimalUIDB.domemeasure: how far from the map's
-    -- middle the dot is, how far the tooltip spot is, and the ratio.
-    if rest:find("measure") then
-        if MM.measure then MM.measure:Hide(); MM.measure = nil; return ns:Print("Measuring stopped.") end
-        local f = CreateFrame("Frame")
-        MM.measure = f
-        local ui = UIParent:GetEffectiveScale()
-        local function where()
-            local cx, cy = GetCursorPosition()
-            cx, cy = cx / ui, cy / ui
-            local mx, my = Minimap:GetCenter()
-            local k = Minimap:GetEffectiveScale() / ui
-            return cx - mx * k, cy - my * k
-        end
-        local out = { string.format("map %.0fx%.0f scale %.2f zoom %s of %s native %s at %s", Minimap:GetWidth(),
-            Minimap:GetHeight(), Minimap:GetScale(), tostring(Minimap:GetZoom()), tostring(Minimap:GetZoomLevels()),
-            tostring(MM.native), date("%H:%M:%S")) }
-        MinimalUIDB.domemeasure = out
-        local ax, ay, since, acc, total, said = nil, nil, 0, 0, 0, false
-        local dot -- the last still point with no tooltip
-        f:SetScript("OnUpdate", function(self, dt)
-            acc, total = acc + dt, total + dt
-            if total > 75 then self:Hide(); MM.measure = nil; ns:Print("Measuring finished. /reload saves it.") return end
-            if acc < 0.1 then return end
-            local step = acc
-            acc = 0
-            local x, y = where()
-            if math.abs(x) > 160 or math.abs(y) > 160 then ax = nil return end
-            if ax and math.abs(x - ax) < 1.2 and math.abs(y - ay) < 1.2 then
-                since = since + step
-                if since >= 1.4 and not said then
-                    said = true
-                    local tip = GameTooltip:IsShown()
-                    local r = math.sqrt(x * x + y * y)
-                    if tip then
-                        local line = string.format("tooltip at %.1f, %.1f (%.1f from the middle)", x, y, r)
-                        if dot then
-                            line = line .. string.format("; dot was at %.1f, %.1f (%.1f): ratio %.2f, shift %.1f, %.1f",
-                                dot[1], dot[2], dot[3], dot[3] > 1 and r / dot[3] or 0, x - dot[1], y - dot[2])
-                            dot = nil
-                        end
-                        out[#out + 1] = line
-                        ns:Print(line)
-                    else
-                        dot = { x, y, r }
-                        local line = string.format("dot marked at %.1f, %.1f (%.1f from the middle)", x, y, r)
-                        out[#out + 1] = line
-                        ns:Print(line .. ". Now hold still where its tooltip shows.")
-                    end
-                end
-            else
-                ax, ay, since, said = x, y, 0, false
-            end
-        end)
-        return ns:Print("Measuring for a minute: hold the pointer still on a dot, then still where its tooltip shows. Repeat for a few dots.")
-    end
     -- /men dome fix [seconds] : settle the hover areas now (zoom one step,
-    -- wait, step back); /men dome gap <seconds> keeps that wait.
+    -- wait, step back).
     local fixGap = rest:match("fix%s*([%d%.]*)")
     if fixGap then
         if not MM.SettleDome then return ns:Print("Turn the dome on first: /men dome") end
         local g = tonumber(fixGap)
         MM:SettleDome(g)
         return ns:Print("Minimap: zoom stepped, stepping back in " .. tostring(g or MM.db.domeGap or 2) .. " s. Then point at a dot.")
-    end
-    local keepGap = rest:match("gap%s*([%d%.]+)")
-    if keepGap and tonumber(keepGap) then
-        MM.db.domeGap = math.max(0.2, math.min(10, tonumber(keepGap)))
-        return ns:Print("Minimap: the settle wait is now " .. MM.db.domeGap .. " s.")
-    end
-    -- /men dome try size | scale | native : other ways of fitting the map,
-    -- until the next reload (for finding out what this client wants).
-    local try = rest:match("try%s*(%a+)")
-    if try then
-        if not MM.TryDome then return ns:Print("Turn the dome on first: /men dome") end
-        MM:TryDome(try)
-        return ns:Print("Minimap fitted by '" .. try .. "' until you reload (the map's own size here is "
-            .. tostring(MM.native and math.floor(MM.native + 0.5)) .. "; UpdateBlips: " .. type(Minimap.UpdateBlips) .. ").")
     end
     if rest:find("reset") then
         MM.db.domePos = nil

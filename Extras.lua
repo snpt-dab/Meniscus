@@ -717,8 +717,56 @@ local function buildWhisper()
     end)
 end
 
+-- ── Aggro ring ────────────────────────────────────────────────────────────
+-- In a group, a thin ring just outside the health orb: amber when you are
+-- close to pulling something off the tank, red and pulsing once it is on
+-- you. Not shown solo (everything is on you then) or when you are the tank.
+local function buildAggro()
+    local O = ns.modules.Orbs
+    local orb = O and O.health
+    if not orb then return end
+    local f = CreateFrame("Frame", nil, orb)
+    local S = (orb:GetWidth() + 8) / 0.80 -- the ring's outer edge is at 0.80 of the texture (dist/crest.py)
+    f:SetSize(S, S)
+    f:SetPoint("CENTER")
+    f:SetFrameLevel(math.max(orb:GetFrameLevel() - 1, 0))
+    local ring = f:CreateTexture(nil, "ARTWORK")
+    ring:SetAllPoints()
+    ring:SetTexture(MEDIA .. "crest_ring.tga")
+    local ag = f:CreateAnimationGroup()
+    ag:SetLooping("BOUNCE")
+    local a = ag:CreateAnimation("Alpha")
+    a:SetFromAlpha(1); a:SetToAlpha(0.3); a:SetDuration(0.45); a:SetSmoothing("IN_OUT")
+    f:Hide()
+    local function refresh()
+        local status = UnitThreatSituation and UnitThreatSituation("player")
+        if not num(status) then status = 0 end
+        local grouped = IsInGroup and IsInGroup()
+        local tank = UnitGroupRolesAssigned and UnitGroupRolesAssigned("player") == "TANK"
+        if not grouped or tank or status < 1 then
+            ag:Stop(); f:Hide()
+            return
+        end
+        f:Show()
+        if status >= 2 then
+            ring:SetVertexColor(0.95, 0.30, 0.28, 1)
+            if not ag:IsPlaying() then ag:Play() end
+        else
+            ag:Stop(); f:SetAlpha(1)
+            ring:SetVertexColor(0.95, 0.76, 0.32, 1)
+        end
+    end
+    local ev = CreateFrame("Frame")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_THREAT_SITUATION_UPDATE", "player")
+    for _, e in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function() pcall(refresh) end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.aggro ~= false then pcall(buildAggro) end
     if db.durability ~= false then pcall(buildDurability) end
     if db.mail ~= false then pcall(buildMail) end
     if db.whisper ~= false then pcall(buildWhisper) end

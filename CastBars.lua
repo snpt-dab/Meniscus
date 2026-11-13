@@ -127,6 +127,29 @@ local function create(parent, unit, below, slot)
     end
     h:Hide()
     h.bar:SetStatusBarColor(T.accent[1], T.accent[2], T.accent[3], 0.95)
+    -- Target and focus: an enemy's cast you can interrupt is amber, one you
+    -- can't is grey; anything else keeps the accent colour. Whether a cast
+    -- can be interrupted is hidden from addons on this client, but the
+    -- game's own cast bar for the unit raises a shield on casts that can't
+    -- be, and that can be seen; a change mid-cast comes as an event.
+    if unit == "target" or unit == "focus" then
+        local function blizzBar()
+            if unit == "target" then return _G.TargetFrameSpellBar or (_G.TargetFrame and _G.TargetFrame.spellbar) end
+            return _G.FocusFrameSpellBar or (_G.FocusFrame and _G.FocusFrame.spellbar)
+        end
+        function h.paintKick(shielded)
+            if shielded == nil then
+                local sb = blizzBar()
+                local sh = sb and sb.BorderShield
+                shielded = (sh and sh.IsShown and sh:IsShown()) and true or false
+            end
+            local enemy = UnitCanAttack("player", unit)
+            if issecretvalue(enemy) then enemy = false end
+            if shielded then h.bar:SetStatusBarColor(0.46, 0.46, 0.52, 0.95)
+            elseif enemy then h.bar:SetStatusBarColor(1.0, 0.76, 0.28, 0.95)
+            else h.bar:SetStatusBarColor(T.accent[1], T.accent[2], T.accent[3], 0.95) end
+        end
+    end
 
     -- Spell name in two layers, split at the fill's moving edge: light text
     -- where the dark track shows, dark text (like the unit frame names)
@@ -161,10 +184,26 @@ local function create(parent, unit, below, slot)
 
     local ev = CreateFrame("Frame")
     for _, e in ipairs(EVENTS) do ev:RegisterUnitEvent(e, unit) end
+    if h.paintKick then
+        pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_INTERRUPTIBLE", unit)
+        pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_NOT_INTERRUPTIBLE", unit)
+    end
+    -- (The game's bar decides about its shield in its own handler for the
+    -- same event: looked at a moment later.)
+    local function kickSoon()
+        if not h.paintKick then return end
+        pcall(h.paintKick)
+        C_Timer.After(0.05, function() if h:IsShown() then pcall(h.paintKick) end end)
+        C_Timer.After(0.25, function() if h:IsShown() then pcall(h.paintKick) end end)
+    end
+    h.kickSoon = kickSoon
     ev:SetScript("OnEvent", function(_, event)
         local ok, err = pcall(function()
+            if event == "UNIT_SPELLCAST_INTERRUPTIBLE" then return h.paintKick(false) end
+            if event == "UNIT_SPELLCAST_NOT_INTERRUPTIBLE" then return h.paintKick(true) end
             if STOP[event] then return stop(h) end
             start(h, CHANNEL[event] or false)
+            kickSoon()
         end)
         if not ok then h.path = "error: " .. tostring(err) end
     end)
@@ -176,8 +215,8 @@ local function create(parent, unit, below, slot)
             if event == change then
                 stop(h)
                 pcall(function()
-                    if UnitCastingInfo(unit) then start(h, false)
-                    elseif UnitChannelInfo(unit) then start(h, true) end
+                    if UnitCastingInfo(unit) then start(h, false); kickSoon()
+                    elseif UnitChannelInfo(unit) then start(h, true); kickSoon() end
                 end)
                 return
             end

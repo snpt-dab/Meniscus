@@ -253,16 +253,47 @@ local function skin(b, fontSize, thick)
                 dot:SetVertexColor(0.92, 0.30, 0.26, 1)
                 dot:Hide()
                 local mark = _G.RANGE_INDICATOR
+                -- The game turns the key text red while the target is out
+                -- of the action's range. That is read here, and the whole
+                -- icon is tinted red with it (the key text alone is easy to
+                -- miss). Back in range the icon gets the game's own
+                -- colours again: plain, blue when you can't afford it, grey
+                -- when you can't use it.
+                local icon = b.icon or b.Icon
+                local function usableTint()
+                    if not icon then return end
+                    local slot = b.action
+                    local okU, usable, noMana = pcall(IsUsableAction, slot)
+                    if not okU or issecretvalue(usable) or issecretvalue(noMana) then icon:SetVertexColor(1, 1, 1) return end
+                    if usable then icon:SetVertexColor(1, 1, 1)
+                    elseif noMana then icon:SetVertexColor(0.5, 0.5, 1.0)
+                    else icon:SetVertexColor(0.4, 0.4, 0.4) end
+                end
+                local wasFar = false
                 local function sync()
                     local t = hk:GetText()
                     local isMark = type(t) == "string" and not issecretvalue(t) and mark ~= nil and t == mark
                     hk:SetAlpha(isMark and 0 or 1)
                     local far = false
-                    if isMark and hk:IsShown() then
+                    if hk:IsShown() then
                         local r, g = hk:GetTextColor()
                         far = type(r) == "number" and not issecretvalue(r) and r > 0.8 and g < 0.35
                     end
-                    dot:SetShown(far)
+                    dot:SetShown(far and isMark)
+                    if far ~= wasFar then
+                        wasFar = far
+                        b.__muiFar = far
+                        if icon then
+                            if far then icon:SetVertexColor(0.95, 0.30, 0.28) else pcall(usableTint) end
+                        end
+                    end
+                end
+                -- The game re-colours the icon whenever usability changes:
+                -- the red goes back on while still out of range.
+                if icon and b.UpdateUsable then
+                    hooksecurefunc(b, "UpdateUsable", function(self)
+                        if self.__muiFar then icon:SetVertexColor(0.95, 0.30, 0.28) end
+                    end)
                 end
                 for _, m in ipairs({ "SetText", "SetVertexColor", "SetTextColor", "Show", "Hide", "SetShown" }) do
                     if hk[m] then hooksecurefunc(hk, m, sync) end
