@@ -196,6 +196,15 @@ function MM:ApplyDome()
         Minimap:SetSize(want, want)
         Minimap:SetScale(byScale and (D / native) or 1)
         placing = false
+        -- Measured: after a resize some dots are still drawn where they
+        -- would be on the map at its original size (a dot 42 from the
+        -- middle answered the mouse at 28: the ratio of 130 to 198), while
+        -- the mouse areas are right. Ask the map to place its dots afresh.
+        if Minimap.UpdateBlips then
+            pcall(Minimap.UpdateBlips, Minimap)
+            C_Timer.After(0.5, function() pcall(Minimap.UpdateBlips, Minimap) end)
+        end
+        if MinimalUIDB then MinimalUIDB.domeBlips = type(Minimap.UpdateBlips) end
     end
     seat()
     -- For trying the ways of fitting the map without a reload.
@@ -248,6 +257,7 @@ function MM:ApplyDome()
             -- (Unless you zoomed yourself in the meantime.)
             local ok2, now = pcall(Minimap.GetZoom, Minimap)
             if ok2 and now == other then pcall(Minimap.SetZoom, Minimap, z) end
+            if Minimap.UpdateBlips then C_Timer.After(0.2, function() pcall(Minimap.UpdateBlips, Minimap) end) end
         end)
     end
     MM.SettleDome = function(_, gap) settle(gap) end
@@ -708,7 +718,7 @@ ns.commands.dome = function(rest)
                 since = since + step
                 if since >= 1.4 and not said then
                     said = true
-                    local tip = GameTooltip:IsShown() and (GameTooltip:IsOwned(Minimap) or GameTooltip:GetOwner() == Minimap)
+                    local tip = GameTooltip:IsShown()
                     local r = math.sqrt(x * x + y * y)
                     if tip then
                         local line = string.format("tooltip at %.1f, %.1f (%.1f from the middle)", x, y, r)
@@ -753,7 +763,7 @@ ns.commands.dome = function(rest)
         if not MM.TryDome then return ns:Print("Turn the dome on first: /men dome") end
         MM:TryDome(try)
         return ns:Print("Minimap fitted by '" .. try .. "' until you reload (the map's own size here is "
-            .. tostring(MM.native and math.floor(MM.native + 0.5)) .. "). /men dome fix settles it.")
+            .. tostring(MM.native and math.floor(MM.native + 0.5)) .. "; UpdateBlips: " .. type(Minimap.UpdateBlips) .. ").")
     end
     if rest:find("reset") then
         MM.db.domePos = nil
