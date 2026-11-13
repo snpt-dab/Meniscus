@@ -1,11 +1,16 @@
-Meniscus 0.1.222 (alpha) - a clean, dark, minimal UI for WoW: Forever
+Meniscus 0.1.223 (alpha) - a clean, dark, minimal UI for WoW: Forever
 
 INSTALL
 1. Close the game.
-2. Unzip so that the "Meniscus" folder ends up here:
+2. Download https://github.com/snpt-dab/Meniscus/archive/refs/heads/main.zip
+   and unzip it.
+3. The unzipped folder is called "Meniscus-main". RENAME IT to "Meniscus"
+   (exactly that), and move it here:
      World of Warcraft\_forever_\Interface\AddOns\Meniscus
-   (Meniscus.toc must be directly inside that folder, not one level deeper.)
-3. Start the game. On the character screen, click AddOns and make sure
+4. Check there is no folder-inside-a-folder: Meniscus.toc must be directly
+   inside AddOns\Meniscus, next to Core.lua. (Windows' "Extract All" often
+   makes Meniscus-main\Meniscus-main: use the inner one.)
+5. Start the game. On the character screen, click AddOns and make sure
    Meniscus is ticked. If it is greyed out as "out of date", tick
    "Load out of date AddOns".
 
