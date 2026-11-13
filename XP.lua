@@ -6,7 +6,7 @@ local T = ns.Theme
 -- Rested XP shows as a lighter band ahead of the fill. Hover for details.
 -- Replaces Blizzard's status tracking bars (hidden on load).
 
-local XP = ns:NewModule("XP", { enabled = true, span = "orbs" }) -- "orbs" | "bars"
+local XP = ns:NewModule("XP", { enabled = true, span = "bars" }) -- "orbs" | "bars"
 
 local HEIGHT = 6
 local GAP = 14 -- below the orbs/blocks; clears the orbs' glow halo (10 below the ring)

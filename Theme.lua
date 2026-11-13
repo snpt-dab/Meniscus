@@ -130,8 +130,13 @@ fontLoader:SetScript("OnEvent", function(self, _, name)
         end
     end
     -- One-time switch to Inter when it was introduced (earlier picks were tests).
+    -- A fresh install (no font saved at all) starts on Manrope.
     if db and not db.fontInterMigrated then
-        db.fontInterMigrated, db.font, db.fontPath, db.fontBold = true, INTER.key, INTER.path, INTER.bold
+        if db.font == nil then
+            db.fontInterMigrated, db.font, db.fontPath, db.fontBold = true, MANROPE.key, MANROPE.path, MANROPE.bold
+        else
+            db.fontInterMigrated, db.font, db.fontPath, db.fontBold = true, INTER.key, INTER.path, INTER.bold
+        end
     end
     if not db or not db.font or db.font == INTER.key or not db.fontPath then
         Theme.font, Theme.fontBold = INTER.path, INTER.bold

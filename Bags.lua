@@ -20,7 +20,7 @@ local T = ns.Theme
 -- built before the fight do Blizzard's bags open instead. Closing from
 -- other places (a bag-bar click) still waits for combat to end.
 
-local B = ns:NewModule("Bags", { enabled = true, cols = 10, sepCols = 4, showKeys = false, mode = "combined" })
+local B = ns:NewModule("Bags", { enabled = true, cols = 10, sepCols = 4, showKeys = false, mode = "separate" })
 
 local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"

@@ -4,12 +4,12 @@ local T = ns.Theme
 
 local UF = ns:NewModule("UnitFrames", {
     enabled = true,
-    hideBlizzard = false,
+    hideBlizzard = true,
     -- Blizzard's own target frame is kept running (invisible) instead of
     -- being switched off, so its buff / debuff icons, the only ones that
     -- can update in combat, are there to borrow. See ghostTarget.
     liveTargetAuras = true,
-    player = { x = -180, y = -180 },
+    player = { x = -310, y = -354 },
     -- "frame": the usual player frame (avatar + health / power pills).
     -- "none": no player frame and no portrait; your level is set into the
     -- health orb's value pill and the resting z's rise from the orb's rim
@@ -17,17 +17,17 @@ local UF = ns:NewModule("UnitFrames", {
     -- (Two portrait experiments were tried and dropped: "orb", the avatar
     -- on the health orb's rim, and "rest", a portrait inside the orb. A
     -- saved value of either becomes "none".)
-    playerStyle = "frame",
-    target = { x = 180, y = -180 },
-    focus  = { x = 196, y = -96 },
+    playerStyle = "none",
+    target = { x = 310, y = -354 },
+    focus  = { x = 326, y = -249 },
     -- attach = true stacks party frames directly above the player frame;
     -- false lets them float at x/y (drag with /men unlock).
     party  = { attach = true, x = -420, y = 0 },
-    boss   = { x = 560, y = 140 },
+    boss   = { x = 326, y = 0 },
     -- 3D pop-out avatar camera; tune live with /men portrait <key> <value>
     -- fidget = 0 keeps the plain breathing idle (no yawns/stretches that hit
     -- the model window's edges); 1 allows Blizzard's random idle fidgets.
-    portrait = { zoom = 1.0, dist = 1.2, z = 0, facing = 0, pop = 0.45, x = 0.06, fit = 3, fidget = 0, sdist = 1.5, bust3d = 0 },
+    portrait = { zoom = 1.0, dist = 1.0, z = 0, facing = 0, pop = 0.35, x = 0.01, fit = 3, fidget = 0, sdist = 1.5, bust3d = 0 },
 })
 
 local CIRCLE = "Interface/CharacterFrame/TempPortraitAlphaMask"
@@ -47,11 +47,11 @@ local PARTY_SPACING = 10
 local PARTY_ATTACH_GAP = 28 -- clears the player avatar's popped-out head
 
 local DEFAULT_POS = {
-    player = { x = -180, y = -180 },
-    target = { x = 180, y = -180 },
-    focus  = { x = 196, y = -96 },
+    player = { x = -310, y = -354 },
+    target = { x = 310, y = -354 },
+    focus  = { x = 326, y = -249 },
     party  = { x = -420, y = 0 },
-    boss   = { x = 560, y = 140 },
+    boss   = { x = 326, y = 0 },
 }
 
 -- ── Colors and text ───────────────────────────────────────────────────────
@@ -1862,7 +1862,7 @@ ns.commands.portrait = function(rest)
     end
     if rest == "reset" then
         if InCombatLockdown() then return ns:Print("Can't resize avatars in combat.") end
-        p.zoom, p.dist, p.z, p.facing, p.pop, p.fidget, p.x = 1.0, 1.2, 0, 0, 0.45, 0, 0.06
+        p.zoom, p.dist, p.z, p.facing, p.pop, p.fidget, p.x = 1.0, 1.0, 0, 0, 0.35, 0, 0.01
         eachModel(function(av) UF:LayoutAvatar(av); UF:RefreshAvatar(av) end)
     elseif key and val and p[key] ~= nil then
         if InCombatLockdown() and key == "pop" then
