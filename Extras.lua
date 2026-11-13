@@ -871,7 +871,7 @@ end
 -- and nothing chooses a quest for it. So: the game setting is turned on,
 -- the nearest quest on your watch list is followed (a quest or map pin you
 -- pick yourself is left alone), and the game's large marker is redrawn as a
--- small gold dot with the distance under it.
+-- small silver dot with the distance under it.
 local function buildWaypoint()
     local ST, NV, F = _G.C_SuperTrack, _G.C_Navigation, _G.SuperTrackedFrame
     if not (ST and NV and F and ST.SetSuperTrackedQuestID and C_QuestLog) then return end
@@ -879,7 +879,7 @@ local function buildWaypoint()
     if setcv then pcall(setcv, "showInGameNavigation", "1") end
     EX.db.waypointSet = true
 
-    local GR, GG, GB = 1.00, 0.82, 0.30
+    local GR, GG, GB = 0.86, 0.89, 0.94
     local halo = F:CreateTexture(nil, "ARTWORK")
     halo:SetTexture(MEDIA .. "spot.tga")
     halo:SetSize(30, 30)

@@ -417,7 +417,7 @@ local PAGES = {
     { key = "helpers", title = "Helpers", groups = {
         { title = "Quests", items = {
             { "Dot over the quest objective", kind = "switch", reload = true,
-              note = "A small gold dot in the world over your nearest tracked quest, with the distance",
+              note = "A small silver dot in the world over your nearest tracked quest, with the distance",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.waypoint ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.waypoint = d.waypoint == false end end },
         } },
