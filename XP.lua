@@ -660,7 +660,7 @@ local LV_PRISM = { { 1.00, 0.12, 0.22 }, { 0.15, 1.00, 0.35 }, { 0.22, 0.38, 1.0
 local LV_PULL = { -1, 0, 1 }
 local LV_SEG = 24 -- segments in each light of the afterglow line
 local LV_CENTER = 2 -- seconds the finished card waits in the middle before it moves
-local LV_LINGER = 6 -- extra seconds the card stays in all (the wait, then parked on the left)
+local LV_LINGER = 7 -- extra seconds the card stays in all (the wait, then parked on the left)
 local banner
 
 local function clamp01(v) return v < 0 and 0 or (v > 1 and 1 or v) end
@@ -816,10 +816,11 @@ local function buildBanner()
         -- stays there a while longer (LV_LINGER), out of the way.
         local out = turn + 1.0 + 0.9 + LV_LINGER -- the card starts to fade
         if t >= out + 0.6 then self:Hide() return end
-        -- (It waits LV_CENTER seconds in the middle first, then leaves
-        -- quickly and settles slowly: an ease-out.)
-        local mv = clamp01((t - (written + 0.5 + LV_CENTER)) / 1.1)
-        mv = 1 - (1 - mv) ^ 3
+        -- (It waits LV_CENTER seconds in the middle first, then sets off
+        -- gently, picks up, and settles just as gently: two seconds, slow
+        -- at both ends.)
+        local mv = clamp01((t - (written + 0.5 + LV_CENTER)) / 2.0)
+        mv = mv * mv * mv * (mv * (mv * 6 - 15) + 10)
         if mv ~= self.mv then
             self.mv = mv
             local x = -self.slide * mv
