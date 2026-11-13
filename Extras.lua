@@ -923,6 +923,30 @@ local function buildWaypoint()
     restyle()
     if type(F.UpdateIcon) == "function" then pcall(hooksecurefunc, F, "UpdateIcon", restyle) end
 
+    -- Where it waits when the objective is off screen. The game holds it on
+    -- a small oval round the middle of the screen, close to your character.
+    -- This puts it on a much larger one instead: out near the screen's
+    -- sides, and at the bottom just above the console. Same direction from
+    -- the centre as the game's, so its arrow still points the right way.
+    local EDGE_X, EDGE_Y = 0.42, 0.34 -- the oval's half-width / half-height, as a share of the screen
+    pcall(F.HookScript, F, "OnUpdate", function(self)
+        if not (NV.WasClampedToScreen and NV.GetFrame) then return end
+        local clamped = NV.WasClampedToScreen()
+        if secret(clamped) or not clamped then return end
+        local nav = NV.GetFrame()
+        if not nav then return end
+        local nx, ny = nav:GetCenter()
+        local cx, cy = UIParent:GetCenter()
+        if not (num(nx) and num(ny) and num(cx) and num(cy)) then return end
+        local k = nav:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        local dx, dy = nx * k - cx, ny * k - cy
+        local a, b = UIParent:GetWidth() * EDGE_X, UIParent:GetHeight() * EDGE_Y
+        local d = math.sqrt((dx / a) ^ 2 + (dy / b) ^ 2)
+        if d < 0.0001 then return end
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", UIParent, "CENTER", dx / d, dy / d)
+    end)
+
     -- Which quest to follow: the nearest one being watched.
     local mine
     local function watched(id)
