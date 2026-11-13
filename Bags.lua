@@ -378,8 +378,8 @@ local function newButton(bag, slot)
     b.junk:Hide()
     -- Better than what you're wearing: a badge on the tile's bottom-left
     -- corner, built like the quest mark at the top (dark rim, coloured
-    -- disc, dark glyph): a bright green disc with an up arrow, which bobs
-    -- gently so it catches the eye. (It was a bare arrow over the picture,
+    -- disc, dark glyph): a bright green disc with an up arrow. Still: the
+    -- badge is enough on its own. (It was a bare arrow over the picture,
     -- and got lost on busy icons.)
     local upf = CreateFrame("Frame", nil, over)
     upf:SetSize(16, 16)
@@ -398,12 +398,6 @@ local function newButton(bag, slot)
     upArrow:SetVertexColor(0.03, 0.16, 0.06, 1)
     upArrow:SetPoint("TOPLEFT", 2, -2)
     upArrow:SetPoint("BOTTOMRIGHT", -2, 2)
-    local upBob = upf:CreateAnimationGroup()
-    upBob:SetLooping("BOUNCE")
-    local upMove = upBob:CreateAnimation("Translation")
-    upMove:SetOffset(0, 2.5); upMove:SetDuration(0.7); upMove:SetSmoothing("IN_OUT")
-    upf:SetScript("OnShow", function() upBob:Play() end)
-    upf:SetScript("OnHide", function() upBob:Stop() end)
     upf:Hide()
     b.up, b.upBack = upf, upf
     -- Starts a quest you don't have yet: a gold disc with "!" in the top-left
