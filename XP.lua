@@ -823,7 +823,12 @@ local function buildBanner()
         if mv ~= self.mv then
             self.mv = mv
             local x = -self.slide * mv
-            local y = self.topY + (self.endY - self.topY) * mv
+            -- A slight arc, not a straight line: the path bows upward in
+            -- the middle (by an eighth of the distance travelled), like
+            -- something tossed gently to its place.
+            local dy = self.endY - self.topY
+            local bow = 0.125 * math.sqrt(self.slide * self.slide + dy * dy)
+            local y = self.topY + dy * mv + bow * math.sin(math.pi * mv)
             self:ClearAllPoints()
             self:SetPoint("TOP", UIParent, "TOP", math.floor(x / px + 0.5) * px, math.floor(y / px + 0.5) * px)
         end
