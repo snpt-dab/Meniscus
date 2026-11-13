@@ -504,6 +504,61 @@ local function updateHeader()
     end
 end
 
+-- ── Stat tooltips ─────────────────────────────────────────────────────────
+-- What each number on the stats card means for you right now. A tooltip is
+-- a title (the stat and its value) and lines: a string is a sentence, a
+-- pair is "label ... value". Values the game hides in combat are left out.
+local DIM, BODY = { 0.6, 0.6, 0.65 }, { 0.86, 0.86, 0.89 }
+local function statTip(title, lines)
+    return function(tip)
+        tip:SetText(title, 1, 1, 1)
+        for _, ln in ipairs(lines) do
+            if type(ln) == "table" then
+                tip:AddDoubleLine(ln[1], ln[2], DIM[1], DIM[2], DIM[3], 1, 1, 1)
+            elseif ln == "" then
+                tip:AddLine(" ")
+            else
+                tip:AddLine(ln, BODY[1], BODY[2], BODY[3], true)
+            end
+        end
+    end
+end
+-- Base / bonus / penalty lines for a stat that comes as (base, +, -).
+local function parts(lines, base, pos, neg)
+    if not plain(base) then return end
+    lines[#lines + 1] = { "Base", string.format("%d", base) }
+    if plain(pos) and pos > 0 then lines[#lines + 1] = { "From gear and buffs", string.format("+%d", pos) } end
+    if plain(neg) and neg < 0 then lines[#lines + 1] = { "From debuffs", string.format("%d", neg) } end
+end
+-- Share of a physical hit that armor takes off, against an attacker of a
+-- given level (the game's own sum when it offers one).
+local function armorCut(armor, level)
+    if not plain(armor, level) then return nil end
+    if _G.PaperDollFrame_GetArmorReduction then
+        local ok, v = pcall(PaperDollFrame_GetArmorReduction, armor, level)
+        if ok and plain(v) then return v end
+    end
+    local cut
+    if level < 60 then cut = armor / (armor + 400 + 85 * level)
+    else cut = armor / (armor + 467.5 * level - 22167.5) end
+    return math.max(0, math.min(0.75, cut)) * 100
+end
+local function armorTip(unit, armor, base, pos, neg)
+    local lines = {}
+    local lvl = UnitLevel(unit)
+    local same = armorCut(armor, lvl)
+    if same then
+        lines[#lines + 1] = string.format("Takes %.1f%% off physical damage from an attacker of your level (%d).", same, lvl)
+        local up = armorCut(armor, lvl + 3)
+        if up then lines[#lines + 1] = { "Against level " .. (lvl + 3), string.format("%.1f%%", up) } end
+        lines[#lines + 1] = ""
+    else
+        lines[#lines + 1] = "Takes a share off every physical hit; the higher the attacker's level, the smaller the share."
+    end
+    parts(lines, base, pos, neg)
+    return statTip("Armor" .. (plain(armor) and ("  " .. string.format("%d", armor)) or ""), lines)
+end
+
 -- ── Stats ─────────────────────────────────────────────────────────────────
 local function statsData(unit)
     unit = unit or "player"
@@ -517,8 +572,10 @@ local function statsData(unit)
             onClick = function() C.db.collapsed[key] = not col; C:Refresh() end })
         if not col then for _, r in ipairs(rows) do table.insert(d, r) end end
     end
-    local function stat(rows, label, value, color)
-        if value ~= nil then table.insert(rows, { kind = "stat", label = label, value = value, color = color }) end
+    local function stat(rows, label, value, color, tooltip)
+        if value ~= nil then
+            table.insert(rows, { kind = "stat", label = label, value = value, color = color, tooltip = tooltip })
+        end
     end
     local function total(a, b, c)
         if plain(a, b, c) then return a + b + c end
@@ -538,22 +595,44 @@ local function statsData(unit)
     -- here: see ATTRS / updateAttrs.)
     local rows = {}
     local base, pos, neg = call(UnitAttackPower, unit)
-    stat(rows, "Attack power", fmt(total(base, pos, neg), "%d"), buffColor(pos, neg))
-    local lo, hi = call(UnitDamage, unit)
-    if plain(lo, hi) then stat(rows, "Damage", string.format("%d - %d", lo, hi)) end
-    local speed = call(UnitAttackSpeed, unit)
-    stat(rows, "Speed", fmt(speed, "%.2f"))
+    do
+        local lines = {}
+        local ap = total(base, pos, neg)
+        if plain(ap) then lines[1] = string.format("Adds %.1f damage per second to your melee attacks.", math.max(ap, 0) / 14); lines[2] = "" end
+        parts(lines, base, pos, neg)
+        stat(rows, "Attack power", fmt(ap, "%d"), buffColor(pos, neg), statTip("Melee attack power", lines))
+    end
+    local lo, hi, oLo, oHi = call(UnitDamage, unit)
+    local speed, oSpeed = call(UnitAttackSpeed, unit)
+    if plain(lo, hi) then
+        local lines = { "What one swing of your main-hand weapon deals before the target's armor." }
+        if plain(speed) and speed > 0 then lines[#lines + 1] = { "Damage per second", string.format("%.1f", (lo + hi) / 2 / speed) } end
+        if plain(oLo, oHi, oSpeed) and oSpeed > 0 then
+            lines[#lines + 1] = { "Off hand", string.format("%d - %d", oLo, oHi) }
+            lines[#lines + 1] = { "Off hand per second", string.format("%.1f", (oLo + oHi) / 2 / oSpeed) }
+        end
+        stat(rows, "Damage", string.format("%d - %d", lo, hi), nil, statTip("Melee damage", lines))
+    end
+    do
+        local lines = { "Seconds between your main-hand swings." }
+        if plain(oSpeed) and oSpeed > 0 then lines[#lines + 1] = { "Off hand", string.format("%.2f", oSpeed) } end
+        stat(rows, "Speed", fmt(speed, "%.2f"), nil, statTip("Attack speed", lines))
+    end
     if not pet then
-        stat(rows, "Crit chance", pct(call(GetCritChance)))
+        stat(rows, "Crit chance", pct(call(GetCritChance)), nil,
+            statTip("Melee critical strike", { "The chance a melee attack lands as a critical strike, for double damage." }))
         local hit = call(GetHitModifier)
-        if plain(hit) and hit > 0 then stat(rows, "Hit", string.format("+%d%%", hit)) end
+        if plain(hit) and hit > 0 then
+            stat(rows, "Hit", string.format("+%d%%", hit), nil,
+                statTip("Melee hit", { "Taken off your chance to miss with melee and ranged attacks." }))
+        end
     end
     section("melee", "Melee", rows)
 
     if pet then
         rows = {}
-        local _, armor, _, aPos, aNeg = call(UnitArmor, unit)
-        stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg))
+        local aBase, armor, _, aPos, aNeg = call(UnitArmor, unit)
+        stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg), armorTip(unit, armor, aBase, aPos, aNeg))
         section("defense", "Defense", rows)
         return d
     end
@@ -562,36 +641,92 @@ local function statsData(unit)
     local rSpeed, rLo, rHi = call(UnitRangedDamage, "player")
     if plain(rSpeed) and rSpeed > 0 then
         local rb, rp, rn = call(UnitRangedAttackPower, "player")
-        stat(rows, "Attack power", fmt(total(rb, rp, rn), "%d"), buffColor(rp, rn))
-        if plain(rLo, rHi) then stat(rows, "Damage", string.format("%d - %d", rLo, rHi)) end
-        stat(rows, "Speed", fmt(rSpeed, "%.2f"))
-        stat(rows, "Crit chance", pct(call(GetRangedCritChance)))
+        do
+            local lines = {}
+            local ap = total(rb, rp, rn)
+            if plain(ap) then lines[1] = string.format("Adds %.1f damage per second to your ranged attacks.", math.max(ap, 0) / 14); lines[2] = "" end
+            parts(lines, rb, rp, rn)
+            stat(rows, "Attack power", fmt(ap, "%d"), buffColor(rp, rn), statTip("Ranged attack power", lines))
+        end
+        if plain(rLo, rHi) then
+            stat(rows, "Damage", string.format("%d - %d", rLo, rHi), nil, statTip("Ranged damage", {
+                "What one shot deals before the target's armor (ammunition included).",
+                { "Damage per second", string.format("%.1f", (rLo + rHi) / 2 / rSpeed) } }))
+        end
+        stat(rows, "Speed", fmt(rSpeed, "%.2f"), nil, statTip("Ranged speed", { "Seconds between your shots." }))
+        stat(rows, "Crit chance", pct(call(GetRangedCritChance)), nil,
+            statTip("Ranged critical strike", { "The chance a shot lands as a critical strike." }))
     end
     section("ranged", "Ranged", rows)
 
     rows = {}
     local maxMana = call(UnitPowerMax, "player", 0)
     if not plain(maxMana) or maxMana > 0 then
-        stat(rows, "Bonus damage", fmt(best(GetSpellBonusDamage), "%d"))
-        stat(rows, "Bonus healing", fmt(call(GetSpellBonusHealing), "%d"))
+        local SCHOOLS = { [2] = "Holy", [3] = "Fire", [4] = "Nature", [5] = "Frost", [6] = "Shadow", [7] = "Arcane" }
+        local function bySchool(fn, f)
+            local lines = {}
+            for school = 2, 7 do
+                local v = call(fn, school)
+                if plain(v) then lines[#lines + 1] = { SCHOOLS[school], string.format(f, v) } end
+            end
+            return lines
+        end
+        do
+            local lines = bySchool(GetSpellBonusDamage, "%d")
+            table.insert(lines, 1, "Added to your damaging spells, in part: the longer the cast, the larger the part.")
+            table.insert(lines, 2, "")
+            stat(rows, "Bonus damage", fmt(best(GetSpellBonusDamage), "%d"), nil, statTip("Spell damage", lines))
+        end
+        stat(rows, "Bonus healing", fmt(call(GetSpellBonusHealing), "%d"), nil,
+            statTip("Healing", { "Added to your healing spells, in part: the longer the cast, the larger the part." }))
         local sc = best(GetSpellCritChance)
-        if sc then stat(rows, "Crit chance", pct(sc)) end
+        if sc then
+            local lines = bySchool(GetSpellCritChance, "%.2f%%")
+            table.insert(lines, 1, "The chance a spell lands as a critical strike.")
+            table.insert(lines, 2, "")
+            stat(rows, "Crit chance", pct(sc), nil, statTip("Spell critical strike", lines))
+        end
         local sh = call(GetSpellHitModifier)
-        if plain(sh) and sh > 0 then stat(rows, "Hit", string.format("+%d%%", sh)) end
-        local regen = call(GetManaRegen)
-        if plain(regen) then stat(rows, "Mana regen", string.format("%d / 5s", regen * 5)) end
+        if plain(sh) and sh > 0 then
+            stat(rows, "Hit", string.format("+%d%%", sh), nil, statTip("Spell hit", { "Taken off the chance your spells are resisted outright." }))
+        end
+        local regen, casting = call(GetManaRegen)
+        if plain(regen) then
+            local lines = { "Mana you get back every five seconds while you are not casting." }
+            if plain(casting) then lines[#lines + 1] = { "While casting", string.format("%d / 5s", casting * 5) } end
+            stat(rows, "Mana regen", string.format("%d / 5s", regen * 5), nil, statTip("Mana regeneration", lines))
+        end
     end
     section("spell", "Spell", rows)
 
     rows = {}
-    local _, armor, _, aPos, aNeg = call(UnitArmor, "player")
-    stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg))
+    local aBase, armor, _, aPos, aNeg = call(UnitArmor, "player")
+    stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg), armorTip("player", armor, aBase, aPos, aNeg))
     local dBase, dMod = call(UnitDefense, "player")
-    if plain(dBase) then stat(rows, "Defense", string.format("%d", dBase + (plain(dMod) and dMod or 0))) end
-    stat(rows, "Dodge", pct(call(GetDodgeChance)))
+    if plain(dBase) then
+        local def = dBase + (plain(dMod) and dMod or 0)
+        local lines = { "Each point makes you a little harder to hit and to critically hit, and adds to your dodge, parry and block." }
+        local lvl = UnitLevel("player")
+        if plain(lvl) then
+            local over = def - lvl * 5
+            lines[#lines + 1] = { "Against your level (" .. (lvl * 5) .. ")", string.format("%+d", over) }
+            if over ~= 0 then lines[#lines + 1] = { "Chance to be hit, crit", string.format("%+.2f%%", -over * 0.04) } end
+        end
+        stat(rows, "Defense", string.format("%d", def), nil, statTip("Defense", lines))
+    end
+    stat(rows, "Dodge", pct(call(GetDodgeChance)), nil,
+        statTip("Dodge", { "The chance a melee attack against you misses entirely. Works from the front and the sides." }))
     local parry, block = call(GetParryChance), call(GetBlockChance)
-    if not plain(parry) or parry > 0 then stat(rows, "Parry", pct(parry)) end
-    if not plain(block) or block > 0 then stat(rows, "Block", pct(block)) end
+    if not plain(parry) or parry > 0 then
+        stat(rows, "Parry", pct(parry), nil,
+            statTip("Parry", { "The chance you turn aside a melee attack from the front, and swing again sooner." }))
+    end
+    if not plain(block) or block > 0 then
+        local lines = { "The chance your shield takes part of a melee hit from the front." }
+        local amount = _G.GetShieldBlock and call(GetShieldBlock)
+        if plain(amount) and amount > 0 then lines[#lines + 1] = { "Damage blocked", string.format("%d", amount) } end
+        stat(rows, "Block", pct(block), nil, statTip("Block", lines))
+    end
     section("defense", "Defense", rows)
     return d
 end
