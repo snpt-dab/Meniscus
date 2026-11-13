@@ -415,6 +415,12 @@ local PAGES = {
         } },
     } },
     { key = "helpers", title = "Helpers", groups = {
+        { title = "Professions", items = {
+            { "Capped skill warning", kind = "switch", reload = true,
+              note = "Each time you use a profession that can't go up until you train it",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.skillCap ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
+        } },
         { title = "Quests", items = {
             { "Dot over the quest objective", kind = "switch", reload = true,
               note = "A small silver dot in the world over your nearest tracked quest, with the distance",

@@ -1011,8 +1011,57 @@ local function buildWaypoint()
     C_Timer.NewTicker(5, soon)
 end
 
+-- ── A profession at its cap ───────────────────────────────────────────────
+-- A skill that has reached the most its training allows (75, 150, 225)
+-- stops going up, and nothing says so: you can skin for an hour and gain
+-- nothing. So every time you use a profession that is sitting at such a
+-- cap (gathering, or making something), a warning pill says it is capped
+-- and to see a trainer. A skill at its final cap (300 or more) says nothing.
+local CAP_SPELL = { ["Skinning"] = 393, ["Mining"] = 186, ["Herb Gathering"] = 182, ["Herbalism"] = 182,
+                    ["Fishing"] = 356, ["Disenchant"] = 333, ["Smelting"] = 186 }
+local CAP_FINAL = 300
+local function buildSkillCap()
+    local S = _G.C_SkillInfo
+    if not (S and S.GetSkillLineInfoByID) then return end
+    local last = 0
+    local function skillOf(spellID)
+        local name = C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, spellID)
+        if type(name) == "string" and not secret(name) and CAP_SPELL[name] then return CAP_SPELL[name] end
+        -- Something being made: the recipe knows its profession.
+        local f = C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillLineForRecipe
+        if f then
+            local ok, id = pcall(f, spellID)
+            if ok and num(id) and id > 0 then return id end
+        end
+    end
+    local function check(spellID)
+        if not num(spellID) then return end
+        local id = skillOf(spellID)
+        if not id then return end
+        local ok, info = pcall(S.GetSkillLineInfoByID, id)
+        if not (ok and type(info) == "table") then return end
+        local rank, max, name = info.rank, info.maxRank, info.name
+        if not (num(rank) and num(max) and type(name) == "string") then return end
+        if max <= 0 or max >= CAP_FINAL or rank < max then return end
+        local now = GetTime()
+        if now - last < 1 then return end
+        last = now
+        local icon = C_Spell and C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, spellID)
+        if secret(icon) then icon = nil end
+        if ns.FloatWarning then
+            ns.FloatWarning(icon or "Interface/Icons/INV_Misc_QuestionMark", name .. " capped at " .. max, "See a trainer")
+        elseif UIErrorsFrame then
+            UIErrorsFrame:AddMessage(name .. " is capped at " .. max .. ": see a trainer.", 1, 0.4, 0.35)
+        end
+    end
+    local ev = CreateFrame("Frame")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    ev:SetScript("OnEvent", function(_, _, _, _, spellID) pcall(check, spellID) end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.skillCap ~= false then pcall(buildSkillCap) end
     if db.waypoint ~= false then
         pcall(buildWaypoint)
     elseif db.waypointSet then
