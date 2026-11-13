@@ -118,8 +118,15 @@ f:SetScript("OnEvent", function(_, event, arg1)
             merge(ns.db.modules[name], mod.defaults)
             local mdb = ns.db.modules[name]
             if mdb.enabled ~= false and mod.OnInit then
-                local ok, err = pcall(mod.OnInit, mod, mdb)
-                if not ok then ns:Print("module", name, "failed:", err) end
+                -- (With where it happened, kept in MinimalUIDB.moduleFail.)
+                local ok, err = xpcall(mod.OnInit, function(e)
+                    return tostring(e) .. "\n" .. (debugstack and debugstack(2, 12, 0) or "")
+                end, mod, mdb)
+                if not ok then
+                    ns:Print("module", name, "failed:", (tostring(err):match("^[^\n]*")))
+                    MinimalUIDB.moduleFail = MinimalUIDB.moduleFail or {}
+                    MinimalUIDB.moduleFail[name] = { at = date("%Y-%m-%d %H:%M:%S"), err = tostring(err) }
+                end
             end
         end
     end

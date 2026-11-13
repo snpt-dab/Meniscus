@@ -35,9 +35,40 @@ Theme.font, Theme.fontBold = INTER.path, INTER.bold
 
 ns.fontStrings = setmetatable({}, { __mode = "k" })
 
+-- A font string whose SetFont didn't take has no font at all, and its first
+-- SetText raises "Font not set", which took a whole module down at login.
+-- So the result is checked: on a miss, the regular weight is tried, then
+-- the game's own font, with a sane size; the miss is noted (with where it
+-- came from) in MinimalUIDB.fontFail for the next look at the saved file.
+local function fontTook(fs)
+    local ok, path = pcall(fs.GetFont, fs)
+    return ok and path ~= nil
+end
 function ns:SetFont(fs, size, flags, bold)
-    self.fontStrings[fs] = { size or Theme.fontSize, flags or "", bold }
-    fs:SetFont(bold and Theme.fontBold or Theme.font, size or Theme.fontSize, flags or "")
+    size, flags = size or Theme.fontSize, flags or ""
+    self.fontStrings[fs] = { size, flags, bold }
+    local want = bold and Theme.fontBold or Theme.font
+    pcall(fs.SetFont, fs, want, size, flags)
+    if fontTook(fs) then return end
+    local sane = (type(size) == "number" and size == size and size >= 4 and size <= 200) and size or 12
+    local db = MinimalUIDB
+    if db then
+        db.fontFail = db.fontFail or {}
+        if #db.fontFail < 8 then
+            db.fontFail[#db.fontFail + 1] = { path = tostring(want), size = tostring(size), flags = tostring(flags),
+                bold = bold and true or false, regular = tostring(Theme.font), at = date("%H:%M:%S"),
+                stack = debugstack(2, 8, 0) }
+        end
+    end
+    pcall(fs.SetFont, fs, Theme.font, sane, flags)
+    if not fontTook(fs) then
+        pcall(fs.SetFont, fs, _G.STANDARD_TEXT_FONT or "Fonts/FRIZQT__.TTF", sane, flags)
+    end
+    -- The wanted font may simply not have been ready this early (a cold
+    -- start): try it again shortly, over the stand-in.
+    if C_Timer and type(want) == "string" then
+        C_Timer.After(1.5, function() pcall(fs.SetFont, fs, want, sane, flags) end)
+    end
 end
 
 local function fontWorks(path)
