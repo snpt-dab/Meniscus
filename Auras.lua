@@ -745,6 +745,81 @@ local function fillCorner(frame)
     return v, h
 end
 
+-- Icons per row. Blizzard wraps its buff rows at an Edit Mode setting made
+-- for the top of the screen (a dozen or so); in the character panel only
+-- about half that fits, and the row ran out of the panel over the action
+-- bar. So the wrap is set from the room there is: the container's own
+-- "icons per row" value, and Blizzard's layout is run again. Whenever
+-- Blizzard lays the frame out afresh (which puts its own value back) ours
+-- is restored. What the frame offers is noted in MinimalUIDB.buffwrap.
+local wraps, rooms, wrapping = {}, {}, false
+local wrapTo
+local function applyWrap(fr)
+    local n = wraps[fr]
+    local c = fr and fr.AuraContainer
+    if not (n and c) or wrapping then return end
+    if type(c.iconStride) ~= "number" or c.iconStride == n then return end
+    wrapping = true
+    c.iconStride = n
+    if fr.UpdateGridLayout then pcall(fr.UpdateGridLayout, fr) end
+    wrapping = false
+end
+wrapTo = function(fr, room)
+    local c = fr and fr.AuraContainer
+    if not c or type(room) ~= "number" then return end
+    -- A protected frame is left alone: a value of ours in its layout would
+    -- get its icons blocked in combat.
+    local prot = fr.IsProtected and fr:IsProtected()
+    if prot then
+        if MinimalUIDB then
+            MinimalUIDB.buffwrap = MinimalUIDB.buffwrap or {}
+            MinimalUIDB.buffwrap[fr:GetName() or "?"] = "protected: left alone"
+        end
+        return
+    end
+    rooms[fr] = room
+    if not hooked[c] and fr.UpdateGridLayout then
+        hooked[c] = true
+        -- (Also the moment to measure, if no icon was showing before.)
+        hooksecurefunc(fr, "UpdateGridLayout", function(self)
+            if wrapping then return end
+            if wraps[self] then applyWrap(self) elseif rooms[self] then pcall(wrapTo, self, rooms[self]) end
+        end)
+    end
+    local ui = UIParent:GetEffectiveScale()
+    -- The distance from one icon to the next, measured off two that are
+    -- showing; failing that, from the icon size and the container's padding.
+    local pitch, width
+    local first
+    for _, b in ipairs(fr.auraFrames or {}) do
+        if b:IsShown() and b:GetLeft() then
+            local k = b:GetEffectiveScale() / ui
+            width = b:GetWidth() * k
+            if first then
+                local d = math.abs(b:GetLeft() - first:GetLeft()) * k
+                if d > 1 then pitch = d break end
+            else
+                first = b
+            end
+        end
+    end
+    if not width then return end -- nothing showing yet: next time
+    if not pitch then
+        local pad = type(c.iconPadding) == "number" and c.iconPadding or 5
+        pitch = width * (30 + pad) / 30
+    end
+    local n = math.max(3, math.floor((room + (pitch - width)) / pitch))
+    if MinimalUIDB then
+        MinimalUIDB.buffwrap = MinimalUIDB.buffwrap or {}
+        MinimalUIDB.buffwrap[fr:GetName() or "?"] = string.format(
+            "room %.0f width %.1f pitch %.1f -> %d per row; iconStride=%s iconPadding=%s isHorizontal=%s UpdateGridLayout=%s",
+            room, width, pitch, n, tostring(c.iconStride), tostring(c.iconPadding), tostring(c.isHorizontal),
+            type(fr.UpdateGridLayout))
+    end
+    wraps[fr] = n
+    applyWrap(fr)
+end
+
 function A:SeatBlizzard()
     if not self.db or not self.db.attachBlizz or self.db.playerRows then return end
     local UF, B = ns.modules.UnitFrames, ns.modules.Bars
@@ -776,6 +851,7 @@ function A:SeatBlizzard()
                 if i == 1 then y = (v == "TOP") and char.auraTop or (char.auraTop - 30)
                 else y = (v == "TOP") and (char.auraBottom + 30) or char.auraBottom end
                 seat(fr, v .. h, UIParent, "BOTTOMLEFT", x, y)
+                pcall(wrapTo, fr, char.auraX1 - char.auraX0)
             end
         end
     elseif slots and (slots.left.x1 - slots.left.x0) >= 100 then
