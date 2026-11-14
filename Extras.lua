@@ -966,16 +966,34 @@ local function buildWaypoint()
     -- sides, and at the bottom just above the console. Same direction from
     -- the centre as the game's, so its arrow still points the right way.
     local EDGE_X, EDGE_Y = 0.42, 0.34 -- the oval's half-width / half-height, as a share of the screen
+    local FAR, BLEND, HORIZON = 90, 30, 0.60 -- yards; yards; the horizon's height as a share of the screen
     pcall(F.HookScript, F, "OnUpdate", function(self)
         if not (NV.WasClampedToScreen and NV.GetFrame) then return end
         local clamped = NV.WasClampedToScreen()
-        if secret(clamped) or not clamped then return end
+        if secret(clamped) then return end
         local nav = NV.GetFrame()
         if not nav then return end
         local nx, ny = nav:GetCenter()
         local cx, cy = UIParent:GetCenter()
         if not (num(nx) and num(ny) and num(cx) and num(cy)) then return end
         local k = nav:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        if not clamped then
+            -- Far away the game doesn't know how high the objective is (the
+            -- ground there isn't loaded) and draws the marker far too low:
+            -- at your feet instead of in the distance. Its direction is
+            -- right, so beyond FAR yards the dot keeps its place across the
+            -- screen and is lifted to the horizon; it settles onto the real
+            -- spot as you close in (blended over the last BLEND yards).
+            local dist = NV.GetDistance and NV.GetDistance()
+            if not num(dist) or dist <= FAR then return end
+            local t = math.min(1, (dist - FAR) / BLEND)
+            local y = ny * k
+            local lifted = y + (UIParent:GetHeight() * HORIZON - y) * t
+            if lifted <= y then return end
+            self:ClearAllPoints()
+            self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", nx * k, lifted)
+            return
+        end
         local dx, dy = nx * k - cx, ny * k - cy
         local a, b = UIParent:GetWidth() * EDGE_X, UIParent:GetHeight() * EDGE_Y
         local d = math.sqrt((dx / a) ^ 2 + (dy / b) ^ 2)
