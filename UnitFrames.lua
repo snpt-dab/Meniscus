@@ -745,9 +745,17 @@ local function create(unit, label, cfg)
     -- shift-ctrl-left) found no action.
     f:SetAttribute("*type1", "target")
     f:SetAttribute("*type2", "togglemenu")
-    -- Modern secure buttons act on the mouse press; "AnyUp"-only clicks arrive
-    -- but never target. Register both so either client behavior works.
-    f:RegisterForClicks("AnyDown", "AnyUp")
+    -- One edge only, the one the client acts on (the ActionButtonUseKeyDown
+    -- setting: the press, by default). With both registered, targeting and
+    -- the menu still fired once, but a Click Casting spell fired on the
+    -- press AND the release: every heal was followed by a second, failed
+    -- cast and a "Spell is not ready yet" (seen 100 times in one dungeon).
+    local onPress = true
+    if GetCVarBool then
+        local ok, v = pcall(GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and v == false then onPress = false end
+    end
+    f:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
 
     -- Two stacked pills: health (name + value inside) and a slim power pill.
     local hp = ns:CreatePillBar(f, s.W, s.H)
