@@ -29,6 +29,7 @@ local MANAGED = {
     CommunitiesFrame = "left", LFGParentFrame = "left", PlayerSpellsFrame = "left",
     WorldMapFrame = "center",
 }
+ns.ManagedWindows = MANAGED -- (the recorder reads which frames are windows)
 -- Pinned windows have one place and keep it: they are never moved to the
 -- other dock, never closed to make room, and nothing else is seated in
 -- their dock while they are open. The bags: always on the right, whatever

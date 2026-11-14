@@ -1331,6 +1331,18 @@ do
         watch = {}
         local seen = {}
         for _, n in ipairs(GAME_WINDOWS) do seen[n] = true; watch[#watch + 1] = n end
+        -- Our own: the ones the window manager knows (anything else of ours
+        -- with a name is a frame on the screen, not a window: the target
+        -- frame, the Quick Buff pill...), plus the settings panel.
+        if ns.ManagedWindows then
+            for n in pairs(ns.ManagedWindows) do
+                if not seen[n] then seen[n] = true; watch[#watch + 1] = n end
+            end
+            for _, n in ipairs({ "MinimalUIPanel", "MinimalUILoot", "MeniscusTidy", "MinimalUIQuickBuff" }) do
+                if not seen[n] then seen[n] = true; watch[#watch + 1] = n end
+            end
+            return
+        end
         pcall(function()
             for k, v in pairs(_G) do
                 if type(k) == "string" and (k:find("^MinimalUI") or k:find("^Meniscus")) and not seen[k]

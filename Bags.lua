@@ -1061,6 +1061,45 @@ do
         if B.Refresh then pcall(B.Refresh, B) end
     end)
 end
+-- Before it costs you something. Two warnings, both pills:
+--   * the bags have just become full, or all but (one slot left);
+--   * a quest is about to hand you items and there isn't room for them: a
+--     turn-in with full bags fails ("... failed: Inventory is full"), and
+--     the cheapest stack to throw away is named with it.
+do
+    local BAG_ICON = "Interface/Icons/INV_Misc_Bag_08"
+    local born, lastFree = GetTime(), nil
+    local function cheapestPill()
+        local ok, list = pcall(findCheapest, 3)
+        local e = ok and list[1]
+        if not e then return end
+        local name = e.link:match("%[(.-)%]") or "?"
+        ns.FloatWarning(e.icon, "Cheapest: " .. name .. (e.count > 1 and ("  x" .. e.count) or ""), moneyText(e.worth))
+    end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("BAG_UPDATE_DELAYED")
+    f:RegisterEvent("QUEST_COMPLETE")
+    f:SetScript("OnEvent", function(_, e)
+        if not (B.db and B.db.cheapest ~= false and ns.FloatWarning) then return end
+        local free = freeSlots()
+        if e == "BAG_UPDATE_DELAYED" then
+            if lastFree and lastFree > 1 and free <= 1 and GetTime() - born > 10 then
+                ns.FloatWarning(BAG_ICON, free == 0 and "Bags full" or "Bags nearly full", free == 0 and "no room" or "1 slot left")
+            end
+            lastFree = free
+            return
+        end
+        -- QUEST_COMPLETE: the reward page is up.
+        local fixed = call(_G.GetNumQuestRewards)
+        local choices = call(_G.GetNumQuestChoices)
+        local need = (num(fixed) and fixed or 0) + ((num(choices) and choices > 0) and 1 or 0)
+        if need > 0 and free < need then
+            ns.FloatWarning(BAG_ICON, "No room for the reward", free .. " free, " .. need .. " needed")
+            pcall(cheapestPill)
+            if B.Refresh then pcall(B.Refresh, B) end
+        end
+    end)
+end
 
 function B:OnInit(db)
     self.db = db
