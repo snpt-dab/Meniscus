@@ -191,10 +191,12 @@ local SCHOOL_TINT = { [1] = { 0.94, 0.94, 0.96 }, [2] = { 1.00, 0.90, 0.50 }, [4
 local WORDS = { MISS = "Miss", DODGE = "Dodge", PARRY = "Parry", BLOCK = "Block", RESIST = "Resist",
     IMMUNE = "Immune", ABSORB = "Absorb", EVADE = "Evade", DEFLECT = "Deflect", REFLECT = "Reflect" }
 -- The game's own world text: its damage and healing numbers off, and the
--- rest (the XP line) shrunk to nearly nothing. What was there before is
+-- rest (the XP line, which has no switch) scaled up so far that the game
+-- no longer draws it. (Scaled down to nothing it was still there, tiny;
+-- a very large scale is what other players report works.) What was there before is
 -- kept, and put back when our numbers are switched off.
 local QUIET = { floatingCombatTextCombatDamage_v2 = "0", floatingCombatTextCombatHealing_v2 = "0",
-    floatingCombatTextPetMeleeDamage_v2 = "0", floatingCombatTextPetSpellDamage_v2 = "0", WorldTextScale_v2 = "0" }
+    floatingCombatTextPetMeleeDamage_v2 = "0", floatingCombatTextPetSpellDamage_v2 = "0", WorldTextScale_v2 = "1000", WorldTextScale = "1000" }
 local function quietGame(on)
     local db = NP.db
     if on then
