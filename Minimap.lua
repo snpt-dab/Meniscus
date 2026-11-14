@@ -563,6 +563,28 @@ local function queuedFor()
         end
     end
 end
+-- Where a small disc sits on the map's rim: low on the side, its bottom
+-- just clear of the console panel's top edge (measured), or at 45 degrees
+-- when there is no panel to sit above. Returns the offset from the map's
+-- middle (x to the right; mirror it for the left side).
+function MM.RimOffset(size)
+    local h = MM.domeHolder
+    if not h then return end
+    local R = h:GetWidth() / 2
+    local y = R * 0.7071
+    local B = ns.modules.Bars
+    local plate = B and B.plate
+    local top = plate and plate.IsShown and plate:IsShown() and plate:GetTop()
+    local _, cy = h:GetCenter()
+    if top and cy then
+        local k = plate:GetEffectiveScale() / h:GetEffectiveScale()
+        local want = top * k - cy + size / 2 + 2
+        if MinimalUIDB then MinimalUIDB.rimSeat = string.format("panel top %.1f above the map's middle, radius %.1f, disc at %.1f", top * k - cy, R, want) end
+        if want < y then y = math.max(0, want) end
+    end
+    return math.sqrt(R * R - y * y), y
+end
+
 function MM:BuildQueue(h)
     local q = _G.QueueStatusButton
     if not q then return end
@@ -714,6 +736,11 @@ function MM:BuildQueue(h)
         if on and not disc:IsShown() then since, acc = GetTime(), 1; time:SetText("") end
         disc:SetShown(on)
         if on then
+            local rx, ry = MM.RimOffset(S)
+            if rx then
+                disc:ClearAllPoints()
+                disc:SetPoint("CENTER", h, "CENTER", -rx, ry)
+            end
             strip(); seat()
             C_Timer.After(5, function() pcall(probe) end)
             C_Timer.After(60, function() pcall(probe) end)

@@ -2143,8 +2143,12 @@ local function buildPotions()
         local dome = _G.MinimalUI_MinimapDome
         anchor:ClearAllPoints()
         if dome then
-            local off = dome:GetWidth() / 2 * 0.7071
-            anchor:SetPoint("CENTER", dome, "CENTER", off, off)
+            -- Low on the rim, just above the panel's top edge.
+            local MMm = ns.modules.Minimap
+            local rx, ry
+            if MMm and MMm.RimOffset then rx, ry = MMm.RimOffset(S) end
+            if not rx then rx = dome:GetWidth() / 2 * 0.7071; ry = rx end
+            anchor:SetPoint("CENTER", dome, "CENTER", rx, ry)
         else
             anchor:SetPoint("BOTTOM", UIParent, "BOTTOM", 120, 150)
         end
