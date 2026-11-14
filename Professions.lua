@@ -146,6 +146,7 @@ local function itemNameIcon(id)
 end
 
 local craftableCount -- defined after reagents()
+local recordAll      -- defined after schematic()
 
 -- The recipe list is read from the client only when it can have changed
 -- (opened, learned a recipe, skill changed): that read makes a table per
@@ -193,6 +194,7 @@ local function recipes()
     if baseDirty then
         buildBase()
         baseDirty, baseAt = false, GetTime()
+        if recordAll then pcall(recordAll) end
     end
     wipe(counts)
     for _, g in pairs(groups) do wipe(g) end
@@ -255,6 +257,25 @@ local function schematic(id)
     end
     schemCache[id] = c
     return c
+end
+
+-- What each recipe needs is also written down for item tooltips ("Used
+-- in ... can make 3", Extras.lua): a few recipes a frame, so opening a
+-- profession with a long list doesn't hitch.
+local recordTicker
+function recordAll()
+    if not ns.RecordRecipe then return end
+    if recordTicker then recordTicker:Cancel() end
+    local i = 0
+    recordTicker = C_Timer.NewTicker(0.05, function(self)
+        for _ = 1, 8 do
+            i = i + 1
+            local e = base[i]
+            if not e then self:Cancel(); recordTicker = nil return end
+            local c = schematic(e.id)
+            if c ~= NO_SCHEM then pcall(ns.RecordRecipe, e.id, e.name, c.list) end
+        end
+    end)
 end
 
 local function reagents(id)

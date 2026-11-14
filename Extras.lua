@@ -296,7 +296,10 @@ local function buildOwned()
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tip, data)
             if tip ~= GameTooltip and tip ~= _G.ItemRefTooltip then return end
             local id = type(data) == "table" and data.id
-            if num(id) then pcall(ownedLines, tip, id) end
+            if num(id) then
+                pcall(ownedLines, tip, id)
+                if EX.db and EX.db.canMake ~= false then pcall(madeLines, tip, id) end
+            end
         end)
     end
 end
@@ -1090,8 +1093,375 @@ local function buildSkillCap()
     ev:SetScript("OnEvent", function(_, _, _, _, spellID) pcall(check, spellID) end)
 end
 
+-- ── "Used in": what a reagent makes ───────────────────────────────────────
+-- Your recipes and what they need are written down whenever a profession
+-- window is open (Professions.lua calls ns.RecordRecipe), per character:
+-- MinimalUIDB.recipes[char][recipeID] = { n = name, r = { [itemID] = need } }.
+-- An item's tooltip then lists the recipes of yours that use it, and how
+-- many of each you could make with what is in your bags.
+local useIndex
+function ns.RecordRecipe(id, name, list)
+    local db = MinimalUIDB
+    if not (db and num(id) and type(name) == "string" and type(list) == "table") then return end
+    local r = {}
+    for _, rg in ipairs(list) do
+        if num(rg.itemID) then r[rg.itemID] = num(rg.need) and rg.need or 1 end
+    end
+    if not next(r) then return end
+    db.recipes = db.recipes or {}
+    local key = ns:CharKey()
+    db.recipes[key] = db.recipes[key] or {}
+    db.recipes[key][id] = { n = name, r = r }
+    useIndex = nil
+end
+local madeBuf = {}
+local function madeLines(tip, id)
+    local db = MinimalUIDB
+    local mine = db and db.recipes and db.recipes[ns:CharKey()]
+    if not mine then return end
+    if not useIndex then
+        useIndex = {}
+        for _, rec in pairs(mine) do
+            if type(rec) == "table" and type(rec.r) == "table" then
+                for item in pairs(rec.r) do
+                    useIndex[item] = useIndex[item] or {}
+                    table.insert(useIndex[item], rec)
+                end
+            end
+        end
+    end
+    local list = useIndex[id]
+    if not list then return end
+    wipe(madeBuf)
+    for _, rec in ipairs(list) do
+        local can
+        for item, need in pairs(rec.r) do
+            local k = math.floor(itemCount(item) / math.max(need, 1))
+            can = can and math.min(can, k) or k
+        end
+        rec.can = can or 0
+        madeBuf[#madeBuf + 1] = rec
+    end
+    table.sort(madeBuf, function(a, b)
+        if a.can ~= b.can then return a.can > b.can end
+        return tostring(a.n) < tostring(b.n)
+    end)
+    tip:AddLine(" ")
+    tip:AddLine("Used in", 0.6, 0.6, 0.65)
+    for i = 1, math.min(#madeBuf, 5) do
+        local rec = madeBuf[i]
+        if rec.can > 0 then
+            tip:AddDoubleLine(rec.n, "can make " .. rec.can, 0.86, 0.89, 0.94, 0.40, 0.85, 0.45)
+        else
+            tip:AddDoubleLine(rec.n, " ", 0.55, 0.57, 0.63, 1, 1, 1)
+        end
+    end
+    if #madeBuf > 5 then tip:AddLine("and " .. (#madeBuf - 5) .. " more", 0.5, 0.5, 0.55) end
+end
+
+-- ── Nearly at a profession's cap ──────────────────────────────────────────
+-- A skill-up that leaves a profession within five points of the most its
+-- training allows: one pill, once per cap, so you can train before the
+-- points stop coming. MinimalUIDB.skillNudge[char][skill] = the cap told.
+local PROFS = { 164, 165, 171, 182, 185, 186, 197, 202, 333, 356, 393, 129 }
+local function buildNudge()
+    local S = _G.C_SkillInfo
+    if not (S and S.GetSkillLineInfoByID) then return end
+    local function look()
+        local db = MinimalUIDB
+        if not db then return end
+        db.skillNudge = db.skillNudge or {}
+        local key = ns:CharKey()
+        db.skillNudge[key] = db.skillNudge[key] or {}
+        local told = db.skillNudge[key]
+        for _, id in ipairs(PROFS) do
+            local ok, info = pcall(S.GetSkillLineInfoByID, id)
+            if ok and type(info) == "table" and num(info.rank) and num(info.maxRank) and type(info.name) == "string" then
+                local rank, max = info.rank, info.maxRank
+                if max > 0 and max < 300 and rank < max and max - rank <= 5 and told[id] ~= max then
+                    told[id] = max
+                    local icon = C_Spell and C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, info.name)
+                    if secret(icon) then icon = nil end
+                    if ns.FloatWarning then
+                        ns.FloatWarning(icon or "Interface/Icons/INV_Misc_Book_09", info.name .. " " .. rank .. " / " .. max, "Train soon")
+                    end
+                end
+            end
+        end
+    end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("CHAT_MSG_SKILL")
+    f:SetScript("OnEvent", function() C_Timer.After(0.5, function() pcall(look) end) end)
+end
+
+-- ── Node memory ───────────────────────────────────────────────────────────
+-- Where you have picked herbs and mined ore is remembered (the spot, what
+-- it was), and shown on the minimap as faint dots: green for herbs, amber
+-- for ore. They are places a node has been, not nodes that are up now.
+-- MinimalUIDB.nodes[instance] = { { x, y, kind, name }, ... }; a node
+-- within 15 yards of one already known is the same node.
+local NODE_SPELL = { ["Mining"] = "ore", ["Herb Gathering"] = "herb", ["Herbalism"] = "herb" }
+local NODE_TINT = { ore = { 0.95, 0.72, 0.32 }, herb = { 0.50, 0.85, 0.45 } }
+local YARDS_OUT = { 466.67, 400, 333.33, 266.67, 200, 133.33 }
+local YARDS_IN = { 300, 240, 180, 120, 80, 50 }
+local function playerPos()
+    if not UnitPosition then return end
+    local ok, y, x, _, inst = pcall(UnitPosition, "player")
+    if ok and num(x) and num(y) and num(inst) then return x, y, inst end
+end
+local function buildNodes()
+    local db = MinimalUIDB
+    if not (db and Minimap) then return end
+    db.nodes = db.nodes or {}
+    local sent = {}
+    local ev = CreateFrame("Frame")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SENT", "player")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    local dirty = true
+    ev:SetScript("OnEvent", function(_, e, _, a2, a3, a4)
+        if e == "UNIT_SPELLCAST_SENT" then
+            -- (unit, target, castGUID, spellID): the target is the node's name.
+            if not secret(a3) and type(a3) == "string" then
+                sent.guid, sent.name = a3, (not secret(a2) and type(a2) == "string") and a2 or nil
+            end
+            return
+        end
+        -- (unit, castGUID, spellID)
+        local spellID = a3
+        if not num(spellID) then return end
+        local sname = C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, spellID)
+        local kind = type(sname) == "string" and not secret(sname) and NODE_SPELL[sname]
+        if not kind then return end
+        local x, y, inst = playerPos()
+        if not x then return end
+        local list = db.nodes[inst]
+        if not list then list = {}; db.nodes[inst] = list end
+        local name = (not secret(a2) and a2 == sent.guid) and sent.name or nil
+        for _, n in ipairs(list) do
+            if n[3] == kind and (n[1] - x) ^ 2 + (n[2] - y) ^ 2 < 15 * 15 then
+                if name then n[4] = name end
+                return
+            end
+        end
+        list[#list + 1] = { math.floor(x * 10) / 10, math.floor(y * 10) / 10, kind, name }
+        dirty = true
+    end)
+
+    -- The dots.
+    local layer = CreateFrame("Frame", nil, Minimap)
+    layer:SetAllPoints()
+    layer:SetFrameLevel(Minimap:GetFrameLevel() + 2)
+    local pool = {}
+    local function dotAt(i)
+        local d = pool[i]
+        if not d then
+            d = layer:CreateTexture(nil, "OVERLAY")
+            d:SetTexture(MEDIA .. "circle.tga")
+            d:SetSize(5, 5)
+            pool[i] = d
+        end
+        return d
+    end
+    local lx, ly, lz, lf
+    local acc = 0
+    layer:SetScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc < 0.15 then return end
+        acc = 0
+        local x, y, inst = playerPos()
+        local used = 0
+        local list = x and db.nodes[inst]
+        if list and #list > 0 then
+            local zoom = Minimap:GetZoom()
+            local rotate = GetCVar and GetCVar("rotateMinimap") == "1"
+            local facing = rotate and GetPlayerFacing and GetPlayerFacing() or 0
+            if secret(facing) or type(facing) ~= "number" then facing = 0 end
+            if not dirty and x == lx and y == ly and zoom == lz and facing == lf then return end
+            dirty, lx, ly, lz, lf = false, x, y, zoom, facing
+            local indoors = IsIndoors and IsIndoors()
+            local yards = ((indoors and YARDS_IN or YARDS_OUT)[(num(zoom) and zoom or 0) + 1] or 466.67) / 2
+            local half = Minimap:GetWidth() / 2
+            local sin, cos = math.sin(facing), math.cos(facing)
+            local reach = (yards * 0.94) ^ 2
+            for _, n in ipairs(list) do
+                local dx, dy = x - n[1], y - n[2]
+                if dx * dx + dy * dy < reach then
+                    if rotate then dx, dy = dx * cos - dy * sin, dx * sin + dy * cos end
+                    used = used + 1
+                    local d = dotAt(used)
+                    local c = NODE_TINT[n[3]] or NODE_TINT.ore
+                    d:SetVertexColor(c[1], c[2], c[3], 0.55)
+                    d:ClearAllPoints()
+                    d:SetPoint("CENTER", Minimap, "CENTER", dx / yards * half, -dy / yards * half)
+                    d:Show()
+                    if used >= 60 then break end
+                end
+            end
+        else
+            if lx == nil and not dirty then return end
+            lx, dirty = nil, false
+        end
+        for i = used + 1, #pool do pool[i]:Hide() end
+    end)
+end
+
+-- ── Flight timer ──────────────────────────────────────────────────────────
+-- How long each flight takes is learned from your own flights (from where,
+-- to where, seconds: MinimalUIDB.flights["From|To"]). On a flight you have
+-- taken before, a thin bar at the top of the screen counts it down; on a
+-- new one it shows the time flown so far.
+local function buildFlight()
+    local db = MinimalUIDB
+    if not db then return end
+    db.flights = db.flights or {}
+    local bar = CreateFrame("Frame", nil, UIParent)
+    bar:SetSize(180, 3)
+    bar:SetPoint("TOP", UIParent, "TOP", 0, -96)
+    bar:Hide()
+    local track = bar:CreateTexture(nil, "BACKGROUND")
+    track:SetAllPoints()
+    track:SetColorTexture(T.border[1], T.border[2], T.border[3], 0.9)
+    local fill = bar:CreateTexture(nil, "ARTWORK")
+    fill:SetPoint("TOPLEFT"); fill:SetPoint("BOTTOMLEFT")
+    fill:SetColorTexture(0.86, 0.89, 0.94, 0.9)
+    local label = bar:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(label, 11, "OUTLINE")
+    label:SetPoint("BOTTOM", bar, "TOP", 0, 5)
+    label:SetTextColor(T.text[1], T.text[2], T.text[3])
+    local src, dst, started, known, key
+    local function clock(s)
+        s = math.max(0, math.floor(s + 0.5))
+        return string.format("%d:%02d", math.floor(s / 60), s % 60)
+    end
+    local onTaxi, finish
+    local poll = 0
+    bar:SetScript("OnUpdate", function(self, dt)
+        if not started then self:Hide() return end
+        local flown = GetTime() - started
+        -- Landed? (Looked at twice a second; the game's "control gained"
+        -- can come a moment before the flight is really over.)
+        poll = poll + dt
+        if poll > 0.5 then
+            poll = 0
+            if flown > 3 and not onTaxi() then finish() return end
+        end
+        if known then
+            fill:SetWidth(math.max(0.01, math.min(1, flown / known)) * self:GetWidth())
+            fill:Show()
+            label:SetText((dst or "Flight") .. "   " .. clock(known - flown))
+        else
+            fill:Hide()
+            label:SetText((dst or "Flight") .. "   " .. clock(flown))
+        end
+    end)
+    if type(_G.TakeTaxiNode) == "function" then
+        hooksecurefunc("TakeTaxiNode", function(i)
+            src, dst = nil, nil
+            pcall(function()
+                dst = TaxiNodeName(i)
+                for j = 1, NumTaxiNodes() do
+                    if TaxiNodeGetType(j) == "CURRENT" then src = TaxiNodeName(j) end
+                end
+            end)
+            if type(dst) ~= "string" or secret(dst) then dst = nil end
+            if type(src) ~= "string" or secret(src) then src = nil end
+        end)
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_CONTROL_LOST")
+    function onTaxi() local ok, v = pcall(UnitOnTaxi, "player"); return ok and not secret(v) and v == true end
+    function finish()
+        local took = started and (GetTime() - started) or 0
+        if key and took > 8 then db.flights[key] = math.floor(took) end
+        started, src, dst, known, key = nil, nil, nil, nil, nil
+        bar:Hide()
+    end
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_CONTROL_LOST" then
+            -- (Control is also lost to fear and the like: wait and see
+            -- whether this is a flight.)
+            C_Timer.After(1.5, function()
+                if started or not onTaxi() then return end
+                started = GetTime() - 1.5
+                key = src and dst and (src .. "|" .. dst) or nil
+                known = key and db.flights[key] or nil
+                -- Just the place, without ", Zone".
+                if dst then dst = dst:match("^([^,]+)") or dst end
+                bar:Show()
+            end)
+        end
+    end)
+end
+
+-- ── Rare alert ────────────────────────────────────────────────────────────
+-- A rare nearby: a pill above your head and a soft ping, once per rare
+-- (not again for ten minutes). Two ways of noticing one: the game's own
+-- minimap marks for rares (where this client has them), in which case the
+-- quest dot is borrowed for a minute and a half to point at it; and any
+-- rare whose nameplate appears, or that you target or point at.
+local function buildRare()
+    local seen = {}
+    local function alert(key, name, guidForDot)
+        local now = GetTime()
+        if seen[key] and now - seen[key] < 600 then return end
+        seen[key] = now
+        if ns.FloatWarning then
+            ns.FloatWarning(MEDIA .. "micro_achievement.tga", "Rare: " .. name, guidForDot and "follow the dot" or "nearby")
+        end
+        pcall(PlaySound, 3175)
+        if guidForDot and ns.QuestFocus and ns.QuestFocus.Available() then ns.QuestFocus.Override(guidForDot, 90) end
+    end
+    local V = _G.C_VignetteInfo
+    local function vignette(guid)
+        if not (V and V.GetVignetteInfo) or secret(guid) or type(guid) ~= "string" then return end
+        local ok, info = pcall(V.GetVignetteInfo, guid)
+        if not (ok and type(info) == "table") then return end
+        local name, atlas = info.name, info.atlasName
+        if type(name) ~= "string" or secret(name) or name == "" then return end
+        if MinimalUIDB and type(atlas) == "string" and not secret(atlas) then
+            MinimalUIDB.vignettes = MinimalUIDB.vignettes or {}
+            MinimalUIDB.vignettes[atlas] = name
+        end
+        if info.isDead then return end
+        local a = type(atlas) == "string" and not secret(atlas) and atlas:lower() or ""
+        if a:find("kill", 1, true) or a:find("rare", 1, true) or a:find("elite", 1, true) then
+            alert("v:" .. name, name, guid)
+        end
+    end
+    local function unit(u)
+        local ok, c = pcall(UnitClassification, u)
+        if not ok or secret(c) or (c ~= "rare" and c ~= "rareelite") then return end
+        local dead = UnitIsDead(u)
+        if secret(dead) or dead then return end
+        local name = UnitName(u)
+        if type(name) ~= "string" or secret(name) then return end
+        if seen["v:" .. name] then seen[name] = seen["v:" .. name] end
+        alert(name, name)
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "VIGNETTE_MINIMAP_UPDATED", "VIGNETTES_UPDATED", "NAME_PLATE_UNIT_ADDED",
+                         "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e, a1)
+        if e == "VIGNETTE_MINIMAP_UPDATED" then pcall(vignette, a1)
+        elseif e == "VIGNETTES_UPDATED" then
+            if V and V.GetVignettes then
+                local ok, list = pcall(V.GetVignettes)
+                if ok and type(list) == "table" then for _, g in ipairs(list) do pcall(vignette, g) end end
+            end
+        elseif e == "NAME_PLATE_UNIT_ADDED" then pcall(unit, a1)
+        elseif e == "PLAYER_TARGET_CHANGED" then pcall(unit, "target")
+        else pcall(unit, "mouseover") end
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.skillNudge ~= false then pcall(buildNudge) end
+    if db.nodes ~= false then pcall(buildNodes) end
+    if db.flight ~= false then pcall(buildFlight) end
+    if db.rare ~= false then pcall(buildRare) end
     if db.skillCap ~= false then pcall(buildSkillCap) end
     if db.waypoint ~= false then
         pcall(buildWaypoint)
