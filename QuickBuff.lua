@@ -415,8 +415,11 @@ local function buildButton()
     --     slowly, with a ring of light travelling out through it again and
     --     again.
     if QB.db.prism ~= false then
-        local PRISM = { { 1.00, 0.12, 0.22, -1 }, { 0.15, 1.00, 0.35, 0 }, { 0.22, 0.38, 1.00, 1 } }
-        local REST, WIDE, SWING, EVERY = 3.6, 20, 13, 2.0
+        -- (Pale tints, a short way apart and faint: the fringe should read
+        -- as light catching an edge, not as a red side and a blue side.)
+        local PRISM = { { 1.00, 0.66, 0.72, -1 }, { 0.70, 1.00, 0.80, 0 }, { 0.68, 0.78, 1.00, 1 } }
+        local REST, WIDE, SWING, EVERY = 1.4, 11, 5, 2.0
+        local FRINGE, FRINGE_UP = 0.30, 0.22 -- its light at rest, and what a swing adds
         local HALO = { { 2, 0.26 }, { 4, 0.20 }, { 7, 0.14 }, { 11, 0.09 }, { 16, 0.05 }, { 22, 0.03 } } -- reach, light
         local WAVE = 1.4 -- seconds for the travelling ring to cross the halo
         local lights = {}
@@ -485,9 +488,9 @@ local function buildButton()
             tx:SetBlendMode("ADD")
             local far = math.abs(k) / ARMS
             -- White at the star, toward red on one arm and blue on the other.
-            local tint = math.min(1, far * 1.6)
-            if k < 0 then tx:SetVertexColor(1, 1 - tint * 0.9, 1 - tint)
-            elseif k > 0 then tx:SetVertexColor(1 - tint, 1 - tint * 0.75, 1)
+            local tint = far * 0.4
+            if k < 0 then tx:SetVertexColor(1, 1 - tint * 0.8, 1 - tint * 0.7)
+            elseif k > 0 then tx:SetVertexColor(1 - tint, 1 - tint * 0.6, 1)
             else tx:SetVertexColor(1, 1, 1) end
             beads[#beads + 1] = { tx = tx, k = k, far = far }
         end
@@ -560,7 +563,7 @@ local function buildButton()
         fx:SetScript("OnUpdate", function(_, dt)
             dt = dt * PACE
             t, since = t + dt, since + dt
-            local pull, alpha = REST, 0.9
+            local pull, alpha = REST, FRINGE
             local boost = 1
             if t < 0.5 then
                 boost = 1 + 2.2 * (1 - t / 0.5)
@@ -568,7 +571,7 @@ local function buildButton()
                 local e = t / 0.5
                 local k = (1 - e) * (1 - e)
                 pull = REST + (WIDE - REST) * k
-                alpha = 0.9 + 0.1 * k
+                alpha = FRINGE + FRINGE_UP * k
                 white:SetAlpha(0.75 * (1 - e) * (1 - e) * (1 - e))
                 since = 0
             else
@@ -578,7 +581,7 @@ local function buildButton()
                     -- The refocus: out and back.
                     local s = math.sin(since / 0.7 * math.pi)
                     pull = REST + (SWING - REST) * s
-                    alpha = 0.9 + 0.1 * s
+                    alpha = FRINGE + FRINGE_UP * s
                     boost = 1 + 0.5 * s
                 end
             end
@@ -589,7 +592,7 @@ local function buildButton()
         end)
         fx:SetScript("OnShow", function() t, since = 0, 0 end)
         btn.fxKick = function() t, since = 0, 0 end
-        spread(REST, 0.9)
+        spread(REST, FRINGE)
 
         -- Cast: the pill goes up in a poof. A quick white flash of its
         -- shape, then sparkles shaken out of it that fall and wink out, and
