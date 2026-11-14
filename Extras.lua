@@ -43,9 +43,14 @@ local function placeStrip()
     local plate = B and B.plate
     local x, y
     if plate and plate:IsShown() then
+        -- On top of the chat wing, at its left end (they used to sit in
+        -- the corner where the wing meets the lower panel).
         local well = plate.chatWell
-        x = (well and well:IsShown() and well:GetRight()) or plate:GetLeft()
-        y = plate:GetTop()
+        if well and well:IsShown() then
+            x, y = well:GetLeft() + 4, well:GetTop()
+        else
+            x, y = plate:GetLeft(), plate:GetTop()
+        end
     end
     strip:ClearAllPoints()
     if num(x) and num(y) then
