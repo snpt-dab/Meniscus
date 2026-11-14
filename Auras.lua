@@ -646,7 +646,7 @@ function A:OnInit(db)
     end
     for _, pf in ipairs(UF.party or {}) do
         -- Debuffs first (they are what needs acting on), then buffs.
-        table.insert(self.rows, newRow(pf, 8, 18, 3, { HARMFUL, HELPFUL }, rightOf(pf), { "GROUP_ROSTER_UPDATE" }))
+        table.insert(self.rows, newRow(pf, 8, 18, 1, { HARMFUL, HELPFUL }, rightOf(pf), { "GROUP_ROSTER_UPDATE" }))
     end
 
     if db.playerRows and UF.player then
