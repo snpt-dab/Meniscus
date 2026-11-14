@@ -369,6 +369,25 @@ function W:OnInit(db)
         if not next(waiting) then self:SetScript("OnUpdate", nil) return end
         sweep()
     end)
+    -- One of our windows is up but was never taken in (so Esc would skip
+    -- it and open the game menu instead): the bags can be shown by their
+    -- secure toggle with no call or script of ours seeing it, or while
+    -- still too faint to count as there. Looked for twice a second; what
+    -- it catches is noted (MinimalUIDB.escdiag) so the cause can be found.
+    C_Timer.NewTicker(0.5, function()
+        for f, name in pairs(hooked) do
+            if not open[f] and isOurs(name) and f:IsShown() then
+                local a, sc = f:GetAlpha(), f:GetScale()
+                if real(f) then
+                    dropSpecial(name)
+                    pcall(opened, f)
+                    if MinimalUIDB then
+                        MinimalUIDB.escdiag = date("%H:%M:%S") .. " caught " .. name .. " alpha " .. tostring(a) .. " scale " .. tostring(sc)
+                    end
+                end
+            end
+        end
+    end)
     driver:RegisterEvent("PLAYER_REGEN_ENABLED")
     driver:RegisterEvent("ADDON_LOADED")
     driver:SetScript("OnEvent", function(_, e)
