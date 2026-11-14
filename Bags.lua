@@ -1118,6 +1118,30 @@ function B.DropLine(worth)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Cheapest to throw away: the stack sells for " .. moneyText(worth), 0.95, 0.55, 0.50, true)
 end
+-- What is still lying in the open loot window, at its best: the most any
+-- one of the things in it sells for. Returns nil when that can't be said
+-- or doesn't settle it: no loot open, a price not known, or something in
+-- there that is worth having whatever it sells for (a quest item, anything
+-- green or better).
+local function lootWorth()
+    local n = call(_G.GetNumLootItems)
+    if not num(n) or n == 0 then return nil end
+    local f = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+    local best
+    for slot = 1, n do
+        local tex, _, qty, _, quality, _, isQuest = call(_G.GetLootSlotInfo, slot)
+        local link = tex and _G.GetLootSlotLink and call(_G.GetLootSlotLink, slot)
+        if type(link) == "string" and not secret(link) then
+            if secret(isQuest) or isQuest then return nil end
+            if not num(quality) or quality >= 2 then return nil end
+            local _, _, _, _, _, _, _, _, _, _, price = call(f, link)
+            if not num(price) then return nil end
+            local worth = price * (num(qty) and qty > 0 and qty or 1)
+            if not best or worth > best then best = worth end
+        end
+    end
+    return best
+end
 -- "Inventory is full": name the cheapest stack, wherever the bags window is.
 do
     local last = 0
@@ -1133,6 +1157,13 @@ do
         local e = ok and list[1]
         if not (e and ns.FloatWarning) then return end
         local name = e.link:match("%[(.-)%]") or "?"
+        -- Nothing left in the loot is worth more than the cheapest thing
+        -- you carry: say so, and don't offer to destroy anything for it.
+        local okW, there = pcall(lootWorth)
+        if okW and there and there <= e.worth then
+            ns.FloatWarning(e.icon, "Not worth making room", "loot " .. moneyText(there) .. ", cheapest " .. moneyText(e.worth))
+            return
+        end
         ns.FloatWarning(e.icon, "Cheapest: " .. name .. (e.count > 1 and ("  x" .. e.count) or ""), moneyText(e.worth))
         pcall(B.OfferDestroy, e)
         if B.Refresh then pcall(B.Refresh, B) end
