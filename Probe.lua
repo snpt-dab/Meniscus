@@ -1159,24 +1159,13 @@ local function xpProbe()
         out[#out + 1] = "combat text types: " .. table.concat(keys, ", ")
     end
     MinimalUIDB.xpprobe = out
-    -- Every setting the client has, by name and value, to search offline
-    -- (the one that draws the XP text has none of the obvious words in it).
-    local all = {}
-    local full = type(_G.ConsoleGetAllCommands) == "function" and select(2, pcall(_G.ConsoleGetAllCommands))
-    if type(full) == "table" then
-        for _, c in ipairs(full) do
-            local name = type(c) == "table" and c.command
-            if type(name) == "string" then
-                local ok, v = pcall(GetCVar, name)
-                all[#all + 1] = name .. "=" .. tostring(ok and v or "?")
-            end
-        end
-        table.sort(all)
-    end
-    MinimalUIDB.allcvars = all
+    -- (The full settings list was recorded once to look for an XP switch:
+    -- there is none. The text is engine world text, sized by
+    -- WorldTextScale_v2 along with damage numbers. The list is dropped.)
+    MinimalUIDB.allcvars = nil
 end
 ns.commands.xpprobe = function() xpProbe(); ns:Print("XP text settings written. /reload, then tell Claude.") end
-C_Timer.After(6, function() pcall(xpProbe) end)
+C_Timer.After(6, function() if MinimalUIDB then MinimalUIDB.allcvars = nil end end)
 
 ns.commands.navprobe = function()
     if not MinimalUIDB then return end
