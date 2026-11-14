@@ -1628,6 +1628,9 @@ local function deepDriver(f, name)
         if not ok and not errShown then errShown = true; ns:Print("Skin " .. name .. ": " .. tostring(err)) end
     end
     d:SetScript("OnShow", function() acc, calm = 0, 0; run(true) end)
+    -- For a window's own skin: ask for the quick passes now (next frame,
+    -- and once more a quarter of a second later).
+    f.__muiDeepSoon = function() soon, calm = 2, 0 end
     d:SetScript("OnUpdate", function(_, dt)
         acc = acc + dt
         if soon > 0 then
@@ -2786,7 +2789,25 @@ local function skinSocial()
             acc = 0
             ns.Timed("friends window", sweep)
         end)
-        F:HookScript("OnShow", function() acc = 1 end)
+        -- The first time it opens, the window's parts are still being made
+        -- and filled in for a moment, and would be seen in Blizzard's
+        -- dress before ours is on. So that first time it stays unseen for
+        -- a third of a second while the restyling passes run, then appears.
+        local first = true
+        local function gate()
+            acc = 1
+            if not first then return end
+            first = false
+            F:SetAlpha(0)
+            if F.__muiDeepSoon then F.__muiDeepSoon() end
+            C_Timer.After(0.1, function() pcall(sweep) end)
+            C_Timer.After(0.34, function()
+                pcall(sweep)
+                F:SetAlpha(1)
+            end)
+        end
+        F:HookScript("OnShow", gate)
+        if F:IsShown() then gate() end
         return true
     end
     if not build() then
