@@ -247,12 +247,13 @@ local function buildNumbers()
                     any = true
                     -- Up quickly, then easing off; clear until the last third.
                     local e = 1 - (1 - k) * (1 - k)
-                    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + NUM_RISE * e)
+                    -- (A critical lands large and settles; positions are in
+                    -- the frame's own units, so the scale is divided out.)
+                    local sc = f.scale
+                    if f.crit and f.age < 0.16 then sc = 1.7 - 0.4 * f.age / 0.16 end
+                    f:SetScale(sc)
+                    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x / sc, (f.y + NUM_RISE * e) / sc)
                     f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
-                    if f.crit then
-                        local p = f.age < 0.16 and (1.7 - 0.4 * f.age / 0.16) or 1.3
-                        f:SetScale(p)
-                    end
                 end
             end
         end
@@ -269,16 +270,15 @@ local function buildNumbers()
         if not ok then return end
         spawned = spawned + 1
         local scale = crit and 1.3 or (small and 0.8 or 1)
-        f.crit = crit
+        f.crit, f.scale = crit, scale
         f:SetScale(scale)
-        -- (Positions are in the frame's own units: divide the scale out.)
-        f.x = (x + ((spawned % 5) - 2) * 13) / scale
-        f.y = y / scale
+        f.x = x + ((spawned % 5) - 2) * 13
+        f.y = y
         f.fs:SetTextColor(r, g, b)
         f.age, f.live = 0, true
         f:SetAlpha(1)
         f:ClearAllPoints()
-        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y)
+        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x / scale, f.y / scale)
         f:Show()
         driver:Show()
     end
