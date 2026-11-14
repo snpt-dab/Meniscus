@@ -296,10 +296,20 @@ local function buildOwned()
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tip, data)
             if tip ~= GameTooltip and tip ~= _G.ItemRefTooltip then return end
             local id = type(data) == "table" and data.id
-            if num(id) then
-                pcall(ownedLines, tip, id)
-                if EX.db and EX.db.canMake ~= false then pcall(madeLines, tip, id) end
+            -- (Where the tooltip's data carries no plain id, take it from
+            -- the item's link.)
+            if not num(id) and tip.GetItem then
+                local ok, _, link = pcall(tip.GetItem, tip)
+                if ok and type(link) == "string" and not secret(link) then id = tonumber(link:match("item:(%d+)")) end
             end
+            local diag = MinimalUIDB and { at = date("%H:%M:%S"), id = secret(id) and "secret" or tostring(id) }
+            if num(id) then
+                local ok1, e1 = pcall(ownedLines, tip, id)
+                local ok2, e2 = true, nil
+                if EX.db and EX.db.canMake ~= false then ok2, e2 = pcall(madeLines, tip, id) end
+                if diag then diag.owned, diag.made = ok1 and "ok" or tostring(e1), ok2 and "ok" or tostring(e2) end
+            end
+            if diag then MinimalUIDB.tipdiag = diag end
         end)
     end
 end
