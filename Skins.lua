@@ -1589,7 +1589,7 @@ local function deepSkin(f, depth)
             if not r.__muiDeepSeen then
                 r.__muiDeepSeen = true
                 local a = r.GetAtlas and r:GetAtlas()
-                if isButton and not f.__muiGrey and isGreyAtlas(a) then
+                if isButton and not f.__muiGrey and not f.__muiSkin and isGreyAtlas(a) then
                     -- The selected ring of a slot picker keeps a colour: ours.
                     local sel = rawget(f, "SelectedTexture")
                     if sel and sel.IsObjectType then sel.__muiTint = T.accent end
@@ -2679,10 +2679,14 @@ local function skinSocial()
             end
         end
     end
+    -- (Battle.net names are protected strings: their "unbounded" width
+    -- reads as almost nothing. So: give the text room, see how wide it
+    -- drew, and fit to that.)
     local function fit(fs, max)
-        if not (fs and fs.GetUnboundedStringWidth and fs:IsShown()) then return end
-        local w = fs:GetUnboundedStringWidth()
-        if type(w) == "number" and not secret(w) and w > 0 then fs:SetWidth(math.min(w + 4, max)) end
+        if not (fs and fs.GetStringWidth and fs:IsShown()) then return end
+        fs:SetWidth(max)
+        local w = fs:GetStringWidth()
+        if type(w) == "number" and not secret(w) and w > 4 then fs:SetWidth(math.min(w + 4, max)) end
     end
     local function row(r)
         if r.FriendName then
@@ -2722,7 +2726,7 @@ local function skinSocial()
             end
             flat(cc.BattleNetMenuButton, "Icon")
             local dd = cc.OnlineStatusDropdown
-            if dd then silver(dd.Arrow) end
+            if dd then fade(dd.Background); silver(dd.Arrow) end
         end
         -- The lists (friends, recent allies, requests...): each is a child
         -- with a ScrollBox, and most have the red button at the bottom.
@@ -2739,28 +2743,32 @@ local function skinSocial()
                 tabs[#tabs + 1] = c
             end
         end
-        for _, t in ipairs(tabs) do
-            fade(t.Background); fade(t.TabGlow); fade(t.SelectedTexture)
-            local on = t:CreateTexture(nil, "OVERLAY")
-            on:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
-            on:SetSize(2, 18)
-            on:SetPoint("RIGHT", t.Icon, "LEFT", -5, 0)
-            on:Hide()
-            t.__muiOn = on
+        -- The side tabs are made after the window is, so they are looked
+        -- for until found. The generic skin has already given each a
+        -- rounded square (__muiTabRing): its ring is the accent on the open
+        -- tab, and the gold icon is silver.
+        local function findTabs()
+            local ks, kn = ns.Kids(F, 5)
+            for i = 1, kn do
+                local c = ks[i]
+                if c.SelectedTexture and c.Icon and c.Icon.SetDesaturated and c.GetObjectType
+                    and c:GetObjectType() == "Button" then
+                    tabs[#tabs + 1] = c
+                end
+            end
         end
         local function sweep()
             for _, box in ipairs(boxes) do rows(box) end
+            if #tabs == 0 then findTabs() end
             for _, t in ipairs(tabs) do
                 local sel = t.SelectedTexture:IsShown()
-                t.__muiOn:SetShown(sel)
                 -- (Blizzard swaps the icon's art when a tab opens or
                 -- closes; the tint is put back each time.)
-                silver(t.Icon, sel and 1.15 or 0.8)
-                fade(t.TabGlow)
-            end
-            for _, box in ipairs(boxes) do
-                local p = box:GetParent()
-                if p and p.ActionButton and p:IsVisible() then redCaps(p.ActionButton) end
+                silver(t.Icon, sel and 1.2 or 0.75)
+                if t.__muiTabRing then
+                    if sel then t.__muiTabRing(T.accent[1], T.accent[2], T.accent[3], 1)
+                    else t.__muiTabRing(T.border[1], T.border[2], T.border[3], 1) end
+                end
             end
         end
         for _, box in ipairs(boxes) do
