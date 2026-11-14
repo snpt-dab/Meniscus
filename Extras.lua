@@ -2083,6 +2083,32 @@ local function buildPotions()
         btns[i] = b
     end
 
+    -- A click anywhere else closes the row.
+    --   * Out of combat the game tells us of every mouse press, and the row
+    --     is simply hidden: the click still does whatever it was for.
+    --   * In combat only secure code may hide it, so an unseen button lies
+    --     across the whole screen behind the row (there only in combat, and
+    --     only while the row is open); it closes the row, and that one
+    --     click goes no further.
+    for _, pb in ipairs(btns) do pb:SetFrameLevel(fly:GetFrameLevel() + 3) end
+    local catcher = CreateFrame("Button", nil, fly, "SecureHandlerClickTemplate")
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameLevel(fly:GetFrameLevel())
+    catcher:RegisterForClicks("AnyDown")
+    catcher:SetAttribute("_onclick", [[ self:GetParent():Hide() ]])
+    if RegisterStateDriver then pcall(RegisterStateDriver, catcher, "visibility", "[combat] show; hide") else catcher:Hide() end
+    local blur = CreateFrame("Frame")
+    if pcall(blur.RegisterEvent, blur, "GLOBAL_MOUSE_DOWN") then
+        blur:SetScript("OnEvent", function()
+            if InCombatLockdown() or not fly:IsShown() then return end
+            if anchor:IsMouseOver() then return end
+            for _, pb in ipairs(btns) do
+                if pb:IsShown() and pb:IsMouseOver() then return end
+            end
+            fly:Hide()
+        end)
+    end
+
     -- Counts and cooldowns: plain drawing, fine at any time.
     local function update()
         for _, b in ipairs(btns) do
