@@ -288,7 +288,20 @@ function TR:Console(x, y, w, h)
             local b = P.btns[P.usedBtns]
             if not b then
                 b = CreateFrame("Button", nil, content)
-                b:SetScript("OnClick", function(self)
+                b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                -- The mark of the focused quest (the one the dot is for).
+                b.dot = b:CreateTexture(nil, "OVERLAY")
+                b.dot:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga")
+                b.dot:SetSize(6, 6)
+                b.dot:SetPoint("TOPLEFT", b, "TOPLEFT", 5, -4)
+                b.dot:SetVertexColor(0.86, 0.89, 0.94, 1)
+                b.dot:Hide()
+                b:SetScript("OnClick", function(self, button)
+                    -- Right-click: focus this quest (or let it go).
+                    if button == "RightButton" then
+                        if ns.QuestFocus then ns.QuestFocus.Toggle(self.questID) end
+                        return
+                    end
                     local Q = ns.modules.QuestLog
                     if Q and Q.Open and Q.db then
                         Q.selected = self.questID
@@ -298,8 +311,17 @@ function TR:Console(x, y, w, h)
                         ToggleQuestLog()
                     end
                 end)
-                b:SetScript("OnEnter", function(self) if self.fs then self.fs:SetAlpha(0.75) end end)
-                b:SetScript("OnLeave", function(self) if self.fs then self.fs:SetAlpha(1) end end)
+                b:SetScript("OnEnter", function(self)
+                    if self.fs then self.fs:SetAlpha(0.75) end
+                    if ns.QuestFocus and ns.QuestFocus.Available() then
+                        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                        local on = ns.QuestFocus.Get() == self.questID
+                        GameTooltip:SetText(on and "Focused: the dot points here" or "Right-click to focus", 1, 1, 1)
+                        GameTooltip:AddLine(on and "Right-click to let it go." or "The dot in the world points at the focused quest.", 0.7, 0.7, 0.75, true)
+                        GameTooltip:Show()
+                    end
+                end)
+                b:SetScript("OnLeave", function(self) if self.fs then self.fs:SetAlpha(1) end GameTooltip:Hide() end)
                 P.btns[P.usedBtns] = b
             end
             b:Show()
@@ -359,8 +381,10 @@ function TR:Console(x, y, w, h)
                 else fs:SetTextColor(diffColor(e.level)) end
                 fs:SetAlpha(1)
                 local top = yy
-                put(fs, 0, 1)
+                local focused = ns.QuestFocus ~= nil and ns.QuestFocus.Get() == e.id
+                put(fs, focused and 11 or 0, 1)
                 local b = P.takeBtn()
+                b.dot:SetShown(focused)
                 b.questID, b.fs = e.id, fs
                 b:ClearAllPoints()
                 b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
@@ -411,6 +435,7 @@ function TR:Console(x, y, w, h)
             end)
         end
         P.again = soon
+        if ns.QuestFocus then table.insert(ns.QuestFocus.listeners, soon) end
         local ev = CreateFrame("Frame")
         for _, e in ipairs({ "QUEST_LOG_UPDATE", "QUEST_WATCH_LIST_CHANGED", "ZONE_CHANGED_NEW_AREA",
                              "ZONE_CHANGED", "PLAYER_ENTERING_WORLD", "UNIT_QUEST_LOG_CHANGED",

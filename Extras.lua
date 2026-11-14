@@ -869,9 +869,32 @@ end
 -- over the objective of the quest being followed, and slides to the edge of
 -- the screen when that is behind you. It is off by default in this client
 -- and nothing chooses a quest for it. So: the game setting is turned on,
--- the nearest quest on your watch list is followed (a quest or map pin you
--- pick yourself is left alone), and the game's large marker is redrawn as a
+-- the quest you focused is followed (a map pin you set yourself is left
+-- alone), and the game's large marker is redrawn as a
 -- small silver dot with the distance under it.
+-- The focused quest: one quest per character, chosen by you (right-click a
+-- quest in the objectives panel, or "Focus" in the quest log). It is what
+-- the dot points at. MinimalUIDB.questFocus[character] = quest id.
+local focusApply -- set once the waypoint is built
+ns.QuestFocus = { listeners = {} }
+function ns.QuestFocus.Get()
+    local t = MinimalUIDB and MinimalUIDB.questFocus
+    return t and t[ns:CharKey()] or nil
+end
+function ns.QuestFocus.Set(id)
+    if not MinimalUIDB then return end
+    MinimalUIDB.questFocus = MinimalUIDB.questFocus or {}
+    MinimalUIDB.questFocus[ns:CharKey()] = id
+    if focusApply then pcall(focusApply) end
+    for _, fn in ipairs(ns.QuestFocus.listeners) do pcall(fn) end
+end
+function ns.QuestFocus.Toggle(id)
+    ns.QuestFocus.Set(ns.QuestFocus.Get() ~= id and id or nil)
+end
+function ns.QuestFocus.Available() return focusApply ~= nil end
+function ns.QuestFocus.Override() end
+function ns.QuestFocus.EndOverride() end
+
 local function buildWaypoint()
     local ST, NV, F = _G.C_SuperTrack, _G.C_Navigation, _G.SuperTrackedFrame
     if not (ST and NV and F and ST.SetSuperTrackedQuestID and C_QuestLog) then return end
@@ -947,44 +970,45 @@ local function buildWaypoint()
         self:SetPoint("CENTER", UIParent, "CENTER", dx / d, dy / d)
     end)
 
-    -- Which quest to follow: the nearest one being watched.
-    local mine
-    local function watched(id)
-        for i = 1, (C_QuestLog.GetNumQuestWatches() or 0) do
-            if C_QuestLog.GetQuestIDForQuestWatchIndex(i) == id then return true end
-        end
-    end
-    local function pick()
+    -- Which quest the dot is for: the one you focused (ns.QuestFocus), and
+    -- nothing else. No focus, no dot. A map pin you set yourself is left
+    -- alone, and a rare that has just appeared borrows the dot for a while
+    -- (ns.QuestFocus.Override).
+    local born = GetTime()
+    local override, hadOverride
+    local function apply()
         local rec = { at = date("%H:%M:%S") }
         if MinimalUIDB then MinimalUIDB.waypoint = rec end
-        local cur = ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID()
-        if secret(cur) then return end
-        if cur == 0 then cur = nil end
-        rec.cur = cur
-        -- Something you chose yourself: leave it.
+        if override and GetTime() > override.till then override = nil end
+        if override then
+            hadOverride = true
+            rec.override = true
+            if ST.SetSuperTrackedVignette then pcall(ST.SetSuperTrackedVignette, override.guid) end
+            return
+        end
+        if hadOverride then
+            hadOverride = nil
+            if ST.ClearAllSuperTracked then pcall(ST.ClearAllSuperTracked) end
+        end
         if (ST.IsSuperTrackingMapPin and ST.IsSuperTrackingMapPin())
             or (ST.IsSuperTrackingUserWaypoint and ST.IsSuperTrackingUserWaypoint())
             or (ST.IsSuperTrackingCorpse and ST.IsSuperTrackingCorpse()) then rec.left = "pin"; return end
-        if cur and cur ~= mine and watched(cur) then rec.left = "yours"; return end
-        local best, bestD
-        if C_QuestLog.GetDistanceSqToQuest then
-            for i = 1, (C_QuestLog.GetNumQuestWatches() or 0) do
-                local id = C_QuestLog.GetQuestIDForQuestWatchIndex(i)
-                if id then
-                    local ok, d, here = pcall(C_QuestLog.GetDistanceSqToQuest, id)
-                    rec[#rec + 1] = tostring(id) .. " " .. (ok and (secret(d) and "secret" or tostring(d)) or "err") .. " " .. tostring(here)
-                    if ok and num(d) and d > 0 and here ~= false and (not bestD or d < bestD) then best, bestD = id, d end
-                end
-            end
-        else
-            rec.nodist = true
+        local want = ns.QuestFocus.Get()
+        -- The quest is no longer in your log: the focus goes with it. (Not
+        -- in the first seconds after login, while the log is still empty.)
+        if want and GetTime() - born > 15 and C_QuestLog.GetLogIndexForQuestID
+            and not C_QuestLog.GetLogIndexForQuestID(want) then
+            ns.QuestFocus.Set(nil)
+            return
         end
-        rec.best = best
-        if best and best ~= cur then
-            mine = best
-            pcall(ST.SetSuperTrackedQuestID, best)
-        elseif best then
-            mine = best
+        local cur = ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID()
+        if secret(cur) then return end
+        if cur == 0 then cur = nil end
+        rec.want, rec.cur = want, cur
+        if want then
+            if cur ~= want then pcall(ST.SetSuperTrackedQuestID, want) end
+        elseif cur then
+            if ST.ClearAllSuperTracked then pcall(ST.ClearAllSuperTracked) else pcall(ST.SetSuperTrackedQuestID, 0) end
         end
         pcall(function()
             rec.frame = NV.GetFrame and NV.GetFrame() ~= nil
@@ -997,8 +1021,15 @@ local function buildWaypoint()
     local function soon()
         if due then return end
         due = true
-        C_Timer.After(0.5, function() due = false; pcall(pick) end)
+        C_Timer.After(0.3, function() due = false; pcall(apply) end)
     end
+    focusApply = soon
+    function ns.QuestFocus.Override(guid, seconds)
+        override = { guid = guid, till = GetTime() + (seconds or 60) }
+        soon()
+        C_Timer.After((seconds or 60) + 0.5, soon)
+    end
+    function ns.QuestFocus.EndOverride() if override then override.till = 0; soon() end end
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "QUEST_WATCH_LIST_CHANGED", "QUEST_LOG_UPDATE",
                          "ZONE_CHANGED_NEW_AREA", "QUEST_POI_UPDATE", "SUPER_TRACKING_CHANGED" }) do

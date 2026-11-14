@@ -444,7 +444,7 @@ local PAGES = {
         } },
         { title = "Quests", items = {
             { "Dot over the quest objective", kind = "switch", reload = true,
-              note = "A small silver dot in the world over your nearest tracked quest, with the distance",
+              note = "For the quest you focus: right-click it in the objectives, or Focus in the quest log",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.waypoint ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.waypoint = d.waypoint == false end end },
         } },

@@ -402,7 +402,7 @@ showDetail = function(e, retried)
         fs:SetText("Pick a quest on the left.")
         place(fs)
         content:SetHeight(-y)
-        win.track:Hide(); win.share:Hide(); win.map:Hide(); win.abandon:Hide()
+        win.track:Hide(); win.focus:Hide(); win.share:Hide(); win.map:Hide(); win.abandon:Hide()
         return
     end
     local id = e.questID
@@ -564,6 +564,9 @@ showDetail = function(e, retried)
     -- Footer actions.
     win.track:SetLabel(isTracked(id) and "Untrack" or "Track")
     win.track:Show(); win.map:Show(); win.abandon:Show()
+    local canFocus = ns.QuestFocus ~= nil and ns.QuestFocus.Available()
+    win.focus:SetShown(canFocus)
+    if canFocus then win.focus:SetLabel(ns.QuestFocus.Get() == id and "Unfocus" or "Focus") end
     local canShare = call(QL.IsPushableQuest, id) and (IsInGroup and IsInGroup())
     win.share:SetShown(canShare and true or false)
     local canAbandon = call(QL.CanAbandonQuest, id) ~= false
@@ -671,7 +674,13 @@ local function build()
         call(QL.SetSelectedQuest, Q.selected)
         call(_G.QuestLogPushQuest)
     end)
-    win.share:SetPoint("LEFT", win.track, "RIGHT", 8, 0)
+    -- Focus: the one quest the dot in the world points at.
+    win.focus = pill(win, "Focus", function()
+        if Q.selected and ns.QuestFocus then ns.QuestFocus.Toggle(Q.selected) end
+        Q:Refresh()
+    end)
+    win.focus:SetPoint("LEFT", win.track, "RIGHT", 8, 0)
+    win.share:SetPoint("LEFT", win.focus, "RIGHT", 8, 0)
     win.map = pill(win, "Show on map", function()
         local id = Q.selected
         if not id then return end
@@ -695,7 +704,7 @@ local function build()
     -- Keep Share's position stable when it's hidden.
     hooksecurefunc(win.share, "SetShown", function(self, shown)
         win.map:ClearAllPoints()
-        win.map:SetPoint("LEFT", shown and self or win.track, "RIGHT", 8, 0)
+        win.map:SetPoint("LEFT", shown and self or (win.focus:IsShown() and win.focus or win.track), "RIGHT", 8, 0)
     end)
 
     win:SetScript("OnShow", function()
