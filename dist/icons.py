@@ -207,6 +207,8 @@ def icons():
     I['stat_defense'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True)
     # resistances: a halved shield
     I['stat_resist'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True).line([(12, 5.2), (12, 19)], w=2.0)
+    # A remembered gathering node on the world map: a dot in a thin ring.
+    I['node'] = Icon().dot(12, 12, 3.4).ring(12, 12, 8.6, w=1.6)
     return I
 
 

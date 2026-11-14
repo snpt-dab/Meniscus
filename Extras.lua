@@ -1263,7 +1263,7 @@ local function buildNodeMap(db)
             d = CreateFrame("Frame", nil, layer)
             d.tex = d:CreateTexture(nil, "OVERLAY")
             d.tex:SetAllPoints()
-            d.tex:SetTexture(MEDIA .. "circle.tga")
+            d.tex:SetTexture(MEDIA .. "micro_node.tga") -- a dot in a ring
             -- Hover only: clicks go through to the map.
             d:EnableMouse(true)
             if d.SetMouseClickEnabled then pcall(d.SetMouseClickEnabled, d, false) end
@@ -1307,7 +1307,7 @@ local function buildNodeMap(db)
         if cw == lastW and scale == lastScale then return end
         lastW, lastScale = cw, scale
         -- The canvas grows as you zoom in: the dots keep their size on screen.
-        local size = 7 / scale
+        local size = 20 / scale -- (the ring's width; the dot inside is about 6)
         local used = 0
         for i = 1, #placed, 3 do
             used = used + 1
@@ -1315,7 +1315,7 @@ local function buildNodeMap(db)
             local n = placed[i + 2]
             local c = NODE_TINT[n[3]] or NODE_TINT.ore
             d.kind, d.name = n[3], n[4]
-            d.tex:SetVertexColor(c[1], c[2], c[3], 0.85)
+            d.tex:SetVertexColor(c[1], c[2], c[3], 0.62)
             d:SetSize(size, size)
             d:ClearAllPoints()
             d:SetPoint("CENTER", canvas, "TOPLEFT", placed[i] * cw, -placed[i + 1] * ch)
@@ -1330,6 +1330,26 @@ local function buildNodeMap(db)
         acc = 0
         pcall(place)
     end)
+    -- On the map itself, a pill to hide them and bring them back (it names
+    -- what a click will do). Kept between sessions.
+    local host = WM.ScrollContainer or WM
+    local pill
+    local function sync()
+        local on = EX.db.nodesShown ~= false
+        layer:SetShown(on)
+        if on then acc = 1 end
+        if pill then pill:SetLabel(on and "Hide nodes" or "Show nodes") end
+    end
+    if ns.Pill then
+        pill = ns.Pill(host, "Hide nodes", function()
+            EX.db.nodesShown = EX.db.nodesShown == false
+            sync()
+        end, { h = 20, font = 10, pad = 18, ring = true, dimIdle = true })
+        pill.__muiSkin = true -- (the map's skin pass leaves it alone)
+        pill:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 10)
+        pill:SetFrameLevel(math.min(9000, canvas:GetFrameLevel() + 2600))
+    end
+    sync()
 end
 
 local function buildNodes()
