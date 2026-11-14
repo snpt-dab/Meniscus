@@ -1664,6 +1664,7 @@ local OTHERS = {
     -- reputation, skills tabs; the ones it still shows itself on Forever
     -- (PvP, currency, statistics) get the generic treatment.
     CharacterFrame = { strip = true, big = true, deep = true },
+    TradeFrame = { strip = true, big = true, deep = true },        -- trading with another player
 }
 local function skinOthers()
     for n, opts in pairs(OTHERS) do
@@ -1676,6 +1677,19 @@ local function skinOthers()
                     if opts.deep and f[k] then fade(f[k]) end
                 end
                 ns.SkinWindow(f, opts)
+                if n == "TradeFrame" then
+                    -- Its second half (the other player's side) is drawn as
+                    -- a second window frame of its own, with a portrait
+                    -- medallion: that art goes. The green "accepted" wash
+                    -- over a side is left alone.
+                    local ro = f.RecipientOverlay
+                    if ro then fade(ro.portrait); fade(ro.portraitFrame) end
+                    for _, k in ipairs({ "TradeRecipientBG", "TradeRecipientPortraitFrame", "TradeRecipientBotLeftCorner",
+                                         "TradeRecipientLeftBorder", "TradeRecipientMoneyBg", "TradeFramePlayerPortrait",
+                                         "TradeFrameRecipientPortrait", "TradeRecipientPortrait" }) do
+                        fade(_G[k])
+                    end
+                end
                 skinButtonsIn(f)
                 if opts.deep then
                     if f.__muiHolder then ours(f.__muiHolder) end
