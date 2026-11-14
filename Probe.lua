@@ -1209,3 +1209,376 @@ ns.commands.deepprobe = function(_, raw)
     MinimalUIDB.deepprobe[name] = out
     ns:Print(name .. ": " .. #out .. " lines recorded. /reload to save them.")
 end
+
+-- ── The recorder (a development tool, off unless switched on) ─────────────
+-- "/men record on" writes down what happens while you play, as one short
+-- line per event in MinimalUIDB.journal[character], to be read between
+-- sessions for what the addon could make easier: every cast and failed
+-- cast, every red error message, quest steps, where you are and what you
+-- are doing every few seconds, fights, deaths, loot, money, bags filling,
+-- gear wearing out, and which windows are open for how long.
+--   /men record on | off | status | clear
+--   /men record mark <words>     a note of your own at this moment
+-- A line is "<seconds since the session began>|<what>|<details...>"; each
+-- session starts with an "S" line carrying the date and time. Hidden
+-- values (health in a fight, some names) are written as "?". Chat is not
+-- recorded. The newest 100,000 lines are kept. It reaches the disk at the
+-- next /reload or logout, like everything else.
+do
+    local J, t0, running = nil, 0, false
+    local MAX, KEEP = 120000, 100000
+    local function hidden(v) return issecretvalue and issecretvalue(v) end
+    local function sv(x)
+        if x == nil then return "" end
+        if hidden(x) then return "?" end
+        return tostring(x)
+    end
+    local function log(kind, ...)
+        if not J then return end
+        local s = string.format("%.1f", GetTime() - t0) .. "|" .. kind
+        for i = 1, select("#", ...) do s = s .. "|" .. sv((select(i, ...))) end
+        J[#J + 1] = s
+    end
+    local function plainNum(v) return type(v) == "number" and not hidden(v) end
+    local function try(fn, ...)
+        if type(fn) ~= "function" then return end
+        local ok, a, b, c, d = pcall(fn, ...)
+        if ok then return a, b, c, d end
+    end
+    local function where()
+        local m = C_Map and try(C_Map.GetBestMapForUnit, "player")
+        if plainNum(m) then
+            local p = try(C_Map.GetPlayerMapPosition, m, "player")
+            if p and p.GetXY then
+                local x, y = p:GetXY()
+                if plainNum(x) and plainNum(y) then
+                    return m, math.floor(x * 1000 + 0.5) / 10, math.floor(y * 1000 + 0.5) / 10
+                end
+            end
+            return m, "", ""
+        end
+        return "", "", ""
+    end
+    local function spell(id)
+        local n = plainNum(id) and C_Spell and try(C_Spell.GetSpellName, id)
+        return (type(n) == "string" and not hidden(n)) and n or sv(id)
+    end
+    local function flag(v) return (not hidden(v)) and v and true or false end
+
+    -- What you are doing, as letters: c in combat, m mounted, t on a
+    -- flight, d dead or ghost, r resting, i indoors, s stealthed,
+    -- w swimming, e eating, k drinking, v moving.
+    local function state()
+        local s = ""
+        if InCombatLockdown() then s = s .. "c" end
+        if flag(try(IsMounted)) then s = s .. "m" end
+        if flag(try(UnitOnTaxi, "player")) then s = s .. "t" end
+        if flag(try(UnitIsDeadOrGhost, "player")) then s = s .. "d" end
+        if flag(try(IsResting)) then s = s .. "r" end
+        if flag(try(IsIndoors)) then s = s .. "i" end
+        if flag(try(IsStealthed)) then s = s .. "s" end
+        if flag(try(IsSwimming)) then s = s .. "w" end
+        local speed = try(GetUnitSpeed, "player")
+        if plainNum(speed) and speed > 0 then s = s .. "v" end
+        if not InCombatLockdown() and AuraUtil and AuraUtil.FindAuraByName then
+            if try(AuraUtil.FindAuraByName, "Food", "player") then s = s .. "e" end
+            if try(AuraUtil.FindAuraByName, "Drink", "player") then s = s .. "k" end
+        end
+        return s
+    end
+    local function pct(cur, max)
+        if plainNum(cur) and plainNum(max) and max > 0 then return math.floor(cur / max * 100 + 0.5) end
+        return "?"
+    end
+
+    -- Quest objectives: what moved since last time.
+    local objSeen = {}
+    local function questSteps()
+        local QL = C_QuestLog
+        if not (QL and QL.GetNumQuestLogEntries and QL.GetInfo and QL.GetQuestObjectives) then return end
+        local n = try(QL.GetNumQuestLogEntries)
+        if not plainNum(n) then return end
+        for i = 1, n do
+            local info = try(QL.GetInfo, i)
+            if type(info) == "table" and not info.isHeader and plainNum(info.questID) then
+                local objs = try(QL.GetQuestObjectives, info.questID)
+                if type(objs) == "table" then
+                    for k, o in ipairs(objs) do
+                        local f = type(o) == "table" and o.numFulfilled
+                        if plainNum(f) then
+                            local key = info.questID .. ":" .. k
+                            local was = objSeen[key]
+                            if was ~= nil and was ~= f then
+                                local m, x, y = where()
+                                log("QP", info.questID, k, f, o.numRequired, o.finished and 1 or 0, o.text, m, x, y)
+                            end
+                            objSeen[key] = f
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Windows: ours and the game's main ones, opened and closed.
+    local watch, shownNow = nil, {}
+    local GAME_WINDOWS = { "WorldMapFrame", "SocialUIFrame", "FriendsFrame", "CharacterFrame", "PlayerSpellsFrame",
+        "SettingsPanel", "GameMenuFrame", "CommunitiesFrame", "LFGParentFrame", "CollectionsJournal", "MailFrame",
+        "MerchantFrame", "BankFrame", "TaxiFrame", "FlightMapFrame", "AuctionHouseFrame", "TradeFrame",
+        "ProfessionsFrame", "ClassTrainerFrame", "QuestFrame", "GossipFrame", "LootFrame", "HelpFrame",
+        "AchievementFrame", "EncounterJournal", "ChatConfigFrame", "MacroFrame", "KeyBindingFrame", "AddonList" }
+    local function buildWatch()
+        watch = {}
+        local seen = {}
+        for _, n in ipairs(GAME_WINDOWS) do seen[n] = true; watch[#watch + 1] = n end
+        pcall(function()
+            for k, v in pairs(_G) do
+                if type(k) == "string" and (k:find("^MinimalUI") or k:find("^Meniscus")) and not seen[k]
+                    and type(v) == "table" and type(v.IsShown) == "function" and type(v.GetParent) == "function" then
+                    local ok, parent = pcall(v.GetParent, v)
+                    if ok and parent == UIParent and not k:find("QuestItem") and not k:find("Reactive") then
+                        seen[k] = true
+                        watch[#watch + 1] = k
+                    end
+                end
+            end
+        end)
+    end
+    local function windows()
+        if not watch then return end
+        for _, n in ipairs(watch) do
+            local f = _G[n]
+            local up = false
+            if type(f) == "table" and f.IsShown then
+                local ok, v = pcall(f.IsShown, f)
+                -- (Blizzard windows we keep open but invisible don't count.)
+                up = ok and v and (not f.GetAlpha or f:GetAlpha() > 0.01) or false
+            end
+            if up ~= (shownNow[n] or false) then
+                shownNow[n] = up
+                log(up and "W+" or "W-", n)
+            end
+        end
+    end
+
+    local lastP, lastFree, lastDur, tick, ticks = "", nil, nil, 0, 0
+    local function sample()
+        ticks = ticks + 1
+        local m, x, y = where()
+        local st = state()
+        local hp = pct(try(UnitHealth, "player"), try(UnitHealthMax, "player"))
+        local mp = pct(try(UnitPower, "player"), try(UnitPowerMax, "player"))
+        local line = sv(m) .. "|" .. sv(x) .. "|" .. sv(y) .. "|" .. st .. "|" .. sv(hp) .. "|" .. sv(mp)
+        if line ~= lastP then
+            lastP = line
+            if ticks % 10 == 0 then
+                local fps = try(GetFramerate)
+                log("P", m, x, y, st, hp, mp, plainNum(fps) and math.floor(fps) or "")
+            else
+                log("P", m, x, y, st, hp, mp)
+            end
+        end
+    end
+    local function bags()
+        if not (C_Container and C_Container.GetContainerNumFreeSlots) then return end
+        local free = 0
+        for bag = 0, 4 do
+            local n = try(C_Container.GetContainerNumFreeSlots, bag)
+            if plainNum(n) then free = free + n end
+        end
+        if free ~= lastFree then lastFree = free; log("BAGS", free) end
+    end
+    local function durability()
+        local low
+        for slot = 1, 18 do
+            local cur, max = try(GetInventoryItemDurability, slot)
+            if plainNum(cur) and plainNum(max) and max > 0 then
+                local p = math.floor(cur / max * 100)
+                if not low or p < low then low = p end
+            end
+        end
+        if low and low ~= lastDur then lastDur = low; log("DUR", low) end
+    end
+
+    local ev = CreateFrame("Frame")
+    local GENERIC = { "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+        "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "CORPSE_IN_RANGE", "RESURRECT_REQUEST", "PLAYER_LEVEL_UP",
+        "QUEST_REMOVED", "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_GREETING",
+        "GOSSIP_SHOW", "GOSSIP_CLOSED", "MERCHANT_SHOW", "MERCHANT_CLOSED", "MAIL_SHOW", "MAIL_CLOSED",
+        "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "TAXIMAP_OPENED", "TAXIMAP_CLOSED", "TRAINER_SHOW", "TRAINER_CLOSED",
+        "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "TRADE_SHOW",
+        "TRADE_CLOSED", "LOOT_OPENED", "LOOT_CLOSED", "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED",
+        "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_EQUIPMENT_CHANGED", "ACTIONBAR_SLOT_CHANGED",
+        "NEW_RECIPE_LEARNED", "LEARNED_SPELL_IN_TAB", "CHARACTER_POINTS_CHANGED", "HEARTHSTONE_BOUND",
+        "PLAYER_UPDATE_RESTING", "UNIT_PET", "PET_ATTACK_START", "PET_ATTACK_STOP", "READY_CHECK",
+        "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", "PLAYER_INTERACTION_MANAGER_FRAME_HIDE", "CONFIRM_XP_LOSS",
+        "START_LOOT_ROLL", "CINEMATIC_START", "CINEMATIC_STOP", "PLAYER_FLAGS_CHANGED", "UPDATE_SHAPESHIFT_FORM",
+        "QUEST_WATCH_LIST_CHANGED", "SUPER_TRACKING_CHANGED", "BAG_NEW_ITEMS_UPDATED", "AUTOEQUIP_BIND_CONFIRM",
+        "EQUIP_BIND_CONFIRM", "DELETE_ITEM_CONFIRM", "MIRROR_TIMER_START", "PLAYER_PVP_KILLS_CHANGED" }
+    local CHAT = { "CHAT_MSG_LOOT", "CHAT_MSG_MONEY", "CHAT_MSG_SKILL", "CHAT_MSG_COMBAT_XP_GAIN",
+        "CHAT_MSG_COMBAT_FACTION_CHANGE", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_SYSTEM", "CHAT_MSG_OPENING",
+        "CHAT_MSG_TRADESKILLS", "CHAT_MSG_PET_INFO" }
+    local SPECIAL = { "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "PLAYER_TARGET_CHANGED", "UI_ERROR_MESSAGE",
+        "UI_INFO_MESSAGE", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_LOG_UPDATE", "PLAYER_XP_UPDATE",
+        "PLAYER_MONEY", "BAG_UPDATE_DELAYED", "UPDATE_INVENTORY_DURABILITY", "GROUP_ROSTER_UPDATE", "PLAYER_LOGOUT" }
+    local CASTS = { "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED",
+        "UNIT_SPELLCAST_FAILED_QUIET", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_CHANNEL_START",
+        "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_SPELLCAST_DELAYED" }
+    local isChat, isCast = {}, {}
+    for _, e in ipairs(CHAT) do isChat[e] = true end
+    for _, e in ipairs(CASTS) do isCast[e] = true end
+    local questDue = false
+
+    local function header()
+        local _, class = UnitClass("player")
+        log("S", date("%Y-%m-%d %H:%M:%S"), ns.version or "?", ns.CharKey and ns:CharKey() or "?", class,
+            try(UnitLevel, "player"), try(GetRealZoneText), try(GetSubZoneText))
+    end
+    ev:SetScript("OnEvent", function(_, e, a1, a2, a3, a4, a5)
+        if not running then return end
+        if isCast[e] then
+            if e == "UNIT_SPELLCAST_SENT" then log("CS", spell(a4), a2)        -- spell, target
+            else log(e:sub(16), a1, spell(a3)) end                            -- START / SUCCEEDED / FAILED ... unit, spell
+        elseif isChat[e] then
+            log(e:sub(10), a1)
+        elseif e == "UI_ERROR_MESSAGE" or e == "UI_INFO_MESSAGE" then
+            log(e == "UI_ERROR_MESSAGE" and "ERR" or "INFO", a2, a1)
+        elseif e == "UNIT_COMBAT" then
+            log("HIT", a2, a3, a4, a5)                                        -- action, indicator, amount, school
+        elseif e == "PLAYER_TARGET_CHANGED" then
+            if try(UnitExists, "target") then
+                log("TGT", try(UnitName, "target"), try(UnitLevel, "target"), try(UnitClassification, "target"),
+                    try(UnitReaction, "target", "player"), flag(try(UnitIsPlayer, "target")) and "player" or "npc",
+                    flag(try(UnitIsDead, "target")) and "dead" or "")
+            else
+                log("TGT")
+            end
+        elseif e == "QUEST_ACCEPTED" then
+            local id = plainNum(a2) and a2 or a1
+            local m, x, y = where()
+            log("QA", id, C_QuestLog and try(C_QuestLog.GetTitleForQuestID, id), m, x, y)
+        elseif e == "QUEST_TURNED_IN" then
+            local m, x, y = where()
+            log("QT", a1, a2, a3, m, x, y)                                    -- quest, xp, money
+        elseif e == "QUEST_LOG_UPDATE" then
+            if not questDue then
+                questDue = true
+                C_Timer.After(0.5, function() questDue = false; if running then pcall(questSteps) end end)
+            end
+        elseif e == "PLAYER_XP_UPDATE" then
+            log("XP", try(UnitXP, "player"), try(UnitXPMax, "player"), try(GetXPExhaustion))
+        elseif e == "PLAYER_MONEY" then
+            log("MONEY", try(GetMoney))
+        elseif e == "BAG_UPDATE_DELAYED" then
+            pcall(bags)
+        elseif e == "UPDATE_INVENTORY_DURABILITY" then
+            pcall(durability)
+        elseif e == "GROUP_ROSTER_UPDATE" then
+            log("GROUP", try(GetNumGroupMembers), flag(try(IsInRaid)) and "raid" or "party")
+        elseif e == "ZONE_CHANGED_NEW_AREA" or e == "PLAYER_ENTERING_WORLD" then
+            local m, x, y = where()
+            local inInst, kind = try(IsInInstance)
+            log(e == "PLAYER_ENTERING_WORLD" and "WORLD" or "ZONE", try(GetRealZoneText), try(GetSubZoneText), m, x, y,
+                flag(inInst) and sv(kind) or "")
+        elseif e == "PLAYER_LOGOUT" then
+            log("END", date("%H:%M:%S"))
+        else
+            log(e, a1, a2, a3, a4)
+        end
+    end)
+
+    local ticker = CreateFrame("Frame")
+    ticker:Hide()
+    ticker:SetScript("OnUpdate", function(_, dt)
+        tick = tick + dt
+        if tick < 1 then return end
+        tick = 0
+        pcall(windows)
+        ticks = ticks + 0
+        if math.floor(GetTime()) % 3 == 0 then pcall(sample) end
+    end)
+
+    local wrapped = false
+    local function start()
+        if running or not MinimalUIDB then return end
+        MinimalUIDB.journal = MinimalUIDB.journal or {}
+        local key = ns.CharKey and ns:CharKey() or "?"
+        J = MinimalUIDB.journal[key]
+        if not J then J = {}; MinimalUIDB.journal[key] = J end
+        -- Keep the newest lines.
+        if #J > MAX then
+            local keep = {}
+            for i = #J - KEEP + 1, #J do keep[#keep + 1] = J[i] end
+            J = keep
+            MinimalUIDB.journal[key] = J
+        end
+        t0 = GetTime()
+        running = true
+        header()
+        for _, list in ipairs({ GENERIC, CHAT, SPECIAL }) do
+            for _, e in ipairs(list) do pcall(ev.RegisterEvent, ev, e) end
+        end
+        for _, e in ipairs(CASTS) do pcall(ev.RegisterUnitEvent, ev, e, "player", "pet") end
+        pcall(ev.RegisterUnitEvent, ev, "UNIT_COMBAT", "player")
+        -- The addon's own warnings (low ammunition, capped skill, rare...).
+        if not wrapped and type(ns.FloatWarning) == "function" then
+            wrapped = true
+            local orig = ns.FloatWarning
+            ns.FloatWarning = function(tex, label, note, ...)
+                if running then log("WARN", label, note) end
+                return orig(tex, label, note, ...)
+            end
+        end
+        -- Action buttons, where the client tells us (which slot, what's on it).
+        if not ev.hookedAct and type(_G.UseAction) == "function" then
+            ev.hookedAct = true
+            hooksecurefunc("UseAction", function(slot)
+                if running and plainNum(slot) then log("ACT", slot, try(GetActionInfo, slot)) end
+            end)
+        end
+        C_Timer.After(8, function() if running then pcall(buildWatch); pcall(questSteps); pcall(bags); pcall(durability) end end)
+        ticker:Show()
+    end
+    local function stop()
+        if not running then return end
+        log("END", date("%H:%M:%S"))
+        running = false
+        ev:UnregisterAllEvents()
+        ticker:Hide()
+    end
+    local boot = CreateFrame("Frame")
+    boot:RegisterEvent("PLAYER_LOGIN")
+    boot:SetScript("OnEvent", function() if MinimalUIDB and MinimalUIDB.record then pcall(start) end end)
+
+    ns.commands = ns.commands or {}
+    ns.commands.record = function(rest, raw)
+        if not MinimalUIDB then return end
+        local verb, words = (raw or rest or ""):match("^%s*(%S*)%s*(.-)%s*$")
+        verb = (verb or ""):lower()
+        if verb == "on" then
+            MinimalUIDB.record = true
+            start()
+            ns:Print("Recording. It keeps going across sessions until /men record off; /reload writes it to disk.")
+        elseif verb == "off" then
+            MinimalUIDB.record = nil
+            stop()
+            ns:Print("Recording stopped. What was recorded is kept (/men record clear empties it).")
+        elseif verb == "clear" then
+            local was = running
+            stop()
+            MinimalUIDB.journal = nil
+            J = nil
+            if was then start() end
+            ns:Print("Recording emptied" .. (was and ", and started afresh." or "."))
+        elseif verb == "mark" then
+            if not running then return ns:Print("Not recording: /men record on first.") end
+            local m, x, y = where()
+            log("MARK", words, m, x, y)
+            ns:Print("Noted: " .. (words ~= "" and words or "(a mark)"))
+        else
+            local n = 0
+            for _, list in pairs(MinimalUIDB.journal or {}) do n = n + #list end
+            ns:Print("Recorder: " .. (running and "on" or "off") .. ", " .. n .. " lines kept.  /men record on | off | clear | mark <words>")
+        end
+    end
+end

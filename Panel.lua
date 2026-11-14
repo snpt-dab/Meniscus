@@ -907,6 +907,7 @@ ns.commands.help = function()
         "/men defaults  put every setting back to a new install's (asks first)",
         "/men scale  set the game's UI scale to 0.65, the one the layout is designed for (asks first)",
         "/men tidy  spells on your bars you haven't cast in your last 4 days of play, with a button to take each off",
+        "/men record on | off | clear | mark <words>  development: write down everything that happens, to study later",
         "/men reactive add <spell> | remove <spell>  your own spells for the spot above the dome (shown only while usable)",
         "/men skillup  show a sample skill-up pill",
         "/men combatprobe  record what the client reveals in combat (also recorded on its own)",
