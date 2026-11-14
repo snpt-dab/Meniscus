@@ -149,6 +149,10 @@ def icons():
     I['buff'] = Icon().line([(12, 4.4), (14.2, 9.8), (19.6, 12), (14.2, 14.2), (12, 19.6), (9.8, 14.2), (4.4, 12), (9.8, 9.8)], w=2.2, close=True)
     # drumstick: pet food
     I['food'] = Icon().dot(9.6, 9.6, 4.6).line([(12.6, 12.6), (18.2, 18.2)], w=2.6).dot(18.6, 18.6, 1.8)
+    # a foaming mug: food and drink
+    I['mug'] = (Icon().box(5.6, 8.6, 14.6, 19.6, rad=1.6, w=2.0)
+                .arc(14.8, 13.8, 3.5, -78, 78, w=2.0)
+                .dot(7.3, 7.4, 2.0).dot(10.1, 6.4, 2.2).dot(12.9, 7.4, 2.0))
     # ── character stats page ──
     # strength: a flexed arm, in outline: the fist curled in at the top, the bicep's swell at the right
     def fit(pts, k=0.86):

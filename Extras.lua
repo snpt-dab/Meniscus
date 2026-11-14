@@ -2238,7 +2238,7 @@ function EX:OnInit(db)
     end
     if db.food ~= false then
         local ok, err = pcall(buildFlyout, { name = "MeniscusFood", row = "MeniscusFoodRow", btn = "MeniscusFoodItem",
-            glyph = "micro_food.tga", title = "Food and drink", is = isFood, rank = foodRank,
+            glyph = "micro_mug.tga", title = "Food and drink", is = isFood, rank = foodRank,
             slot = db.potions ~= false and 1 or 0, label = "food row" })
         if not ok and MinimalUIDB then MinimalUIDB.foodErr = tostring(err) end
     end
