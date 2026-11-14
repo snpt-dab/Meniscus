@@ -340,9 +340,35 @@ local function sweep()
     end
 end
 
+-- The trade window is not docked: while trading you want the character
+-- panel or the bags open beside it (to hand over what you are wearing or
+-- carrying), and both docks may be taken. It sits in the middle of the
+-- screen, between the docks and above our windows, and is put back there
+-- when the game's panel manager moves it.
+local function seatTrade()
+    local f = _G.TradeFrame
+    if type(f) ~= "table" or f.__muiSeat or not f.HookScript then return end
+    f.__muiSeat = true
+    local busy = false
+    local function seat()
+        if busy then return end
+        busy = true
+        pcall(function()
+            f:ClearAllPoints()
+            f:SetPoint("CENTER", UIParent, "CENTER", 0, 70)
+            f:SetFrameStrata("HIGH")
+        end)
+        busy = false
+    end
+    hooksecurefunc(f, "SetPoint", function() if not busy then seat() end end)
+    f:HookScript("OnShow", seat)
+    if f:IsShown() then seat() end
+end
+
 function W:OnInit(db)
     self.db = db
     db.sides = db.sides or {}
+    pcall(seatTrade)
     for name in pairs(MANAGED) do waiting[name] = true end
 
     proxy = CreateFrame("Frame", "MeniscusEscProxy", UIParent)
@@ -391,7 +417,7 @@ function W:OnInit(db)
     driver:RegisterEvent("PLAYER_REGEN_ENABLED")
     driver:RegisterEvent("ADDON_LOADED")
     driver:SetScript("OnEvent", function(_, e)
-        if e == "ADDON_LOADED" then sweep() return end
+        if e == "ADDON_LOADED" then sweep(); pcall(seatTrade) return end
         for f, what in pairs(pending) do
             pending[f] = nil
             if what == "hide" then close(f)
