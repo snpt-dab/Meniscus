@@ -1211,8 +1211,8 @@ end
 
 -- ── Node memory ───────────────────────────────────────────────────────────
 -- Where you have picked herbs and mined ore is remembered (the spot, what
--- it was), and shown on the minimap as faint dots: green for herbs, amber
--- for ore. They are places a node has been, not nodes that are up now.
+-- it was), and shown on the world map as dots (and, optionally, faintly on
+-- the minimap): green for herbs, amber for ore. They are places a node has been, not nodes that are up now.
 -- MinimalUIDB.nodes[instance] = { { x, y, kind, name }, ... }; a node
 -- within 15 yards of one already known is the same node.
 local NODE_SPELL = { ["Mining"] = "ore", ["Herb Gathering"] = "herb", ["Herbalism"] = "herb" }
@@ -1224,6 +1224,96 @@ local function playerPos()
     local ok, y, x, _, inst = pcall(UnitPosition, "player")
     if ok and num(x) and num(y) and num(inst) then return x, y, inst end
 end
+-- The remembered nodes on the world map: a dot for each, on whichever map
+-- is open (zone or continent), green for herbs and amber for ore; hover one
+-- for what it was. The game turns a place in the world into a place on the
+-- open map (C_Map.GetMapPosFromWorldPos); that is done once per map and
+-- kept until the map or the list changes.
+local nodeRev = 0
+local function buildNodeMap(db)
+    local WM = _G.WorldMapFrame
+    if not (WM and WM.GetMapID and C_Map and C_Map.GetMapPosFromWorldPos and CreateVector2D) then return end
+    local canvas = (WM.ScrollContainer and WM.ScrollContainer.Child) or (WM.GetCanvas and WM:GetCanvas())
+    if not canvas then return end
+    local layer = CreateFrame("Frame", nil, canvas)
+    layer:SetAllPoints()
+    layer:SetFrameLevel(canvas:GetFrameLevel() + 2000)
+    local pool, placed = {}, {}
+    local function dotAt(i)
+        local d = pool[i]
+        if not d then
+            d = CreateFrame("Frame", nil, layer)
+            d.tex = d:CreateTexture(nil, "OVERLAY")
+            d.tex:SetAllPoints()
+            d.tex:SetTexture(MEDIA .. "circle.tga")
+            -- Hover only: clicks go through to the map.
+            d:EnableMouse(true)
+            if d.SetMouseClickEnabled then pcall(d.SetMouseClickEnabled, d, false) end
+            d:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.name or (self.kind == "herb" and "Herb" or "Ore"), 1, 1, 1)
+                GameTooltip:AddLine("You gathered here before.", 0.7, 0.7, 0.75)
+                GameTooltip:Show()
+            end)
+            d:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            pool[i] = d
+        end
+        return d
+    end
+    local lastMap, lastRev, lastScale, lastW
+    local function place()
+        local mapID = WM:GetMapID()
+        local cw, ch = canvas:GetSize()
+        local scale = canvas:GetScale()
+        if not (num(mapID) and num(cw) and cw > 0 and num(scale) and scale > 0) then return end
+        if mapID ~= lastMap or nodeRev ~= lastRev then
+            lastMap, lastRev, lastW = mapID, nodeRev, nil
+            wipe(placed)
+            local seenAny = 0
+            for inst, list in pairs(db.nodes) do
+                for _, n in ipairs(list) do
+                    seenAny = seenAny + 1
+                    local ok, _, pos = pcall(C_Map.GetMapPosFromWorldPos, inst, CreateVector2D(n[2], n[1]), mapID)
+                    if ok and pos and pos.GetXY then
+                        local px, py = pos:GetXY()
+                        if num(px) and num(py) and px > 0 and px < 1 and py > 0 and py < 1 and #placed < 900 then
+                            placed[#placed + 1] = px
+                            placed[#placed + 1] = py
+                            placed[#placed + 1] = n
+                        end
+                    end
+                end
+            end
+            if MinimalUIDB then MinimalUIDB.nodemap = { map = mapID, known = seenAny, shown = #placed / 3 } end
+        end
+        if cw == lastW and scale == lastScale then return end
+        lastW, lastScale = cw, scale
+        -- The canvas grows as you zoom in: the dots keep their size on screen.
+        local size = 7 / scale
+        local used = 0
+        for i = 1, #placed, 3 do
+            used = used + 1
+            local d = dotAt(used)
+            local n = placed[i + 2]
+            local c = NODE_TINT[n[3]] or NODE_TINT.ore
+            d.kind, d.name = n[3], n[4]
+            d.tex:SetVertexColor(c[1], c[2], c[3], 0.85)
+            d:SetSize(size, size)
+            d:ClearAllPoints()
+            d:SetPoint("CENTER", canvas, "TOPLEFT", placed[i] * cw, -placed[i + 1] * ch)
+            d:Show()
+        end
+        for i = used + 1, #pool do pool[i]:Hide() end
+    end
+    local acc = 1
+    layer:SetScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc < 0.25 then return end
+        acc = 0
+        pcall(place)
+    end)
+end
+
 local function buildNodes()
     local db = MinimalUIDB
     if not (db and Minimap) then return end
@@ -1260,9 +1350,13 @@ local function buildNodes()
         end
         list[#list + 1] = { math.floor(x * 10) / 10, math.floor(y * 10) / 10, kind, name }
         dirty = true
+        nodeRev = nodeRev + 1
     end)
 
-    -- The dots.
+    pcall(buildNodeMap, db)
+    -- On the minimap too, if asked for (off by default: the minimap shows
+    -- live nodes itself while you are tracking them).
+    if EX.db.nodesMini ~= true then return end
     local layer = CreateFrame("Frame", nil, Minimap)
     layer:SetAllPoints()
     layer:SetFrameLevel(Minimap:GetFrameLevel() + 2)
