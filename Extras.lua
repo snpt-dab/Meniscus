@@ -1456,8 +1456,362 @@ local function buildRare()
     end)
 end
 
+-- ── Reactive spells ───────────────────────────────────────────────────────
+-- Spells that can only be pressed now and then (Overpower after a dodge,
+-- Execute on a dying target, Riposte after a parry...) don't need a place
+-- on the bar: each has a button above the dome that is only there while
+-- the spell can be used, and pops in when it becomes so. Click it, or bind
+-- a key (Key Bindings > AddOns > Meniscus > Reactive spell 1-4).
+-- The buttons are made out of combat, one fixed place per spell: a secure
+-- button can't be made, moved or hidden in a fight, so what comes and goes
+-- is only its picture (a plain child frame). Which spells: the class list
+-- below plus your own (/men reactive add <spell>), those you know.
+local REACTIVE = {
+    WARRIOR = { "Overpower", "Revenge", "Execute", "Victory Rush" },
+    ROGUE = { "Riposte" },
+    HUNTER = { "Mongoose Bite", "Counterattack" },
+    PALADIN = { "Hammer of Wrath" },
+}
+local RX_MAX, RX_SIZE, RX_GAP = 4, 30, 6
+for i = 1, RX_MAX do _G["BINDING_NAME_CLICK MeniscusReactive" .. i .. ":LeftButton"] = "Reactive spell " .. i end
+local function buildReactive()
+    local dome = _G.MinimalUI_MinimapDome
+    local anchor = dome or UIParent
+    local btns = {}
+    for i = 1, RX_MAX do
+        local b = CreateFrame("Button", "MeniscusReactive" .. i, UIParent, "SecureActionButtonTemplate")
+        b:SetSize(RX_SIZE, RX_SIZE)
+        b:RegisterForClicks("AnyDown", "AnyUp")
+        b:SetFrameStrata("MEDIUM")
+        b:Hide()
+        local vis = CreateFrame("Frame", nil, b)
+        vis:SetAllPoints()
+        vis:Hide()
+        local mask = vis:CreateMaskTexture()
+        mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints()
+        local ring = vis:CreateTexture(nil, "BACKGROUND")
+        ring:SetAllPoints()
+        ring:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+        ring:AddMaskTexture(mask)
+        local imask = vis:CreateMaskTexture()
+        imask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        imask:SetPoint("TOPLEFT", 1.5, -1.5); imask:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+        local icon = vis:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints(imask)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        icon:AddMaskTexture(imask)
+        local cd = CreateFrame("Cooldown", nil, vis, "CooldownFrameTemplate")
+        cd:SetAllPoints(imask)
+        pcall(cd.SetDrawEdge, cd, false)
+        -- The pop: a little large and clear, settling to size.
+        local ag = vis:CreateAnimationGroup()
+        local sc = ag:CreateAnimation("Scale")
+        sc:SetScaleFrom(1.35, 1.35); sc:SetScaleTo(1, 1); sc:SetDuration(0.18); sc:SetSmoothing("OUT")
+        local al = ag:CreateAnimation("Alpha")
+        al:SetFromAlpha(0); al:SetToAlpha(1); al:SetDuration(0.12)
+        b.vis, b.icon, b.cd, b.pop = vis, icon, cd, ag
+        b:SetScript("OnEnter", function(self)
+            if not (self.spell and self.vis:IsShown()) then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            local info = C_Spell.GetSpellInfo and call(C_Spell.GetSpellInfo, self.spell)
+            if type(info) == "table" and num(info.spellID) and GameTooltip.SetSpellByID then
+                GameTooltip:SetSpellByID(info.spellID)
+            else
+                GameTooltip:SetText(self.spell, 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        btns[i] = b
+    end
+
+    local function knownInfo(name)
+        local info = C_Spell.GetSpellInfo and call(C_Spell.GetSpellInfo, name)
+        if type(info) ~= "table" or not num(info.spellID) then return end
+        local k = C_SpellBook and C_SpellBook.IsSpellKnown and C_SpellBook.IsSpellKnown(info.spellID)
+        if k == nil and IsSpellKnown then k = IsSpellKnown(info.spellID) end
+        if k == false then return end
+        return info
+    end
+    -- Which spells, and where: out of combat only.
+    local stale = false
+    local function assign()
+        if InCombatLockdown() then stale = true return end
+        stale = false
+        local _, cls = UnitClass("player")
+        local names, seen = {}, {}
+        local function add(n)
+            if type(n) == "string" and not seen[n] and #names < RX_MAX then
+                local info = knownInfo(n)
+                if info then seen[n] = true; names[#names + 1] = { n, info.iconID } end
+            end
+        end
+        for _, n in ipairs(REACTIVE[cls or ""] or {}) do add(n) end
+        for _, n in ipairs(EX.db.reactiveExtra or {}) do add(n) end
+        local total = #names
+        local width = total * RX_SIZE + math.max(0, total - 1) * RX_GAP
+        for i, b in ipairs(btns) do
+            local e = names[i]
+            if e then
+                b.spell = e[1]
+                b:SetAttribute("type", "spell")
+                b:SetAttribute("spell", e[1])
+                b.icon:SetTexture(e[2])
+                b:ClearAllPoints()
+                if dome then
+                    b:SetPoint("BOTTOMLEFT", anchor, "TOP", -width / 2 + (i - 1) * (RX_SIZE + RX_GAP), 44)
+                else
+                    b:SetPoint("BOTTOMLEFT", anchor, "BOTTOM", -width / 2 + (i - 1) * (RX_SIZE + RX_GAP), 230)
+                end
+                b:Show()
+            else
+                b.spell = nil
+                b:SetAttribute("type", nil)
+                b.vis:Hide()
+                b:Hide()
+            end
+        end
+    end
+    EX.AssignReactive = assign
+
+    -- Whether each can be pressed right now.
+    local function update()
+        for _, b in ipairs(btns) do
+            if b.spell then
+                local ok, usable, noMana = pcall(C_Spell.IsSpellUsable, b.spell)
+                local show, dim = false, false
+                if ok and not secret(usable) and not secret(noMana) then
+                    if usable == true then show = true
+                    elseif noMana == true then show, dim = true, true end
+                end
+                if show then
+                    b.icon:SetDesaturated(dim)
+                    b.vis:SetAlpha(dim and 0.45 or 1)
+                    if not b.vis:IsShown() then
+                        b.vis:Show()
+                        b.pop:Stop(); b.pop:Play()
+                    end
+                    local okc, c = pcall(C_Spell.GetSpellCooldown, b.spell)
+                    if okc and type(c) == "table" then pcall(b.cd.SetCooldown, b.cd, c.startTime, c.duration) end
+                elseif b.vis:IsShown() then
+                    b.vis:Hide()
+                end
+            end
+        end
+    end
+    local due = false
+    local function soon()
+        if due then return end
+        due = true
+        C_Timer.After(0.05, function() due = false; ns.Timed("reactive spells", update) end)
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "SPELL_UPDATE_USABLE", "ACTIONBAR_UPDATE_USABLE", "PLAYER_TARGET_CHANGED",
+                         "UPDATE_SHAPESHIFT_FORM", "SPELL_UPDATE_COOLDOWN", "PLAYER_REGEN_ENABLED",
+                         "PLAYER_REGEN_DISABLED", "SPELLS_CHANGED", "PLAYER_ENTERING_WORLD" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "SPELLS_CHANGED" or e == "PLAYER_ENTERING_WORLD" or (e == "PLAYER_REGEN_ENABLED" and stale) then
+            pcall(assign)
+        end
+        soon()
+    end)
+    -- (The target's health, for Execute and the like, has no event of its
+    -- own that is safe to read: look a few times a second in a fight.)
+    C_Timer.NewTicker(0.3, function() if InCombatLockdown() then soon() end end)
+    assign()
+    soon()
+end
+ns.commands = ns.commands or {}
+ns.commands.reactive = function(_, raw)
+    local d = EX.db
+    if not d then return end
+    d.reactiveExtra = d.reactiveExtra or {}
+    local verb, name = (raw or ""):match("^%s*(%S+)%s*(.-)%s*$")
+    verb = verb and verb:lower()
+    if verb == "add" and name ~= "" then
+        table.insert(d.reactiveExtra, name)
+        ns:Print("Reactive spells: added " .. name .. " (it shows above the dome while it can be used).")
+    elseif verb == "remove" and name ~= "" then
+        for i = #d.reactiveExtra, 1, -1 do
+            if d.reactiveExtra[i]:lower() == name:lower() then table.remove(d.reactiveExtra, i) end
+        end
+        ns:Print("Reactive spells: removed " .. name .. ".")
+    else
+        ns:Print("Reactive spells you added: " .. (#d.reactiveExtra > 0 and table.concat(d.reactiveExtra, ", ") or "none")
+            .. ".  /men reactive add <spell>  ·  /men reactive remove <spell>")
+        return
+    end
+    if EX.AssignReactive then
+        if InCombatLockdown() then ns:Print("It takes effect after the fight.") end
+        pcall(EX.AssignReactive)
+    end
+end
+
+-- ── What you actually press ───────────────────────────────────────────────
+-- Every spell you cast is counted, per character, against the days you
+-- have played (MinimalUIDB.usage[char] = { days, date, n = { [spell] =
+-- casts }, last = { [spell] = play-day of the last cast } }). From that,
+-- "/men tidy" lists the spells on your bars that you have not cast in the
+-- last IDLE_DAYS days of play, each with a button that takes it off the
+-- bar (it stays in your spellbook). Nothing is ever moved without a click.
+local IDLE_DAYS = 4
+local function usageTable()
+    local db = MinimalUIDB
+    if not db then return end
+    db.usage = db.usage or {}
+    local key = ns:CharKey()
+    local u = db.usage[key]
+    if not u then u = { days = 0, n = {}, last = {} }; db.usage[key] = u end
+    u.n, u.last = u.n or {}, u.last or {}
+    return u
+end
+local function idleButtons()
+    local u = usageTable()
+    local out = {}
+    if not (u and GetActionInfo) or u.days <= IDLE_DAYS then return out, u end
+    for slot = 1, 120 do
+        local ok, kind, id = pcall(GetActionInfo, slot)
+        if ok and kind == "spell" and num(id) then
+            local name = C_Spell.GetSpellName and call(C_Spell.GetSpellName, id)
+            if type(name) == "string" and not secret(name) then
+                local passive = C_Spell.IsSpellPassive and call(C_Spell.IsSpellPassive, id)
+                local last = u.last[name] or 0
+                if passive ~= true and u.days - last >= IDLE_DAYS then
+                    out[#out + 1] = { slot = slot, name = name, id = id, idle = u.days - last, never = u.last[name] == nil,
+                                      icon = C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, id) }
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.idle ~= b.idle then return a.idle > b.idle end
+        return a.slot < b.slot
+    end)
+    return out, u
+end
+local tidyWin
+local function showTidy()
+    local list, u = idleButtons()
+    if not u then return end
+    if u.days <= IDLE_DAYS then
+        ns:Print("Still learning what you press: day " .. u.days .. " of " .. (IDLE_DAYS + 1)
+            .. " played since it started counting. Try /men tidy again after that.")
+        return
+    end
+    if #list == 0 then
+        if tidyWin then tidyWin:Hide() end
+        ns:Print("Every spell on your bars has been used in your last " .. IDLE_DAYS .. " days of play.")
+        return
+    end
+    local ROWS, RH, W = 10, 26, 380
+    if not tidyWin then
+        local w = CreateFrame("Frame", "MeniscusTidy", UIParent)
+        w:SetSize(W, 74 + ROWS * RH + 44)
+        w:SetPoint("CENTER", 0, 60)
+        w:SetFrameStrata("HIGH")
+        w:EnableMouse(true)
+        w:SetMovable(true)
+        w:RegisterForDrag("LeftButton")
+        w:SetScript("OnDragStart", w.StartMoving)
+        w:SetScript("OnDragStop", w.StopMovingOrSizing)
+        ns.RoundedRect(w, -8, 0, 14, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(w, -7, 1, 13, 0.06, 0.06, 0.07, 0.97)
+        table.insert(UISpecialFrames, "MeniscusTidy")
+        local title = w:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(title, 14, "", true)
+        title:SetPoint("TOPLEFT", 18, -16)
+        title:SetText("Unused buttons")
+        title:SetTextColor(T.text[1], T.text[2], T.text[3])
+        w.sub = w:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(w.sub, 10)
+        w.sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+        w.sub:SetPoint("RIGHT", w, "RIGHT", -18, 0)
+        w.sub:SetJustifyH("LEFT")
+        w.sub:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+        w.rows = {}
+        for i = 1, ROWS do
+            local r = CreateFrame("Frame", nil, w)
+            r:SetSize(W - 36, RH)
+            r:SetPoint("TOPLEFT", 18, -66 - (i - 1) * RH)
+            r.icon = r:CreateTexture(nil, "ARTWORK")
+            r.icon:SetSize(20, 20)
+            r.icon:SetPoint("LEFT")
+            r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            r.name = r:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(r.name, 11, "", true)
+            r.name:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
+            r.name:SetTextColor(T.text[1], T.text[2], T.text[3])
+            r.note = r:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(r.note, 10)
+            r.note:SetPoint("LEFT", r.name, "RIGHT", 8, 0)
+            r.note:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+            r.off = ns.Pill(r, "Take off bar", function()
+                if InCombatLockdown() then ns:Print("Not in combat.") return end
+                if r.slot and PickupAction then
+                    pcall(PickupAction, r.slot)
+                    pcall(ClearCursor)
+                end
+                C_Timer.After(0.2, showTidy)
+            end, { h = 20, font = 10 })
+            r.off:SetPoint("RIGHT")
+            w.rows[i] = r
+        end
+        w.close = ns.Pill(w, "Close", function() w:Hide() end, { h = 24 })
+        w.close:SetPoint("BOTTOMLEFT", 18, 14)
+        tidyWin = w
+    end
+    local w = tidyWin
+    w.sub:SetText("On your bars, but not cast in your last " .. IDLE_DAYS .. " days of play"
+        .. (#list > ROWS and ("  (" .. ROWS .. " of " .. #list .. ")") or "")
+        .. ". Taking one off the bar leaves it in your spellbook.")
+    for i, r in ipairs(w.rows) do
+        local e = list[i]
+        if e then
+            r.slot = e.slot
+            r.icon:SetTexture(e.icon)
+            r.name:SetText(e.name)
+            r.note:SetText(e.never and "never, since counting began" or (e.idle .. " play days ago"))
+            r:Show()
+        else
+            r:Hide()
+        end
+    end
+    w:Show()
+end
+ns.commands.tidy = function() pcall(showTidy) end
+local function buildUsage()
+    local u = usageTable()
+    if not u then return end
+    local today = date("%Y-%m-%d")
+    if u.date ~= today then u.date = today; u.days = (u.days or 0) + 1 end
+    local ev = CreateFrame("Frame")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    ev:SetScript("OnEvent", function(_, _, _, _, spellID)
+        if not num(spellID) then return end
+        local name = C_Spell.GetSpellName and call(C_Spell.GetSpellName, spellID)
+        if type(name) ~= "string" or secret(name) then return end
+        u.n[name] = (u.n[name] or 0) + 1
+        u.last[name] = u.days
+    end)
+    -- A word in chat, once per day of play, when a few have piled up.
+    C_Timer.After(25, function()
+        if u.toldDay == u.days or InCombatLockdown() then return end
+        local ok, list = pcall(idleButtons)
+        if ok and #list >= 3 then
+            u.toldDay = u.days
+            ns:Print(#list .. " spells on your bars haven't been cast in your last " .. IDLE_DAYS
+                .. " days of play. /men tidy shows them.")
+        end
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.reactive ~= false then pcall(buildReactive) end
+    if db.usage ~= false then pcall(buildUsage) end
     if db.skillNudge ~= false then pcall(buildNudge) end
     if db.nodes ~= false then pcall(buildNodes) end
     if db.flight ~= false then pcall(buildFlight) end
