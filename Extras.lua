@@ -1985,9 +1985,34 @@ local function potionRank(id)
     if n:find("Elixir") or n:find("Flask") then return 4 end
     return (n:find("Heal") and 0) or (n:find("Mana") and 1) or (n:find("Rejuv") and 2) or 3
 end
-local function buildPotions()
+-- Food and drink: the same thing again, one place further up the rim.
+-- What counts: the game's "Food & Drink" kind, or anything whose use is
+-- called Food, Drink or Refreshment. Food first, then drink.
+_G["BINDING_NAME_CLICK MeniscusFood:LeftButton"] = "Food and drink (open or close)"
+local function useName(id)
+    local f = C_Item and C_Item.GetItemSpell
+    local n = f and call(f, id)
+    return type(n) == "string" and not secret(n) and n or ""
+end
+local function isFood(id)
+    local f = C_Item and C_Item.GetItemInfoInstant
+    if not f then return false end
+    local ok, _, _, _, _, _, classID, subID = pcall(f, id)
+    if not ok or not num(classID) or classID ~= 0 then return false end
+    if subID == 5 then return true end
+    local n = useName(id)
+    return (n:find("Food") or n:find("Drink") or n:find("Refreshment")) ~= nil
+end
+local function foodRank(id)
+    local n = useName(id)
+    return (n:find("Refreshment") and 0) or (n:find("Food") and 1) or (n:find("Drink") and 2) or 3
+end
+-- spec: name (the disc, and its key binding), row, btn (frame names), glyph,
+-- title, is(id), rank(id), slot (0 = lowest place on the rim, 1 = the next
+-- one up), label (for /men perf).
+local function buildFlyout(spec)
     local S = 24
-    local anchor = CreateFrame("Button", "MeniscusPotions", UIParent, "SecureHandlerClickTemplate")
+    local anchor = CreateFrame("Button", spec.name, UIParent, "SecureHandlerClickTemplate")
     anchor:SetSize(S, S)
     anchor:RegisterForClicks("AnyDown", "AnyUp")
     anchor:SetFrameStrata("MEDIUM")
@@ -2005,10 +2030,10 @@ local function buildPotions()
     local glyph = anchor:CreateTexture(nil, "ARTWORK")
     glyph:SetSize(17, 17)
     glyph:SetPoint("CENTER")
-    glyph:SetTexture(MEDIA .. "micro_potion.tga")
+    glyph:SetTexture(MEDIA .. spec.glyph)
     glyph:SetVertexColor(T.text[1], T.text[2], T.text[3], 1)
 
-    local fly = CreateFrame("Frame", "MeniscusPotionRow", anchor, "SecureHandlerBaseTemplate")
+    local fly = CreateFrame("Frame", spec.row, anchor, "SecureHandlerBaseTemplate")
     fly:SetFrameStrata("HIGH")
     fly:SetPoint("BOTTOMLEFT", anchor, "TOPRIGHT", 0, 0)
     fly:SetSize(PO_SIZE, PO_SIZE)
@@ -2022,7 +2047,7 @@ local function buildPotions()
     anchor:SetScript("OnEnter", function(self)
         ring:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Potions", 1, 1, 1)
+        GameTooltip:SetText(spec.title, 1, 1, 1)
         GameTooltip:AddLine("Click to open or close.", 0.7, 0.7, 0.75)
         GameTooltip:Show()
     end)
@@ -2033,7 +2058,7 @@ local function buildPotions()
 
     local btns = {}
     for i = 1, PO_MAX do
-        local b = CreateFrame("Button", "MeniscusPotion" .. i, fly, "SecureActionButtonTemplate")
+        local b = CreateFrame("Button", spec.btn .. i, fly, "SecureActionButtonTemplate")
         b:SetSize(PO_SIZE, PO_SIZE)
         b:SetPoint("BOTTOMLEFT", fly, "BOTTOMLEFT", ((i - 1) % PO_ROW) * (PO_SIZE + PO_GAP),
             math.floor((i - 1) / PO_ROW) * (PO_SIZE + PO_GAP))
@@ -2133,10 +2158,10 @@ local function buildPotions()
         wipe(have); wipe(order)
         for bag = 0, (NUM_BAG_SLOTS or 4) do scanBag(have, bag) end
         for id in pairs(have) do
-            if isPotion(id) then order[#order + 1] = id end
+            if spec.is(id) then order[#order + 1] = id end
         end
         table.sort(order, function(a, b)
-            local ra, rb = potionRank(a), potionRank(b)
+            local ra, rb = spec.rank(a), spec.rank(b)
             if ra ~= rb then return ra < rb end
             return a > b
         end)
@@ -2148,9 +2173,15 @@ local function buildPotions()
             local rx, ry
             if MMm and MMm.RimOffset then rx, ry = MMm.RimOffset(S) end
             if not rx then rx = dome:GetWidth() / 2 * 0.7071; ry = rx end
+            if (spec.slot or 0) > 0 then
+                -- The next place up: one disc's width further round the rim.
+                local R = math.sqrt(rx * rx + ry * ry)
+                local th = math.atan2(ry, rx) + spec.slot * (S + 5) / R
+                rx, ry = R * math.cos(th), R * math.sin(th)
+            end
             anchor:SetPoint("CENTER", dome, "CENTER", rx, ry)
         else
-            anchor:SetPoint("BOTTOM", UIParent, "BOTTOM", 120, 150)
+            anchor:SetPoint("BOTTOM", UIParent, "BOTTOM", 120 + (spec.slot or 0) * 30, 150)
         end
         for i, b in ipairs(btns) do
             local id = order[i]
@@ -2181,7 +2212,7 @@ local function buildPotions()
         due = true
         C_Timer.After(0.3, function()
             due = false
-            ns.Timed("potion row", function() pcall(assign); if stale then pcall(update) end end)
+            ns.Timed(spec.label, function() pcall(assign); if stale then pcall(update) end end)
         end)
     end
     local ev = CreateFrame("Frame")
@@ -2201,8 +2232,15 @@ end
 function EX:OnInit(db)
     self.db = db
     if db.potions ~= false then
-        local ok, err = pcall(buildPotions)
+        local ok, err = pcall(buildFlyout, { name = "MeniscusPotions", row = "MeniscusPotionRow", btn = "MeniscusPotion",
+            glyph = "micro_potion.tga", title = "Potions", is = isPotion, rank = potionRank, slot = 0, label = "potion row" })
         if not ok and MinimalUIDB then MinimalUIDB.potionErr = tostring(err) end
+    end
+    if db.food ~= false then
+        local ok, err = pcall(buildFlyout, { name = "MeniscusFood", row = "MeniscusFoodRow", btn = "MeniscusFoodItem",
+            glyph = "micro_food.tga", title = "Food and drink", is = isFood, rank = foodRank,
+            slot = db.potions ~= false and 1 or 0, label = "food row" })
+        if not ok and MinimalUIDB then MinimalUIDB.foodErr = tostring(err) end
     end
     if db.reactive ~= false then pcall(buildReactive) end
     if db.usage ~= false then pcall(buildUsage) end

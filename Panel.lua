@@ -463,6 +463,10 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
         } },
         { title = "Action bars", items = {
+            { "Food and drink flyout on the minimap", kind = "switch", reload = true,
+              note = "A second disc beside the flask, with the food and drink in your bags; bind a key under Key Bindings, AddOns",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.food ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.food = d.food == false end end },
             { "Potion flyout on the minimap", kind = "switch", reload = true,
               note = "A flask on the map's rim that opens a row of the potions, elixirs and flasks in your bags; bind a key under Key Bindings, AddOns",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.potions ~= false end,

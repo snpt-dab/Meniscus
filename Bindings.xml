@@ -7,6 +7,8 @@
 	</Binding>
 	<Binding name="CLICK MeniscusRollPass:LeftButton" category="ADDONS">
 	</Binding>
+	<Binding name="CLICK MeniscusFood:LeftButton" category="ADDONS">
+	</Binding>
 	<Binding name="CLICK MeniscusPotions:LeftButton" category="ADDONS">
 	</Binding>
 	<Binding name="CLICK MeniscusReactive1:LeftButton" category="ADDONS">
