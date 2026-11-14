@@ -429,8 +429,8 @@ local function newButton(bag, slot)
     -- the picture): a dark rim, a gold disc, and the drawn "!" from the
     -- micro menu's quest icon in dark.
     local bang = CreateFrame("Frame", nil, over)
-    bang:SetSize(13, 13)
-    bang:SetPoint("CENTER", b, "TOPLEFT", 3.5, -3.5)
+    bang:SetSize(16, 16) -- (the upgrade arrow's badge size)
+    bang:SetPoint("CENTER", b, "TOPLEFT", 5, -5)
     local rim = bang:CreateTexture(nil, "OVERLAY", nil, 0)
     rim:SetTexture(MEDIA .. "circle.tga")
     rim:SetVertexColor(0.04, 0.04, 0.05, 1)
@@ -443,8 +443,9 @@ local function newButton(bag, slot)
     local mark = bang:CreateTexture(nil, "OVERLAY", nil, 2)
     mark:SetTexture(MEDIA .. "micro_quest.tga")
     mark:SetVertexColor(0.10, 0.07, 0.02, 1)
-    mark:SetPoint("TOPLEFT", 0.5, -0.5)
-    mark:SetPoint("BOTTOMRIGHT", -0.5, 0.5)
+    -- Drawn across the whole badge: its stroke is thinner in the texture
+    -- than the arrow's, and at this size the two come out the same weight.
+    mark:SetAllPoints()
     bang:Hide()
     b.bang = bang
 
