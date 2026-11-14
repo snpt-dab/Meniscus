@@ -519,22 +519,28 @@ end
 local DROP_SKIP_CLASS = { [1] = true, [6] = true, [11] = true, [12] = true, [13] = true }
 local priceCache = {}
 local dropSet, dropList = {}, {}
+-- (Why stacks were passed over, counted: read back from MinimalUIDB.dropdiag.)
+local why = {}
+local function pass(reason) why[reason] = (why[reason] or 0) + 1 end
 local function stackWorth(info, bag, slot)
     local q, link = info.quality, info.hyperlink
-    if not (num(q) and q <= 1) or info.hasNoValue or info.isLocked then return end
-    if type(link) ~= "string" or secret(link) then return end
+    if not num(q) then return pass("quality unknown") end
+    if q > 1 then return pass("green or better") end
+    if info.hasNoValue then return pass("no sale value") end
+    if info.isLocked then return pass("locked") end
+    if type(link) ~= "string" or secret(link) then return pass("no link") end
     local id = info.itemID
     local c = num(id) and priceCache[id]
     if c == nil then
         local f = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
         local _, _, _, _, _, _, _, _, _, _, price, classID = call(f, link)
-        if not num(price) then return end -- not loaded yet: ask again next time
+        if not num(price) then return pass("price not known (" .. type(price) .. ")") end -- not loaded yet: ask again next time
         c = (price > 0 and not DROP_SKIP_CLASS[classID or -1]) and price or false
         if num(id) then priceCache[id] = c end
     end
-    if not c then return end
-    if questInfo(bag, slot) then return end
-    if num(id) and ns.Restock and ns.Restock.Get and ns.Restock.Get(id) then return end
+    if not c then return pass("kept kind or free") end
+    if questInfo(bag, slot) then return pass("quest item") end
+    if num(id) and ns.Restock and ns.Restock.Get and ns.Restock.Get(id) then return pass("restocked") end
     local n = num(info.stackCount) and info.stackCount or 1
     return c * n, q, n, link
 end
@@ -752,8 +758,17 @@ function B:Refresh()
     if pending.layout and not InCombatLockdown() then layout() end
     -- Full or nearly: mark the three cheapest stacks to throw away.
     if B.db.cheapest ~= false and freeSlots() <= 2 then
-        pcall(findCheapest, 3)
+        for k in pairs(why) do why[k] = nil end
+        local ok, err = pcall(findCheapest, 3)
+        if MinimalUIDB then
+            local d = { "at " .. date("%H:%M:%S") .. "  free " .. freeSlots() .. "  candidates " .. #dropList
+                .. "  ok " .. tostring(ok) .. (ok and "" or ("  " .. tostring(err))) }
+            for k, v in pairs(why) do d[#d + 1] = k .. ": " .. v end
+            for k, v in pairs(dropSet) do d[#d + 1] = "marked bag " .. math.floor(k / 1000) .. " slot " .. (k % 1000) .. " worth " .. tostring(v) end
+            MinimalUIDB.dropdiag = d
+        end
     else
+        if MinimalUIDB and B.db.cheapest ~= false then MinimalUIDB.dropdiag = { "at " .. date("%H:%M:%S") .. "  not full: free " .. freeSlots() } end
         for k in pairs(dropSet) do dropSet[k] = nil end
     end
     for _, list in pairs(buttons) do
