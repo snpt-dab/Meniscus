@@ -204,6 +204,102 @@ local function gather()
     return list, all
 end
 
+-- ── Your group's progress ─────────────────────────────────────────────────
+-- The game doesn't tell an addon how far along the others are, so copies
+-- of Meniscus tell each other: in a group, each sends its objective counts
+-- ("Q1:<quest>:<n>.<n>;<quest>:<n>" over the addon channel, a few short
+-- messages, only when something changed), and the objectives list shows
+-- them after your own: "3/8 Boar Tusks   Sam 5". Only people running the
+-- addon appear. Nothing is sent outside a group.
+local PEER_PREFIX = "Meniscus"
+local peers = {}        -- [short name] = { [questID] = { n1, n2, ... } }
+local redrawPeers       -- set by the console: redraw the list
+local lastSig, sendDue
+local function inGroup() return IsInGroup and IsInGroup() and true or false end
+local function sendProgress(all)
+    if not (inGroup() and C_ChatInfo and C_ChatInfo.SendAddonMessage) then lastSig = nil return end
+    local parts = {}
+    for _, e in ipairs(all) do
+        if e.objs then
+            local ns_ = {}
+            for _, o in ipairs(e.objs) do
+                local f = type(o) == "table" and o.numFulfilled
+                ns_[#ns_ + 1] = (type(f) == "number" and not secretv(f)) and tostring(f) or "0"
+            end
+            if #ns_ > 0 then parts[#parts + 1] = e.id .. ":" .. table.concat(ns_, ".") end
+        end
+    end
+    local sig = table.concat(parts, ";")
+    if sig == lastSig then return end
+    lastSig = sig
+    local channel = (IsInRaid and IsInRaid()) and "RAID" or "PARTY"
+    -- In pieces that fit one message; the first says "start over".
+    local head, buf = "Q1:", ""
+    local function flush()
+        pcall(C_ChatInfo.SendAddonMessage, PEER_PREFIX, head .. buf, channel)
+        head, buf = "Q+:", ""
+    end
+    for _, part in ipairs(parts) do
+        if #buf + #part + 1 > 230 then flush() end
+        buf = buf == "" and part or (buf .. ";" .. part)
+    end
+    flush()
+end
+-- At most one send every 3 seconds.
+local function shareProgress(all)
+    if sendDue then sendDue = all return end
+    sendDue = all
+    C_Timer.After(3, function()
+        local a = sendDue
+        sendDue = nil
+        if a then pcall(sendProgress, a) end
+    end)
+end
+local function heardProgress(msg, sender)
+    if type(msg) ~= "string" or type(sender) ~= "string" or secretv(msg) or secretv(sender) then return end
+    local kind, body = msg:match("^(Q[1%+]):(.*)$")
+    if not kind then return end
+    local who = Ambiguate and Ambiguate(sender, "short") or sender
+    if who == UnitName("player") then return end
+    if kind == "Q1" or not peers[who] then peers[who] = {} end
+    for id, counts in body:gmatch("(%d+):([%d%.]+)") do
+        local t = {}
+        for n in counts:gmatch("%d+") do t[#t + 1] = tonumber(n) end
+        peers[who][tonumber(id)] = t
+    end
+    if redrawPeers then redrawPeers() end
+end
+-- What the others have for objective k of a quest: "  Sam 5  Ana 2", or "".
+local function peerNote(id, k)
+    if not next(peers) then return "" end
+    local out = ""
+    for who, quests in pairs(peers) do
+        local t = quests[id]
+        if t and t[k] and (UnitInParty(who) or UnitInRaid(who)) then
+            out = out .. "  |cff8fa0b8" .. who .. " " .. t[k] .. "|r"
+        end
+    end
+    return out
+end
+do
+    local pf = CreateFrame("Frame")
+    pf:RegisterEvent("CHAT_MSG_ADDON")
+    pf:RegisterEvent("GROUP_ROSTER_UPDATE")
+    pf:SetScript("OnEvent", function(_, event, prefix, msg, _, sender)
+        if event == "CHAT_MSG_ADDON" then
+            if prefix == PEER_PREFIX then pcall(heardProgress, msg, sender) end
+        else
+            -- Someone joined or left: forget who is gone, and send again so
+            -- a newcomer hears it.
+            for who in pairs(peers) do
+                if not (UnitInParty(who) or UnitInRaid(who)) then peers[who] = nil end
+            end
+            lastSig = nil
+            if redrawPeers then redrawPeers() end
+        end
+    end)
+end
+
 local function diffColor(level)
     if type(level) ~= "number" or secretv(level) then return T.text[1], T.text[2], T.text[3] end
     local fn = _G.GetQuestDifficultyColor or _G.GetDifficultyColor
@@ -357,6 +453,8 @@ function TR:Console(x, y, w, h)
                 C_Timer.After(soonest - nowT + 0.5, function() P.againPending = false; P.again() end)
             end
             pcall(TR.SetQuestItems, TR, all)
+            if TR.db.groupProgress ~= false then pcall(shareProgress, all) end
+            local showPeers = TR.db.groupProgress ~= false
             if #list == 0 then
                 local fs = P.take(11)
                 fs:SetText("No quests.")
@@ -392,11 +490,11 @@ function TR:Console(x, y, w, h)
                 local objs = e.objs
                 local any = false
                 if type(objs) == "table" then
-                    for _, o in ipairs(objs) do
+                    for k, o in ipairs(objs) do
                         if type(o) == "table" and type(o.text) == "string" and o.text ~= "" then
                             any = true
                             local os = P.take(10)
-                            os:SetText(o.text)
+                            os:SetText(showPeers and (o.text .. peerNote(e.id, k)) or o.text)
                             if o.finished then os:SetTextColor(GREEN[1] * 0.8, GREEN[2] * 0.8, GREEN[3] * 0.8)
                             else os:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end
                             put(os, 10, 1)
@@ -435,6 +533,7 @@ function TR:Console(x, y, w, h)
             end)
         end
         P.again = soon
+        redrawPeers = soon
         if ns.QuestFocus then table.insert(ns.QuestFocus.listeners, soon) end
         local ev = CreateFrame("Frame")
         for _, e in ipairs({ "QUEST_LOG_UPDATE", "QUEST_WATCH_LIST_CHANGED", "ZONE_CHANGED_NEW_AREA",

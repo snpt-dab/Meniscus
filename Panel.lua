@@ -443,6 +443,10 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
         } },
         { title = "Quests", items = {
+            { "Your group's quest progress", kind = "switch", reload = true,
+              note = "Others running Meniscus show their counts beside yours in the objectives",
+              get = function() return ns.modules.Tracker.db.groupProgress ~= false end,
+              set = function() local d = ns.modules.Tracker.db; d.groupProgress = d.groupProgress == false end },
             { "Dot over the quest objective", kind = "switch", reload = true,
               note = "For the quest you focus: right-click it in the objectives, or Focus in the quest log",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.waypoint ~= false end,
