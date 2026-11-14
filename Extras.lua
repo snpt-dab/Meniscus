@@ -242,6 +242,7 @@ local function scanBank()
     end
 end
 
+local madeLines -- defined further down ("Used in")
 local function ownedLines(tip, id)
     local db = MinimalUIDB
     if not (db and db.inv) then return end
@@ -1129,7 +1130,7 @@ function ns.RecordRecipe(id, name, list)
     useIndex = nil
 end
 local madeBuf = {}
-local function madeLines(tip, id)
+function madeLines(tip, id)
     local db = MinimalUIDB
     local mine = db and db.recipes and db.recipes[ns:CharKey()]
     if not mine then return end
