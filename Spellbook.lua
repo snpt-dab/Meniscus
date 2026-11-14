@@ -148,6 +148,9 @@ local function newCard(i)
     c:SetSize(CARD_W, CARD_H)
     c:RegisterForClicks("AnyDown", "AnyUp")
     c:RegisterForDrag("LeftButton")
+    -- Cast on release, not on the press: pressing to drag a spell out to
+    -- the bars was casting it (as the profession book's cards already do).
+    c:SetAttribute("useOnKeyDown", false)
     c:SetAttribute("shift-type1", "") -- shift-click links instead of casting
     c.hl = ns.RoundedRect(c, -8, 0, 10, 1, 1, 1, 0)
 
