@@ -207,6 +207,9 @@ def icons():
     I['stat_defense'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True)
     # resistances: a halved shield
     I['stat_resist'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True).line([(12, 5.2), (12, 19)], w=2.0)
+    # The group finder's eye: the two lids only (the pupil is drawn in game,
+    # so it can look about).
+    I['eye'] = Icon().arc(12, 15.9, 8.9, 26, 154, w=2.0).arc(12, 8.1, 8.9, 206, 334, w=2.0)
     # A remembered gathering node on the world map: a dot in a thin ring.
     I['node'] = Icon().dot(12, 12, 3.4).ring(12, 12, 8.6, w=1.6)
     return I

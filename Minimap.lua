@@ -581,11 +581,18 @@ function MM:BuildQueue(h)
     fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
     fill:SetTexture(MEDIA .. "circle.tga")
     fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+    -- An eye, drawn our way: two thin lids and a round pupil, which looks
+    -- slowly from side to side while you wait and blinks now and then.
     local icon = disc:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(16, 16)
+    icon:SetSize(19, 19)
     icon:SetPoint("CENTER")
-    icon:SetTexture(MEDIA .. "micro_group.tga")
+    icon:SetTexture(MEDIA .. "micro_eye.tga")
     icon:SetVertexColor(T.text[1], T.text[2], T.text[3], 1)
+    local pupil = disc:CreateTexture(nil, "ARTWORK", nil, 1)
+    pupil:SetSize(5, 5)
+    pupil:SetPoint("CENTER")
+    pupil:SetTexture(MEDIA .. "circle.tga")
+    pupil:SetVertexColor(GOLD_HOVER[1], GOLD_HOVER[2], GOLD_HOVER[3], 1)
     local flashT = disc:CreateTexture(nil, "OVERLAY")
     flashT:SetAllPoints()
     flashT:SetTexture(MEDIA .. "circle.tga")
@@ -603,6 +610,14 @@ function MM:BuildQueue(h)
         -- The ring: from the hairline grey to the pill's gold and back.
         local k = hover and 1 or (0.5 + 0.5 * math.sin(now * 2.2))
         ring:SetVertexColor(b[1] + (GOLD[1] - b[1]) * k, b[2] + (GOLD[2] - b[2]) * k, b[3] + (GOLD[3] - b[3]) * k, 1)
+        -- Looking about (and straight at you while the mouse is on it).
+        local look = hover and 0 or 2.2 * math.sin(now * 0.9) * (0.6 + 0.4 * math.sin(now * 0.37))
+        pupil:SetPoint("CENTER", disc, "CENTER", look, 0)
+        -- A blink every five seconds or so: the lids close and open.
+        local bl = now % 5.3
+        local open = bl < 0.22 and math.abs(bl - 0.11) / 0.11 or 1
+        icon:SetHeight(19 * (0.15 + 0.85 * open))
+        pupil:SetHeight(5 * open + 0.01)
         if flash > 0 then
             flash = flash - dt
             -- Three quick beats of white.
