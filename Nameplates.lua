@@ -172,8 +172,161 @@ local function stylePlate(plate, unit)
     pcall(ringFor, uf, unit or plate.namePlateUnitToken or uf.unit)
 end
 
+-- ── Combat numbers ────────────────────────────────────────────────────────
+-- Our own floating numbers, in place of the game's world text (which can't
+-- be had without its purple "XP: 1,650" as well). Off unless switched on;
+-- switching it on also turns the game's own numbers down (see quietGame).
+--   * Over a unit's nameplate: what it takes (damage in the spell school's
+--     colour, heals in green, "Miss" / "Dodge" and the like, dim). A
+--     critical is larger and lands with a small pop.
+--   * By your character: what you take (red, to the left) and heals on you
+--     (green, to the right).
+-- What the game gives is "this unit took this much" (UNIT_COMBAT), not who
+-- dealt it: in a group, a mob's numbers are everyone's.
+-- Amounts are hidden values in combat: they are handed straight to the
+-- text and never read, so there is no "+" in front and no adding up.
+local NUM_POOL, NUM_LIFE, NUM_RISE = 40, 1.05, 44
+local SCHOOL_TINT = { [1] = { 0.94, 0.94, 0.96 }, [2] = { 1.00, 0.90, 0.50 }, [4] = { 1.00, 0.56, 0.28 },
+    [8] = { 0.55, 0.90, 0.45 }, [16] = { 0.55, 0.82, 1.00 }, [32] = { 0.74, 0.60, 1.00 }, [64] = { 1.00, 0.62, 0.90 } }
+local WORDS = { MISS = "Miss", DODGE = "Dodge", PARRY = "Parry", BLOCK = "Block", RESIST = "Resist",
+    IMMUNE = "Immune", ABSORB = "Absorb", EVADE = "Evade", DEFLECT = "Deflect", REFLECT = "Reflect" }
+-- The game's own world text: its damage and healing numbers off, and the
+-- rest (the XP line) shrunk to nearly nothing. What was there before is
+-- kept, and put back when our numbers are switched off.
+local QUIET = { floatingCombatTextCombatDamage_v2 = "0", floatingCombatTextCombatHealing_v2 = "0",
+    floatingCombatTextPetMeleeDamage_v2 = "0", floatingCombatTextPetSpellDamage_v2 = "0", WorldTextScale_v2 = "0" }
+local function quietGame(on)
+    local db = NP.db
+    if on then
+        db.cvarsWas = db.cvarsWas or {}
+        for name, v in pairs(QUIET) do
+            local ok, cur = pcall(GetCVar, name)
+            if ok and cur ~= nil then
+                if db.cvarsWas[name] == nil then db.cvarsWas[name] = cur end
+                if cur ~= v then pcall(SetCVar, name, v) end
+            end
+        end
+    elseif db.cvarsWas then
+        for name, v in pairs(db.cvarsWas) do pcall(SetCVar, name, v) end
+        db.cvarsWas = nil
+    end
+end
+NP.QuietGame = quietGame
+
+local function buildNumbers()
+    local host = CreateFrame("Frame", nil, UIParent)
+    host:SetAllPoints()
+    host:SetFrameStrata("HIGH")
+    local items, spawned = {}, 0
+    local driver = CreateFrame("Frame")
+    driver:Hide()
+    local function item()
+        for i = 1, #items do if not items[i].live then return items[i] end end
+        if #items >= NUM_POOL then return nil end
+        local f = CreateFrame("Frame", nil, host)
+        f:SetSize(10, 10)
+        f.fs = f:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(f.fs, 15, "OUTLINE", true)
+        f.fs:SetPoint("CENTER")
+        f.fs:SetShadowOffset(1, -1)
+        f.fs:SetShadowColor(0, 0, 0, 0.9)
+        items[#items + 1] = f
+        return f
+    end
+    driver:SetScript("OnUpdate", function(self, dt)
+        local any = false
+        for i = 1, #items do
+            local f = items[i]
+            if f.live then
+                f.age = f.age + dt
+                local k = f.age / NUM_LIFE
+                if k >= 1 then
+                    f.live = false
+                    f:Hide()
+                else
+                    any = true
+                    -- Up quickly, then easing off; clear until the last third.
+                    local e = 1 - (1 - k) * (1 - k)
+                    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y + NUM_RISE * e)
+                    f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
+                    if f.crit then
+                        local p = f.age < 0.16 and (1.7 - 0.4 * f.age / 0.16) or 1.3
+                        f:SetScale(p)
+                    end
+                end
+            end
+        end
+        if not any then self:Hide() end
+    end)
+    local function show(x, y, value, r, g, b, crit, small)
+        local f = item()
+        if not f then return end
+        -- (A hidden amount goes straight in; nothing is done with it here.)
+        local ok = pcall(f.fs.SetText, f.fs, value)
+        if MinimalUIDB and not MinimalUIDB.ctdiag then
+            MinimalUIDB.ctdiag = "first number: hidden=" .. tostring(secret(value)) .. " type=" .. type(value) .. " shown=" .. tostring(ok)
+        end
+        if not ok then return end
+        spawned = spawned + 1
+        local scale = crit and 1.3 or (small and 0.8 or 1)
+        f.crit = crit
+        f:SetScale(scale)
+        -- (Positions are in the frame's own units: divide the scale out.)
+        f.x = (x + ((spawned % 5) - 2) * 13) / scale
+        f.y = y / scale
+        f.fs:SetTextColor(r, g, b)
+        f.age, f.live = 0, true
+        f:SetAlpha(1)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x, f.y)
+        f:Show()
+        driver:Show()
+    end
+    -- Where a unit's numbers start: just above its nameplate.
+    local function plateSpot(unit)
+        local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+        if not ok or not plate or (plate.IsForbidden and plate:IsForbidden()) then return end
+        local x, y = plate:GetCenter()
+        if not (x and y) then return end
+        local k = plate:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        return x * k, y * k + 16
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("UNIT_COMBAT")
+    ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
+        if type(unit) ~= "string" or secret(unit) or secret(action) or type(action) ~= "string" then return end
+        local mine = unit == "player"
+        local x, y
+        if mine then
+            local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+            x, y = w / 2 + (action == "HEAL" and 80 or -80), h * 0.46
+        elseif unit:find("^nameplate") then
+            x, y = plateSpot(unit)
+        end
+        if not x then return end
+        local crit = not secret(indicator) and indicator == "CRITICAL"
+        if action == "HEAL" then
+            show(x, y, amount, 0.42, 0.92, 0.50, crit)
+        elseif action == "WOUND" then
+            if mine then
+                show(x, y, amount, 0.96, 0.42, 0.38, crit)
+            else
+                local c = (not secret(school) and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
+                show(x, y, amount, c[1], c[2], c[3], crit)
+            end
+        elseif WORDS[action] then
+            show(x, y, WORDS[action], 0.62, 0.62, 0.68, false, true)
+        end
+    end)
+end
+
 function NP:OnInit(db)
     self.db = db
+    if db.numbers == true then
+        pcall(quietGame, true)
+        local ok, err = pcall(buildNumbers)
+        if not ok and MinimalUIDB then MinimalUIDB.ctdiag = "build failed: " .. tostring(err) end
+    end
     if not C_NamePlate then return end
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("NAME_PLATE_UNIT_ADDED")

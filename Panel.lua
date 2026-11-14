@@ -475,6 +475,14 @@ local PAGES = {
               note = "Hides roll choices and other members' grey and white loot; winners and green or better stay",
               get = function() return ns.modules.Chat.db.quietLoot ~= false end,
               set = function() local d = ns.modules.Chat.db; d.quietLoot = d.quietLoot == false end },
+            { "Meniscus combat numbers", kind = "switch", reload = true,
+              note = "Our own damage and healing numbers over nameplates and your character; turns the game's own floating text down (and back when switched off)",
+              get = function() return ns.modules.Nameplates.db.numbers == true end,
+              set = function()
+                  local N = ns.modules.Nameplates
+                  N.db.numbers = not (N.db.numbers == true)
+                  if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
+              end },
             { "Healer notes on group frames", kind = "switch", reload = true,
               note = "A chip on a member's health pill: how long until they can be shielded again, and a resurrection on its way",
               get = function() return ns.modules.UnitFrames.db.notes ~= false end,
