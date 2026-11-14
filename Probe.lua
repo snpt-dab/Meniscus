@@ -1145,3 +1145,67 @@ ns.commands.navprobe = function()
     MinimalUIDB.navprobe = out
     ns:Print("Waypoint facts recorded (" .. #out .. " lines). /reload to save them.")
 end
+
+-- /men deepprobe <FrameName> : everything inside one window, to the bottom:
+-- child frames and their regions (textures with their atlas, text with what
+-- it says and how wide it is), each with the key its parent knows it by.
+-- Saved in MinimalUIDB.deepprobe[name]. For restyling a Blizzard window
+-- whose parts aren't known. Open the window first.
+ns.commands.deepprobe = function(_, raw)
+    local name = (raw or ""):match("^%s*(%S+)")
+    local root = name and _G[name]
+    if not (MinimalUIDB and type(root) == "table" and root.GetObjectType) then
+        return ns:Print("/men deepprobe <FrameName>, with the window open. No frame called " .. tostring(name) .. ".")
+    end
+    local out = {}
+    local function s(v) if issecretvalue and issecretvalue(v) then return "<secret>" end return tostring(v) end
+    local function keysOf(f)
+        local names = {}
+        for k, v in pairs(f) do if type(k) == "string" and type(v) == "table" then names[v] = k end end
+        return names
+    end
+    local function walk(f, key, depth)
+        if #out > 1400 or depth > 9 or (f.IsForbidden and f:IsForbidden()) then return end
+        local pad = string.rep("  ", depth)
+        pcall(function()
+            out[#out + 1] = pad .. key .. " [" .. f:GetObjectType() .. "] " .. s(f:GetName() or "?")
+                .. (f:IsShown() and "" or " hidden") .. string.format(" %.0fx%.0f", f:GetWidth(), f:GetHeight())
+                .. (f:IsMouseEnabled() and " mouse" or "")
+        end)
+        local names = keysOf(f)
+        pcall(function()
+            for _, r in ipairs({ f:GetRegions() }) do
+                local line = pad .. "  ~" .. (names[r] or "#") .. " [" .. r:GetObjectType() .. "]"
+                    .. (r:IsShown() and "" or " hidden") .. string.format(" %.0fx%.0f", r:GetWidth(), r:GetHeight())
+                if r.GetAtlas then line = line .. " atlas=" .. s(r:GetAtlas()) end
+                if r.GetTexture and not (r.GetAtlas and r:GetAtlas()) then line = line .. " tex=" .. s(r:GetTexture()) end
+                if r.GetText then
+                    local t = r:GetText()
+                    if issecretvalue and issecretvalue(t) then t = "<secret>" end
+                    line = line .. ' text="' .. tostring(t):sub(1, 30) .. '"'
+                    if r.GetStringWidth then line = line .. string.format(" strw=%.0f", r:GetStringWidth() or 0) end
+                    if r.GetNumPoints and r:GetNumPoints() > 0 then
+                        local p, rel, rp, x, y = r:GetPoint(1)
+                        line = line .. " at " .. s(p) .. ">" .. s(rel and (names[rel] or (rel.GetName and rel:GetName()) or "?")) .. ":" .. s(rp)
+                            .. string.format(" %.0f,%.0f", x or 0, y or 0) .. " pts=" .. r:GetNumPoints()
+                    end
+                end
+                out[#out + 1] = line
+            end
+        end)
+        local shownKids = 0
+        for _, c in ipairs({ f:GetChildren() }) do
+            -- Lists: a few rows are enough to see what a row is made of.
+            if depth >= 3 and not names[c] then
+                shownKids = shownKids + 1
+                if shownKids <= 4 then walk(c, "#", depth + 1) end
+            else
+                walk(c, names[c] or "#", depth + 1)
+            end
+        end
+    end
+    walk(root, name, 0)
+    MinimalUIDB.deepprobe = MinimalUIDB.deepprobe or {}
+    MinimalUIDB.deepprobe[name] = out
+    ns:Print(name .. ": " .. #out .. " lines recorded. /reload to save them.")
+end
