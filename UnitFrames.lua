@@ -147,6 +147,33 @@ local newMask -- (defined with the avatar code below; used by the power orb here
 local GOLD, SILVER, EMBER = { 0.90, 0.72, 0.30 }, { 0.70, 0.78, 0.92 }, { 0.80, 0.22, 0.14 }
 local SWIRL_TEX = "Interface/AddOns/Meniscus/Media/swirl.tga"
 
+-- Dungeon bosses: the game calls them plain "elite" (only raid bosses and
+-- skull-level mobs are "worldboss"). They are told apart three ways, any
+-- of which may or may not answer on this client:
+--   * the game says so (UnitIsBossMob);
+--   * the unit is one of the fight's boss units (boss1-5);
+--   * its name is that of an encounter you have started before. Those are
+--     remembered (MinimalUIDB.bossNames), so from the second visit on a
+--     boss is marked before the pull.
+local BOSS_TOKENS = { "boss1", "boss2", "boss3", "boss4", "boss5" }
+local function isBossUnit(unit)
+    if UnitIsBossMob then
+        local ok, b = pcall(UnitIsBossMob, unit)
+        if ok and not issecretvalue(b) and b == true then return true end
+    end
+    for i = 1, #BOSS_TOKENS do
+        local ok, same = pcall(UnitIsUnit, unit, BOSS_TOKENS[i])
+        if ok and not issecretvalue(same) and same == true then return true end
+    end
+    local names = MinimalUIDB and MinimalUIDB.bossNames
+    if names then
+        local ok, n = pcall(UnitName, unit)
+        if ok and type(n) == "string" and not issecretvalue(n) and names[n] then return true end
+    end
+    return false
+end
+ns.IsBossUnit = isBossUnit
+
 local function classOf(unit)
     local c = UnitClassification and UnitClassification(unit)
     if type(c) ~= "string" or issecretvalue(c) then c = "normal" end
@@ -155,6 +182,7 @@ local function classOf(unit)
     local player = UnitIsPlayer(unit)
     if issecretvalue(player) then player = false end
     if c == "worldboss" or (skull and not player) then return "boss" end
+    if (c == "elite" or c == "rareelite") and not player and isBossUnit(unit) then return "boss" end
     if c == "rareelite" then return "rareelite" end
     if c == "elite" then return "elite" end
     if c == "rare" then return "rare" end
@@ -493,6 +521,7 @@ local function update(self)
         end
     end
     if self.key == "target" then
+        UF.restyleTarget = UF.restyleTarget or function() pcall(styleClass, self, self.unit or "target") end
         pcall(styleClass, self, unit)
         local isPlayer = UnitIsPlayer(unit)
         if issecretvalue(isPlayer) then isPlayer = false end
@@ -1114,6 +1143,21 @@ function UF:SetPlayerStyle(style)
     end
 end
 ns.commands.noportrait = function() UF:SetPlayerStyle(UF.db.playerStyle == "none" and "frame" or "none") end
+
+-- A fight with a boss has begun: remember its name, and look at the target
+-- again (it may have been marked "Elite" a moment ago).
+do
+    local ev = CreateFrame("Frame")
+    pcall(ev.RegisterEvent, ev, "ENCOUNTER_START")
+    pcall(ev.RegisterEvent, ev, "INSTANCE_ENCOUNTER_ENGAGE_UNIT")
+    ev:SetScript("OnEvent", function(_, e, _, name)
+        if e == "ENCOUNTER_START" and type(name) == "string" and not issecretvalue(name) and name ~= "" and MinimalUIDB then
+            MinimalUIDB.bossNames = MinimalUIDB.bossNames or {}
+            MinimalUIDB.bossNames[name] = true
+        end
+        if UF.restyleTarget then C_Timer.After(0.2, UF.restyleTarget) end
+    end)
+end
 
 -- ── Party ─────────────────────────────────────────────────────────────────
 function UF:LayoutParty()

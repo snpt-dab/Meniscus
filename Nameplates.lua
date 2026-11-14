@@ -129,6 +129,7 @@ local function ringFor(uf, unit)
     if type(kind) == "string" and not secret(kind) then
         local lvl = UnitLevel(unit)
         if kind == "worldboss" or (type(lvl) == "number" and not secret(lvl) and lvl < 0) then c = EMBER
+        elseif (kind == "elite" or kind == "rareelite") and ns.IsBossUnit and ns.IsBossUnit(unit) then c = EMBER
         elseif kind == "elite" or kind == "rareelite" then c = GOLD
         elseif kind == "rare" then c = SILVER end
     end
