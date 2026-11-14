@@ -396,7 +396,7 @@ local function buildButton()
     local fill = pillLayer(btn, base + 2, 1.5, 0.06, 0.06, 0.07, 0.97)
     local ag = rim:CreateAnimationGroup()
     local a = ag:CreateAnimation("Alpha")
-    a:SetFromAlpha(1); a:SetToAlpha(0.35); a:SetDuration(0.9); a:SetSmoothing("IN_OUT")
+    a:SetFromAlpha(1); a:SetToAlpha(0.35); a:SetDuration(1.8); a:SetSmoothing("IN_OUT")
     ag:SetLooping("BOUNCE")
     ag:Play()
     btn.fillLayer = fill
@@ -555,7 +555,10 @@ local function buildButton()
         end
         local fx = CreateFrame("Frame", nil, btn)
         local t, since = 0, 0
+        -- Everything here runs on one clock, at half speed: unhurried.
+        local PACE = 0.5
         fx:SetScript("OnUpdate", function(_, dt)
+            dt = dt * PACE
             t, since = t + dt, since + dt
             local pull, alpha = REST, 0.9
             local boost = 1
