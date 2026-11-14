@@ -1452,6 +1452,8 @@ do
             if e == "UNIT_SPELLCAST_SENT" then log("CS", spell(a4), a2)        -- spell, target
             else log(e:sub(16), a1, spell(a3)) end                            -- START / SUCCEEDED / FAILED ... unit, spell
         elseif isChat[e] then
+            -- (Other players' "creates X" lines were 60% of a recording.)
+            if e == "CHAT_MSG_TRADESKILLS" and not (type(a1) == "string" and not hidden(a1) and a1:find("^You ")) then return end
             log(e:sub(10), a1)
         elseif e == "UI_ERROR_MESSAGE" or e == "UI_INFO_MESSAGE" then
             log(e == "UI_ERROR_MESSAGE" and "ERR" or "INFO", a2, a1)

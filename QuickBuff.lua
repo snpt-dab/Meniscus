@@ -798,6 +798,32 @@ local function buildButton()
         self.fillLayer:SetColor(0.06, 0.06, 0.07, 0.97)
         GameTooltip:Hide()
     end)
+    -- Can't pay for it yet (Battle Shout with no rage): the pill goes dim
+    -- until you can, and its tooltip says what is missing. (The pill only
+    -- shows out of combat, which is also when this is looked at.)
+    btn:HookScript("OnEnter", function(self)
+        if not self.short then return end
+        local _, token = UnitPowerType("player")
+        local word = (type(token) == "string" and _G[token]) or "power"
+        GameTooltip:AddLine("Not enough " .. tostring(word):lower() .. " yet.", 0.95, 0.55, 0.50)
+        GameTooltip:Show()
+    end)
+    function QB.Afford()
+        if not btn:IsShown() or InCombatLockdown() then return end
+        local short = false
+        if btn.spellName then
+            local ok, usable, noPower = pcall(C_Spell.IsSpellUsable, btn.spellName)
+            if ok and not secret(usable) and not secret(noPower) and usable ~= true and noPower == true then short = true end
+        end
+        if btn.short ~= short then
+            btn.short = short
+            btn:SetAlpha(short and 0.4 or 1)
+        end
+    end
+    local pw = CreateFrame("Frame")
+    pcall(pw.RegisterUnitEvent, pw, "UNIT_POWER_UPDATE", "player")
+    pcall(pw.RegisterEvent, pw, "SPELL_UPDATE_USABLE")
+    pw:SetScript("OnEvent", function() if btn:IsShown() then QB.Afford() end end)
 
     -- A newly offered buff opens out of its icon: a dot that widens into
     -- the pill (the loot pills' closing, run the other way), the words
@@ -923,6 +949,7 @@ function QB:Refresh()
     btn.SizeTo(math.max(math.floor(w + 0.5), H * 3), fresh)
     place()
     btn:Show()
+    if QB.Afford then QB.Afford() end
 end
 
 -- Is this one of your class's buffs (that you know)? Used by the player

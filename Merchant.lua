@@ -86,6 +86,38 @@ local function qualityOf(link)
     return call(C_Item and C_Item.GetItemQualityByID, link)
 end
 
+-- Things a quest of yours asks for: an unfinished objective that names the
+-- item ("Toxic Skullcap: 0/1"). Collected once per refresh; questFor(name)
+-- answers with the quest's title.
+local wanted = {}
+local function collectWanted()
+    for i = #wanted, 1, -1 do wanted[i] = nil end
+    local QL = C_QuestLog
+    if not (QL and QL.GetNumQuestLogEntries and QL.GetInfo and QL.GetQuestObjectives) then return end
+    local n = call(QL.GetNumQuestLogEntries)
+    if not num(n) then return end
+    for i = 1, n do
+        local info = call(QL.GetInfo, i)
+        if type(info) == "table" and not info.isHeader and num(info.questID) then
+            local objs = call(QL.GetQuestObjectives, info.questID)
+            if type(objs) == "table" then
+                for _, o in ipairs(objs) do
+                    if type(o) == "table" and not o.finished and type(o.text) == "string" and not secret(o.text) then
+                        wanted[#wanted + 1] = o.text
+                        wanted[#wanted + 1] = info.title or "a quest"
+                    end
+                end
+            end
+        end
+    end
+end
+local function questFor(name)
+    if type(name) ~= "string" or secret(name) or name == "" then return nil end
+    for i = 1, #wanted, 2 do
+        if wanted[i]:find(name, 1, true) then return wanted[i + 1] end
+    end
+end
+
 -- ── Window ────────────────────────────────────────────────────────────────
 local win, cards, tabBtns = nil, {}, {}
 local closing = false
@@ -119,6 +151,27 @@ local function newCard(i)
     c.price:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 8, 2)
     c.stock = text(c, 10, false, T.textDim)
     c.stock:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -10, 7)
+    -- A quest wants this: the bags' gold "!" badge on the picture's corner
+    -- (and a gold ring round the card).
+    local bang = CreateFrame("Frame", nil, c)
+    bang:SetSize(16, 16)
+    bang:SetPoint("CENTER", box, "TOPLEFT", 3, -3)
+    bang:SetFrameLevel(box:GetFrameLevel() + 3)
+    local bRim = bang:CreateTexture(nil, "OVERLAY", nil, 0)
+    bRim:SetTexture(MEDIA .. "circle.tga")
+    bRim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    bRim:SetAllPoints()
+    local bDisc = bang:CreateTexture(nil, "OVERLAY", nil, 1)
+    bDisc:SetTexture(MEDIA .. "circle.tga")
+    bDisc:SetVertexColor(1.0, 0.80, 0.20, 1)
+    bDisc:SetPoint("TOPLEFT", 1.5, -1.5)
+    bDisc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local bMark = bang:CreateTexture(nil, "OVERLAY", nil, 2)
+    bMark:SetTexture(MEDIA .. "micro_quest.tga")
+    bMark:SetVertexColor(0.10, 0.07, 0.02, 1)
+    bMark:SetAllPoints()
+    bang:Hide()
+    c.bang = bang
     c:SetScript("OnEnter", function(self)
         self.ring(unpack(T.accent)); self.fill(0.13, 0.13, 0.15, 1)
         ns.TipAnchor(self)
@@ -127,6 +180,10 @@ local function newCard(i)
         GameTooltip:Show()
         if M.tab ~= "buyback" and _G.GetMerchantItemLink then
             pcall(ns.AddCompare, GameTooltip, call(_G.GetMerchantItemLink, self.index))
+        end
+        if self.quest then
+            GameTooltip:AddLine("Needed for: " .. self.quest, 1.0, 0.80, 0.20, true)
+            GameTooltip:Show()
         end
         if M.tab ~= "buyback" and ns.Restock then
             local keep = ns.Restock.Get(ns.Restock.MerchantID(self.index))
@@ -185,6 +242,7 @@ function M:Refresh()
     local total = self.tab == "buyback" and (call(_G.GetNumBuybackItems) or 0) or (call(_G.GetMerchantNumItems) or 0)
     local pages = math.max(1, math.ceil(total / PER))
     self.page = math.max(1, math.min(self.page or 1, pages))
+    pcall(collectWanted)
     for slot = 1, PER do
         local c = cards[slot]
         local i = (self.page - 1) * PER + slot
@@ -210,8 +268,12 @@ function M:Refresh()
             if col then c.name:SetTextColor(col.r, col.g, col.b) else c.name:SetTextColor(unpack(T.text)) end
             c.rr, c.rg, c.rb = col and col.r * 0.6 or T.border[1], col and col.g * 0.6 or T.border[2],
                 col and col.b * 0.6 or T.border[3]
+            c.quest = self.tab ~= "buyback" and questFor(name) or nil
+            c.bang:SetShown(c.quest ~= nil)
+            if c.quest then c.rr, c.rg, c.rb = 1.0, 0.80, 0.20 end
             c.ring(c.rr, c.rg, c.rb, 1)
-            c.boxRing(col and col.r or T.border[1], col and col.g or T.border[2], col and col.b or T.border[3], 1)
+            if c.quest then c.boxRing(1.0, 0.80, 0.20, 1)
+            else c.boxRing(col and col.r or T.border[1], col and col.g or T.border[2], col and col.b or T.border[3], 1) end
             local priceText = ""
             if num(price) and price > 0 then priceText = money(price, num(myMoney) and price > myMoney) end
             if ext then

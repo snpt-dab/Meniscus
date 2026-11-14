@@ -133,8 +133,68 @@ local function defaultFontSize()
     end
 end
 
+-- Less of other people in the chat window:
+--   * crafting: "So-and-so creates X." from everyone near you (thousands of
+--     lines an evening in a city). Your own stay.
+--   * group loot: what each member chose on a roll ("has selected Greed
+--     for..."), their dice, and the grey and white things other people pick
+--     up. Who won each roll stays, and so does anything green or better.
+-- A line that can't be read (hidden in combat) is always let through.
+local function toPattern(fmt)
+    if type(fmt) ~= "string" or fmt == "" then return nil end
+    local p = fmt:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+    p = p:gsub("%%%d?%$?s", ".+"):gsub("%%%d?%$?d", "%%d+")
+    return p
+end
+local function readable(msg) return type(msg) == "string" and not (issecretvalue and issecretvalue(msg)) end
+local function addFilters(db)
+    local add = (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or _G.ChatFrame_AddMessageEventFilter
+    if type(add) ~= "function" then return end
+    if db.hideCrafting ~= false then
+        local mine = type(_G.TRADESKILL_LOG_FIRSTPERSON) == "string" and _G.TRADESKILL_LOG_FIRSTPERSON:match("^(.-)%%") or "You create"
+        if mine == "" then mine = "You create" end
+        pcall(add, "CHAT_MSG_TRADESKILLS", function(_, _, msg)
+            if not readable(msg) then return false end
+            return msg:sub(1, #mine) ~= mine
+        end)
+    end
+    if db.quietLoot ~= false then
+        local picks, others = {}, {}
+        for _, g in ipairs({ "LOOT_ROLL_GREED", "LOOT_ROLL_NEED", "LOOT_ROLL_PASSED", "LOOT_ROLL_DISENCHANT",
+                             "LOOT_ROLL_GREED_SELF", "LOOT_ROLL_NEED_SELF", "LOOT_ROLL_PASSED_SELF", "LOOT_ROLL_DISENCHANT_SELF",
+                             "LOOT_ROLL_PASSED_AUTO", "LOOT_ROLL_PASSED_AUTO_FEMALE", "LOOT_ROLL_PASSED_SELF_AUTO",
+                             "LOOT_ROLL_ROLLED_GREED", "LOOT_ROLL_ROLLED_NEED", "LOOT_ROLL_ROLLED_DE",
+                             "LOOT_ROLL_ROLLED_NEED_ROLE_BONUS" }) do
+            local p = toPattern(_G[g])
+            if p then picks[#picks + 1] = p end
+        end
+        for _, g in ipairs({ "LOOT_ITEM", "LOOT_ITEM_MULTIPLE", "LOOT_ITEM_PUSHED", "LOOT_ITEM_PUSHED_MULTIPLE" }) do
+            local p = toPattern(_G[g])
+            if p then others[#others + 1] = "^" .. p end
+        end
+        pcall(add, "CHAT_MSG_LOOT", function(_, _, msg)
+            if not readable(msg) then return false end
+            for i = 1, #picks do if msg:find(picks[i]) then return true end end
+            for i = 1, #others do
+                if msg:find(others[i]) then
+                    -- The item's quality, from its link's colour.
+                    local q = tonumber(msg:match("|cnIQ(%d+):"))
+                    if not q then
+                        local hex = msg:match("|c%x%x(%x%x%x%x%x%x)|Hitem")
+                        hex = hex and hex:lower()
+                        q = (hex == "9d9d9d" and 0) or (hex == "ffffff" and 1) or nil
+                    end
+                    return q ~= nil and q <= 1
+                end
+            end
+            return false
+        end)
+    end
+end
+
 function CH:OnInit(db)
     self.db = db
+    pcall(addFilters, db)
     -- (After the game has loaded its own chat settings.)
     local fe = CreateFrame("Frame")
     fe:RegisterEvent("PLAYER_ENTERING_WORLD")
