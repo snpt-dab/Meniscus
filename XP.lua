@@ -660,6 +660,12 @@ local LV_PRISM = { { 1.00, 0.12, 0.22 }, { 0.15, 1.00, 0.35 }, { 0.22, 0.38, 1.0
 local LV_PULL = { -1, 0, 1 }
 local LV_SEG = 24 -- segments in each light of the afterglow line
 local LV_CENTER = 2 -- seconds the finished card waits in the middle before it moves
+-- Milestones: every tenth level (10, 20 ... 60) is dressed differently.
+-- The card is amber instead of purple and stays amber, the badge is larger
+-- with a crown of spikes and stars turning slowly behind it, "MILESTONE"
+-- stands above it, and it waits longer in the middle before moving off.
+local LV_MILESTONE = 10
+local LV_CENTER_MS = 4
 local LV_LINGER = 7 -- extra seconds the card stays in all (the wait, then parked on the left)
 local banner
 
@@ -676,7 +682,7 @@ local function buildBanner()
     f:Hide()
     -- (The ring is a whole rounded shape lying behind the fill, so for the
     -- card to be see-through both are translucent: together about 84%.)
-    ns.RoundedRect(f, -8, 0, 14, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 0.55)
+    f.ringPaint = ns.RoundedRect(f, -8, 0, 14, LV_COLOR[1] * 0.7, LV_COLOR[2] * 0.7, LV_COLOR[3] * 0.7, 0.55)
     ns.RoundedRect(f, -7, 1, 13, 0.06, 0.06, 0.07, 0.65)
 
     -- Flash: the whole card goes almost white for a moment.
@@ -732,15 +738,47 @@ local function buildBanner()
     local function disc(size, sub, r, g, b)
         local t = badge:CreateTexture(nil, "BACKGROUND", nil, sub)
         t:SetSize(size, size); t:SetPoint("CENTER")
-        t:SetColorTexture(r, g, b, 1)
+        t:SetColorTexture(1, 1, 1, 1)
+        t:SetVertexColor(r, g, b)
         local m = badge:CreateMaskTexture()
         m:SetTexture(LV_CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         m:SetAllPoints(t)
         t:AddMaskTexture(m)
         return t
     end
-    disc(LV_D, 0, LV_COLOR[1], LV_COLOR[2], LV_COLOR[3])
+    f.badge = badge
+    f.badgeRing = disc(LV_D, 0, LV_COLOR[1], LV_COLOR[2], LV_COLOR[3])
     disc(LV_D - 5, 1, 0.07, 0.07, 0.085)
+    -- The milestone crown: spikes and stars round the badge, turning in
+    -- opposite directions, and the word above.
+    local crown = CreateFrame("Frame", nil, f)
+    crown:SetFrameLevel(f:GetFrameLevel() + 5)
+    crown:SetSize(1, 1)
+    crown:SetPoint("CENTER", badge, "CENTER")
+    crown:Hide()
+    local function turning(file, size, alpha, seconds, dir)
+        local t = crown:CreateTexture(nil, "ARTWORK")
+        t:SetTexture(MEDIA .. file)
+        t:SetSize(size, size)
+        t:SetPoint("CENTER")
+        t:SetVertexColor(LV_AMBER[1], LV_AMBER[2], LV_AMBER[3], alpha)
+        local ag = t:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        local rot = ag:CreateAnimation("Rotation")
+        rot:SetDegrees(360 * dir)
+        rot:SetDuration(seconds)
+        crown:HookScript("OnShow", function() ag:Play() end)
+        crown:HookScript("OnHide", function() ag:Stop() end)
+        return t
+    end
+    turning("crest_spikes.tga", LV_D * 1.18 / 0.80, 0.90, 28, 1)
+    turning("crest_stars.tga", LV_D * 1.18 / 0.80 + 16, 0.80, 44, -1)
+    f.crown = crown
+    f.tag = ns:CreateText(f, 9, LV_AMBER)
+    ns:SetFont(f.tag, 9, "", true)
+    f.tag:SetText("M I L E S T O N E")
+    f.tag:SetPoint("BOTTOM", badge, "TOP", 0, 26)
+    f.tag:Hide()
     f.wash = disc(LV_D - 5, 2, LV_COLOR[1], LV_COLOR[2], LV_COLOR[3])
     f.num = ns:CreateText(badge, 26, T.text)
     ns:SetFont(f.num, 26, "", true)
@@ -885,7 +923,7 @@ local function buildBanner()
         -- (It waits LV_CENTER seconds in the middle first, then sets off
         -- gently, picks up, and settles just as gently: two seconds, slow
         -- at both ends.)
-        local landAt = written + 0.5 + LV_CENTER + 2.0
+        local landAt = written + 0.5 + (self.milestone and LV_CENTER_MS or LV_CENTER) + 2.0
         local mv = clamp01((t - (landAt - 2.0)) / 2.0)
         mv = mv * mv * mv * (mv * (mv * 6 - 15) + 10)
         if mv ~= self.mv then
@@ -1004,6 +1042,7 @@ local function buildBanner()
         -- Amber, then purple.
         local c = clamp01((t - turn) / 1.0)
         c = c * c * (3 - 2 * c)
+        if self.milestone then c = 0 end -- a milestone stays amber
         local r = LV_AMBER[1] + (LV_COLOR[1] - LV_AMBER[1]) * c
         local gg = LV_AMBER[2] + (LV_COLOR[2] - LV_AMBER[2]) * c
         local b = LV_AMBER[3] + (LV_COLOR[3] - LV_AMBER[3]) * c
@@ -1061,6 +1100,23 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     f.num:SetText(level)
     for i = 1, #f.ghosts do f.ghosts[i]:SetText(level) end
     f.title:SetText("Level " .. level)
+    -- A milestone's dress (or the usual one put back).
+    local ms = level % LV_MILESTONE == 0
+    f.milestone = ms
+    local col = ms and LV_AMBER or LV_COLOR
+    f.ringPaint(col[1] * (ms and 0.85 or 0.7), col[2] * (ms and 0.85 or 0.7), col[3] * (ms and 0.85 or 0.7), ms and 0.8 or 0.55)
+    f.badgeRing:SetVertexColor(col[1], col[2], col[3])
+    f.wash:SetVertexColor(col[1], col[2], col[3])
+    f.badge:SetScale(ms and 1.18 or 1)
+    f.crown:SetShown(ms)
+    f.tag:SetShown(ms)
+    if ms then
+        f.title:SetTextColor(LV_AMBER[1], LV_AMBER[2], LV_AMBER[3])
+        f.num:SetTextColor(1.0, 0.94, 0.78)
+    else
+        f.title:SetTextColor(T.text[1], T.text[2], T.text[3])
+        f.num:SetTextColor(T.text[1], T.text[2], T.text[3])
+    end
     local _, tok = UnitPowerType("player")
     local powerName = type(tok) == "string" and _G[tok] or "Power"
     local n = 0
@@ -1160,7 +1216,8 @@ lvEv:SetScript("OnEvent", function(_, _, ...)
 end)
 
 -- /men levelup: a made-up level-up, to look at the banner.
-ns.commands.levelup = function()
-    local lvl = UnitLevel("player")
+ns.commands.levelup = function(rest)
+    -- "/men levelup 20" shows that level (a multiple of ten is a milestone).
+    local lvl = tonumber((rest or ""):match("%d+")) or UnitLevel("player")
     XP:ShowLevelUp(type(lvl) == "number" and not issecretvalue(lvl) and lvl or 10, 27, 28, 1, 0, 1, 2, 1, 1)
 end
