@@ -310,6 +310,8 @@ function MM:ApplyDome()
     lev:SetScript("OnEvent", function() C_Timer.After(0, letThrough) end)
 
     self:BuildZonePill(h)
+    local ok, err = pcall(self.BuildQueue, self, h)
+    if not ok and MinimalUIDB then MinimalUIDB.queueErr = tostring(err) end
 end
 
 -- The zone name in a pill on the dome's bottom edge, built like the value
@@ -539,6 +541,172 @@ function MM:BuildZonePill(h)
         a:SetPoint("TOPLEFT", chip, "TOPRIGHT", -20, 3)
         a:SetPoint("BOTTOMRIGHT", chip, "BOTTOMRIGHT", 2, -3)
     end)
+end
+
+-- The group finder's "eye" (QueueStatusButton, shown while you are listed or
+-- queued): a small dark disc of ours on the map's rim, upper left, clear of
+-- the zone pill, with the time you have been waiting beside it. Its ring
+-- breathes gold while you wait and flashes when a group is offered.
+-- Blizzard's button sits invisibly on top of the disc and keeps its own
+-- clicks and tooltip.
+local QUEUE_EVENTS = { "LFG_UPDATE", "LFG_QUEUE_STATUS_UPDATE", "LFG_PROPOSAL_SHOW", "LFG_PROPOSAL_SUCCEEDED",
+    "LFG_PROPOSAL_FAILED", "LFG_LIST_ACTIVE_ENTRY_UPDATE", "LFG_LIST_APPLICANT_LIST_UPDATED",
+    "LFG_LIST_APPLICANT_UPDATED", "LFG_LIST_SEARCH_RESULTS_RECEIVED", "LFG_ROLE_CHECK_SHOW", "LFG_READY_CHECK_SHOW" }
+local function secretV(v) return issecretvalue and issecretvalue(v) end
+-- How long the game says you have been queued, if it says (seconds).
+local function queuedFor()
+    if type(GetLFGQueueStats) ~= "function" then return end
+    for cat = 1, 6 do
+        local ok, hasData, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, queuedTime = pcall(GetLFGQueueStats, cat)
+        if ok and hasData and not secretV(hasData) and type(queuedTime) == "number" and not secretV(queuedTime) and queuedTime > 0 then
+            return GetTime() - queuedTime
+        end
+    end
+end
+function MM:BuildQueue(h)
+    local q = _G.QueueStatusButton
+    if not q then return end
+    local S = 24
+    local off = (self.db.domeD or 130) / 2 * 0.7071
+    local disc = CreateFrame("Frame", nil, h)
+    disc:SetSize(S, S)
+    disc:SetPoint("CENTER", h, "CENTER", -off, off)
+    disc:SetFrameStrata("MEDIUM")
+    disc:SetFrameLevel(4)
+    local ring = disc:CreateTexture(nil, "BACKGROUND")
+    ring:SetAllPoints()
+    ring:SetTexture(MEDIA .. "circle.tga")
+    local fill = disc:CreateTexture(nil, "BORDER")
+    fill:SetPoint("TOPLEFT", 1.5, -1.5)
+    fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    fill:SetTexture(MEDIA .. "circle.tga")
+    fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+    local icon = disc:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(16, 16)
+    icon:SetPoint("CENTER")
+    icon:SetTexture(MEDIA .. "micro_group.tga")
+    icon:SetVertexColor(T.text[1], T.text[2], T.text[3], 1)
+    local flashT = disc:CreateTexture(nil, "OVERLAY")
+    flashT:SetAllPoints()
+    flashT:SetTexture(MEDIA .. "circle.tga")
+    flashT:SetBlendMode("ADD")
+    flashT:SetVertexColor(1, 1, 1, 0)
+    local time = ns:CreateText(disc, 10, T.textDim)
+    time:SetPoint("RIGHT", disc, "LEFT", -3, 0)
+    time:SetShadowOffset(1, -1)
+    time:SetShadowColor(0, 0, 0, 0.8)
+
+    local since, flash, acc, hover = GetTime(), 0, 1, false
+    local b = T.border
+    disc:SetScript("OnUpdate", function(_, dt)
+        local now = GetTime()
+        -- The ring: from the hairline grey to the pill's gold and back.
+        local k = hover and 1 or (0.5 + 0.5 * math.sin(now * 2.2))
+        ring:SetVertexColor(b[1] + (GOLD[1] - b[1]) * k, b[2] + (GOLD[2] - b[2]) * k, b[3] + (GOLD[3] - b[3]) * k, 1)
+        if flash > 0 then
+            flash = flash - dt
+            -- Three quick beats of white.
+            flashT:SetVertexColor(1, 1, 1, flash > 0 and 0.8 * math.abs(math.sin(flash * 6)) or 0)
+        end
+        acc = acc + dt
+        if acc < 0.5 then return end
+        acc = 0
+        local s = math.floor(queuedFor() or (now - since))
+        if s < 0 then s = 0 end
+        time:SetText(s >= 3600 and string.format("%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) or string.format("%d:%02d", s / 60, s % 60))
+    end)
+
+    -- Blizzard's button: art gone, set on the disc, and kept there (the
+    -- micro menu puts it back in its own corner whenever it lays out).
+    local function strip()
+        for _, r in ipairs({ q:GetRegions() }) do pcall(r.SetAlpha, r, 0) end
+        for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture" }) do
+            local tex = q[get] and q[get](q)
+            if tex then pcall(tex.SetAlpha, tex, 0) end
+        end
+        if q.Eye then pcall(q.Eye.SetAlpha, q.Eye, 0) end
+        if q.Highlight then pcall(q.Highlight.SetAlpha, q.Highlight, 0) end
+    end
+    local busy = false
+    local function seat()
+        if busy then return end
+        busy = true
+        pcall(function()
+            q:ClearAllPoints()
+            q:SetPoint("CENTER", disc, "CENTER")
+            q:SetFrameStrata("MEDIUM")
+            q:SetFrameLevel(disc:GetFrameLevel() + 3)
+            -- (It is 45 across; only the part over the disc takes the mouse.)
+            local pad = math.max(0, (q:GetWidth() - S) / 2 - 1)
+            q:SetHitRectInsets(pad, pad, pad, pad)
+        end)
+        busy = false
+    end
+    hooksecurefunc(q, "SetPoint", function() if not busy then seat() end end)
+    if type(q.UpdatePosition) == "function" then pcall(hooksecurefunc, q, "UpdatePosition", seat) end
+    q:HookScript("OnEnter", function() hover = true end)
+    q:HookScript("OnLeave", function() hover = false end)
+
+    -- What the client can tell us about the queue, written out for reading
+    -- after a reload (MinimalUIDB.queueprobe): which events fire, and what
+    -- the status calls answer. /men queueprobe does it on demand.
+    local seenEv = {}
+    local function probe()
+        if not MinimalUIDB then return end
+        local out = { "at " .. date("%H:%M:%S") .. "  button shown=" .. tostring(q:IsShown())
+            .. "  parent=" .. tostring(q:GetParent() and q:GetParent():GetName()) }
+        local function line(label, ...)
+            local t = { label }
+            for i = 1, select("#", ...) do
+                local v = select(i, ...)
+                t[#t + 1] = secretV(v) and "<secret>" or tostring(v)
+            end
+            out[#out + 1] = table.concat(t, " | ")
+        end
+        for cat = 1, 6 do
+            if type(GetLFGMode) == "function" then line("GetLFGMode " .. cat, pcall(GetLFGMode, cat)) end
+            if type(GetLFGQueueStats) == "function" then line("GetLFGQueueStats " .. cat, pcall(GetLFGQueueStats, cat)) end
+        end
+        local L = C_LFGList
+        if L then
+            if L.HasActiveEntryInfo then line("HasActiveEntryInfo", pcall(L.HasActiveEntryInfo)) end
+            if L.GetActiveEntryInfo then
+                local ok, info = pcall(L.GetActiveEntryInfo)
+                if ok and type(info) == "table" then
+                    for k, v in pairs(info) do line("  entry." .. tostring(k), type(v) == "table" and ("table #" .. #v) or v) end
+                else line("GetActiveEntryInfo", ok, info) end
+            end
+            if L.GetNumApplicants then line("GetNumApplicants", pcall(L.GetNumApplicants)) end
+            if L.GetNumApplications then line("GetNumApplications", pcall(L.GetNumApplications)) end
+        end
+        for _, n in ipairs({ "GetLFGQueueStats", "GetLFGMode", "GetLFGProposal", "GetBattlefieldStatus", "C_LFGList", "C_LFGInfo", "QueueStatusFrame" }) do
+            line("exists " .. n, type(_G[n]))
+        end
+        for e, n in pairs(seenEv) do line("event " .. e, n) end
+        MinimalUIDB.queueprobe = out
+    end
+    ns.commands.queueprobe = function() probe(); ns:Print("Queue state written. /reload, then tell Claude.") end
+
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs(QUEUE_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
+    ev:SetScript("OnEvent", function(_, e)
+        seenEv[e] = (seenEv[e] or 0) + 1
+        if e == "LFG_PROPOSAL_SHOW" or e == "LFG_READY_CHECK_SHOW" then flash = 2.6 end
+    end)
+
+    local function sync()
+        local on = q:IsShown()
+        if on and not disc:IsShown() then since, acc = GetTime(), 1; time:SetText("") end
+        disc:SetShown(on)
+        if on then
+            strip(); seat()
+            C_Timer.After(5, function() pcall(probe) end)
+            C_Timer.After(60, function() pcall(probe) end)
+        end
+    end
+    q:HookScript("OnShow", sync)
+    q:HookScript("OnHide", sync)
+    strip(); seat(); sync()
 end
 
 -- What the map looks like to the client right now (MinimalUIDB.domeprobe;
