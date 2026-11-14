@@ -576,12 +576,20 @@ local function findCheapest(mark)
     end
     return dropList
 end
+-- Room for anything at all: free slots in ordinary bags only. A herb bag,
+-- quiver or the like with space in it doesn't help when you loot a sword
+-- (the game gives the bag's kind with its free count; 0 is an ordinary bag).
+local bagNote = {}
 local function freeSlots()
     local free = 0
+    for k in pairs(bagNote) do bagNote[k] = nil end
     for _, bag in ipairs(bagList()) do
         if isInventoryBag(bag) then
-            local f = call(CC.GetContainerNumFreeSlots or _G.GetContainerNumFreeSlots, bag)
-            if num(f) then free = free + f end
+            local f, family = call(CC.GetContainerNumFreeSlots or _G.GetContainerNumFreeSlots, bag)
+            if num(f) then
+                bagNote[#bagNote + 1] = "bag " .. bag .. ": " .. f .. " free, kind " .. tostring(family)
+                if not (num(family) and family ~= 0) then free = free + f end
+            end
         end
     end
     return free
@@ -743,7 +751,8 @@ local function updateFooter()
         if num(f) then free = free + f end
     end
     win.shell:SetSubtitle(string.format("%d of %d slots free", free, total))
-    win.shell:SetChip(free <= 2 and (free == 0 and "Full" or "Almost full") or nil, { 0.95, 0.45, 0.40 })
+    local room = freeSlots() -- (ordinary bags only)
+    win.shell:SetChip(room <= 2 and (room == 0 and "Full" or "Almost full") or nil, { 0.95, 0.45, 0.40 })
     win.money:SetText(moneyText(GetMoney()))
     for _, t in ipairs(win.bagTiles) do
         local tex = GetInventoryItemTexture("player", t.inv)
@@ -763,12 +772,17 @@ function B:Refresh()
         if MinimalUIDB then
             local d = { "at " .. date("%H:%M:%S") .. "  free " .. freeSlots() .. "  candidates " .. #dropList
                 .. "  ok " .. tostring(ok) .. (ok and "" or ("  " .. tostring(err))) }
+            for _, l in ipairs(bagNote) do d[#d + 1] = l end
             for k, v in pairs(why) do d[#d + 1] = k .. ": " .. v end
             for k, v in pairs(dropSet) do d[#d + 1] = "marked bag " .. math.floor(k / 1000) .. " slot " .. (k % 1000) .. " worth " .. tostring(v) end
             MinimalUIDB.dropdiag = d
         end
     else
-        if MinimalUIDB and B.db.cheapest ~= false then MinimalUIDB.dropdiag = { "at " .. date("%H:%M:%S") .. "  not full: free " .. freeSlots() } end
+        if MinimalUIDB and B.db.cheapest ~= false then
+            local d = { "at " .. date("%H:%M:%S") .. "  not full: free " .. freeSlots() }
+            for _, l in ipairs(bagNote) do d[#d + 1] = l end
+            MinimalUIDB.dropdiag = d
+        end
         for k in pairs(dropSet) do dropSet[k] = nil end
     end
     for _, list in pairs(buttons) do
