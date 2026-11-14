@@ -416,7 +416,7 @@ local function buildButton()
     --     again.
     if QB.db.prism ~= false then
         local PRISM = { { 1.00, 0.12, 0.22, -1 }, { 0.15, 1.00, 0.35, 0 }, { 0.22, 0.38, 1.00, 1 } }
-        local REST, WIDE, SWING, EVERY = 2.4, 18, 9, 2.0
+        local REST, WIDE, SWING, EVERY = 3.6, 20, 13, 2.0
         local HALO = { { 2, 0.26 }, { 4, 0.20 }, { 7, 0.14 }, { 11, 0.09 }, { 16, 0.05 }, { 22, 0.03 } } -- reach, light
         local WAVE = 1.4 -- seconds for the travelling ring to cross the halo
         local lights = {}
@@ -485,9 +485,9 @@ local function buildButton()
             tx:SetBlendMode("ADD")
             local far = math.abs(k) / ARMS
             -- White at the star, toward red on one arm and blue on the other.
-            local tint = far * 0.75
-            if k < 0 then tx:SetVertexColor(1, 1 - tint * 0.8, 1 - tint)
-            elseif k > 0 then tx:SetVertexColor(1 - tint, 1 - tint * 0.6, 1)
+            local tint = math.min(1, far * 1.6)
+            if k < 0 then tx:SetVertexColor(1, 1 - tint * 0.9, 1 - tint)
+            elseif k > 0 then tx:SetVertexColor(1 - tint, 1 - tint * 0.75, 1)
             else tx:SetVertexColor(1, 1, 1) end
             beads[#beads + 1] = { tx = tx, k = k, far = far }
         end
@@ -523,21 +523,23 @@ local function buildButton()
             local s0 = (time / LAP % 1) * P
             local swell = 0.5 + 0.5 * math.sin(time * 2.1)       -- 0..1
             local reach = STEP * (0.55 + 0.75 * swell)
-            local bright = math.min(1, (0.55 + 0.45 * swell) * boost)
+            local bright = math.min(0.75, (0.30 + 0.25 * swell) * boost)
             for _, b in ipairs(beads) do
                 local x, y = onEdge(s0 + b.k * reach, w)
-                local size = b.k == 0 and (26 + 10 * swell) or (20 - 13 * b.far)
+                local size = b.k == 0 and (18 + 6 * swell) or (18 - 10 * b.far)
                 b.tx:SetSize(size, size)
                 b.tx:ClearAllPoints()
                 b.tx:SetPoint("CENTER", btn, "CENTER", x, y)
-                b.tx:SetAlpha(bright * (1 - b.far) ^ 1.4)
+                -- (The white middle is the dimmest part now; the coloured
+                -- arms carry further.)
+                b.tx:SetAlpha(bright * (b.k == 0 and 0.8 or (1 - b.far) ^ 0.9 * 1.25))
             end
             local gx, gy = onEdge(s0, w)
-            local gs = 34 + 22 * swell
+            local gs = 26 + 12 * swell
             glare:SetSize(gs, gs)
             glare:ClearAllPoints()
             glare:SetPoint("CENTER", btn, "CENTER", gx, gy)
-            glare:SetAlpha(math.min(0.6, (0.16 + 0.22 * swell) * boost))
+            glare:SetAlpha(math.min(0.3, (0.06 + 0.08 * swell) * boost))
         end
         local white = pillLayer(btn, base + 5, 0, 1, 1, 1, 1)
         for _, t in ipairs(white.parts) do t:SetBlendMode("ADD") end
@@ -555,7 +557,7 @@ local function buildButton()
         local t, since = 0, 0
         fx:SetScript("OnUpdate", function(_, dt)
             t, since = t + dt, since + dt
-            local pull, alpha = REST, 0.7
+            local pull, alpha = REST, 0.9
             local boost = 1
             if t < 0.5 then
                 boost = 1 + 2.2 * (1 - t / 0.5)
@@ -563,7 +565,7 @@ local function buildButton()
                 local e = t / 0.5
                 local k = (1 - e) * (1 - e)
                 pull = REST + (WIDE - REST) * k
-                alpha = 0.7 + 0.3 * k
+                alpha = 0.9 + 0.1 * k
                 white:SetAlpha(0.75 * (1 - e) * (1 - e) * (1 - e))
                 since = 0
             else
@@ -573,7 +575,7 @@ local function buildButton()
                     -- The refocus: out and back.
                     local s = math.sin(since / 0.7 * math.pi)
                     pull = REST + (SWING - REST) * s
-                    alpha = 0.7 + 0.3 * s
+                    alpha = 0.9 + 0.1 * s
                     boost = 1 + 0.5 * s
                 end
             end
@@ -584,7 +586,7 @@ local function buildButton()
         end)
         fx:SetScript("OnShow", function() t, since = 0, 0 end)
         btn.fxKick = function() t, since = 0, 0 end
-        spread(REST, 0.7)
+        spread(REST, 0.9)
     end
 
     -- content sits on its own layer above the pill
