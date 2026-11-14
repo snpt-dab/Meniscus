@@ -735,7 +735,8 @@ end
 
 -- ── Group loot rolls ──────────────────────────────────────────────────────
 local rollCards, holder = {}, nil
-local ROLL_W, ROLL_H = 320, 66
+-- (Tall enough for the buttons to sit under the note line, not across it.)
+local ROLL_W, ROLL_H = 320, 86
 
 local function layoutRolls()
     local i = 0
