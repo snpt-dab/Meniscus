@@ -326,6 +326,7 @@ local function newButton(bag, slot)
         if GameTooltip_SetDefaultAnchor then GameTooltip_SetDefaultAnchor(GameTooltip, self)
         else GameTooltip:SetOwner(self, "ANCHOR_RIGHT") end
         if itemInfo(self.bag, self.slot) then GameTooltip:SetBagItem(self.bag, self.slot) end
+        if self.dropWorth and B.DropLine then B.DropLine(self.dropWorth) end
         GameTooltip:Show()
         if self.glow:IsShown() and C_NewItems and C_NewItems.RemoveNewItem then
             pcall(C_NewItems.RemoveNewItem, self.bag, self.slot)
@@ -400,6 +401,28 @@ local function newButton(bag, slot)
     upArrow:SetPoint("BOTTOMRIGHT", -2, 2)
     upf:Hide()
     b.up, b.upBack = upf, upf
+    -- Cheapest to throw away (bags full): the same badge in red with the
+    -- arrow pointing down, on the bottom-right corner.
+    local dropf = CreateFrame("Frame", nil, over)
+    dropf:SetSize(16, 16)
+    dropf:SetPoint("CENTER", b, "BOTTOMRIGHT", -5, 5)
+    local dRim = dropf:CreateTexture(nil, "OVERLAY", nil, 0)
+    dRim:SetTexture(MEDIA .. "circle.tga")
+    dRim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    dRim:SetAllPoints()
+    local dDisc = dropf:CreateTexture(nil, "OVERLAY", nil, 1)
+    dDisc:SetTexture(MEDIA .. "circle.tga")
+    dDisc:SetVertexColor(0.95, 0.45, 0.40, 1)
+    dDisc:SetPoint("TOPLEFT", 1.5, -1.5)
+    dDisc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local dArrow = dropf:CreateTexture(nil, "OVERLAY", nil, 2)
+    dArrow:SetTexture(MEDIA .. "micro_up.tga")
+    dArrow:SetVertexColor(0.20, 0.04, 0.03, 1)
+    dArrow:SetPoint("TOPLEFT", 2, -2)
+    dArrow:SetPoint("BOTTOMRIGHT", -2, 2)
+    dArrow:SetRotation(math.pi)
+    dropf:Hide()
+    b.drop = dropf
     -- Starts a quest you don't have yet: a gold disc with "!" in the top-left
     -- corner (and a gold ring). Items for a quest you're on get the ring only.
     -- A small badge sitting on the tile's corner (over the ring, not over
@@ -485,6 +508,79 @@ local function questInfo(bag, slot)
     return (isQuest or starts) and true or false, starts and true or false
 end
 
+-- ── What to throw away when the bags are full ─────────────────────────────
+-- The stacks that would cost you least to drop: what the whole stack sells
+-- for, lowest first, grey items before white ones. Never suggested: quest
+-- items, things with no sale value, anything green or better, ammunition,
+-- bags, keys, and anything you keep a restock amount of. While the bags
+-- are full or nearly so (2 free or fewer) the three cheapest carry a small
+-- red mark, and the tile's tooltip says what the stack is worth. When the
+-- game says "Inventory is full", a pill names the cheapest one.
+local DROP_SKIP_CLASS = { [1] = true, [6] = true, [11] = true, [12] = true, [13] = true }
+local priceCache = {}
+local dropSet, dropList = {}, {}
+local function stackWorth(info, bag, slot)
+    local q, link = info.quality, info.hyperlink
+    if not (num(q) and q <= 1) or info.hasNoValue or info.isLocked then return end
+    if type(link) ~= "string" or secret(link) then return end
+    local id = info.itemID
+    local c = num(id) and priceCache[id]
+    if c == nil then
+        local f = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+        local _, _, _, _, _, _, _, _, _, _, price, classID = call(f, link)
+        if not num(price) then return end -- not loaded yet: ask again next time
+        c = (price > 0 and not DROP_SKIP_CLASS[classID or -1]) and price or false
+        if num(id) then priceCache[id] = c end
+    end
+    if not c then return end
+    if questInfo(bag, slot) then return end
+    if num(id) and ns.Restock and ns.Restock.Get and ns.Restock.Get(id) then return end
+    local n = num(info.stackCount) and info.stackCount or 1
+    return c * n, q, n, link
+end
+local function byWorth(a, b)
+    if a.q ~= b.q then return a.q < b.q end
+    return a.worth < b.worth
+end
+-- Fills dropList (cheapest first) and dropSet (the first `mark` of them).
+local function findCheapest(mark)
+    for k in pairs(dropSet) do dropSet[k] = nil end
+    local n = 0
+    for _, bag in ipairs(bagList()) do
+        if isInventoryBag(bag) then
+            for slot = 1, numSlots(bag) do
+                local info = itemInfo(bag, slot)
+                if info and info.iconFileID then
+                    local worth, q, count, link = stackWorth(info, bag, slot)
+                    if worth then
+                        n = n + 1
+                        local e = dropList[n]
+                        if not e then e = {}; dropList[n] = e end
+                        e.bag, e.slot, e.worth, e.q, e.count, e.link, e.icon = bag, slot, worth, q, count, link, info.iconFileID
+                    end
+                end
+            end
+        end
+    end
+    for i = n + 1, #dropList do dropList[i] = nil end
+    table.sort(dropList, byWorth)
+    for i = 1, math.min(mark or 0, #dropList) do
+        local e = dropList[i]
+        dropSet[e.bag * 1000 + e.slot] = e.worth
+    end
+    return dropList
+end
+local function freeSlots()
+    local free = 0
+    for _, bag in ipairs(bagList()) do
+        if isInventoryBag(bag) then
+            local f = call(CC.GetContainerNumFreeSlots or _G.GetContainerNumFreeSlots, bag)
+            if num(f) then free = free + f end
+        end
+    end
+    return free
+end
+
 local function updateButton(b)
     local info = itemInfo(b.bag, b.slot)
     if info and info.iconFileID then
@@ -506,6 +602,8 @@ local function updateButton(b)
         b.ilvl:SetText(lvl and string.format("%d", lvl) or "")
         local up = lvl and ns.IsUpgrade and ns.IsUpgrade(link) or false
         b.up:SetShown(up); b.upBack:SetShown(up)
+        b.dropWorth = dropSet[b.bag * 1000 + b.slot]
+        b.drop:SetShown(b.dropWorth ~= nil)
         b.glow:SetShown(C_NewItems and call(C_NewItems.IsNewItem, b.bag, b.slot) == true or false)
         local m = matches(info)
         b.icon:SetAlpha(m and 1 or 0.2)
@@ -520,6 +618,8 @@ local function updateButton(b)
         b.bang:Hide()
         b.ilvl:SetText("")
         b.up:Hide(); b.upBack:Hide()
+        b.dropWorth = nil
+        b.drop:Hide()
         b.glow:Hide()
     end
     local start, dur, enable = call(CC.GetContainerItemCooldown or _G.GetContainerItemCooldown, b.bag, b.slot)
@@ -650,6 +750,12 @@ end
 function B:Refresh()
     if not win or not win:IsShown() then return end
     if pending.layout and not InCombatLockdown() then layout() end
+    -- Full or nearly: mark the three cheapest stacks to throw away.
+    if B.db.cheapest ~= false and freeSlots() <= 2 then
+        pcall(findCheapest, 3)
+    else
+        for k in pairs(dropSet) do dropSet[k] = nil end
+    end
     for _, list in pairs(buttons) do
         for _, b in pairs(list) do if b:IsShown() then pcall(updateButton, b) end end
     end
@@ -930,6 +1036,30 @@ function ns.IsFeedingPet()
     if not f then return false end
     local ok, on = pcall(f, FEED_PET)
     return ok and on == true
+end
+
+function B.DropLine(worth)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Cheapest to throw away: the stack sells for " .. moneyText(worth), 0.95, 0.55, 0.50, true)
+end
+-- "Inventory is full": name the cheapest stack, wherever the bags window is.
+do
+    local last = 0
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("UI_ERROR_MESSAGE")
+    f:SetScript("OnEvent", function(_, _, _, msg)
+        if not (B.db and B.db.cheapest ~= false) then return end
+        if type(msg) ~= "string" or secret(msg) or msg ~= _G.ERR_INV_FULL then return end
+        local now = GetTime()
+        if now - last < 8 then return end
+        last = now
+        local ok, list = pcall(findCheapest, 3)
+        local e = ok and list[1]
+        if not (e and ns.FloatWarning) then return end
+        local name = e.link:match("%[(.-)%]") or "?"
+        ns.FloatWarning(e.icon, "Cheapest: " .. name .. (e.count > 1 and ("  x" .. e.count) or ""), moneyText(e.worth))
+        if B.Refresh then pcall(B.Refresh, B) end
+    end)
 end
 
 function B:OnInit(db)

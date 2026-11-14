@@ -490,6 +490,10 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.waypoint = d.waypoint == false end end },
         } },
         { title = "Gear and bags", items = {
+            { "Cheapest to throw away, when bags are full", kind = "switch",
+              note = "A red mark on the three stacks worth least; a pill names the cheapest when the game says full",
+              get = function() return ns.modules.Bags.db.cheapest ~= false end,
+              set = function() local d = ns.modules.Bags.db; d.cheapest = d.cheapest == false; pcall(ns.modules.Bags.Refresh, ns.modules.Bags) end },
             { "Durability warning", kind = "switch", reload = true,
               note = "A wrench above the console when gear is at 30% or less",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.durability ~= false end,
