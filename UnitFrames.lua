@@ -1314,6 +1314,200 @@ function UF:BuildNotes()
     end)
 end
 
+-- ── Quick Cure ────────────────────────────────────────────────────────────
+-- Something on a group member (or you) that your class can take off: a
+-- small chip lights up beside their health pill (yours is on the map's
+-- rim), showing the affliction's picture in a ring of its kind's colour.
+-- Click the chip and the cure is cast on them.
+--   * In a fight the game lets nothing choose a spell's target for you, so
+--     there can't be one button that finds whoever needs curing. Each chip
+--     is its own secure button, fixed on one person: that works in combat.
+--   * A class with two cures has them on the two mouse buttons (a priest:
+--     left Dispel Magic, right Cure Disease); the chip shows a small "R"
+--     when it is the right-button one that is wanted.
+--   * The chips are always there (a secure button can't be shown or hidden
+--     in a fight), just unseen until needed.
+local CURES = {
+    PRIEST  = { { "Dispel Magic", "Magic" }, { "Abolish Disease", "Disease" }, { "Cure Disease", "Disease" } },
+    PALADIN = { { "Cleanse", "Magic", "Poison", "Disease" }, { "Purify", "Poison", "Disease" } },
+    DRUID   = { { "Abolish Poison", "Poison" }, { "Cure Poison", "Poison" }, { "Remove Curse", "Curse" } },
+    SHAMAN  = { { "Cure Poison", "Poison" }, { "Cure Disease", "Disease" } },
+    MAGE    = { { "Remove Lesser Curse", "Curse" } },
+}
+local CURE_TINT = { Magic = { 0.25, 0.55, 1.00 }, Curse = { 0.65, 0.30, 0.95 },
+                    Disease = { 0.75, 0.52, 0.22 }, Poison = { 0.30, 0.80, 0.30 } }
+local CURE_S = 18
+function UF:BuildCure()
+    if self.db.cure == false or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
+    local _, cls = UnitClass("player")
+    local list = CURES[cls or ""]
+    if not list then return end
+
+    local typeSpell, spells = {}, {}       -- kind -> spell; the (up to two) spells, left then right
+    local function known(name)
+        local ok, info = pcall(C_Spell.GetSpellInfo, name)
+        if not ok or type(info) ~= "table" or type(info.spellID) ~= "number" then return false end
+        local k
+        if C_SpellBook and C_SpellBook.IsSpellKnown then k = select(2, pcall(C_SpellBook.IsSpellKnown, info.spellID)) end
+        if k == nil and IsSpellKnown then k = select(2, pcall(IsSpellKnown, info.spellID)) end
+        return k ~= false
+    end
+    local function resolve()
+        for k in pairs(typeSpell) do typeSpell[k] = nil end
+        for i = #spells, 1, -1 do spells[i] = nil end
+        for _, e in ipairs(list) do
+            if known(e[1]) then
+                local used = false
+                for i = 2, #e do
+                    if not typeSpell[e[i]] then typeSpell[e[i]] = e[1]; used = true end
+                end
+                if used and #spells < 2 then spells[#spells + 1] = e[1] end
+            end
+        end
+    end
+
+    local onPress = true
+    if GetCVarBool then
+        local ok, v = pcall(GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and v == false then onPress = false end
+    end
+    local chips = {}
+    local function chip(name, parent, unit)
+        local b = CreateFrame("Button", name, parent, "SecureActionButtonTemplate")
+        b:SetSize(CURE_S, CURE_S)
+        b:SetFrameLevel(parent:GetFrameLevel() + 14)
+        b:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
+        b:SetAttribute("unit", unit)
+        b.unit = unit
+        local vis = CreateFrame("Frame", nil, b)
+        vis:SetAllPoints()
+        vis:Hide()
+        local ring = vis:CreateTexture(nil, "BACKGROUND")
+        ring:SetAllPoints()
+        ring:SetTexture(MEDIA .. "circle.tga")
+        local mask = vis:CreateMaskTexture()
+        mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetPoint("TOPLEFT", 2, -2); mask:SetPoint("BOTTOMRIGHT", -2, 2)
+        local icon = vis:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints(mask)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        icon:AddMaskTexture(mask)
+        local hint = ns:CreateText(vis, 8)
+        hint:SetPoint("CENTER", vis, "BOTTOMRIGHT", -1, 2)
+        hint:SetShadowOffset(1, -1)
+        hint:SetShadowColor(0, 0, 0, 1)
+        -- The ring breathes while it shows.
+        vis:SetScript("OnUpdate", function() ring:SetAlpha(0.6 + 0.4 * math.sin(GetTime() * 5)) end)
+        b.vis, b.ring, b.icon, b.hint = vis, ring, icon, hint
+        b:SetScript("OnEnter", function(self)
+            if not self.vis:IsShown() then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Quick Cure", 1, 1, 1)
+            if spells[1] then GameTooltip:AddLine("Left-click: " .. spells[1], 0.8, 0.8, 0.85) end
+            if spells[2] then GameTooltip:AddLine("Right-click: " .. spells[2], 0.8, 0.8, 0.85) end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        chips[#chips + 1] = b
+        return b
+    end
+    for i, f in ipairs(self.party or {}) do
+        if f.healthPill then
+            local b = chip("MeniscusCure" .. i, f, f.realUnit or f.unit)
+            local skip = f.orbSide == "RIGHT" and (f.healthPill:GetHeight() + 4) or 0
+            b:SetPoint("LEFT", f.healthPill, "RIGHT", 5 + skip, 0)
+            f.cureSlot = true -- (Auras.lua starts the aura row past it)
+        end
+    end
+    local me = chip("MeniscusCureSelf", UIParent, "player")
+    me:SetSize(24, 24)
+    me:SetFrameStrata("MEDIUM")
+    me:SetFrameLevel(6)
+
+    -- Spells on the buttons, and where your own chip sits: out of combat.
+    local stale = false
+    local function assign()
+        if InCombatLockdown() then stale = true return end
+        stale = false
+        resolve()
+        for _, b in ipairs(chips) do
+            for n = 1, 2 do
+                b:SetAttribute("type" .. n, spells[n] and "spell" or nil)
+                b:SetAttribute("spell" .. n, spells[n])
+            end
+        end
+        -- Yours: on the map's rim, the third place up on the right (above
+        -- the flask and the mug).
+        local dome = _G.MinimalUI_MinimapDome
+        me:ClearAllPoints()
+        local MMm = ns.modules.Minimap
+        local rx, ry
+        if dome and MMm and MMm.RimOffset then rx, ry = MMm.RimOffset(24) end
+        if rx then
+            local R = math.sqrt(rx * rx + ry * ry)
+            local th = math.atan2(ry, rx) + 2 * (24 + 5) / R
+            me:SetPoint("CENTER", dome, "CENTER", R * math.cos(th), R * math.sin(th))
+        else
+            me:SetPoint("BOTTOM", UIParent, "BOTTOM", 180, 150)
+        end
+    end
+
+    -- Has this unit something we can cure? Returns the aura (its picture and
+    -- kind may be hidden values in combat: they are only handed on).
+    local diag = false
+    local function afflicted(unit)
+        if not UnitExists(unit) then return nil end
+        for idx = 1, 8 do
+            local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, idx, "HARMFUL|RAID")
+            if not ok or not a then return nil end
+            local d = a.dispelName
+            if not diag and MinimalUIDB then
+                diag = true
+                MinimalUIDB.curediag = "first: kind hidden=" .. tostring(issecretvalue(d)) .. " kind=" .. tostring(not issecretvalue(d) and d or "?")
+            end
+            -- Kind readable: only one we have a spell for. Hidden: the game's
+            -- own "you can dispel this" filter is taken at its word.
+            if issecretvalue(d) or (type(d) == "string" and typeSpell[d]) then return a end
+        end
+    end
+    local function update(b)
+        if #spells == 0 then b.vis:Hide() return end
+        local a = afflicted(b.unit)
+        if not a then b.vis:Hide() return end
+        b.icon:SetTexture(a.icon)
+        local d = a.dispelName
+        local c, right = nil, false
+        if type(d) == "string" and not issecretvalue(d) then
+            c = CURE_TINT[d]
+            right = spells[2] ~= nil and typeSpell[d] == spells[2]
+        end
+        c = c or GOLD
+        b.ring:SetVertexColor(c[1], c[2], c[3], 1)
+        b.hint:SetText(right and "R" or "")
+        b.vis:Show()
+    end
+    local function updateAll() for _, b in ipairs(chips) do pcall(update, b) end end
+
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "UNIT_AURA", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e, unit)
+        if e == "UNIT_AURA" then
+            if type(unit) ~= "string" or issecretvalue(unit) then return end
+            for _, b in ipairs(chips) do
+                if b.unit == unit then pcall(update, b) end
+            end
+            return
+        end
+        if e ~= "PLAYER_REGEN_ENABLED" or stale then pcall(assign) end
+        updateAll()
+    end)
+    assign()
+    -- (The map and its rim are built after this module.)
+    C_Timer.After(3, function() pcall(assign); updateAll() end)
+end
+
 -- ── Party ─────────────────────────────────────────────────────────────────
 function UF:LayoutParty()
     if InCombatLockdown() then self.partyPending = true return end
@@ -1761,6 +1955,8 @@ function UF:OnInit(db)
     do
         local ok, err = pcall(self.BuildNotes, self)
         if not ok and MinimalUIDB then MinimalUIDB.notesErr = tostring(err) end
+        ok, err = pcall(self.BuildCure, self)
+        if not ok and MinimalUIDB then MinimalUIDB.cureErr = tostring(err) end
     end
     pcall(self.CreateRestIndicator, self)
 

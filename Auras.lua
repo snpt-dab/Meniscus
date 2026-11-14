@@ -631,6 +631,8 @@ function A:OnInit(db)
     local function rightOf(frame)
         -- (Past the power orb, where the frame has one on that end.)
         local skip = frame.orbSide == "RIGHT" and (frame.healthPill:GetHeight() + 4) or 0
+        -- (And past the Quick Cure chip, where the frame has one.)
+        if frame.cureSlot then skip = skip + 22 end
         return function(b, i, size, gap)
             b:SetPoint("LEFT", frame.healthPill, "RIGHT", 6 + skip + (i - 1) * (size + gap), 0)
         end
