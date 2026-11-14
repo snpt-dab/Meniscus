@@ -1054,6 +1054,10 @@ end
 local CAP_SPELL = { ["Skinning"] = 393, ["Mining"] = 186, ["Herb Gathering"] = 182, ["Herbalism"] = 182,
                     ["Fishing"] = 356, ["Disenchant"] = 333, ["Smelting"] = 186 }
 local CAP_FINAL = 300
+-- Professions only: the recipe lookup below also answers for ordinary
+-- spells, with their class skill ("Shadow Magic"), which is no profession.
+local CAP_PROF = { [164] = true, [165] = true, [171] = true, [182] = true, [185] = true, [186] = true,
+                   [197] = true, [202] = true, [333] = true, [356] = true, [393] = true, [129] = true }
 local function buildSkillCap()
     local S = _G.C_SkillInfo
     if not (S and S.GetSkillLineInfoByID) then return end
@@ -1065,7 +1069,7 @@ local function buildSkillCap()
         local f = C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillLineForRecipe
         if f then
             local ok, id = pcall(f, spellID)
-            if ok and num(id) and id > 0 then return id end
+            if ok and num(id) and CAP_PROF[id] then return id end
         end
     end
     local function check(spellID)
@@ -1076,7 +1080,7 @@ local function buildSkillCap()
         if not (ok and type(info) == "table") then return end
         local rank, max, name = info.rank, info.maxRank, info.name
         if not (num(rank) and num(max) and type(name) == "string") then return end
-        if max <= 0 or max >= CAP_FINAL or rank < max then return end
+        if max < 75 or max >= CAP_FINAL or rank < max then return end
         local now = GetTime()
         if now - last < 1 then return end
         last = now
