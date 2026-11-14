@@ -254,6 +254,25 @@ local function wants(buff, u)
     return true
 end
 
+-- Buffs you have said not to offer (db.skip[name], set on the Quick Buff
+-- settings): the pill never asks for them, whoever is missing them.
+local function skipped(name)
+    local s = QB.db and QB.db.skip
+    return s and s[name] or false
+end
+-- The buffs the pill can offer this character: for the settings list.
+function QB.Offered()
+    local out, seen = {}, {}
+    local _, cls = UnitClass("player")
+    local function add(n) if n and not seen[n] then seen[n] = true; out[#out + 1] = n end end
+    for _, b in ipairs(CLASS_BUFFS[cls or ""] or {}) do add(b.name) end
+    if cls == "PALADIN" then
+        for _, list in pairs(BLESSINGS) do for _, n in ipairs(list) do add(n) end end
+        for _, n in ipairs(CASTER_BLESSINGS) do add(n) end
+    end
+    return out
+end
+
 local function blessingFor(u)
     local r = role(u)
     local list
@@ -264,7 +283,7 @@ local function blessingFor(u)
         if secret(cls) then return nil end
         list = BLESSINGS[cls or ""] or CASTER_BLESSINGS
     end
-    for _, n in ipairs(list) do if known(n) then return n end end
+    for _, n in ipairs(list) do if known(n) and not skipped(n) then return n end end
 end
 
 -- ── Scan ──────────────────────────────────────────────────────────────────
@@ -292,7 +311,7 @@ local function scan()
     end
     for _, buff in ipairs(CLASS_BUFFS[cls] or {}) do
         local spell, info = bestSpell(buff)
-        if spell then
+        if spell and not skipped(buff.name) then
             for k in pairs(byGroup) do wipe(byGroup[k]) end
             local need = {}
             for _, u in ipairs(buff.self and SELF or groupUnits()) do

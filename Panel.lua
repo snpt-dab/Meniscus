@@ -264,6 +264,26 @@ local function moduleSwitch(label, name, note)
         set = function() local m = ns.db.modules[name]; m.enabled = m.enabled == false end }
 end
 
+-- A switch for each buff the Quick Buff pill can offer this character:
+-- off = never ask for that one (Battle Shout, say).
+local function quickBuffSwitches()
+    local out = {}
+    local QB = ns.modules.QuickBuff
+    local ok, names = pcall(function() return QB and QB.Offered and QB.Offered() or {} end)
+    if not ok then return out end
+    for _, name in ipairs(names) do
+        out[#out + 1] = { "Offer " .. name, kind = "switch",
+            get = function() local s = QB.db and QB.db.skip; return not (s and s[name]) end,
+            set = function()
+                if not QB.db then return end
+                QB.db.skip = QB.db.skip or {}
+                QB.db.skip[name] = (not QB.db.skip[name]) or nil
+                pcall(QB.Refresh, QB)
+            end }
+    end
+    return out
+end
+
 local PAGES = {
     { key = "appearance", title = "Appearance", groups = {
         { title = "Text", items = {
@@ -394,6 +414,7 @@ local PAGES = {
                     ns:Print("Options > Keybindings > AddOns > Meniscus > Quick Buff")
                 end
             end },
+            unpack(quickBuffSwitches()),
         } },
     } },
     { key = "bars", title = "Action bars", groups = {

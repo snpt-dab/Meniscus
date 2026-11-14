@@ -300,7 +300,17 @@ local function build()
     win.repair:SetPoint("BOTTOMRIGHT", win.shell.band, "BOTTOMRIGHT", -14, 14)
     win.junk = pill(win, "Sell junk", function()
         local MF = C_MerchantFrame
-        if MF and MF.SellAllJunkItems then pcall(MF.SellAllJunkItems) end
+        if not (MF and MF.SellAllJunkItems) then return end
+        -- Say what it came to: the difference in your money a moment later.
+        local before = call(_G.GetMoney)
+        pcall(MF.SellAllJunkItems)
+        C_Timer.After(1.2, function()
+            local after = call(_G.GetMoney)
+            if num(before) and num(after) and after > before then
+                ns:Print("Sold junk for " .. money(after - before) .. ".")
+            end
+            M:Refresh()
+        end)
     end)
     win.restock = pill(win, "Restock", function()
         if ns.Restock then ns.Restock.Run() end
