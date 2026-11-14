@@ -952,15 +952,35 @@ end
 -- the header.
 local function questHeading()
     local qt = call(_G.GetTitleText) or ""
+    -- The quest's level, in its difficulty colour (grey: trivial, green,
+    -- yellow, orange, red), at the right end of the title line.
+    local id = call(_G.GetQuestID)
+    local lf = C_QuestLog and C_QuestLog.GetQuestDifficultyLevel
+    local lvl = lf and type(id) == "number" and not secret(id) and id > 0 and call(lf, id)
+    if not (type(lvl) == "number" and not secret(lvl) and lvl > 0) then lvl = nil end
+    local function levelAt(yy)
+        if not lvl then return end
+        local lv = fs(11, true)
+        lv:SetWidth(0)
+        lv:SetWordWrap(false)
+        lv:SetText("Level " .. lvl)
+        lv:SetTextColor(diffColor(lvl))
+        lv:SetPoint("TOPRIGHT", content, "TOPLEFT", CW - 2, yy)
+    end
     if UnitExists(unit) then
         updateHeader()
         local title = fs(15, true)
-        title:SetWidth(CW)
+        title:SetWidth(CW - (lvl and 70 or 0))
         title:SetText(qt)
         title:SetPoint("TOPLEFT", content, "TOPLEFT", 2, y)
+        levelAt(y - 3)
         y = y - title:GetStringHeight() - 2
     else
         updateHeader(qt)
+        if lvl then
+            levelAt(y)
+            y = y - 16
+        end
     end
 end
 

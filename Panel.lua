@@ -488,7 +488,7 @@ local PAGES = {
                   if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
               end },
             { "Quick Cure chips", kind = "switch", reload = true,
-              note = "A chip beside a group member's health (yours is on the map's rim) lights up when your class can cure what they have; click it to cast",
+              note = "A chip beside a group member's health (yours is on the map's rim) lights up when your class can cure what they have; click it to cast. Out of combat, a pill with a key does them in turn",
               get = function() return ns.modules.UnitFrames.db.cure ~= false end,
               set = function() local d = ns.modules.UnitFrames.db; d.cure = d.cure == false end },
             { "Healer notes on group frames", kind = "switch", reload = true,

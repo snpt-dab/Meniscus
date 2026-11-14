@@ -1337,6 +1337,7 @@ local CURES = {
 local CURE_TINT = { Magic = { 0.25, 0.55, 1.00 }, Curse = { 0.65, 0.30, 0.95 },
                     Disease = { 0.75, 0.52, 0.22 }, Poison = { 0.30, 0.80, 0.30 } }
 local CURE_S = 18
+_G["BINDING_NAME_CLICK MeniscusQuickCure:LeftButton"] = "Quick Cure (cast next cure)"
 function UF:BuildCure()
     if self.db.cure == false or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
     local _, cls = UnitClass("player")
@@ -1488,20 +1489,110 @@ function UF:BuildCure()
     end
     local function updateAll() for _, b in ipairs(chips) do pcall(update, b) end end
 
+    -- The pill (and its key), for cleaning up between fights: like Quick
+    -- Buff, it names the cure and who gets it ("Cure Disease > Gerald"),
+    -- you first and then the party in order; press and it moves on to the
+    -- next. Out of combat only: it steps aside as a fight starts, and the
+    -- chips take over.
+    local PH = 24
+    local pill = CreateFrame("Button", "MeniscusQuickCure", UIParent, "SecureActionButtonTemplate")
+    pill:SetSize(160, PH)
+    pill:SetFrameStrata("HIGH")
+    pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
+    pill:Hide()
+    local pRing = ns.RoundedRect(pill, -8, 0, PH / 2, GOLD[1], GOLD[2], GOLD[3], 1)
+    local pFill = ns.RoundedRect(pill, -7, 1.5, PH / 2 - 1.5, 0.06, 0.06, 0.07, 0.97)
+    local pMask = pill:CreateMaskTexture()
+    pMask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    pMask:SetSize(PH - 6, PH - 6)
+    pMask:SetPoint("LEFT", 3, 0)
+    local pIcon = pill:CreateTexture(nil, "ARTWORK")
+    pIcon:SetAllPoints(pMask)
+    pIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    pIcon:AddMaskTexture(pMask)
+    local pText = ns:CreateText(pill, 11)
+    pText:SetPoint("LEFT", pMask, "RIGHT", 6, 0)
+    pText:SetWordWrap(false)
+    pill:SetScript("OnEnter", function(self)
+        pFill(0.12, 0.12, 0.14, 0.97)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Quick Cure", 1, 1, 1)
+        local key = GetBindingKey("CLICK MeniscusQuickCure:LeftButton")
+        GameTooltip:AddLine(key and ("Click or press " .. GetBindingText(key) .. " to cast; then it moves on.")
+            or "Click to cast; then it moves on. (Key: Key Bindings, AddOns)", 0.8, 0.8, 0.85, true)
+        GameTooltip:Show()
+    end)
+    pill:SetScript("OnLeave", function() pFill(0.06, 0.06, 0.07, 0.97); GameTooltip:Hide() end)
+    local PILL_UNITS = { "player", "party1", "party2", "party3", "party4" }
+    local showing = {}
+    local function updatePill()
+        if InCombatLockdown() then return end
+        local unit, a
+        if #spells > 0 then
+            for _, u in ipairs(PILL_UNITS) do
+                a = afflicted(u)
+                if a then unit = u break end
+            end
+        end
+        if not unit then
+            if pill:IsShown() then pill:Hide() end
+            pill:SetAttribute("type", nil)
+            showing.unit = nil
+            return
+        end
+        local d = a.dispelName
+        local kind = type(d) == "string" and not issecretvalue(d) and d or nil
+        local spell = (kind and typeSpell[kind]) or spells[1]
+        if showing.unit == unit and showing.spell == spell and pill:IsShown() then return end
+        showing.unit, showing.spell = unit, spell
+        pill:SetAttribute("type", "spell")
+        pill:SetAttribute("spell", spell)
+        pill:SetAttribute("unit", unit)
+        pIcon:SetTexture(a.icon)
+        local c = (kind and CURE_TINT[kind]) or GOLD
+        pRing(c[1], c[2], c[3], 1)
+        local ok, n = pcall(UnitName, unit)
+        pText:SetText(spell .. "  >  " .. ((ok and type(n) == "string" and not issecretvalue(n)) and n or unit))
+        pill:SetWidth(math.max(90, 3 + (PH - 6) + 6 + (pText:GetStringWidth() or 60) + PH / 2))
+        -- Just above the Quick Buff pill (or where it would be).
+        pill:ClearAllPoints()
+        local QBm = ns.modules.QuickBuff
+        local qb = _G.MinimalUIQuickBuff
+        if qb and QBm and QBm.Place then pcall(QBm.Place) end
+        if qb and qb:GetPoint(1) then
+            pill:SetPoint("BOTTOM", qb, "TOP", 0, 6)
+        else
+            pill:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 150)
+        end
+        pill:Show()
+    end
+
     local ev = CreateFrame("Frame")
-    for _, e in ipairs({ "UNIT_AURA", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED" }) do
+    for _, e in ipairs({ "UNIT_AURA", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED",
+                         "PLAYER_REGEN_DISABLED", "ENCOUNTER_START" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
     ev:SetScript("OnEvent", function(_, e, unit)
+        if e == "PLAYER_REGEN_DISABLED" or e == "ENCOUNTER_START" then
+            -- A fight is starting (the lockdown has not begun yet): step aside.
+            if not InCombatLockdown() then
+                pill:SetAttribute("type", nil)
+                pill:Hide()
+                showing.unit = nil
+            end
+            return
+        end
         if e == "UNIT_AURA" then
             if type(unit) ~= "string" or issecretvalue(unit) then return end
             for _, b in ipairs(chips) do
                 if b.unit == unit then pcall(update, b) end
             end
+            pcall(updatePill)
             return
         end
         if e ~= "PLAYER_REGEN_ENABLED" or stale then pcall(assign) end
         updateAll()
+        pcall(updatePill)
     end)
     assign()
     -- (The map and its rim are built after this module.)
