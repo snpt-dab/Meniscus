@@ -590,6 +590,68 @@ local function buildButton()
         fx:SetScript("OnShow", function() t, since = 0, 0 end)
         btn.fxKick = function() t, since = 0, 0 end
         spread(REST, 0.9)
+
+        -- Cast: the pill flashes white, then comes apart into its three
+        -- colours, which drift sideways from each other as they fade. The
+        -- pill itself has usually gone by then (the buff is on), so this
+        -- is drawn by a stand-in of the same shape left where it was.
+        local ghost = CreateFrame("Frame", nil, UIParent)
+        ghost:SetFrameStrata("HIGH")
+        ghost:SetSize(W, H)
+        ghost:Hide()
+        local gbase = ghost:GetFrameLevel()
+        local parted = {}
+        for i, c in ipairs(PRISM) do
+            local holder = CreateFrame("Frame", nil, ghost)
+            holder:SetFrameLevel(gbase + 1)
+            local layer = pillLayer(holder, gbase + 1, 0, c[1], c[2], c[3], 1)
+            for _, tx in ipairs(layer.parts) do tx:SetBlendMode("ADD") end
+            parted[i] = { holder = holder, dir = c[4] }
+        end
+        local burst = pillLayer(ghost, gbase + 2, -1, 1, 1, 1, 1)
+        for _, tx in ipairs(burst.parts) do tx:SetBlendMode("ADD") end
+        local CAST_TIME, CAST_PULL = 1.5, 26
+        local gt = 0
+        ghost:SetScript("OnUpdate", function(self, dt)
+            gt = gt + dt
+            if gt >= CAST_TIME then self:Hide() return end
+            local rise = gt < 0.07 and gt / 0.07 or 1
+            -- White: up at once, gone in under half a second.
+            burst:SetAlpha(gt < 0.07 and rise or math.max(0, 1 - (gt - 0.07) / 0.42))
+            -- The colours: parting quickly at first, then slowing, fading all the while.
+            local e = gt / CAST_TIME
+            local pull = CAST_PULL * (1 - (1 - e) * (1 - e))
+            local alpha = rise * (1 - e) ^ 1.3 * 0.95
+            for _, l in ipairs(parted) do
+                local dx, dy = l.dir * pull, -l.dir * pull * 0.2
+                l.holder:ClearAllPoints()
+                l.holder:SetPoint("TOPLEFT", self, "TOPLEFT", dx, dy)
+                l.holder:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", dx, dy)
+                l.holder:SetAlpha(alpha)
+            end
+        end)
+        -- Where the pill is, kept while it shows (it may be hidden by the
+        -- time the cast is known to have landed).
+        local gl, gb, gw
+        fx:HookScript("OnUpdate", function()
+            local l, b = btn:GetLeft(), btn:GetBottom()
+            if l and b then gl, gb, gw = l, b, btn:GetWidth() end
+        end)
+        local castEv = CreateFrame("Frame")
+        pcall(castEv.RegisterUnitEvent, castEv, "UNIT_SPELLCAST_SUCCEEDED", "player")
+        castEv:SetScript("OnEvent", function(_, _, _, _, spellID)
+            if not (gl and btn.spellName) or secret(spellID) then return end
+            local ok, name = pcall(C_Spell.GetSpellName, spellID)
+            if not ok or secret(name) or name ~= btn.spellName then return end
+            -- Only for a cast of what the pill was offering just now.
+            if not btn:IsShown() and GetTime() - (btn.shownAt or 0) > 0.6 then return end
+            ghost:ClearAllPoints()
+            ghost:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", gl, gb)
+            ghost:SetWidth(gw)
+            gt = 0
+            ghost:Show()
+        end)
+        btn:HookScript("OnHide", function() btn.shownAt = GetTime() end)
     end
 
     -- content sits on its own layer above the pill
