@@ -401,6 +401,67 @@ local function buildButton()
     ag:Play()
     btn.fillLayer = fill
 
+    -- Hard to miss, in the addon's own way: light through a lens. Behind
+    -- the pill lie three copies of its shape in red, green and blue light.
+    -- Exactly behind it they can't be seen; pulled apart sideways they show
+    -- as coloured edges at its two ends, red one side and blue the other.
+    --   * When a buff is first offered the pill flashes white and the
+    --     colours start wide, then snap in (as the level-up card does).
+    --   * While it waits they rest a hair apart, a thin fringe, and every
+    --     few seconds they swing out and back, like a lens refocusing.
+    if QB.db.prism ~= false then
+        local PRISM = { { 1.00, 0.12, 0.22, -1 }, { 0.15, 1.00, 0.35, 0 }, { 0.22, 0.38, 1.00, 1 } }
+        local REST, WIDE, SWING, EVERY = 1.6, 13, 6, 3.4
+        local lights = {}
+        for i, c in ipairs(PRISM) do
+            local holder = CreateFrame("Frame", nil, btn)
+            holder:SetFrameLevel(base)
+            local layer = pillLayer(holder, base, 0, c[1], c[2], c[3], 1)
+            for _, t in ipairs(layer.parts) do t:SetBlendMode("ADD") end
+            lights[i] = { holder = holder, dir = c[4] }
+        end
+        local white = pillLayer(btn, base + 4, 0, 1, 1, 1, 1)
+        for _, t in ipairs(white.parts) do t:SetBlendMode("ADD") end
+        white:SetAlpha(0)
+        local function spread(pull, alpha)
+            for _, l in ipairs(lights) do
+                local dx, dy = l.dir * pull, -l.dir * pull * 0.22
+                l.holder:ClearAllPoints()
+                l.holder:SetPoint("TOPLEFT", btn, "TOPLEFT", dx, dy)
+                l.holder:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", dx, dy)
+                l.holder:SetAlpha(alpha)
+            end
+        end
+        local fx = CreateFrame("Frame", nil, btn)
+        local t, since = 0, 0
+        fx:SetScript("OnUpdate", function(_, dt)
+            t, since = t + dt, since + dt
+            local pull, alpha = REST, 0.55
+            if t < 0.5 then
+                -- Arriving: wide and bright, snapping in.
+                local e = t / 0.5
+                local k = (1 - e) * (1 - e)
+                pull = REST + (WIDE - REST) * k
+                alpha = 0.55 + 0.45 * k
+                white:SetAlpha(0.75 * (1 - e) * (1 - e) * (1 - e))
+                since = 0
+            else
+                white:SetAlpha(0)
+                if since >= EVERY then since = 0 end
+                if since < 0.7 then
+                    -- The refocus: out and back.
+                    local s = math.sin(since / 0.7 * math.pi)
+                    pull = REST + (SWING - REST) * s
+                    alpha = 0.55 + 0.35 * s
+                end
+            end
+            spread(pull, alpha)
+        end)
+        fx:SetScript("OnShow", function() t, since = 0, 0 end)
+        btn.fxKick = function() t, since = 0, 0 end
+        spread(REST, 0.55)
+    end
+
     -- content sits on its own layer above the pill
     local top = CreateFrame("Frame", nil, btn)
     top:SetAllPoints()
@@ -509,6 +570,8 @@ function QB:Refresh()
         return
     end
     if shown.spell == c.spell and shown.unit == c.unit and shown.count == count and btn:IsShown() then return end
+    -- A different buff than was showing: flash again.
+    if btn.fxKick and (shown.spell ~= c.spell or shown.unit ~= c.unit) then btn.fxKick() end
     shown.spell, shown.unit, shown.count = c.spell, c.unit, count
     btn:SetAttribute("type", "spell")
     btn:SetAttribute("spell", c.spell)

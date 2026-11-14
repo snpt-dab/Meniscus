@@ -407,6 +407,10 @@ local PAGES = {
                                             { key = 3, label = "3 minutes left" }, { key = 5, label = "5 minutes left" } } end,
               get = function() return ns.modules.QuickBuff.db.refresh end,
               set = function(k) ns.modules.QuickBuff.db.refresh = k end },
+            { "Prismatic shimmer on the pill", kind = "switch", reload = true,
+              note = "Coloured edges that flash when a buff is offered and swing every few seconds",
+              get = function() return ns.modules.QuickBuff.db.prism ~= false end,
+              set = function() local d = ns.modules.QuickBuff.db; d.prism = d.prism == false end },
             { "Quick Buff key", kind = "action", action = "Set key", run = function()
                 if SettingsPanel and Settings and Settings.OpenToCategory and Settings.KEYBINDINGS_CATEGORY_ID then
                     pcall(Settings.OpenToCategory, Settings.KEYBINDINGS_CATEGORY_ID)
