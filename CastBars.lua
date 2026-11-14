@@ -46,6 +46,22 @@ local function start(h, channel)
         h.bar:SetTimerDuration(dur, interp, dir)
         h.name:SetText(clean((info(unit))))
         h.path = "duration"
+        -- The end of a cast is normally announced. It isn't when the caster
+        -- goes out of sight mid-cast or as it lands (a mage teleporting
+        -- away): the bar stayed up for good. So, twice a second: still
+        -- casting? (A hidden answer counts as yes.)
+        local acc = 0
+        h:SetScript("OnUpdate", function(self, dt)
+            acc = acc + dt
+            if acc < 0.5 then return end
+            acc = 0
+            local gone = not UnitExists(unit)
+            if not gone then
+                local c, ch = UnitCastingInfo(unit), UnitChannelInfo(unit)
+                gone = not issecretvalue(c) and c == nil and not issecretvalue(ch) and ch == nil
+            end
+            if gone then stop(self) end
+        end)
         h:Show()
         return
     end
@@ -60,6 +76,8 @@ local function start(h, channel)
     h:SetScript("OnUpdate", function(self)
         local now = GetTime() * 1000
         self.bar:SetValue(channel and (st + et - now) or now)
+        -- (Past its end with no word that it ended: done.)
+        if now > et + 300 then stop(self) end
     end)
     h.path = "times"
     h:Show()
