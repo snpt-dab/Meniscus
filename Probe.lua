@@ -1078,6 +1078,51 @@ end
 -- (the marker that sits over a tracked quest's objective)? Records which of
 -- its functions exist, the setting that turns it on, and what its frame is
 -- made of, into MinimalUIDB.navprobe. Best run with a quest tracked.
+-- /men xpprobe : where the game's own floating XP text could come from.
+-- Every console setting whose name smells of it, with its value, and
+-- whether the scrolling combat text frame is there. Also run once a few
+-- seconds after login (MinimalUIDB.xpprobe).
+local function xpProbe()
+    if not MinimalUIDB then return end
+    local out = { "at " .. date("%H:%M:%S") }
+    local words = { "xp", "exper", "float", "fct", "combattext", "scrolling", "worldtext" }
+    local list = C_Console and C_Console.GetAllCommands and select(2, pcall(C_Console.GetAllCommands))
+    if type(list) == "table" then
+        for _, c in ipairs(list) do
+            local name = type(c) == "table" and c.command
+            if type(name) == "string" then
+                local low = name:lower()
+                for _, w in ipairs(words) do
+                    if low:find(w, 1, true) then
+                        local ok, v = pcall(GetCVar, name)
+                        out[#out + 1] = name .. " = " .. tostring(ok and v or "?")
+                        break
+                    end
+                end
+            end
+        end
+    else
+        out[#out + 1] = "no command list (" .. type(list) .. ")"
+    end
+    for _, n in ipairs({ "CombatText", "CombatText_AddMessage", "CombatText_OnEvent", "COMBAT_TEXT_TYPE_INFO",
+                         "SHOW_COMBAT_TEXT", "UIErrorsFrame", "ZoneTextFrame", "EventToastManagerFrame",
+                         "XPGainFrame", "BossBanner", "LevelUpDisplay" }) do
+        local v = _G[n]
+        local extra = ""
+        if type(v) == "table" and v.IsShown then extra = " shown=" .. tostring(select(2, pcall(v.IsShown, v))) end
+        out[#out + 1] = "global " .. n .. ": " .. type(v) .. extra
+    end
+    if type(_G.COMBAT_TEXT_TYPE_INFO) == "table" then
+        local keys = {}
+        for k in pairs(_G.COMBAT_TEXT_TYPE_INFO) do keys[#keys + 1] = tostring(k) end
+        table.sort(keys)
+        out[#out + 1] = "combat text types: " .. table.concat(keys, ", ")
+    end
+    MinimalUIDB.xpprobe = out
+end
+ns.commands.xpprobe = function() xpProbe(); ns:Print("XP text settings written. /reload, then tell Claude.") end
+C_Timer.After(6, function() pcall(xpProbe) end)
+
 ns.commands.navprobe = function()
     if not MinimalUIDB then return end
     local out = {}
