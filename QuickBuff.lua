@@ -591,43 +591,93 @@ local function buildButton()
         btn.fxKick = function() t, since = 0, 0 end
         spread(REST, 0.9)
 
-        -- Cast: the pill flashes white, then comes apart into its three
-        -- colours, which drift sideways from each other as they fade. The
-        -- pill itself has usually gone by then (the buff is on), so this
-        -- is drawn by a stand-in of the same shape left where it was.
+        -- Cast: the pill goes up in a poof. A quick white flash of its
+        -- shape, then sparkles shaken out of it that fall and wink out, and
+        -- a little pale smoke that drifts up and thins. The pill itself has
+        -- usually gone by then (the buff is on), so this is drawn by a
+        -- stand-in of the same shape left where it was.
         local ghost = CreateFrame("Frame", nil, UIParent)
         ghost:SetFrameStrata("HIGH")
         ghost:SetSize(W, H)
         ghost:Hide()
         local gbase = ghost:GetFrameLevel()
-        local parted = {}
-        for i, c in ipairs(PRISM) do
-            local holder = CreateFrame("Frame", nil, ghost)
-            holder:SetFrameLevel(gbase + 1)
-            local layer = pillLayer(holder, gbase + 1, 0, c[1], c[2], c[3], 1)
-            for _, tx in ipairs(layer.parts) do tx:SetBlendMode("ADD") end
-            parted[i] = { holder = holder, dir = c[4] }
-        end
         local burst = pillLayer(ghost, gbase + 2, -1, 1, 1, 1, 1)
         for _, tx in ipairs(burst.parts) do tx:SetBlendMode("ADD") end
-        local CAST_TIME, CAST_PULL = 1.5, 26
+        local CAST_TIME, SPARKS, PUFFS, FALL = 2.4, 30, 8, 150
+        local dustF = CreateFrame("Frame", nil, ghost)
+        dustF:SetFrameLevel(gbase + 1)
+        dustF:SetAllPoints()
+        local sparks, puffs = {}, {}
+        for n = 1, SPARKS do
+            local tx = dustF:CreateTexture(nil, "OVERLAY")
+            tx:SetTexture(MEDIA .. "spot.tga")
+            tx:SetBlendMode("ADD")
+            sparks[n] = { tx = tx }
+        end
+        for n = 1, PUFFS do
+            local tx = dustF:CreateTexture(nil, "ARTWORK")
+            tx:SetTexture(MEDIA .. "spot.tga")
+            puffs[n] = { tx = tx }
+        end
+        local rnd = math.random
+        -- A fresh scatter for each cast.
+        local function scatter(w)
+            for _, q in ipairs(sparks) do
+                q.x, q.y = (rnd() - 0.5) * w, (rnd() - 0.5) * H
+                q.vx, q.vy = (rnd() - 0.5) * 70, 15 + rnd() * 55      -- a small hop up first
+                q.life = 0.7 + rnd() * 0.8
+                q.size = 5 + rnd() * 7
+                q.wink, q.at = 14 + rnd() * 16, rnd() * 6
+                local k = rnd()
+                -- Mostly white, some pale gold, some pale blue.
+                if k < 0.55 then q.tx:SetVertexColor(1, 1, 1)
+                elseif k < 0.8 then q.tx:SetVertexColor(1, 0.90, 0.62)
+                else q.tx:SetVertexColor(0.70, 0.84, 1) end
+            end
+            for _, q in ipairs(puffs) do
+                q.x, q.y = (rnd() - 0.5) * w * 0.8, (rnd() - 0.5) * H * 0.5
+                q.vx, q.vy = (rnd() - 0.5) * 12, 12 + rnd() * 14
+                q.life = 1.5 + rnd() * 0.9
+                q.size = 26 + rnd() * 16
+                q.sway, q.at = 1.2 + rnd() * 1.4, rnd() * 6
+                local g = 0.78 + rnd() * 0.14
+                q.tx:SetVertexColor(g, g, g + 0.03)
+            end
+        end
         local gt = 0
         ghost:SetScript("OnUpdate", function(self, dt)
             gt = gt + dt
             if gt >= CAST_TIME then self:Hide() return end
-            local rise = gt < 0.07 and gt / 0.07 or 1
-            -- White: up at once, gone in under half a second.
-            burst:SetAlpha(gt < 0.07 and rise or math.max(0, 1 - (gt - 0.07) / 0.42))
-            -- The colours: parting quickly at first, then slowing, fading all the while.
-            local e = gt / CAST_TIME
-            local pull = CAST_PULL * (1 - (1 - e) * (1 - e))
-            local alpha = rise * (1 - e) ^ 1.3 * 0.95
-            for _, l in ipairs(parted) do
-                local dx, dy = l.dir * pull, -l.dir * pull * 0.2
-                l.holder:ClearAllPoints()
-                l.holder:SetPoint("TOPLEFT", self, "TOPLEFT", dx, dy)
-                l.holder:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", dx, dy)
-                l.holder:SetAlpha(alpha)
+            -- White: up at once, gone in a third of a second.
+            burst:SetAlpha(gt < 0.06 and gt / 0.06 or math.max(0, 1 - (gt - 0.06) / 0.3))
+            for _, q in ipairs(sparks) do
+                local e = gt / q.life
+                if e >= 1 then
+                    q.tx:SetAlpha(0)
+                else
+                    local x = q.x + q.vx * gt
+                    local y = q.y + q.vy * gt - 0.5 * FALL * gt * gt
+                    local size = q.size * (1 - 0.5 * e)
+                    q.tx:SetSize(size, size)
+                    q.tx:ClearAllPoints()
+                    q.tx:SetPoint("CENTER", self, "CENTER", x, y)
+                    q.tx:SetAlpha((1 - e * e) * (0.55 + 0.45 * math.sin(gt * q.wink + q.at)))
+                end
+            end
+            for _, q in ipairs(puffs) do
+                local e = gt / q.life
+                if e >= 1 then
+                    q.tx:SetAlpha(0)
+                else
+                    local x = q.x + q.vx * gt + 5 * math.sin(gt * q.sway + q.at)
+                    local y = q.y + q.vy * gt
+                    local size = q.size * (1 + 1.3 * e)
+                    q.tx:SetSize(size, size)
+                    q.tx:ClearAllPoints()
+                    q.tx:SetPoint("CENTER", self, "CENTER", x, y)
+                    -- In quickly, then thinning the whole way up.
+                    q.tx:SetAlpha(0.20 * math.min(1, gt / 0.18) * (1 - e) ^ 1.5)
+                end
             end
         end)
         -- Where the pill is, kept while it shows (it may be hidden by the
@@ -648,6 +698,7 @@ local function buildButton()
             ghost:ClearAllPoints()
             ghost:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", gl, gb)
             ghost:SetWidth(gw)
+            scatter(gw)
             gt = 0
             ghost:Show()
         end)
