@@ -782,6 +782,7 @@ end
 -- is restored. What the frame offers is noted in MinimalUIDB.buffwrap.
 local wraps, rooms, wrapping = {}, {}, false
 local wrapTo
+local targets, alignSoon -- filled in and defined further down (alignment)
 local function applyWrap(fr)
     local n = wraps[fr]
     local c = fr and fr.AuraContainer
@@ -876,7 +877,8 @@ end
 -- bottom) edge onto the wanted line, and its left or right edge, whichever
 -- one the icons start from, onto the wanted side. Done again after every
 -- layout Blizzard runs, so it also follows rows being added and removed.
-local targets, aligning = {}, false
+targets = {}
+local aligning = false
 local function alignNow(fr)
     local t = targets[fr]
     local s = seats[fr]
@@ -908,7 +910,7 @@ local function alignNow(fr)
         MinimalUIDB.buffalign[fr:GetName() or "?"] = string.format("moved %.0f, %.0f at %s (point %s)", dx, dy, date("%H:%M:%S"), tostring(s[1]))
     end
 end
-local function alignSoon(fr)
+function alignSoon(fr)
     C_Timer.After(0, function() pcall(alignNow, fr) end)
     C_Timer.After(0.3, function() pcall(alignNow, fr) end)
 end
