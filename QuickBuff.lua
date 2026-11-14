@@ -595,8 +595,11 @@ local function buildButton()
         spread(REST, FRINGE)
 
         -- Cast: the pill goes up in a poof. A quick white flash of its
-        -- shape, then sparkles shaken out of it that fall and wink out, and
-        -- a little pale smoke that drifts up and thins. The pill itself has
+        -- shape, then a cloud of ice crystals shaken out of it, falling in
+        -- the sun: tiny, white and ice-blue, each mostly dim and catching
+        -- the light in short sharp glints (the larger ones with a thin
+        -- cross of light as they do), and a little pale smoke that drifts
+        -- up and thins. The pill itself has
         -- usually gone by then (the buff is on), so this is drawn by a
         -- stand-in of the same shape left where it was.
         local ghost = CreateFrame("Frame", nil, UIParent)
@@ -606,7 +609,8 @@ local function buildButton()
         local gbase = ghost:GetFrameLevel()
         local burst = pillLayer(ghost, gbase + 2, -1, 1, 1, 1, 1)
         for _, tx in ipairs(burst.parts) do tx:SetBlendMode("ADD") end
-        local CAST_TIME, SPARKS, PUFFS, FALL = 2.4, 30, 8, 150
+        local CAST_TIME, SPARKS, PUFFS, FALL = 3.0, 110, 8, 95
+        local GLINTS = 30 -- how many of them carry a cross of light
         local dustF = CreateFrame("Frame", nil, ghost)
         dustF:SetFrameLevel(gbase + 1)
         dustF:SetAllPoints()
@@ -615,7 +619,17 @@ local function buildButton()
             local tx = dustF:CreateTexture(nil, "OVERLAY")
             tx:SetTexture(MEDIA .. "spot.tga")
             tx:SetBlendMode("ADD")
-            sparks[n] = { tx = tx }
+            local q = { tx = tx }
+            if n <= GLINTS then
+                q.h = dustF:CreateTexture(nil, "OVERLAY")
+                q.v = dustF:CreateTexture(nil, "OVERLAY")
+                for _, g in ipairs({ q.h, q.v }) do
+                    g:SetTexture(MEDIA .. "spot.tga")
+                    g:SetBlendMode("ADD")
+                    g:SetPoint("CENTER", tx, "CENTER")
+                end
+            end
+            sparks[n] = q
         end
         for n = 1, PUFFS do
             local tx = dustF:CreateTexture(nil, "ARTWORK")
@@ -626,16 +640,19 @@ local function buildButton()
         -- A fresh scatter for each cast.
         local function scatter(w)
             for _, q in ipairs(sparks) do
-                q.x, q.y = (rnd() - 0.5) * w, (rnd() - 0.5) * H
-                q.vx, q.vy = (rnd() - 0.5) * 70, 15 + rnd() * 55      -- a small hop up first
-                q.life = 0.7 + rnd() * 0.8
-                q.size = 5 + rnd() * 7
-                q.wink, q.at = 14 + rnd() * 16, rnd() * 6
+                q.x, q.y = (rnd() - 0.5) * (w + 16), (rnd() - 0.5) * (H + 6)
+                q.vx, q.vy = (rnd() - 0.5) * 110, -10 + rnd() * 75    -- thrown out, most of them a little upward
+                q.life = 0.9 + rnd() * 1.9
+                q.size = q.h and (4 + rnd() * 3) or (2 + rnd() * 3.5)
+                q.wink, q.at = 5 + rnd() * 9, rnd() * 6
+                q.arm = 12 + rnd() * 12
+                -- White, or one of two cold blues.
                 local k = rnd()
-                -- Mostly white, some pale gold, some pale blue.
-                if k < 0.55 then q.tx:SetVertexColor(1, 1, 1)
-                elseif k < 0.8 then q.tx:SetVertexColor(1, 0.90, 0.62)
-                else q.tx:SetVertexColor(0.70, 0.84, 1) end
+                local r, g, b = 1, 1, 1
+                if k > 0.75 then r, g, b = 0.74, 0.90, 1
+                elseif k > 0.45 then r, g, b = 0.88, 0.96, 1 end
+                q.tx:SetVertexColor(r, g, b)
+                if q.h then q.h:SetVertexColor(r, g, b); q.v:SetVertexColor(r, g, b) end
             end
             for _, q in ipairs(puffs) do
                 q.x, q.y = (rnd() - 0.5) * w * 0.8, (rnd() - 0.5) * H * 0.5
@@ -657,14 +674,26 @@ local function buildButton()
                 local e = gt / q.life
                 if e >= 1 then
                     q.tx:SetAlpha(0)
+                    if q.h then q.h:SetAlpha(0); q.v:SetAlpha(0) end
                 else
-                    local x = q.x + q.vx * gt
+                    -- (The air slows the sideways throw; the fall goes on.)
+                    local x = q.x + q.vx * (1 - math.exp(-2.2 * gt)) / 2.2
                     local y = q.y + q.vy * gt - 0.5 * FALL * gt * gt
-                    local size = q.size * (1 - 0.5 * e)
-                    q.tx:SetSize(size, size)
+                    q.tx:SetSize(q.size, q.size)
                     q.tx:ClearAllPoints()
                     q.tx:SetPoint("CENTER", self, "CENTER", x, y)
-                    q.tx:SetAlpha((1 - e * e) * (0.55 + 0.45 * math.sin(gt * q.wink + q.at)))
+                    -- Dim, with a short hard flash each time it turns to the sun.
+                    local s = 0.5 + 0.5 * math.sin(gt * q.wink + q.at)
+                    local flash = s ^ 10
+                    local fade = 1 - e * e
+                    q.tx:SetAlpha(fade * (0.22 + 0.78 * flash))
+                    if q.h then
+                        local arm = q.arm * (0.4 + 0.6 * flash)
+                        q.h:SetSize(arm, 2.2)
+                        q.v:SetSize(2.2, arm)
+                        q.h:SetAlpha(fade * flash)
+                        q.v:SetAlpha(fade * flash)
+                    end
                 end
             end
             for _, q in ipairs(puffs) do
