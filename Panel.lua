@@ -408,7 +408,7 @@ local PAGES = {
               get = function() return ns.modules.QuickBuff.db.refresh end,
               set = function(k) ns.modules.QuickBuff.db.refresh = k end },
             { "Prismatic shimmer on the pill", kind = "switch", reload = true,
-              note = "Coloured edges that flash when a buff is offered and swing every few seconds",
+              note = "A white halo and coloured edges round the pill, so a waiting buff is hard to miss",
               get = function() return ns.modules.QuickBuff.db.prism ~= false end,
               set = function() local d = ns.modules.QuickBuff.db; d.prism = d.prism == false end },
             { "Quick Buff key", kind = "action", action = "Set key", run = function()

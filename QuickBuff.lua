@@ -407,18 +407,42 @@ local function buildButton()
     -- as coloured edges at its two ends, red one side and blue the other.
     --   * When a buff is first offered the pill flashes white and the
     --     colours start wide, then snap in (as the level-up card does).
-    --   * While it waits they rest a hair apart, a thin fringe, and every
-    --     few seconds they swing out and back, like a lens refocusing.
+    --   * While it waits they rest a little apart, a clear fringe all
+    --     round, and every two seconds they swing out and back, like a
+    --     lens refocusing.
+    --   * Round all of it, a white halo, like the glow round a planet's
+    --     edge: brightest against the pill and thinning outward, breathing
+    --     slowly, with a ring of light travelling out through it again and
+    --     again.
     if QB.db.prism ~= false then
         local PRISM = { { 1.00, 0.12, 0.22, -1 }, { 0.15, 1.00, 0.35, 0 }, { 0.22, 0.38, 1.00, 1 } }
-        local REST, WIDE, SWING, EVERY = 1.6, 13, 6, 3.4
+        local REST, WIDE, SWING, EVERY = 2.4, 18, 9, 2.0
+        local HALO = { { 2, 0.26 }, { 4, 0.20 }, { 7, 0.14 }, { 11, 0.09 }, { 16, 0.05 }, { 22, 0.03 } } -- reach, light
+        local WAVE = 1.4 -- seconds for the travelling ring to cross the halo
         local lights = {}
         for i, c in ipairs(PRISM) do
             local holder = CreateFrame("Frame", nil, btn)
             holder:SetFrameLevel(base)
-            local layer = pillLayer(holder, base, 0, c[1], c[2], c[3], 1)
+            -- (A little larger than the pill, so they edge it all round.)
+            local layer = pillLayer(holder, base, -2, c[1], c[2], c[3], 1)
             for _, t in ipairs(layer.parts) do t:SetBlendMode("ADD") end
             lights[i] = { holder = holder, dir = c[4] }
+        end
+        local halo = {}
+        for i, hdef in ipairs(HALO) do
+            local layer = pillLayer(btn, base, -hdef[1], 1, 1, 1, 1)
+            for _, tx in ipairs(layer.parts) do tx:SetBlendMode("ADD") end
+            layer:SetAlpha(hdef[2])
+            halo[i] = { layer = layer, a = hdef[2] }
+        end
+        local function glow(time, boost)
+            local breathe = 0.78 + 0.22 * math.sin(time * 2.4)
+            local at = (time % WAVE) / WAVE * (#halo + 2) - 0.5
+            for i, h in ipairs(halo) do
+                local d = math.abs(i - at)
+                local ring = d < 1.3 and (1 - d / 1.3) * 0.34 * (1 - (i - 1) / #halo * 0.55) or 0
+                h.layer:SetAlpha(math.min(1, (h.a * breathe + ring) * boost))
+            end
         end
         local white = pillLayer(btn, base + 4, 0, 1, 1, 1, 1)
         for _, t in ipairs(white.parts) do t:SetBlendMode("ADD") end
@@ -436,13 +460,15 @@ local function buildButton()
         local t, since = 0, 0
         fx:SetScript("OnUpdate", function(_, dt)
             t, since = t + dt, since + dt
-            local pull, alpha = REST, 0.55
+            local pull, alpha = REST, 0.7
+            local boost = 1
             if t < 0.5 then
+                boost = 1 + 2.2 * (1 - t / 0.5)
                 -- Arriving: wide and bright, snapping in.
                 local e = t / 0.5
                 local k = (1 - e) * (1 - e)
                 pull = REST + (WIDE - REST) * k
-                alpha = 0.55 + 0.45 * k
+                alpha = 0.7 + 0.3 * k
                 white:SetAlpha(0.75 * (1 - e) * (1 - e) * (1 - e))
                 since = 0
             else
@@ -452,14 +478,16 @@ local function buildButton()
                     -- The refocus: out and back.
                     local s = math.sin(since / 0.7 * math.pi)
                     pull = REST + (SWING - REST) * s
-                    alpha = 0.55 + 0.35 * s
+                    alpha = 0.7 + 0.3 * s
+                    boost = 1 + 0.5 * s
                 end
             end
             spread(pull, alpha)
+            glow(t, boost)
         end)
         fx:SetScript("OnShow", function() t, since = 0, 0 end)
         btn.fxKick = function() t, since = 0, 0 end
-        spread(REST, 0.55)
+        spread(REST, 0.7)
     end
 
     -- content sits on its own layer above the pill
