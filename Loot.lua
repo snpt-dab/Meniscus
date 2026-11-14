@@ -287,7 +287,7 @@ local floatRise = 130
 -- along, so you know what a pill is from where it is:
 --   left    what you loot, beside your left shoulder (the pill ends there
 --           and reaches out to the left)
---   right   skill-ups, beside your right shoulder (reaching right)
+--   right   skill-ups and experience, beside your right shoulder (reaching right)
 --   center  quest progress and warnings, above your head
 -- Each rail keeps its own beat, so a burst of loot doesn't hold a quest
 -- pill back. (Above the minimap there is one line for everything.)
@@ -578,6 +578,54 @@ local function floatSkill(msg)
     f.skill = true
     f.sheenMove:SetOffset(f.full + 60, 0)
     f.sheen:Play()
+end
+
+-- Experience gained: a pill on the right rail, with skill-ups (the rail
+-- for what you yourself gain), in the XP bar's purple: "+120 XP" and how
+-- far through the level that leaves you. Gains that arrive together (a
+-- kill and the quest it finished) are one pill. Read from the change in
+-- your experience, so it is right whatever the source; a level-up in
+-- between is counted across.
+local XP_TINT = { 0.66, 0.56, 1.00 }
+local xpWas, xpMaxWas, xpSum, xpDue = nil, nil, 0, false
+local function floatXP()
+    xpDue = false
+    local gain = xpSum
+    xpSum = 0
+    if gain <= 0 or not (L.db and L.db.xpFloat ~= false) then return end
+    if not pcall(floatOrigin) then return end
+    local cur, max = UnitXP("player"), UnitXPMax("player")
+    local note
+    if type(cur) == "number" and type(max) == "number" and not secret(cur) and not secret(max) and max > 0 then
+        note = string.format("%d%%", math.floor(cur / max * 100))
+    end
+    local r, g, b = XP_TINT[1], XP_TINT[2], XP_TINT[3]
+    floatRail = "right"
+    local ok, f = pcall(floatPill, MEDIA .. "micro_up.tga", "+" .. gain .. " XP", 1, 1, 1, note,
+        r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
+    if not (ok and f) then return end
+    f.icon:SetTexCoord(0, 1, 0, 1)
+    f.icon:SetVertexColor(r, g, b, 1)
+    f.count:SetTextColor(r, g, b)
+end
+local function xpChanged(fresh)
+    local cur, max = UnitXP("player"), UnitXPMax("player")
+    if type(cur) ~= "number" or type(max) ~= "number" or secret(cur) or secret(max) then return end
+    if xpWas and not fresh then
+        local gain = cur - xpWas
+        if gain < 0 then gain = (xpMaxWas - xpWas) + cur end -- levelled in between
+        if gain > 0 then
+            xpSum = xpSum + gain
+            if not xpDue then xpDue = true; C_Timer.After(0.3, function() pcall(floatXP) end) end
+        end
+    end
+    xpWas, xpMaxWas = cur, max
+end
+do
+    local xf = CreateFrame("Frame")
+    xf:RegisterEvent("PLAYER_XP_UPDATE")
+    xf:RegisterEvent("PLAYER_ENTERING_WORLD")
+    xf:SetScript("OnEvent", function(_, e) pcall(xpChanged, e == "PLAYER_ENTERING_WORLD") end)
 end
 
 -- /men skillup : show a sample skill-up pill (and a gold one).
