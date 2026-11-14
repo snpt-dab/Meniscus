@@ -1955,8 +1955,219 @@ local function buildUsage()
     end)
 end
 
+-- ── Potion flyout ─────────────────────────────────────────────────────────
+-- A small flask on the map's rim, upper right (the queue eye's twin). Click
+-- it, or press its key, and the potions in your bags open out in a row
+-- beside it: click one to drink it, and the row closes. No bar slots spent.
+--   * Everything that drinks is a secure button, and the row is opened and
+--     closed by secure code, so it all works in a fight.
+--   * Which potions are on it can only change out of combat (the game's
+--     rule): one picked up mid-fight joins the row when the fight ends. A
+--     stack that runs out mid-fight stays, greyed, until then.
+local PO_MAX, PO_SIZE, PO_GAP = 8, 30, 4
+_G["BINDING_NAME_CLICK MeniscusPotions:LeftButton"] = "Potions (open or close)"
+local function isPotion(id)
+    local f = C_Item and C_Item.GetItemInfoInstant
+    if not f then return false end
+    local ok, _, _, _, _, _, classID, subID = pcall(f, id)
+    if not ok or not num(classID) or classID ~= 0 then return false end
+    if subID == 1 then return true end
+    -- (Older item data files potions under plain "Consumable".)
+    local n = itemName(id)
+    return type(n) == "string" and n:find("Potion") ~= nil
+end
+-- Healing first, then mana, then the rest; the stronger (later made) first.
+local function potionRank(id)
+    local n = itemName(id) or ""
+    return (n:find("Heal") and 0) or (n:find("Mana") and 1) or (n:find("Rejuv") and 2) or 3
+end
+local function buildPotions()
+    local S = 24
+    local anchor = CreateFrame("Button", "MeniscusPotions", UIParent, "SecureHandlerClickTemplate")
+    anchor:SetSize(S, S)
+    anchor:RegisterForClicks("AnyDown", "AnyUp")
+    anchor:SetFrameStrata("MEDIUM")
+    anchor:SetFrameLevel(6)
+    anchor:Hide()
+    local ring = anchor:CreateTexture(nil, "BACKGROUND")
+    ring:SetAllPoints()
+    ring:SetTexture(MEDIA .. "circle.tga")
+    ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+    local fill = anchor:CreateTexture(nil, "BORDER")
+    fill:SetPoint("TOPLEFT", 1.5, -1.5)
+    fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    fill:SetTexture(MEDIA .. "circle.tga")
+    fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+    local glyph = anchor:CreateTexture(nil, "ARTWORK")
+    glyph:SetSize(17, 17)
+    glyph:SetPoint("CENTER")
+    glyph:SetTexture(MEDIA .. "micro_potion.tga")
+    glyph:SetVertexColor(T.text[1], T.text[2], T.text[3], 1)
+
+    local fly = CreateFrame("Frame", "MeniscusPotionRow", anchor, "SecureHandlerBaseTemplate")
+    fly:SetFrameStrata("HIGH")
+    fly:SetPoint("BOTTOMLEFT", anchor, "TOPRIGHT", 0, 0)
+    fly:SetSize(PO_SIZE, PO_SIZE)
+    fly:Hide()
+    anchor:SetFrameRef("row", fly)
+    anchor:SetAttribute("_onclick", [[
+        if not down then return end
+        local row = self:GetFrameRef("row")
+        if row:IsShown() then row:Hide() else row:Show() end
+    ]])
+    anchor:SetScript("OnEnter", function(self)
+        ring:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Potions", 1, 1, 1)
+        GameTooltip:AddLine("Click to open or close.", 0.7, 0.7, 0.75)
+        GameTooltip:Show()
+    end)
+    anchor:SetScript("OnLeave", function()
+        ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+        GameTooltip:Hide()
+    end)
+
+    local btns = {}
+    for i = 1, PO_MAX do
+        local b = CreateFrame("Button", "MeniscusPotion" .. i, fly, "SecureActionButtonTemplate")
+        b:SetSize(PO_SIZE, PO_SIZE)
+        b:SetPoint("BOTTOMLEFT", fly, "BOTTOMLEFT", (i - 1) * (PO_SIZE + PO_GAP), 0)
+        b:RegisterForClicks("AnyDown", "AnyUp")
+        b:Hide()
+        -- The row closes once the click is through (on the way up, after
+        -- the potion has been used on whichever edge the client uses).
+        SecureHandlerWrapScript(b, "OnClick", fly,
+            [[ if not down then return nil, "close" end ]],
+            [[ owner:Hide() ]])
+        local mask = b:CreateMaskTexture()
+        mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints()
+        local bring = b:CreateTexture(nil, "BACKGROUND")
+        bring:SetAllPoints()
+        bring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+        bring:AddMaskTexture(mask)
+        local imask = b:CreateMaskTexture()
+        imask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        imask:SetPoint("TOPLEFT", 1.5, -1.5); imask:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+        local icon = b:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints(imask)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        icon:AddMaskTexture(imask)
+        local cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+        cd:SetAllPoints(imask)
+        pcall(cd.SetDrawEdge, cd, false)
+        local over = CreateFrame("Frame", nil, b)
+        over:SetAllPoints()
+        over:SetFrameLevel(cd:GetFrameLevel() + 1)
+        local count = ns:CreateText(over, 10)
+        count:SetPoint("BOTTOMRIGHT", -3, 3)
+        count:SetShadowOffset(1, -1)
+        count:SetShadowColor(0, 0, 0, 0.9)
+        b.ring, b.icon, b.cd, b.count = bring, icon, cd, count
+        b:SetScript("OnEnter", function(self)
+            self.ring:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+            if not self.item then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            if GameTooltip.SetItemByID then GameTooltip:SetItemByID(self.item) end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function(self)
+            self.ring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+            GameTooltip:Hide()
+        end)
+        btns[i] = b
+    end
+
+    -- Counts and cooldowns: plain drawing, fine at any time.
+    local function update()
+        for _, b in ipairs(btns) do
+            if b.item then
+                local n = itemCount(b.item)
+                b.count:SetText(n > 1 and n or "")
+                b.icon:SetDesaturated(n == 0)
+                b.icon:SetAlpha(n == 0 and 0.4 or 1)
+                local f = CC.GetItemCooldown or _G.GetItemCooldown
+                if f then
+                    local ok, start, dur = pcall(f, b.item)
+                    if ok and start ~= nil and dur ~= nil then pcall(b.cd.SetCooldown, b.cd, start, dur) end
+                end
+            end
+        end
+    end
+    -- Which potions, and where the flask sits: out of combat only.
+    local stale, have, order = false, {}, {}
+    local function assign()
+        if InCombatLockdown() then stale = true return end
+        stale = false
+        wipe(have); wipe(order)
+        for bag = 0, (NUM_BAG_SLOTS or 4) do scanBag(have, bag) end
+        for id in pairs(have) do
+            if isPotion(id) then order[#order + 1] = id end
+        end
+        table.sort(order, function(a, b)
+            local ra, rb = potionRank(a), potionRank(b)
+            if ra ~= rb then return ra < rb end
+            return a > b
+        end)
+        local dome = _G.MinimalUI_MinimapDome
+        anchor:ClearAllPoints()
+        if dome then
+            local off = dome:GetWidth() / 2 * 0.7071
+            anchor:SetPoint("CENTER", dome, "CENTER", off, off)
+        else
+            anchor:SetPoint("BOTTOM", UIParent, "BOTTOM", 120, 150)
+        end
+        for i, b in ipairs(btns) do
+            local id = order[i]
+            if id then
+                b.item = id
+                b:SetAttribute("type", "item")
+                b:SetAttribute("item", "item:" .. id)
+                local f = C_Item and C_Item.GetItemIconByID
+                local tex = f and call(f, id)
+                b.icon:SetTexture(tex or 134400)
+                b:Show()
+            else
+                b.item = nil
+                b:SetAttribute("type", nil)
+                b:Hide()
+            end
+        end
+        local n = math.min(#order, PO_MAX)
+        fly:SetWidth(math.max(1, n * PO_SIZE + math.max(0, n - 1) * PO_GAP))
+        if n == 0 then fly:Hide() end
+        anchor:SetShown(n > 0)
+        update()
+    end
+    local due = false
+    local function soon()
+        if due then return end
+        due = true
+        C_Timer.After(0.3, function()
+            due = false
+            ns.Timed("potion row", function() pcall(assign); if stale then pcall(update) end end)
+        end)
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "BAG_UPDATE_COOLDOWN" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "BAG_UPDATE_COOLDOWN" then pcall(update) return end
+        if e == "PLAYER_REGEN_ENABLED" and not stale then return end
+        soon()
+    end)
+    -- (Item names may not be known the moment you log in.)
+    C_Timer.After(2, soon)
+    C_Timer.After(8, soon)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.potions ~= false then
+        local ok, err = pcall(buildPotions)
+        if not ok and MinimalUIDB then MinimalUIDB.potionErr = tostring(err) end
+    end
     if db.reactive ~= false then pcall(buildReactive) end
     if db.usage ~= false then pcall(buildUsage) end
     if db.skillNudge ~= false then pcall(buildNudge) end

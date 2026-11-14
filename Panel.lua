@@ -463,6 +463,10 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
         } },
         { title = "Action bars", items = {
+            { "Potion flyout on the minimap", kind = "switch", reload = true,
+              note = "A flask on the map's rim that opens a row of the potions in your bags; bind a key under Key Bindings, AddOns",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.potions ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.potions = d.potions == false end end },
             { "Reactive spells above the dome", kind = "switch", reload = true,
               note = "Overpower, Execute, Riposte and the like appear only while they can be used",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.reactive ~= false end,
