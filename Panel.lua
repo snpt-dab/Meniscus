@@ -464,7 +464,7 @@ local PAGES = {
         } },
         { title = "Action bars", items = {
             { "Potion flyout on the minimap", kind = "switch", reload = true,
-              note = "A flask on the map's rim that opens a row of the potions in your bags; bind a key under Key Bindings, AddOns",
+              note = "A flask on the map's rim that opens a row of the potions, elixirs and flasks in your bags; bind a key under Key Bindings, AddOns",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.potions ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.potions = d.potions == false end end },
             { "Reactive spells above the dome", kind = "switch", reload = true,

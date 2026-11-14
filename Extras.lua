@@ -1964,21 +1964,25 @@ end
 --   * Which potions are on it can only change out of combat (the game's
 --     rule): one picked up mid-fight joins the row when the fight ends. A
 --     stack that runs out mid-fight stays, greyed, until then.
-local PO_MAX, PO_SIZE, PO_GAP = 8, 30, 4
+local PO_MAX, PO_SIZE, PO_GAP = 12, 30, 4
+local PO_ROW = 6 -- to a row; a second row stacks above the first
 _G["BINDING_NAME_CLICK MeniscusPotions:LeftButton"] = "Potions (open or close)"
 local function isPotion(id)
     local f = C_Item and C_Item.GetItemInfoInstant
     if not f then return false end
     local ok, _, _, _, _, _, classID, subID = pcall(f, id)
     if not ok or not num(classID) or classID ~= 0 then return false end
-    if subID == 1 then return true end
-    -- (Older item data files potions under plain "Consumable".)
+    -- Potions, and the buff ones too: elixirs and flasks.
+    if subID == 1 or subID == 2 or subID == 3 then return true end
+    -- (Older item data files them all under plain "Consumable".)
     local n = itemName(id)
-    return type(n) == "string" and n:find("Potion") ~= nil
+    return type(n) == "string" and (n:find("Potion") or n:find("Elixir") or n:find("Flask")) ~= nil
 end
--- Healing first, then mana, then the rest; the stronger (later made) first.
+-- Healing first, then mana, then other potions, then the elixirs and
+-- flasks; within each, the stronger (later made) first.
 local function potionRank(id)
     local n = itemName(id) or ""
+    if n:find("Elixir") or n:find("Flask") then return 4 end
     return (n:find("Heal") and 0) or (n:find("Mana") and 1) or (n:find("Rejuv") and 2) or 3
 end
 local function buildPotions()
@@ -2031,7 +2035,8 @@ local function buildPotions()
     for i = 1, PO_MAX do
         local b = CreateFrame("Button", "MeniscusPotion" .. i, fly, "SecureActionButtonTemplate")
         b:SetSize(PO_SIZE, PO_SIZE)
-        b:SetPoint("BOTTOMLEFT", fly, "BOTTOMLEFT", (i - 1) * (PO_SIZE + PO_GAP), 0)
+        b:SetPoint("BOTTOMLEFT", fly, "BOTTOMLEFT", ((i - 1) % PO_ROW) * (PO_SIZE + PO_GAP),
+            math.floor((i - 1) / PO_ROW) * (PO_SIZE + PO_GAP))
         b:RegisterForClicks("AnyDown", "AnyUp")
         b:Hide()
         -- The row closes once the click is through (on the way up, after
@@ -2134,7 +2139,8 @@ local function buildPotions()
             end
         end
         local n = math.min(#order, PO_MAX)
-        fly:SetWidth(math.max(1, n * PO_SIZE + math.max(0, n - 1) * PO_GAP))
+        local across = math.min(n, PO_ROW)
+        fly:SetWidth(math.max(1, across * PO_SIZE + math.max(0, across - 1) * PO_GAP))
         if n == 0 then fly:Hide() end
         anchor:SetShown(n > 0)
         update()
