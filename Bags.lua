@@ -694,8 +694,13 @@ local function layoutSeparate()
     win:SetSize(math.max(gridWidth(cols) * 2 - PAD, 360), HEADER + FOOTER - 8)
     -- Cards stack upward from the control card, right-aligned, wrapping to a
     -- new column on the left when the screen runs out of height.
-    local maxH = UIParent:GetHeight() - 40
-    local anchor, colAnchor, used = win, win, win:GetHeight()
+    -- Measured on the screen (the window sits above the console, and may
+    -- be scaled): a stack that ran past the top was pushed back down by
+    -- the screen clamp, onto the card below it, hiding that bag.
+    local k = UIParent:GetEffectiveScale() / win:GetEffectiveScale()
+    local maxH = UIParent:GetHeight() * k - 16
+    local floor = win:GetBottom() or 40
+    local anchor, colAnchor, used = win, win, floor + win:GetHeight()
     for _, bag in ipairs(shownBags()) do
         local card = cards[bag]
         -- Empty bag slots get no card and take no space (they used to keep
@@ -707,7 +712,7 @@ local function layoutSeparate()
             card:ClearAllPoints()
             if used + h + 8 > maxH then
                 card:SetPoint("BOTTOMRIGHT", colAnchor, "BOTTOMLEFT", -8, 0)
-                colAnchor, used = card, h
+                colAnchor, used = card, floor + h
             else
                 card:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", 0, 8)
                 used = used + h + 8
@@ -718,7 +723,9 @@ local function layoutSeparate()
     end
 end
 
-local function layout()
+local layout
+B.Relayout = function() layout() end
+function layout()
     if InCombatLockdown() then pending.layout = true; return end
     pending.layout = false
     if B.db.mode == "separate" then layoutSeparate() else layoutCombined() end
@@ -836,6 +843,17 @@ local function build()
     if pos then win:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
     else win:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -60, 130) end
     table.insert(UISpecialFrames, "MinimalUIBags")
+    -- The stack of cards depends on where the window sits: laid out again
+    -- when the dock moves it.
+    local relay = false
+    hooksecurefunc(win, "SetPoint", function()
+        if relay or B.db.mode ~= "separate" then return end
+        relay = true
+        C_Timer.After(0.05, function()
+            relay = false
+            if win:IsShown() and B.Relayout then pcall(B.Relayout) end
+        end)
+    end)
 
     win.shell = ns:CreateShell(win, { onClose = function() B:Close() end })
     win.shell:SetTitle("Bags")
