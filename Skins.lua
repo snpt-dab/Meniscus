@@ -196,8 +196,12 @@ end
 local function skinButtonsIn(f, depth)
     if not f or (depth or 0) > 3 then return end
     for _, c in ipairs({ f:GetChildren() }) do
-        if c:IsObjectType("Button") and (c.Left or c.Middle) and c:GetFontString() then ns.SkinButton(c) end
-        skinButtonsIn(c, (depth or 0) + 1)
+        -- (Some windows hold parts an addon may not touch at all: the
+        -- trade window does. Those are stepped over.)
+        if not (c.IsForbidden and c:IsForbidden()) then
+            if c:IsObjectType("Button") and (c.Left or c.Middle) and c:GetFontString() then ns.SkinButton(c) end
+            skinButtonsIn(c, (depth or 0) + 1)
+        end
     end
 end
 
@@ -1199,12 +1203,12 @@ end
 -- Large art textures (parchment, classic panel corners) directly on a frame
 -- and its direct children: anything bigger than 100x100 that isn't an icon.
 local function stripBigArt(f, depth)
-    if not f or depth > 1 then return end
+    if not f or depth > 1 or (f.IsForbidden and f:IsForbidden()) then return end
     for _, r in ipairs({ f:GetRegions() }) do
-        if r:IsObjectType("Texture") and r:GetWidth() > 100 and r:GetHeight() > 100 then fade(r) end
+        if not (r.IsForbidden and r:IsForbidden()) and r:IsObjectType("Texture") and r:GetWidth() > 100 and r:GetHeight() > 100 then fade(r) end
     end
     for _, c in ipairs({ f:GetChildren() }) do
-        if not c:IsObjectType("Button") then stripBigArt(c, depth + 1) end
+        if not (c.IsForbidden and c:IsForbidden()) and not c:IsObjectType("Button") then stripBigArt(c, depth + 1) end
     end
 end
 
