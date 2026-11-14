@@ -798,6 +798,45 @@ local function buildButton()
         self.fillLayer:SetColor(0.06, 0.06, 0.07, 0.97)
         GameTooltip:Hide()
     end)
+
+    -- A newly offered buff opens out of its icon: a dot that widens into
+    -- the pill (the loot pills' closing, run the other way), the words
+    -- coming up as there is room for them. The pill is only ever offered
+    -- out of combat, which is when its size may be changed; should a fight
+    -- start while it is opening, it goes to full size at once.
+    local OPEN_TIME = 0.42
+    local opener = CreateFrame("Frame")
+    opener:Hide()
+    local oT, oW = 0, W
+    local function words(a)
+        btn.spellText:SetAlpha(a); btn.nameText:SetAlpha(a); btn.more:SetAlpha(a); arrow:SetAlpha(a)
+    end
+    local function finish()
+        opener:Hide()
+        if not InCombatLockdown() then btn:SetWidth(oW) end
+        words(1)
+    end
+    opener:SetScript("OnUpdate", function(_, dt)
+        oT = oT + dt
+        if oT >= OPEN_TIME or InCombatLockdown() then finish() return end
+        local o = 1 - (1 - oT / OPEN_TIME) ^ 3
+        btn:SetWidth(H + (oW - H) * o)
+        words(math.max(0, (o - 0.55) / 0.45))
+    end)
+    opener:RegisterEvent("PLAYER_REGEN_DISABLED")
+    opener:SetScript("OnEvent", function() if opener:IsShown() then finish() end end)
+    -- Set the pill's width: opening out to it (fresh) or at once.
+    btn.SizeTo = function(w, fresh)
+        oW = w
+        if fresh and not InCombatLockdown() then
+            oT = 0
+            btn:SetWidth(H)
+            words(0)
+            opener:Show()
+        elseif not opener:IsShown() then
+            btn:SetWidth(w)
+        end
+    end
     btn:Hide()
 end
 
@@ -845,7 +884,8 @@ function QB:Refresh()
         return
     end
     if shown.spell == c.spell and shown.unit == c.unit and shown.count == count and btn:IsShown() then return end
-    -- A different buff than was showing: flash again.
+    -- A different buff than was showing: flash again, and open out again.
+    local fresh = shown.spell ~= c.spell or shown.unit ~= c.unit or not btn:IsShown()
     if btn.fxKick and (shown.spell ~= c.spell or shown.unit ~= c.unit) then btn.fxKick() end
     shown.spell, shown.unit, shown.count = c.spell, c.unit, count
     btn:SetAttribute("type", "spell")
@@ -880,7 +920,7 @@ function QB:Refresh()
     local textW = sw + 6 + ARROW_W + 6 + nw + 4
     local w = 3 + (H - 6) + 6 + textW
         + (count > 1 and (4 + btn.more:GetStringWidth()) or 0) + H / 2 + 2
-    btn:SetWidth(math.max(math.floor(w + 0.5), H * 3))
+    btn.SizeTo(math.max(math.floor(w + 0.5), H * 3), fresh)
     place()
     btn:Show()
 end
