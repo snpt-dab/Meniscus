@@ -563,9 +563,10 @@ local function queuedFor()
         end
     end
 end
--- Where a small disc sits on the map's rim: low on the side, its bottom
--- just clear of the console panel's top edge (measured), or at 45 degrees
--- when there is no panel to sit above. Returns the offset from the map's
+-- Where a small disc sits on the map's rim: low on the side, tucked into
+-- the corner where the map meets the console panel, its middle a little
+-- above the panel's top edge (measured), or at 45 degrees when there is no
+-- panel to sit on. Returns the offset from the map's
 -- middle (x to the right; mirror it for the left side).
 function MM.RimOffset(size)
     local h = MM.domeHolder
@@ -578,7 +579,7 @@ function MM.RimOffset(size)
     local _, cy = h:GetCenter()
     if top and cy then
         local k = plate:GetEffectiveScale() / h:GetEffectiveScale()
-        local want = top * k - cy + size / 2 + 2
+        local want = top * k - cy + 3
         if MinimalUIDB then MinimalUIDB.rimSeat = string.format("panel top %.1f above the map's middle, radius %.1f, disc at %.1f", top * k - cy, R, want) end
         if want < y then y = math.max(0, want) end
     end
