@@ -444,7 +444,30 @@ local function buildButton()
                 h.layer:SetAlpha(math.min(1, (h.a * breathe + ring) * boost))
             end
         end
-        local white = pillLayer(btn, base + 4, 0, 1, 1, 1, 1)
+        -- A reflection that crosses the pill, as on the skill-up pills: a
+        -- soft bar of light sweeping left to right every few seconds (kept
+        -- inside the pill by a clipping frame, under the text).
+        local SHEEN_EVERY, SHEEN_TIME = 2.6, 0.9
+        local shine = CreateFrame("Frame", nil, btn)
+        shine:SetPoint("TOPLEFT", 4, -2)
+        shine:SetPoint("BOTTOMRIGHT", -4, 2)
+        shine:SetFrameLevel(base + 3)
+        shine:SetClipsChildren(true)
+        local sheen = shine:CreateTexture(nil, "ARTWORK")
+        sheen:SetTexture(MEDIA .. "spot.tga")
+        sheen:SetBlendMode("ADD")
+        sheen:SetSize(54, H * 2.4)
+        sheen:SetAlpha(0)
+        local function sweep(time)
+            local k = (time % SHEEN_EVERY) / SHEEN_TIME
+            if k >= 1 then sheen:SetAlpha(0) return end
+            local e = k * k * (3 - 2 * k)
+            local w = shine:GetWidth()
+            sheen:ClearAllPoints()
+            sheen:SetPoint("CENTER", shine, "LEFT", -30 + (w + 60) * e, 0)
+            sheen:SetAlpha(0.6 * math.sin(k * math.pi))
+        end
+        local white = pillLayer(btn, base + 5, 0, 1, 1, 1, 1)
         for _, t in ipairs(white.parts) do t:SetBlendMode("ADD") end
         white:SetAlpha(0)
         local function spread(pull, alpha)
@@ -484,6 +507,7 @@ local function buildButton()
             end
             spread(pull, alpha)
             glow(t, boost)
+            sweep(t + 0.6)
         end)
         fx:SetScript("OnShow", function() t, since = 0, 0 end)
         btn.fxKick = function() t, since = 0, 0 end
@@ -493,7 +517,7 @@ local function buildButton()
     -- content sits on its own layer above the pill
     local top = CreateFrame("Frame", nil, btn)
     top:SetAllPoints()
-    top:SetFrameLevel(base + 3)
+    top:SetFrameLevel(base + 4)
 
     -- round spell icon in the left cap
     local d = H - 6
