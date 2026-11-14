@@ -1102,8 +1102,48 @@ local function xpProbe()
             end
         end
     else
-        out[#out + 1] = "no command list (" .. type(list) .. ")"
+        out[#out + 1] = "no command list (" .. type(list) .. "); C_Console " .. type(C_Console)
+            .. ", ConsoleGetAllCommands " .. type(_G.ConsoleGetAllCommands)
+        local old = type(_G.ConsoleGetAllCommands) == "function" and select(2, pcall(_G.ConsoleGetAllCommands))
+        if type(old) == "table" then
+            for _, c in ipairs(old) do
+                local name = type(c) == "table" and c.command
+                if type(name) == "string" then
+                    local low = name:lower()
+                    for _, w in ipairs(words) do
+                        if low:find(w, 1, true) then
+                            local ok, v = pcall(GetCVar, name)
+                            out[#out + 1] = name .. " = " .. tostring(ok and v or "?")
+                            break
+                        end
+                    end
+                end
+            end
+        end
     end
+    -- No list to search: ask for the likely names one by one. (A setting
+    -- that doesn't exist answers nil.)
+    for _, name in ipairs({ "enableFloatingCombatText", "floatingCombatTextCombatDamage", "floatingCombatTextCombatHealing",
+        "floatingCombatTextCombatState", "floatingCombatTextRepChanges", "floatingCombatTextHonorGains",
+        "floatingCombatTextEnergyGains", "floatingCombatTextPeriodicEnergyGains", "floatingCombatTextFloatMode",
+        "floatingCombatTextAuras", "floatingCombatTextReactives", "floatingCombatTextLowManaHealth",
+        "floatingCombatTextFriendlyHealers", "floatingCombatTextComboPoints", "floatingCombatTextDodgeParryMiss",
+        "floatingCombatTextDamageReduction", "floatingCombatTextPetMeleeDamage", "floatingCombatTextSpellMechanics",
+        "floatingCombatTextAllSpellMechanics", "floatingCombatTextCombatLogPeriodicSpells",
+        "floatingCombatTextExperience", "floatingCombatTextExperienceGain", "floatingCombatTextExperienceGains",
+        "floatingCombatTextXP", "floatingCombatTextXPGain", "floatingCombatTextXPGains", "floatingCombatTextQuestXP",
+        "floatingCombatTextCombatDamageDirectionalScale", "WorldTextScale", "WorldTextScale_v2",
+        "xpGainText", "showXPGain", "xpFloatingText", "showExperienceGain", "experienceText", "playerXPText",
+        "floatingXP", "floatingExperience", "scrollingCombatText", "combatTextXP", "ShowXPGainText",
+        "fctXP", "fctExperience", "hasSelectedExperiencePreset", "xpBarText", "showFloatingXP" }) do
+        local ok, v = pcall(GetCVar, name)
+        if ok and v ~= nil then
+            local okD, d = pcall(GetCVarDefault, name)
+            out[#out + 1] = "cvar " .. name .. " = " .. tostring(v) .. " (default " .. tostring(okD and d or "?") .. ")"
+        end
+    end
+    local okL, loaded = pcall(function() return C_AddOns and C_AddOns.IsAddOnLoaded("Blizzard_CombatText") end)
+    out[#out + 1] = "Blizzard_CombatText loaded: " .. tostring(okL and loaded)
     for _, n in ipairs({ "CombatText", "CombatText_AddMessage", "CombatText_OnEvent", "COMBAT_TEXT_TYPE_INFO",
                          "SHOW_COMBAT_TEXT", "UIErrorsFrame", "ZoneTextFrame", "EventToastManagerFrame",
                          "XPGainFrame", "BossBanner", "LevelUpDisplay" }) do
