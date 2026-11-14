@@ -2629,10 +2629,178 @@ ns.commands.blizzopts = function()
     ns:Print("Options window skin " .. (d.options and "on" or "off") .. ". /reload to apply.")
 end
 
+-- ── Friends window (SocialUIFrame): a polish pass ─────────────────────────
+-- Blizzard's window keeps doing the work; what the generic skin leaves
+-- behind is put right here, by fading and tinting only (nothing Blizzard
+-- reads back is replaced):
+--   * names were cut off: Blizzard sizes the name to its own font, and ours
+--     is wider. Each row's name is given the width its text needs.
+--   * "Add New Friend" (and the same button on the other tabs) loses its
+--     stretched red caps, leaving the pill the skin already draws.
+--   * the side tabs lose their plate and glow; their gold icons go silver,
+--     and the open tab has a small accent bar.
+--   * the row buttons and the menu button lose their gold boxes for a
+--     hairline rounded square, icons silver.
+--   * the blue BattleTag bar becomes a hairline pill.
+-- Rows are pooled and re-used by Blizzard, so they are gone over again a
+-- couple of times a second while the window is open.
+local function skinSocial()
+    if S.db and S.db.social == false then return end
+    local function secret(v) return issecretvalue and issecretvalue(v) end
+    local function fade(t) if t and t.SetAlpha then t:SetAlpha(0) end end
+    local function silver(t, k)
+        if not (t and t.SetVertexColor) then return end
+        if t.SetDesaturated then t:SetDesaturated(true) end
+        k = k or 1
+        t:SetVertexColor(0.80 * k, 0.83 * k, 0.90 * k)
+    end
+    local function flat(b, iconKey)
+        if not b then return end
+        if not b.__muiSoc then
+            b.__muiSoc = true
+            local w = b:GetWidth()
+            local inset = w > 30 and 4 or 2
+            ns.RoundedRect(b, -4, inset, 7, T.border[1], T.border[2], T.border[3], 1)
+            ns.RoundedRect(b, -3, inset + 1, 6, 0.06, 0.06, 0.07, 0.97)
+        end
+        fade(b.GetNormalTexture and b:GetNormalTexture())
+        fade(b.GetPushedTexture and b:GetPushedTexture())
+        fade(b.GetHighlightTexture and b:GetHighlightTexture())
+        silver(b[iconKey or "Icon"] or b.ActionIcon or b.Icon)
+    end
+    local function redCaps(b)
+        if not b then return end
+        local regs, n = ns.Regs(b, 7)
+        for i = 1, n do
+            local r = regs[i]
+            if r.GetAtlas then
+                local a = r:GetAtlas()
+                if type(a) == "string" and not secret(a) and a:find("RedButton", 1, true) then r:SetAlpha(0) end
+            end
+        end
+    end
+    local function fit(fs, max)
+        if not (fs and fs.GetUnboundedStringWidth and fs:IsShown()) then return end
+        local w = fs:GetUnboundedStringWidth()
+        if type(w) == "number" and not secret(w) and w > 0 then fs:SetWidth(math.min(w + 4, max)) end
+    end
+    local function row(r)
+        if r.FriendName then
+            fit(r.FriendName, 250)
+            fit(r.Name, 200)
+            if r.PartyButton then flat(r.PartyButton, "ActionIcon") end
+        elseif r.CollapseButton then
+            local regs, n = ns.Regs(r.CollapseButton, 7)
+            for i = 1, n do silver(regs[i]) end
+        end
+    end
+    local function rows(box)
+        local target = box and box.ScrollTarget
+        if not (target and box:IsVisible()) then return end
+        local kids, n = ns.Kids(target, 6)
+        for i = 1, n do pcall(row, kids[i]) end
+    end
+
+    local done = false
+    local function build()
+        local F = _G.SocialUIFrame
+        if not F or done then return F ~= nil end
+        done = true
+        fade(F.TopFade); fade(F.BottomFade)
+        local bar = F.BattleNetBar
+        local cc = bar and bar.ControlsContainer
+        if bar then fade(bar.Background) end
+        if cc then
+            fade(cc.BattleNetBackground)
+            local tag = cc.PersonalBattleTagDisplay
+            if tag then
+                local h = tag:GetHeight()
+                ns.RoundedRect(tag, -4, 0, h / 2, T.border[1], T.border[2], T.border[3], 1)
+                ns.RoundedRect(tag, -3, 1, h / 2 - 1, 0.06, 0.06, 0.07, 0.97)
+                local copy = tag.CopyBattleTagToClipboardButton
+                if copy then silver(copy.Icon) end
+            end
+            flat(cc.BattleNetMenuButton, "Icon")
+            local dd = cc.OnlineStatusDropdown
+            if dd then silver(dd.Arrow) end
+        end
+        -- The lists (friends, recent allies, requests...): each is a child
+        -- with a ScrollBox, and most have the red button at the bottom.
+        local boxes, tabs = {}, {}
+        local kids, n = ns.Kids(F, 5)
+        for i = 1, n do
+            local c = kids[i]
+            if c.ScrollBox then
+                boxes[#boxes + 1] = c.ScrollBox
+                fade(c.TopDivider); fade(c.BottomDivider)
+                if c.ActionButton then redCaps(c.ActionButton) end
+            end
+            if c.SelectedTexture and c.Icon and c.Background and c.GetObjectType and c:GetObjectType() == "Button" then
+                tabs[#tabs + 1] = c
+            end
+        end
+        for _, t in ipairs(tabs) do
+            fade(t.Background); fade(t.TabGlow); fade(t.SelectedTexture)
+            local on = t:CreateTexture(nil, "OVERLAY")
+            on:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+            on:SetSize(2, 18)
+            on:SetPoint("RIGHT", t.Icon, "LEFT", -5, 0)
+            on:Hide()
+            t.__muiOn = on
+        end
+        local function sweep()
+            for _, box in ipairs(boxes) do rows(box) end
+            for _, t in ipairs(tabs) do
+                local sel = t.SelectedTexture:IsShown()
+                t.__muiOn:SetShown(sel)
+                -- (Blizzard swaps the icon's art when a tab opens or
+                -- closes; the tint is put back each time.)
+                silver(t.Icon, sel and 1.15 or 0.8)
+                fade(t.TabGlow)
+            end
+            for _, box in ipairs(boxes) do
+                local p = box:GetParent()
+                if p and p.ActionButton and p:IsVisible() then redCaps(p.ActionButton) end
+            end
+        end
+        for _, box in ipairs(boxes) do
+            if type(box.Update) == "function" then
+                pcall(hooksecurefunc, box, "Update", function() pcall(rows, box) end)
+            end
+        end
+        -- Ticked from a frame of ours (Blizzard clears OnUpdate hooks on
+        -- some of its own), only while the window is open.
+        local tick = CreateFrame("Frame", nil, F)
+        local acc = 1
+        tick:SetScript("OnUpdate", function(_, dt)
+            acc = acc + dt
+            if acc < 0.4 then return end
+            acc = 0
+            ns.Timed("friends window", sweep)
+        end)
+        F:HookScript("OnShow", function() acc = 1 end)
+        return true
+    end
+    if not build() then
+        -- The window is loaded when first opened.
+        local wait = CreateFrame("Frame")
+        wait:RegisterEvent("ADDON_LOADED")
+        local tries = 0
+        wait:SetScript("OnEvent", function(self)
+            if pcall(build) and done then self:UnregisterAllEvents() end
+        end)
+        C_Timer.NewTicker(2, function(self)
+            tries = tries + 1
+            local ok = pcall(build)
+            if (ok and done) or tries > 600 then self:Cancel() end
+        end)
+    end
+end
+
 function S:OnInit(db)
     self.db = db
     for _, step in ipairs({ skinGameMenu, skinDialogs, skinMerchant, skinMap, deepMap, deepTalents, skinOthers, skinPopups,
-                            skinTabard, skinMenus, skinOptions }) do
+                            skinTabard, skinMenus, skinOptions, skinSocial }) do
         local ok, err = pcall(step)
         if not ok then ns:Print("Skins: " .. tostring(err)) end
     end
