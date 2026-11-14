@@ -842,6 +842,38 @@ local function cancelRoll(rollID)
     layoutRolls()
 end
 
+-- Keys for the roll cards (Key Bindings, AddOns): Need, Greed and Pass
+-- answer the card that has been waiting longest. Each is an unseen button
+-- that the key "clicks".
+_G["BINDING_NAME_CLICK MeniscusRollNeed:LeftButton"] = "Loot roll: Need"
+_G["BINDING_NAME_CLICK MeniscusRollGreed:LeftButton"] = "Loot roll: Greed"
+_G["BINDING_NAME_CLICK MeniscusRollPass:LeftButton"] = "Loot roll: Pass"
+local function oldestRoll()
+    local best
+    for _, c in ipairs(rollCards) do
+        if c:IsShown() and c.rollID then
+            local left = call(GetLootRollTimeLeft, c.rollID)
+            left = type(left) == "number" and left or 0
+            if not best or left < best.left then best = c; c.left = left end
+        end
+    end
+    return best
+end
+for name, kind in pairs({ Need = 1, Greed = 2, Pass = 0 }) do
+    local b = CreateFrame("Button", "MeniscusRoll" .. name, UIParent)
+    b:SetSize(1, 1)
+    b:EnableMouse(false)
+    b:RegisterForClicks("AnyDown")
+    b:SetScript("OnClick", function()
+        local c = oldestRoll()
+        if not c then return end
+        local btn = (kind == 1 and c.need) or (kind == 2 and c.greed) or c.pass
+        if btn and btn.IsEnabled and not btn:IsEnabled() then return end
+        call(RollOnLoot, c.rollID, kind)
+        c:Hide(); layoutRolls()
+    end)
+end
+
 -- ── Wiring ────────────────────────────────────────────────────────────────
 function L:OnInit(db)
     self.db = db

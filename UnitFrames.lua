@@ -1167,6 +1167,146 @@ do
     end)
 end
 
+-- ── Notes on the group's frames ───────────────────────────────────────────
+-- A small chip on the top edge of a member's health pill (and your own),
+-- for two things a healer otherwise finds out by wasting a cast:
+--   * "Shield in 12": you shielded them; Weakened Soul stops another for
+--     that long (a second Power Word: Shield fails as "Immune"). Counted
+--     from your own cast, so it needs nothing read from the unit in combat.
+--   * "Res incoming" while someone is casting a resurrection on them, and
+--     "Res pending" once one has landed and they have yet to accept.
+local SHIELD_ID, SHIELD_LOCK = 17, 15
+local RES_IDS = { 2006, 7328, 2008, 20484, 50769 }
+function UF:BuildNotes()
+    if self.db.notes == false then return end
+    local function spellName(id)
+        local ok, n = pcall(C_Spell.GetSpellName, id)
+        return ok and type(n) == "string" and not issecretvalue(n) and n or nil
+    end
+    local shieldName = spellName(SHIELD_ID)
+    local resNames = {}
+    for _, id in ipairs(RES_IDS) do local n = spellName(id); if n then resNames[n] = true end end
+
+    local list = {}
+    local function add(f)
+        if not (f and f.healthPill) then return end
+        local chip = CreateFrame("Frame", nil, f)
+        chip:SetHeight(13)
+        chip:SetPoint("RIGHT", f.healthPill, "TOPRIGHT", -10, 0)
+        chip:SetFrameLevel(f:GetFrameLevel() + 12)
+        chip.ring = ns.RoundedRect(chip, -8, 0, 6.5, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(chip, -7, 1, 5.5, 0.06, 0.06, 0.07, 1)
+        chip.text = ns:CreateText(chip, 9)
+        chip.text:SetPoint("CENTER", 0, 0)
+        chip:Hide()
+        list[#list + 1] = { f = f, chip = chip, shieldUntil = 0, res = nil, resUntil = 0 }
+    end
+    add(self.player)
+    for _, f in ipairs(self.party or {}) do add(f) end
+    if #list == 0 then return end
+
+    local function show(n, label, r, g, b)
+        if n.label ~= label then
+            n.label = label
+            n.chip.text:SetText(label)
+            n.chip.text:SetTextColor(r, g, b)
+            n.chip.ring(r * 0.7, g * 0.7, b * 0.7, 1)
+            n.chip:SetWidth(math.max(24, (n.chip.text:GetStringWidth() or 20) + 12))
+        end
+        n.chip:Show()
+    end
+    local driver = CreateFrame("Frame")
+    driver:Hide()
+    local acc = 1
+    driver:SetScript("OnUpdate", function(self, dt)
+        acc = acc + dt
+        if acc < 0.25 then return end
+        acc = 0
+        local now, any = GetTime(), false
+        for _, n in ipairs(list) do
+            if n.res then
+                -- Up again (or the note has gone stale): done.
+                local ok, dead = pcall(UnitIsDeadOrGhost, n.f.unit)
+                if (ok and not issecretvalue(dead) and not dead) or (n.res == "pending" and now > n.resUntil) then n.res = nil end
+            end
+            if n.res then
+                any = true
+                show(n, n.res == "incoming" and "Res incoming" or "Res pending", 0.42, 0.92, 0.50)
+            elseif n.shieldUntil > now then
+                any = true
+                show(n, "Shield in " .. math.ceil(n.shieldUntil - now), GOLD[1], GOLD[2], GOLD[3])
+            else
+                n.label = nil
+                n.chip:Hide()
+            end
+        end
+        if not any then self:Hide() end
+    end)
+    local function wake() acc = 1; driver:Show() end
+
+    local function noteFor(test)
+        for _, n in ipairs(list) do
+            local u = n.f.unit
+            if u and UnitExists(u) and test(u) then return n end
+        end
+    end
+    local function byName(name)
+        if type(name) ~= "string" or issecretvalue(name) then return end
+        local short = name:match("^([^%-]+)") or name
+        return noteFor(function(u)
+            local ok, n = pcall(UnitName, u)
+            return ok and type(n) == "string" and not issecretvalue(n) and (n == name or n == short)
+        end)
+    end
+    local function byUnit(unit)
+        return noteFor(function(u)
+            local ok, same = pcall(UnitIsUnit, u, unit)
+            return ok and not issecretvalue(same) and same == true
+        end)
+    end
+
+    local sentGUID, sentTarget, lastRes = nil, nil, 0
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED", "INCOMING_RESURRECT_CHANGED" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e, unit, a2, a3, a4)
+        if e == "UNIT_SPELLCAST_SENT" then
+            -- (unit, target, castGUID, spellID)
+            if unit == "player" and not issecretvalue(a3) then sentGUID, sentTarget = a3, a2 end
+        elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
+            -- (unit, castGUID, spellID)
+            if issecretvalue(unit) or issecretvalue(a3) or type(a3) ~= "number" then return end
+            local name = spellName(a3)
+            if not name then return end
+            if resNames[name] then lastRes = GetTime() end
+            if unit == "player" and shieldName and name == shieldName and not issecretvalue(a2) and a2 == sentGUID then
+                local n = byName(sentTarget) or byUnit("player")
+                if n then n.shieldUntil = GetTime() + SHIELD_LOCK; wake() end
+            end
+        elseif e == "INCOMING_RESURRECT_CHANGED" then
+            if type(unit) ~= "string" or issecretvalue(unit) or not UnitHasIncomingResurrection then return end
+            local n = byUnit(unit)
+            if not n then return end
+            local ok, has = pcall(UnitHasIncomingResurrection, n.f.unit)
+            if not ok or issecretvalue(has) then return end
+            if has then
+                n.res = "incoming"
+                wake()
+            elseif n.res == "incoming" then
+                -- The cast ended. If a resurrection has just landed, they
+                -- have it waiting; otherwise it was broken off.
+                C_Timer.After(0.4, function()
+                    if n.res ~= "incoming" then return end
+                    if GetTime() - lastRes < 2 then n.res, n.resUntil = "pending", GetTime() + 60
+                    else n.res = nil end
+                    wake()
+                end)
+            end
+        end
+    end)
+end
+
 -- ── Party ─────────────────────────────────────────────────────────────────
 function UF:LayoutParty()
     if InCombatLockdown() then self.partyPending = true return end
@@ -1611,6 +1751,10 @@ function UF:OnInit(db)
         self.party[i].orbGap = SIZES.party.D / 2 + 4
     end
     self:LayoutParty()
+    do
+        local ok, err = pcall(self.BuildNotes, self)
+        if not ok and MinimalUIDB then MinimalUIDB.notesErr = tostring(err) end
+    end
     pcall(self.CreateRestIndicator, self)
 
     -- Target-of-target under the target frame, pet under the player frame

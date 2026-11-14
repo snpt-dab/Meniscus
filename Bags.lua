@@ -1067,6 +1067,52 @@ function ns.IsFeedingPet()
     return ok and on == true
 end
 
+-- With the "Cheapest: ..." warning comes a pill that stays put for a few
+-- seconds: "Destroy <item>". Click it and the game asks once ("Destroy?"),
+-- then the stack is gone: no opening the bags, finding it and dragging it
+-- out. It checks that the same thing is still in that slot first.
+local destroyPill, destroyTok = nil, 0
+if StaticPopupDialogs then
+    StaticPopupDialogs["MENISCUS_DESTROY"] = {
+        text = "Destroy %s?",
+        button1 = _G.YES or "Yes", button2 = _G.NO or "No",
+        OnAccept = function(_, data)
+            if type(data) ~= "table" then return end
+            local info = itemInfo(data.bag, data.slot)
+            local link = info and info.hyperlink
+            if type(link) ~= "string" or secret(link) or link ~= data.link or info.isLocked then
+                return ns:Print("That stack has moved; nothing destroyed.")
+            end
+            pcall(ClearCursor)
+            pickup(data.bag, data.slot)
+            local kind = GetCursorInfo and GetCursorInfo()
+            if kind == "item" then pcall(DeleteCursorItem) end
+            pcall(ClearCursor)
+        end,
+        timeout = 20, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+    }
+end
+function B.OfferDestroy(e)
+    if not (e and e.link and StaticPopup_Show and ns.Pill) then return end
+    if not destroyPill then
+        destroyPill = ns.Pill(UIParent, "Destroy", function(self)
+            local d = self.data
+            self:Hide()
+            if d then StaticPopup_Show("MENISCUS_DESTROY", d.link, nil, d) end
+        end, { h = 24, font = 11, pad = 28, ring = true })
+        destroyPill:SetFrameStrata("HIGH")
+        destroyPill:SetPoint("CENTER", UIParent, "CENTER", 0, -46)
+        destroyPill:Hide()
+    end
+    local name = e.link:match("%[(.-)%]") or "?"
+    destroyPill.data = { bag = e.bag, slot = e.slot, link = e.link }
+    destroyPill:SetLabel("Destroy " .. name .. (e.count > 1 and ("  x" .. e.count) or ""))
+    destroyPill:Show()
+    destroyTok = destroyTok + 1
+    local tok = destroyTok
+    C_Timer.After(12, function() if tok == destroyTok and destroyPill then destroyPill:Hide() end end)
+end
+
 function B.DropLine(worth)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Cheapest to throw away: the stack sells for " .. moneyText(worth), 0.95, 0.55, 0.50, true)
@@ -1087,6 +1133,7 @@ do
         if not (e and ns.FloatWarning) then return end
         local name = e.link:match("%[(.-)%]") or "?"
         ns.FloatWarning(e.icon, "Cheapest: " .. name .. (e.count > 1 and ("  x" .. e.count) or ""), moneyText(e.worth))
+        pcall(B.OfferDestroy, e)
         if B.Refresh then pcall(B.Refresh, B) end
     end)
 end
@@ -1104,6 +1151,7 @@ do
         if not e then return end
         local name = e.link:match("%[(.-)%]") or "?"
         ns.FloatWarning(e.icon, "Cheapest: " .. name .. (e.count > 1 and ("  x" .. e.count) or ""), moneyText(e.worth))
+        pcall(B.OfferDestroy, e)
     end
     local f = CreateFrame("Frame")
     f:RegisterEvent("BAG_UPDATE_DELAYED")
