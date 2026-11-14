@@ -440,14 +440,14 @@ local function buildButton()
             local at = (time % WAVE) / WAVE * (#halo + 2) - 0.5
             for i, h in ipairs(halo) do
                 local d = math.abs(i - at)
-                local ring = d < 1.3 and (1 - d / 1.3) * 0.34 * (1 - (i - 1) / #halo * 0.55) or 0
+                local ring = d < 1.3 and (1 - d / 1.3) * 0.10 * (1 - (i - 1) / #halo * 0.55) or 0
                 h.layer:SetAlpha(math.min(1, (h.a * breathe + ring) * boost))
             end
         end
         -- A reflection that crosses the pill, as on the skill-up pills: a
         -- soft bar of light sweeping left to right every few seconds (kept
         -- inside the pill by a clipping frame, under the text).
-        local SHEEN_EVERY, SHEEN_TIME = 2.6, 0.9
+        local SHEEN_EVERY, SHEEN_TIME = 4.2, 1.9
         local shine = CreateFrame("Frame", nil, btn)
         shine:SetPoint("TOPLEFT", 4, -2)
         shine:SetPoint("BOTTOMRIGHT", -4, 2)
@@ -456,7 +456,7 @@ local function buildButton()
         local sheen = shine:CreateTexture(nil, "ARTWORK")
         sheen:SetTexture(MEDIA .. "spot.tga")
         sheen:SetBlendMode("ADD")
-        sheen:SetSize(54, H * 2.4)
+        sheen:SetSize(130, H * 3)
         sheen:SetAlpha(0)
         local function sweep(time)
             local k = (time % SHEEN_EVERY) / SHEEN_TIME
@@ -464,8 +464,80 @@ local function buildButton()
             local e = k * k * (3 - 2 * k)
             local w = shine:GetWidth()
             sheen:ClearAllPoints()
-            sheen:SetPoint("CENTER", shine, "LEFT", -30 + (w + 60) * e, 0)
-            sheen:SetAlpha(0.6 * math.sin(k * math.pi))
+            sheen:SetPoint("CENTER", shine, "LEFT", -70 + (w + 140) * e, 0)
+            sheen:SetAlpha(0.85 * math.sin(k * math.pi))
+        end
+        -- A star coming round from behind a planet: a bright point on the
+        -- pill's edge, half hidden behind it, with its light running along
+        -- the curve of the edge to both sides and thinning out, red at one
+        -- tip and blue at the other. It travels slowly round the pill, and
+        -- swells and settles as it goes. (A chain of soft spots placed
+        -- along the outline, which is what lets the light follow the round
+        -- ends; a little of it spills over the front as glare.)
+        local LAP, STEP, ARMS = 7.0, 6.5, 8
+        local starF = CreateFrame("Frame", nil, btn)
+        starF:SetFrameLevel(base)
+        starF:SetAllPoints()
+        local beads = {}
+        for k = -ARMS, ARMS do
+            local tx = starF:CreateTexture(nil, "ARTWORK")
+            tx:SetTexture(MEDIA .. "spot.tga")
+            tx:SetBlendMode("ADD")
+            local far = math.abs(k) / ARMS
+            -- White at the star, toward red on one arm and blue on the other.
+            local tint = far * 0.75
+            if k < 0 then tx:SetVertexColor(1, 1 - tint * 0.8, 1 - tint)
+            elseif k > 0 then tx:SetVertexColor(1 - tint, 1 - tint * 0.6, 1)
+            else tx:SetVertexColor(1, 1, 1) end
+            beads[#beads + 1] = { tx = tx, k = k, far = far }
+        end
+        local glareF = CreateFrame("Frame", nil, btn)
+        glareF:SetFrameLevel(base + 5)
+        glareF:SetAllPoints()
+        local glare = glareF:CreateTexture(nil, "OVERLAY")
+        glare:SetTexture(MEDIA .. "spot.tga")
+        glare:SetBlendMode("ADD")
+        -- A point on the pill's outline, s pixels along it from the top-left
+        -- going clockwise (top edge, right end, bottom edge, left end).
+        local function onEdge(s, w)
+            local r = H / 2
+            local L = math.max(w - 2 * r, 0)
+            local arc = math.pi * r
+            local P = 2 * L + 2 * arc
+            s = s % P
+            if s < L then return -L / 2 + s, r end
+            s = s - L
+            if s < arc then
+                local th = math.pi / 2 - s / r
+                return L / 2 + r * math.cos(th), r * math.sin(th)
+            end
+            s = s - arc
+            if s < L then return L / 2 - s, -r end
+            s = s - L
+            local th = -math.pi / 2 - s / r
+            return -L / 2 + r * math.cos(th), r * math.sin(th)
+        end
+        local function star(time, boost)
+            local w = btn:GetWidth()
+            local P = 2 * math.max(w - H, 0) + math.pi * H
+            local s0 = (time / LAP % 1) * P
+            local swell = 0.5 + 0.5 * math.sin(time * 2.1)       -- 0..1
+            local reach = STEP * (0.55 + 0.75 * swell)
+            local bright = math.min(1, (0.55 + 0.45 * swell) * boost)
+            for _, b in ipairs(beads) do
+                local x, y = onEdge(s0 + b.k * reach, w)
+                local size = b.k == 0 and (26 + 10 * swell) or (20 - 13 * b.far)
+                b.tx:SetSize(size, size)
+                b.tx:ClearAllPoints()
+                b.tx:SetPoint("CENTER", btn, "CENTER", x, y)
+                b.tx:SetAlpha(bright * (1 - b.far) ^ 1.4)
+            end
+            local gx, gy = onEdge(s0, w)
+            local gs = 34 + 22 * swell
+            glare:SetSize(gs, gs)
+            glare:ClearAllPoints()
+            glare:SetPoint("CENTER", btn, "CENTER", gx, gy)
+            glare:SetAlpha(math.min(0.6, (0.16 + 0.22 * swell) * boost))
         end
         local white = pillLayer(btn, base + 5, 0, 1, 1, 1, 1)
         for _, t in ipairs(white.parts) do t:SetBlendMode("ADD") end
@@ -508,6 +580,7 @@ local function buildButton()
             spread(pull, alpha)
             glow(t, boost)
             sweep(t + 0.6)
+            star(t, boost)
         end)
         fx:SetScript("OnShow", function() t, since = 0, 0 end)
         btn.fxKick = function() t, since = 0, 0 end
