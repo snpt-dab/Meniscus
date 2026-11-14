@@ -702,6 +702,37 @@ local function floatSlot(slot)
     floatPill(tex, name, tr, tg, tb, many and ("\195\151" .. qty) or nil, rr, rg, rb)
 end
 
+-- Things you make (cooking, crafting) never pass through a loot window: the
+-- only word of them is the chat line "You create: [Item]x2." They get the
+-- same pill, on the same rail, as things you pick up.
+local madePrefix
+local function floatMade(msg)
+    if not (L.db and L.db.float ~= false) then return end
+    if type(msg) ~= "string" or secret(msg) then return end
+    if madePrefix == nil then
+        -- The client's own wording, up to where the item goes ("You create: ").
+        local fmt = _G.LOOT_ITEM_CREATED_SELF
+        madePrefix = type(fmt) == "string" and fmt:match("^(.-)%%") or false
+        if madePrefix == "" then madePrefix = false end
+    end
+    if not madePrefix or msg:sub(1, #madePrefix) ~= madePrefix then return end
+    local id, name = msg:match("|Hitem:(%d+).-|h%[(.-)%]|h")
+    id = tonumber(id)
+    if not id or not name or name == "" then return end
+    local qty = tonumber(msg:match("|h|r%s*x(%d+)") or msg:match("x(%d+)%.?%s*$"))
+    local tex = C_Item and C_Item.GetItemIconByID and call(C_Item.GetItemIconByID, id)
+    local quality = C_Item and C_Item.GetItemQualityByID and call(C_Item.GetItemQualityByID, id)
+    local tr, tg, tb = T.text[1], T.text[2], T.text[3]
+    local rr, rg, rb = T.border[1], T.border[2], T.border[3]
+    if type(quality) == "number" and not secret(quality) and quality >= 2 then
+        local cr, cg, cb = qualityColor(quality)
+        tr, tg, tb, rr, rg, rb = cr, cg, cb, cr * 0.75, cg * 0.75, cb * 0.75
+    end
+    pcall(floatOrigin)
+    floatRail = "left"
+    floatPill(tex or 134400, name, tr, tg, tb, (qty and qty > 1) and ("\195\151" .. qty) or nil, rr, rg, rb)
+end
+
 -- ── Group loot rolls ──────────────────────────────────────────────────────
 local rollCards, holder = {}, nil
 local ROLL_W, ROLL_H = 320, 66
@@ -861,8 +892,10 @@ function L:OnInit(db)
     local sk = CreateFrame("Frame")
     sk:RegisterEvent("CHAT_MSG_SKILL")
     sk:RegisterEvent("SKILL_LINES_CHANGED")
+    sk:RegisterEvent("CHAT_MSG_LOOT")
     sk:SetScript("OnEvent", function(_, e, msg)
         if e == "SKILL_LINES_CHANGED" then skillIcons = nil return end
+        if e == "CHAT_MSG_LOOT" then pcall(floatMade, msg) return end
         pcall(floatSkill, msg)
     end)
     ev:SetScript("OnEvent", function(_, e, a1, a2)
