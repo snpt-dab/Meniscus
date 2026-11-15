@@ -39,6 +39,9 @@ function M:OnInit(db) ... end                              -- runs at PLAYER_LOG
 ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
 ```
 - Settings go into `PAGES` in Panel.lua; set `reload = true` if the setting needs a reload.
+  - Pages are by what the player is thinking about (General, Console, Frames, Buffs, Bars, Combat, Bags and loot, Quests and map, Professions, Chat and notices, Windows, Debug), not by which module holds the code. Put a new switch where someone would look for it; twelve pages is what the sidebar holds.
+  - Keep a note to one short line (about 60 characters): it is cut off before the control.
+  - The panel's search matches a setting's label, note, group, page, and its entry in `KEYS` (Panel.lua): give a new setting a `KEYS` line with the other words people would type for it. `ALSO` is the thesaurus (a typed word also stands for these).
 - Add a help line in Panel.lua for each new slash command.
 
 ## Shared building blocks (use these, don't re-roll)

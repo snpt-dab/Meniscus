@@ -291,7 +291,7 @@ local function quickBuffSwitches()
 end
 
 local PAGES = {
-    { key = "appearance", title = "Appearance", groups = {
+    { key = "general", title = "General", groups = {
         { title = "Text", items = {
             { "Font", kind = "dropdown",
               options = function() return T.fonts or ns:BuildFontList() end,
@@ -310,12 +310,34 @@ local PAGES = {
                                             { key = "bars", label = "Across all bars" } } end,
               get = function() return ns.modules.XP.db.span end,
               set = function(k) ns.modules.XP:SetSpan(k) end },
+        } },
+        { title = "Menu and bag buttons", items = {
             { "Fade menu and bag buttons", kind = "switch", note = "They show again on mouseover. Not used with the console's pills",
               get = function() return ns.modules.Declutter.db.fadeMenus end,
               set = function() local D = ns.modules.Declutter; D.db.fadeMenus = not D.db.fadeMenus; D:Refresh() end },
             { "Keep backpack and menu icon visible", kind = "switch",
               get = function() return ns.modules.Declutter.db.keepIcons end,
               set = function() local D = ns.modules.Declutter; D.db.keepIcons = not D.db.keepIcons; D:Refresh() end },
+        } },
+        { title = "Profile", items = {
+            { "Active profile", kind = "dropdown", note = "Switching reloads the UI",
+              options = function()
+                  local list = {}
+                  for _, n in ipairs(ns:ProfileNames()) do table.insert(list, { key = n, label = n }) end
+                  local me = ns:CharKey()
+                  if not MinimalUIDB.profiles[me] then
+                      table.insert(list, { key = "\001copy", label = "+ Copy for " .. me })
+                  end
+                  return list
+              end,
+              get = function() return ns.profile end,
+              set = function(k)
+                  if k == ns.profile then return end
+                  if k == "\001copy" then ns:UseProfile(ns:CharKey(), true) else ns:UseProfile(k) end
+              end },
+            { "Reset to defaults", kind = "action", action = "Reset",
+              note = "Every setting back to a new install's; asks first, then reloads",
+              run = function() cmd("defaults", "") end },
         } },
     } },
     { key = "console", title = "Console", groups = {
@@ -329,9 +351,6 @@ local PAGES = {
             { "Minimap between the action bars", kind = "switch", note = "Splits the main bar. Turning it off needs a reload",
               get = function() return ns.modules.Minimap.db.dome end,
               set = function() cmd("dome") end },
-            { "Pin the game's buff frames into the layout", kind = "switch", note = "Turning it off needs a reload",
-              get = function() return ns.modules.Auras.db.attachBlizz end,
-              set = function() cmd("buffs", "attach") end },
             { "Dock windows above the console", kind = "switch",
               note = "One window per side, the map in the middle. Needs a reload",
               get = function() local m = ns.db.modules.Windows; return not m or m.enabled ~= false end,
@@ -361,14 +380,19 @@ local PAGES = {
             { "Show empty pet action slots", kind = "switch",
               get = function() return ns.modules.Bars.db.petGrid ~= false end,
               set = function() cmd("petgrid") end },
+            { "Pet food button", kind = "switch", reload = true,
+              note = "Feedings left, above the pet's pill; click to feed",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.petFood ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.petFood = d.petFood == false end end },
         } },
     } },
-    { key = "unitframes", title = "Unit frames", groups = {
-        { title = "Frames", items = {
+    { key = "frames", title = "Frames", groups = {
+        { title = "Unit frames", items = {
             { "Hide Blizzard's unit frames", kind = "switch", note = "Turning this off needs a reload",
               get = function() return UF().db.hideBlizzard end,
               set = function() cmd("blizz") end },
             { "Frame positions", kind = "action", action = "Reset", run = function() cmd("reset") end },
+            moduleSwitch("Nameplates", "Nameplates"),
         } },
         { title = "Party", items = {
             { "Party frames", kind = "dropdown",
@@ -379,6 +403,16 @@ local PAGES = {
             { "Preview a test party", kind = "switch",
               get = function() return UF().partyTest end,
               set = function() cmd("party", "test") end },
+        } },
+        { title = "Group and healing", items = {
+            { "Quick Cure chips", kind = "switch", reload = true,
+              note = "Lights up beside someone you can cure; click to cast",
+              get = function() return ns.modules.UnitFrames.db.cure ~= false end,
+              set = function() local d = ns.modules.UnitFrames.db; d.cure = d.cure == false end },
+            { "Healer notes on group frames", kind = "switch", reload = true,
+              note = "Time until they can be shielded again; a resurrection on its way",
+              get = function() return ns.modules.UnitFrames.db.notes ~= false end,
+              set = function() local d = ns.modules.UnitFrames.db; d.notes = d.notes == false end },
         } },
         { title = "Portraits", items = {
             { "Idle fidgets", kind = "switch",
@@ -427,48 +461,11 @@ local PAGES = {
             unpack(quickBuffSwitches()),
         } },
     } },
-    { key = "bars", title = "Action bars", groups = {
-        { title = "Bars", items = {
+    { key = "bars", title = "Bars", groups = {
+        { title = "Action bars", items = {
             { "Meniscus action bars", kind = "switch", reload = true,
               get = function() return ns.db.modules.Bars.enabled ~= false end,
               set = function() cmd("actionbars") end },
-        } },
-    } },
-    { key = "bags", title = "Bags", groups = {
-        { title = "Bags", items = {
-            moduleSwitch("Meniscus bags", "Bags"),
-            moduleSwitch("Meniscus bank", "Bank"),
-            { "Layout", kind = "dropdown", reload = true,
-              options = function() return { { key = "combined", label = "One combined bag" },
-                                            { key = "separate", label = "Separate bags" } } end,
-              get = function() return ns.modules.Bags.db and ns.modules.Bags.db.mode or "combined" end,
-              set = function(k) ns.modules.Bags:SetMode(k) end },
-        } },
-    } },
-    { key = "helpers", title = "Helpers", groups = {
-        { title = "Professions", items = {
-            { "Nearly capped notice", kind = "switch", reload = true,
-              note = "One pill when a profession is within five points of its cap",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.skillNudge ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.skillNudge = d.skillNudge == false end end },
-            { "Node memory on the world map", kind = "switch", reload = true,
-              note = "Dots where you have picked herbs or mined before; hover one for what it was",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.nodes ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.nodes = d.nodes == false end end },
-            { "Remembered nodes on the minimap too", kind = "switch", reload = true,
-              note = "Faint dots; the minimap already shows live nodes while you track them",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.nodesMini == true end,
-              set = function() local d = ns.modules.Extras.db; if d then d.nodesMini = not d.nodesMini end end },
-            { "What a reagent makes, on its tooltip", kind = "switch", reload = true,
-              note = "Your recipes that use it, and how many you could make",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.canMake ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.canMake = d.canMake == false end end },
-            { "Capped skill warning", kind = "switch", reload = true,
-              note = "Each time you use a profession that can't go up until you train it",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.skillCap ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
-        } },
-        { title = "Action bars", items = {
             { "Reactive spells above the dome", kind = "switch", reload = true,
               note = "Overpower, Execute, Riposte and the like appear only while they can be used",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.reactive ~= false end,
@@ -480,14 +477,6 @@ local PAGES = {
             { "Unused buttons", kind = "action", action = "Show", run = function() cmd("tidy", "") end },
         } },
         { title = "Quickslots on the minimap", items = {
-            { "Professions quickslot", kind = "switch", reload = true,
-              note = "A disc on the map's left that opens your professions' spells",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.profFly ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.profFly = d.profFly == false end end },
-            { "Tracking spells in the professions quickslot", kind = "switch", reload = true,
-              note = "Find Herbs, Find Minerals and the like, beside the profession buttons",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.profTrack ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.profTrack = d.profTrack == false end end },
             { "Potions quickslot", kind = "switch", reload = true,
               note = "A flask on the map's rim that opens your potions, bandages and elixirs",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.potions ~= false end,
@@ -496,38 +485,86 @@ local PAGES = {
               note = "A disc beside the flask that opens your food and drink",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.food ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.food = d.food == false end end },
+            { "Professions quickslot", kind = "switch", reload = true,
+              note = "A disc on the map's left that opens your professions' spells",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.profFly ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.profFly = d.profFly == false end end },
+            { "Tracking spells in the professions quickslot", kind = "switch", reload = true,
+              note = "Find Herbs, Find Minerals and the like, beside the profession buttons",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.profTrack ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.profTrack = d.profTrack == false end end },
         } },
-        { title = "Group and healing", items = {
-            { "Quick Cure chips", kind = "switch", reload = true,
-              note = "Lights up beside someone you can cure; click to cast",
-              get = function() return ns.modules.UnitFrames.db.cure ~= false end,
-              set = function() local d = ns.modules.UnitFrames.db; d.cure = d.cure == false end },
-            { "Healer notes on group frames", kind = "switch", reload = true,
-              note = "Time until they can be shielded again; a resurrection on its way",
-              get = function() return ns.modules.UnitFrames.db.notes ~= false end,
-              set = function() local d = ns.modules.UnitFrames.db; d.notes = d.notes == false end },
+    } },
+    { key = "combat", title = "Combat", groups = {
+        { title = "Numbers", items = {
+            { "Meniscus combat numbers", kind = "switch", reload = true,
+              note = "Our damage and healing numbers; the game's own are turned down",
+              get = function() return ns.modules.Nameplates.db.numbers ~= false end,
+              set = function()
+                  local N = ns.modules.Nameplates
+                  N.db.numbers = N.db.numbers == false
+                  if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
+              end },
+            { "Only my own hits and heals", kind = "switch", reload = true,
+              note = "A best guess (the client doesn't say who dealt a hit); off shows everyone's",
+              get = function() return ns.modules.Nameplates.db.numbersMine ~= false end,
+              set = function() local d = ns.modules.Nameplates.db; d.numbersMine = d.numbersMine == false end },
+            { "Damage and avoidance on the health orb", kind = "switch", reload = true,
+              note = "Hits, heals, dodges, parries and blocks rise out of the orb",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.orbText ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.orbText = d.orbText == false end end },
         } },
-        { title = "Chat", items = {
-            { "Hide other people's crafting in chat", kind = "switch", reload = true,
-              note = "\"So-and-so creates X\" from players near you; yours stay",
-              get = function() return ns.modules.Chat.db.hideCrafting ~= false end,
-              set = function() local d = ns.modules.Chat.db; d.hideCrafting = d.hideCrafting == false end },
-            { "Quieter group loot in chat", kind = "switch", reload = true,
-              note = "Hides roll choices and others' grey and white loot",
-              get = function() return ns.modules.Chat.db.quietLoot ~= false end,
-              set = function() local d = ns.modules.Chat.db; d.quietLoot = d.quietLoot == false end },
-        } },
-        { title = "Travel and the world", items = {
-            { "Flight timer", kind = "switch", reload = true,
-              note = "A thin bar at the top of the screen; times are learned from your own flights",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.flight ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.flight = d.flight == false end end },
+        { title = "Warnings", items = {
+            { "Aggro ring on the health orb", kind = "switch", reload = true,
+              note = "In a group: amber when close to pulling, red once it is on you",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.aggro ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.aggro = d.aggro == false end end },
             { "Rare alert", kind = "switch", reload = true,
               note = "A pill and a soft ping when a rare is near; the quest dot points at it when it can",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.rare ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.rare = d.rare == false end end },
         } },
+    } },
+    { key = "bags", title = "Bags and loot", groups = {
+        { title = "Bags", items = {
+            moduleSwitch("Meniscus bags", "Bags"),
+            moduleSwitch("Meniscus bank", "Bank"),
+            { "Layout", kind = "dropdown", reload = true,
+              options = function() return { { key = "combined", label = "One combined bag" },
+                                            { key = "separate", label = "Separate bags" } } end,
+              get = function() return ns.modules.Bags.db and ns.modules.Bags.db.mode or "combined" end,
+              set = function(k) ns.modules.Bags:SetMode(k) end },
+            { "Cheapest to throw away, when bags are full", kind = "switch",
+              note = "Red marks on the three cheapest stacks; a pill to destroy the cheapest",
+              get = function() return ns.modules.Bags.db.cheapest ~= false end,
+              set = function() local d = ns.modules.Bags.db; d.cheapest = d.cheapest == false; pcall(ns.modules.Bags.Refresh, ns.modules.Bags) end },
+            { "What you own, on item tooltips", kind = "switch", reload = true,
+              note = "Bags, bank and your other characters",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.owned ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.owned = d.owned == false end end },
+        } },
+        { title = "Floating pills", items = {
+            { "Floating text for what you loot", kind = "switch",
+              get = function() local d = ns.modules.Loot.db; return d and d.float ~= false end,
+              set = function() local d = ns.modules.Loot.db; if d then d.float = d.float == false end end },
+            { "Floating pills for experience", kind = "switch",
+              get = function() local d = ns.modules.Loot.db; return d and d.xpFloat ~= false end,
+              set = function() local d = ns.modules.Loot.db; if d then d.xpFloat = d.xpFloat == false end end },
+            { "Floating pills for skill-ups", kind = "switch",
+              get = function() local d = ns.modules.Loot.db; return d and d.skillFloat ~= false end,
+              set = function() local d = ns.modules.Loot.db; if d then d.skillFloat = d.skillFloat == false end end },
+            { "Quest progress as floating pills", kind = "switch", reload = true,
+              get = function() local d = ns.modules.Loot.db; return d and d.questFloat ~= false end,
+              set = function() local d = ns.modules.Loot.db; if d then d.questFloat = d.questFloat == false end end },
+            { "Floating pills rise above your character", kind = "switch",
+              note = "Off: from above the minimap",
+              get = function() local d = ns.modules.Loot.db; return d and d.floatChar ~= false end,
+              set = function() local d = ns.modules.Loot.db; if d then d.floatChar = d.floatChar == false end end },
+        } },
+    } },
+    { key = "quests", title = "Quests and map", groups = {
         { title = "Quests", items = {
+            moduleSwitch("Quest tracker", "Tracker"),
             { "Your group's quest progress", kind = "switch", reload = true,
               note = "Others running Meniscus show their counts beside yours in the objectives",
               get = function() return ns.modules.Tracker.db.groupProgress ~= false end,
@@ -537,19 +574,52 @@ local PAGES = {
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.waypoint ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.waypoint = d.waypoint == false end end },
         } },
-        { title = "Gear and bags", items = {
-            { "Cheapest to throw away, when bags are full", kind = "switch",
-              note = "Red marks on the three cheapest stacks; a pill to destroy the cheapest",
-              get = function() return ns.modules.Bags.db.cheapest ~= false end,
-              set = function() local d = ns.modules.Bags.db; d.cheapest = d.cheapest == false; pcall(ns.modules.Bags.Refresh, ns.modules.Bags) end },
-            { "Durability warning", kind = "switch", reload = true,
-              note = "A wrench above the console when gear is at 30% or less",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.durability ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.durability = d.durability == false end end },
-            { "What you own, on item tooltips", kind = "switch", reload = true,
-              note = "Bags, bank and your other characters",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.owned ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.owned = d.owned == false end end },
+        { title = "Map and travel", items = {
+            moduleSwitch("Minimap", "Minimap"),
+            { "Map coordinates", kind = "switch", reload = true,
+              get = function() return ns.modules.Skins.db and ns.modules.Skins.db.coords end,
+              set = function() local d = ns.modules.Skins.db; if d then d.coords = not d.coords end end },
+            { "Flight timer", kind = "switch", reload = true,
+              note = "A thin bar at the top of the screen; times are learned from your own flights",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.flight ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.flight = d.flight == false end end },
+            { "Node memory on the world map", kind = "switch", reload = true,
+              note = "Dots where you have picked herbs or mined before; hover one for what it was",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.nodes ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.nodes = d.nodes == false end end },
+            { "Remembered nodes on the minimap too", kind = "switch", reload = true,
+              note = "Faint dots; the minimap already shows live nodes while you track them",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.nodesMini == true end,
+              set = function() local d = ns.modules.Extras.db; if d then d.nodesMini = not d.nodesMini end end },
+        } },
+    } },
+    { key = "professions", title = "Professions", groups = {
+        { title = "Professions", items = {
+            { "Nearly capped notice", kind = "switch", reload = true,
+              note = "One pill when a profession is within five points of its cap",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.skillNudge ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.skillNudge = d.skillNudge == false end end },
+            { "Capped skill warning", kind = "switch", reload = true,
+              note = "Each time you use a profession that can't go up until you train it",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.skillCap ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
+            { "What a reagent makes, on its tooltip", kind = "switch", reload = true,
+              note = "Your recipes that use it, and how many you could make",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.canMake ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.canMake = d.canMake == false end end },
+        } },
+    } },
+    { key = "chat", title = "Chat and notices", groups = {
+        { title = "Chat", items = {
+            moduleSwitch("Chat", "Chat"),
+            { "Hide other people's crafting in chat", kind = "switch", reload = true,
+              note = "\"So-and-so creates X\" from players near you; yours stay",
+              get = function() return ns.modules.Chat.db.hideCrafting ~= false end,
+              set = function() local d = ns.modules.Chat.db; d.hideCrafting = d.hideCrafting == false end },
+            { "Quieter group loot in chat", kind = "switch", reload = true,
+              note = "Hides roll choices and others' grey and white loot",
+              get = function() return ns.modules.Chat.db.quietLoot ~= false end,
+              set = function() local d = ns.modules.Chat.db; d.quietLoot = d.quietLoot == false end },
         } },
         { title = "Marks above the console", items = {
             { "Mail waiting", kind = "switch", reload = true,
@@ -559,34 +629,10 @@ local PAGES = {
               note = "Click the mark to reply",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.whisper ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.whisper = d.whisper == false end end },
-        } },
-        { title = "Combat", items = {
-            { "Only my own hits and heals", kind = "switch", reload = true,
-              note = "A best guess (the client doesn't say who dealt a hit); off shows everyone's",
-              get = function() return ns.modules.Nameplates.db.numbersMine ~= false end,
-              set = function() local d = ns.modules.Nameplates.db; d.numbersMine = d.numbersMine == false end },
-            { "Meniscus combat numbers", kind = "switch", reload = true,
-              note = "Our damage and healing numbers; the game's own are turned down",
-              get = function() return ns.modules.Nameplates.db.numbers ~= false end,
-              set = function()
-                  local N = ns.modules.Nameplates
-                  N.db.numbers = N.db.numbers == false
-                  if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
-              end },
-            { "Damage and avoidance on the health orb", kind = "switch", reload = true,
-              note = "Hits, heals, dodges, parries and blocks rise out of the orb",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.orbText ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.orbText = d.orbText == false end end },
-            { "Aggro ring on the health orb", kind = "switch", reload = true,
-              note = "In a group: amber when close to pulling, red once it is on you",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.aggro ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.aggro = d.aggro == false end end },
-        } },
-        { title = "Hunter", items = {
-            { "Pet food button", kind = "switch", reload = true,
-              note = "Feedings left, above the pet's pill; click to feed",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.petFood ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.petFood = d.petFood == false end end },
+            { "Durability warning", kind = "switch", reload = true,
+              note = "A wrench above the console when gear is at 30% or less",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.durability ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.durability = d.durability == false end end },
         } },
     } },
     { key = "windows", title = "Windows", groups = {
@@ -600,38 +646,13 @@ local PAGES = {
             moduleSwitch("Trainer", "Trainer"),
             moduleSwitch("Mailbox", "Mail"),
             moduleSwitch("Inspect", "Inspect"),
-            { "Quest progress as floating pills", kind = "switch", reload = true,
-              get = function() local d = ns.modules.Loot.db; return d and d.questFloat ~= false end,
-              set = function() local d = ns.modules.Loot.db; if d then d.questFloat = d.questFloat == false end end },
-            { "Floating text for what you loot", kind = "switch",
-              get = function() local d = ns.modules.Loot.db; return d and d.float ~= false end,
-              set = function() local d = ns.modules.Loot.db; if d then d.float = d.float == false end end },
-            { "Floating pills for experience", kind = "switch",
-              get = function() local d = ns.modules.Loot.db; return d and d.xpFloat ~= false end,
-              set = function() local d = ns.modules.Loot.db; if d then d.xpFloat = d.xpFloat == false end end },
-            { "Floating pills for skill-ups", kind = "switch",
-              get = function() local d = ns.modules.Loot.db; return d and d.skillFloat ~= false end,
-              set = function() local d = ns.modules.Loot.db; if d then d.skillFloat = d.skillFloat == false end end },
-            { "Floating pills rise above your character", kind = "switch",
-              note = "Off: from above the minimap",
-              get = function() local d = ns.modules.Loot.db; return d and d.floatChar ~= false end,
-              set = function() local d = ns.modules.Loot.db; if d then d.floatChar = d.floatChar == false end end },
             { "Dialog text types itself out", kind = "switch",
               get = function() return ns.modules.Dialogs.db and ns.modules.Dialogs.db.typewriter end,
               set = function() local d = ns.modules.Dialogs.db; if d then d.typewriter = not d.typewriter end end },
         } },
-    } },
-    { key = "styling", title = "Styling", groups = {
         { title = "Restyled Blizzard parts", items = {
-            moduleSwitch("Minimap", "Minimap"),
-            moduleSwitch("Chat", "Chat"),
-            moduleSwitch("Quest tracker", "Tracker"),
             moduleSwitch("Tooltips", "Tooltip"),
-            moduleSwitch("Nameplates", "Nameplates"),
             moduleSwitch("Menus, popups, map and other windows", "Skins"),
-            { "Map coordinates", kind = "switch", reload = true,
-              get = function() return ns.modules.Skins.db and ns.modules.Skins.db.coords end,
-              set = function() local d = ns.modules.Skins.db; if d then d.coords = not d.coords end end },
             { "Game Options window", kind = "switch", reload = true,
               note = "The frame only; the settings' own controls stay Blizzard's",
               get = function() return ns.modules.Skins.db and ns.modules.Skins.db.options ~= false end,
@@ -705,39 +726,318 @@ local PAGES = {
             { "Main action bar art", kind = "action", action = "Record", run = function() cmd("barprobe", "") end },
         } },
     } },
-    { key = "profiles", title = "Profiles", groups = {
-        { title = "Profile", items = {
-            { "Active profile", kind = "dropdown", note = "Switching reloads the UI",
-              options = function()
-                  local list = {}
-                  for _, n in ipairs(ns:ProfileNames()) do table.insert(list, { key = n, label = n }) end
-                  local me = ns:CharKey()
-                  if not MinimalUIDB.profiles[me] then
-                      table.insert(list, { key = "\001copy", label = "+ Copy for " .. me })
-                  end
-                  return list
-              end,
-              get = function() return ns.profile end,
-              set = function(k)
-                  if k == ns.profile then return end
-                  if k == "\001copy" then ns:UseProfile(ns:CharKey(), true) else ns:UseProfile(k) end
-              end },
-            { "Reset to defaults", kind = "action", action = "Reset",
-              note = "Every setting back to a new install's; asks first, then reloads",
-              run = function() cmd("defaults", "") end },
-        } },
-    } },
 }
+
+-- ── Search ────────────────────────────────────────────────────────────────
+-- Type in the box at the top and every setting that fits is listed, under
+-- the page and group it lives in, ready to be changed right there.
+-- A setting is found by more than its visible words:
+--   * its label, its note, and the names of its group and page;
+--   * extra words of its own (KEYS): what else people call it, or what they
+--     were thinking of when they went looking ("flask", "decurse", "fct");
+--   * a small thesaurus (ALSO): a word typed also stands for its near
+--     relations, so "hp" finds health and "bag" finds inventory.
+-- Every word typed must fit somewhere (in any order); a plural matches its
+-- singular.
+local KEYS = {
+    ["Font"] = "typeface text letters size",
+    ["UI scale"] = "size zoom resolution small big",
+    ["Health and power orbs"] = "hp mana rage energy globe ball",
+    ["XP bar width"] = "experience level bar",
+    ["Fade menu and bag buttons"] = "micro menu hide declutter",
+    ["Active profile"] = "character layout copy alt settings",
+    ["Reset to defaults"] = "factory wipe start over profile",
+    ["Plate behind the bottom row"] = "console panel background dark bar",
+    ["Chat and context panel in the plate"] = "wings chat window damage meter seat",
+    ["Minimap between the action bars"] = "dome round map split",
+    ["Dock windows above the console"] = "window manager position left right snap",
+    ["Player frame"] = "portrait character panel",
+    ["Shows"] = "right wing damage meter objectives tracker panel",
+    ["Pet orbs instead of the pet frame"] = "hunter warlock pet health",
+    ["Pet food button"] = "hunter feed happiness",
+    ["Hide Blizzard's unit frames"] = "default stock player target",
+    ["Frame positions"] = "move reset unlock drag",
+    ["Nameplates"] = "enemy bars overhead plates",
+    ["Party frames"] = "group members stack",
+    ["Quick Cure chips"] = "dispel decurse cleanse poison disease curse magic remove debuff",
+    ["Healer notes on group frames"] = "weakened soul shield resurrection res rez priest",
+    ["3D portraits (target, window headers)"] = "model avatar face",
+    ["Quick Buff reminder"] = "rebuff missing buff fortitude pill",
+    ["Rebuff when under"] = "expire minutes timer",
+    ["Prismatic shimmer on the pill"] = "rainbow chromatic glow halo effect",
+    ["Quick Buff key"] = "keybind hotkey bind",
+    ["Meniscus action bars"] = "buttons hotbar spells",
+    ["Reactive spells above the dome"] = "proc overpower execute riposte revenge counterattack",
+    ["Learn which buttons you use"] = "usage tidy unused clutter",
+    ["Potions quickslot"] = "flask elixir bandage healing mana consumable flyout orb disc",
+    ["Food and drink quickslot"] = "eat water bread conjured consumable flyout orb disc mug",
+    ["Professions quickslot"] = "tradeskill craft alchemy cooking first aid enchanting smelting flyout orb disc",
+    ["Tracking spells in the professions quickslot"] = "find herbs minerals ore track",
+    ["Meniscus combat numbers"] = "floating combat text fct sct damage healing scrolling",
+    ["Only my own hits and heals"] = "mine party others filter damage numbers",
+    ["Damage and avoidance on the health orb"] = "incoming hits dodge parry block floating text",
+    ["Aggro ring on the health orb"] = "threat pull tank warning",
+    ["Rare alert"] = "silver dragon elite spawn sound ping",
+    ["Meniscus bags"] = "inventory backpack containers",
+    ["Meniscus bank"] = "vault storage",
+    ["Layout"] = "one bag combined separate cards inventory",
+    ["Cheapest to throw away, when bags are full"] = "destroy delete junk inventory full discard vendor value",
+    ["What you own, on item tooltips"] = "count alts bank inventory how many",
+    ["Floating text for what you loot"] = "pickup items pills",
+    ["Floating pills for experience"] = "xp gain kill",
+    ["Floating pills for skill-ups"] = "profession level skill gain",
+    ["Quest progress as floating pills"] = "objective count kills collected",
+    ["Quest tracker"] = "objectives list corner watch",
+    ["Your group's quest progress"] = "party share counts objectives",
+    ["Dot over the quest objective"] = "waypoint arrow direction navigation focus gps marker",
+    ["Minimap"] = "map round dome",
+    ["Map coordinates"] = "location position xy",
+    ["Flight timer"] = "taxi flight path gryphon wind rider travel time",
+    ["Node memory on the world map"] = "herb ore mining gather spots dots",
+    ["Remembered nodes on the minimap too"] = "herb ore mining gather",
+    ["Nearly capped notice"] = "skill trainer train limit",
+    ["Capped skill warning"] = "skill trainer train limit maxed",
+    ["What a reagent makes, on its tooltip"] = "recipe used in craft materials",
+    ["Chat"] = "tabs edit box messages",
+    ["Hide other people's crafting in chat"] = "spam creates filter tradeskill",
+    ["Quieter group loot in chat"] = "spam rolls need greed filter",
+    ["Mail waiting"] = "letter mailbox icon notice",
+    ["Unanswered whispers"] = "tell dm message reply notice",
+    ["Durability warning"] = "repair broken armor gear wrench",
+    ["Character window"] = "paper doll gear equipment stats",
+    ["Spellbook"] = "abilities spells book",
+    ["Quest log"] = "quests list",
+    ["NPC dialogs"] = "gossip quest giver talk conversation",
+    ["Loot window and rolls"] = "need greed pass corpse",
+    ["Merchant"] = "vendor shop buy sell repair",
+    ["Trainer"] = "learn spells class train",
+    ["Mailbox"] = "mail letters send",
+    ["Inspect"] = "other players gear",
+    ["Dialog text types itself out"] = "typewriter animation quest text",
+    ["Tooltips"] = "hover info box",
+    ["Menus, popups, map and other windows"] = "skin restyle dropdown friends guild",
+    ["Performance monitor"] = "fps lag cpu memory slow",
+    ["Report a bug"] = "problem issue broken feedback",
+    ["Lua errors this session"] = "bug crash problem log",
+}
+local ALSO = {
+    hp = "health orb", life = "health", mana = "power orb", rage = "power orb", energy = "power orb",
+    dmg = "damage", dps = "damage", fct = "combat numbers", sct = "combat numbers", crit = "combat numbers",
+    aura = "buff", auras = "buff", debuff = "cure buff", dispel = "cure", cleanse = "cure", decurse = "cure",
+    inventory = "bag", backpack = "bag", container = "bag", vendor = "merchant", shop = "merchant",
+    xp = "experience", exp = "experience", level = "experience", map = "minimap dome", minimap = "map dome",
+    mini = "minimap", waypoint = "dot", arrow = "dot", gps = "dot", tracker = "objectives quest", objective = "quest",
+    herb = "node", ore = "node", mining = "node", herbalism = "node", gather = "node",
+    craft = "profession", tradeskill = "profession", prof = "profession", skill = "profession",
+    flask = "potion", elixir = "potion", bandage = "potion", heal = "potion cure", consumable = "potion food",
+    eat = "food", drink = "food", water = "food", flyout = "quickslot", orb = "orbs quickslot", slot = "quickslot",
+    keybind = "key", hotkey = "key", bind = "key", shortcut = "key", raid = "group party", party = "group",
+    whisper = "whispers", tell = "whispers", dm = "whispers", pm = "whispers", message = "chat whispers",
+    mail = "mailbox", letter = "mail", pet = "hunter", hunter = "pet", threat = "aggro", tank = "aggro",
+    nameplate = "nameplates", plate = "nameplates console", unitframe = "unit frames", portrait = "portraits",
+    avatar = "portraits", skin = "restyled styling", theme = "restyled styling font", style = "restyled styling",
+    color = "appearance", colour = "appearance", size = "scale font", big = "scale", small = "scale",
+    reset = "defaults positions", default = "defaults", wipe = "defaults", alt = "profile", character = "profile",
+    fps = "performance", lag = "performance", cpu = "performance", memory = "performance", slow = "performance",
+    error = "errors bug", crash = "errors bug", broken = "bug", issue = "bug", update = "version",
+    loot = "loot pills", roll = "loot rolls", money = "merchant", gold = "merchant", repair = "durability merchant",
+    travel = "flight", taxi = "flight", fly = "flight", rare = "rare alert", spam = "chat",
+    hide = "fade restyled", move = "positions unlock", drag = "positions unlock", unlock = "positions",
+    notification = "marks notice", alert = "warning notice", warn = "warning", sound = "alert",
+}
+local index
+local function buildIndex()
+    index = {}
+    for _, pg in ipairs(PAGES) do
+        for _, g in ipairs(pg.groups) do
+            for _, item in ipairs(g.items) do
+                local label = tostring(item[1] or "")
+                local hay = (label .. " " .. tostring(item.note or "") .. " " .. g.title .. " " .. pg.title .. " "
+                    .. (KEYS[label] or "") .. " " .. tostring(item.keys or "")):lower()
+                index[#index + 1] = { item = item, page = pg.title, group = g.title, label = label:lower(), hay = hay }
+            end
+        end
+    end
+end
+-- Does one typed word fit this setting? Itself, its singular, or any of
+-- the words it also stands for.
+local function fits(e, word)
+    if e.hay:find(word, 1, true) then return true end
+    if #word > 3 and word:sub(-1) == "s" and e.hay:find(word:sub(1, -2), 1, true) then return true end
+    local also = ALSO[word] or (word:sub(-1) == "s" and ALSO[word:sub(1, -2)])
+    if also then
+        for alt in also:gmatch("%S+") do
+            if e.hay:find(alt, 1, true) then return true end
+        end
+    end
+    return false
+end
+local found = {}
+local function search(query)
+    if not index then buildIndex() end
+    for i = #found, 1, -1 do found[i] = nil end
+    local words = {}
+    for w in query:lower():gmatch("[%w']+") do words[#words + 1] = w end
+    if #words == 0 then return found end
+    -- Those whose own label carries the first word come first; otherwise
+    -- the settings keep the order of the pages.
+    for pass = 1, 2 do
+        for _, e in ipairs(index) do
+            local inLabel = e.label:find(words[1], 1, true) ~= nil
+            if (pass == 1) == inLabel then
+                local ok = true
+                for _, w in ipairs(words) do
+                    if not fits(e, w) then ok = false break end
+                end
+                if ok then found[#found + 1] = e end
+            end
+        end
+    end
+    return found
+end
 
 -- ── Panel ─────────────────────────────────────────────────────────────────
 local panel
 local pageFrames, navButtons = {}, {}
+local searchBox, results, searchBusy
 
 local function showPage(key)
     closeMenu()
+    if results then results:Hide() end
     for k, f in pairs(pageFrames) do f:SetShown(k == key) end
     for _, b in ipairs(navButtons) do b.on = (b.key == key); b:Repaint() end
     MinimalUIDB.panelPage = key
+    -- Picking a page ends a search.
+    if searchBox and (searchBox:GetText() or "") ~= "" then
+        searchBusy = true
+        searchBox:SetText("")
+        searchBusy = false
+    end
+end
+
+-- The page the panel should be on when nothing else says (the saved one,
+-- if it still exists: pages have been renamed).
+local function homePage()
+    local key = MinimalUIDB.panelPage
+    for _, pg in ipairs(PAGES) do if pg.key == key then return key end end
+    return PAGES[1].key
+end
+
+-- Search results: the settings that fit, each a working row, under a line
+-- naming where it lives ("Bars  ·  Quickslots on the minimap"). Rows are
+-- made the first time a setting turns up and kept, so typing builds
+-- nothing twice.
+local RESULT_MAX = 40
+local function buildResults(parent)
+    local view = CreateFrame("Frame", nil, parent)
+    view:SetPoint("TOPLEFT", parent, "TOPLEFT", CONTENT_X, -PAD - 34)
+    local viewH = H - PAD * 2 - 34
+    view:SetSize(CONTENT_W + 10, viewH)
+    view:SetClipsChildren(true)
+    local f = CreateFrame("Frame", nil, view)
+    f:SetSize(CONTENT_W, viewH)
+    local thumb = view:CreateTexture(nil, "OVERLAY")
+    thumb:SetWidth(3)
+    thumb:SetColorTexture(T.textDim[1], T.textDim[2], T.textDim[3], 0.55)
+    local offset, over, total = 0, 0, 0
+    local function place()
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", view, "TOPLEFT", 0, offset)
+        thumb:SetShown(over > 0)
+        if over > 0 then
+            local th = math.max(24, viewH * viewH / total)
+            thumb:SetHeight(th)
+            thumb:ClearAllPoints()
+            thumb:SetPoint("TOPRIGHT", view, "TOPRIGHT", -1, -(viewH - th) * (offset / over))
+        end
+    end
+    view:EnableMouseWheel(true)
+    view:SetScript("OnMouseWheel", function(_, d)
+        closeMenu()
+        offset = math.max(0, math.min(over, offset - d * 40))
+        place()
+    end)
+    local empty = text(f, 12, false, T.textDim)
+    empty:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
+    empty:SetWidth(CONTENT_W - 8)
+    empty:SetJustifyH("LEFT")
+    local heads, cards, shown = {}, {}, {}
+    function view:Fill(query)
+        for _, r in ipairs(shown) do r:Hide() end
+        for i = #shown, 1, -1 do shown[i] = nil end
+        for _, h in ipairs(heads) do h:Hide() end
+        for _, c in ipairs(cards) do c:Hide() end
+        local list = search(query)
+        local y, n = 0, 0
+        local where, card, ry
+        local function closeCard()
+            if card then card:SetHeight(-ry); y = y + ry - 16 end
+        end
+        for i, e in ipairs(list) do
+            if i > RESULT_MAX then break end
+            local here = e.page .. "  \194\183  " .. e.group
+            if here ~= where then
+                closeCard()
+                where = here
+                n = n + 1
+                local h = heads[n]
+                if not h then h = text(f, 10, true, T.textDim); heads[n] = h end
+                h:ClearAllPoints()
+                h:SetPoint("TOPLEFT", f, "TOPLEFT", 4, y)
+                h:SetText(here)
+                h:Show()
+                y = y - 16
+                card = cards[n]
+                if not card then
+                    card = CreateFrame("Frame", nil, f)
+                    card:SetWidth(CONTENT_W)
+                    roundedRect(card, -6, 0, 12, unpack(CARD))
+                    cards[n] = card
+                end
+                card:ClearAllPoints()
+                card:SetPoint("TOPLEFT", f, "TOPLEFT", 0, y)
+                card:Show()
+                ry = 0
+            end
+            local row = e.row
+            if not row then
+                row = makeRow(card, e.item, ry, true)
+                e.row = row
+            end
+            row:SetParent(card)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", card, "TOPLEFT", 0, ry)
+            row:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, ry)
+            row:Show()
+            if row.Refresh then pcall(row.Refresh, row) end
+            shown[#shown + 1] = row
+            ry = ry - row:GetHeight()
+        end
+        closeCard()
+        if #list == 0 then
+            empty:SetText("Nothing fits \"" .. query .. "\". Try another word for it: what it does, or where you see it.")
+            empty:Show()
+        elseif #list > RESULT_MAX then
+            empty:ClearAllPoints()
+            empty:SetPoint("TOPLEFT", f, "TOPLEFT", 4, y)
+            empty:SetText((#list - RESULT_MAX) .. " more: add a word to narrow it down.")
+            empty:Show()
+            y = y - 20
+        else
+            empty:Hide()
+        end
+        if #list == 0 then
+            empty:ClearAllPoints()
+            empty:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
+        end
+        total = -y
+        f:SetHeight(math.max(total, viewH))
+        over = math.max(0, total - viewH)
+        offset = 0
+        place()
+    end
+    view:Hide()
+    return view
 end
 
 -- A page is a clipped viewport with its content inside; when the content is
@@ -841,7 +1141,7 @@ local function build()
         b.dim = true
         b.text:ClearAllPoints()
         b.text:SetPoint("LEFT", 14, 0)
-        b:SetPoint("TOPLEFT", side, "TOPLEFT", 12, -PAD - 34 - (i - 1) * 30)
+        b:SetPoint("TOPLEFT", side, "TOPLEFT", 12, -PAD - 34 - (i - 1) * 27)
         b:SetScript("OnClick", function(self) showPage(self.key) end)
         b:Repaint()
         table.insert(navButtons, b)
@@ -864,6 +1164,44 @@ local function build()
     local pageTitle = text(p, 15, true)
     pageTitle:SetPoint("TOPLEFT", CONTENT_X + 4, -PAD)
     p.pageTitle = pageTitle
+
+    -- Search: a rounded field at the top right, beside the close button.
+    results = buildResults(p)
+    local box = CreateFrame("EditBox", nil, p)
+    box:SetAutoFocus(false)
+    box:SetSize(190, 22)
+    box:SetPoint("TOPRIGHT", p, "TOPRIGHT", -44, -12)
+    box:SetTextInsets(10, 10, 0, 0)
+    ns:SetFont(box, 11, "")
+    box:SetTextColor(unpack(T.text))
+    roundedRect(box, -8, 0, 11, T.border[1], T.border[2], T.border[3], 1)
+    roundedRect(box, -7, 1, 10, 0.05, 0.05, 0.06, 1)
+    local hint = text(box, 11, false, T.textDim)
+    hint:SetPoint("LEFT", 10, 0)
+    hint:SetText("Search settings")
+    box:SetScript("OnEscapePressed", function(self)
+        -- Esc: first clears the search, then (empty) lets go of the box.
+        if (self:GetText() or "") ~= "" then self:SetText("") else self:ClearFocus() end
+    end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEditFocusGained", function() hint:Hide() end)
+    box:SetScript("OnEditFocusLost", function(self) hint:SetShown((self:GetText() or "") == "") end)
+    box:SetScript("OnTextChanged", function(self)
+        local q = (self:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        hint:SetShown(q == "" and not self:HasFocus())
+        if searchBusy then return end
+        if q == "" then
+            showPage(homePage())
+            return
+        end
+        closeMenu()
+        for _, f in pairs(pageFrames) do f:Hide() end
+        for _, b in ipairs(navButtons) do b.on = false; b:Repaint() end
+        results:Show()
+        results:Fill(q)
+        p.pageTitle:SetText("Search")
+    end)
+    searchBox = box
     local close = CreateFrame("Button", nil, p)
     close:SetSize(22, 22)
     close:SetPoint("TOPRIGHT", -12, -12)
@@ -898,10 +1236,7 @@ local function build()
     foot:SetText("Shift while dragging skips snapping   ·   /men help lists commands")
 
     p:SetScript("OnShow", function()
-        local key = MinimalUIDB.panelPage
-        local found = false
-        for _, pg in ipairs(PAGES) do if pg.key == key then found = true end end
-        showPage(found and key or PAGES[1].key)
+        showPage(homePage())
         ns:RefreshPanel()
     end)
     p:SetScript("OnHide", closeMenu)
