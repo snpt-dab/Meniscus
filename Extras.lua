@@ -2487,9 +2487,11 @@ local function buildTalentMark()
         local out = p < 0.18 and (p / 0.18) or (1 - (p - 0.18) / 0.82) ^ 2
         local a = (p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88) * 1.0
         -- The two ghosts sit opposite each other and go round the disc
-        -- counter-clockwise as they are thrown out and drawn back: half a
-        -- turn to each beat, so over the three the pair orbits.
-        local th = math.pi + math.pi * (age / FLASH)
+        -- counter-clockwise, steadily, a third of a turn to each beat. Half
+        -- a turn per beat put every beat on the same line (the pair is
+        -- symmetrical); a third shows the orbit at three different places,
+        -- like three glimpses of something already going round.
+        local th = math.pi + (2 * math.pi / 3) * (age / FLASH)
         local ox, oy = math.cos(th) * SPREAD * out, math.sin(th) * SPREAD * out
         warm:SetPoint("CENTER", ox, oy)
         cool:SetPoint("CENTER", -ox, -oy)
