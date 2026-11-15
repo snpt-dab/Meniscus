@@ -2486,7 +2486,7 @@ local function updateHealth(f)
     local cur, max = UnitHealth("player"), UnitHealthMax("player")
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
-    setText(f.text, cur, f.showMax and max)
+    setText(f.text, cur)
     local c = getCurves()
     colorByPercent(f, cur, max, HEALTH_STOPS, HEALTH_FLASH, c.healthColor, c.healthFlash,
         healthPct)
@@ -2498,7 +2498,7 @@ local function updatePower(f)
     local cur, max = UnitPower("player", ptype), UnitPowerMax("player", ptype)
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
-    setText(f.text, cur, f.showMax and max)
+    setText(f.text, cur)
     if f.energy and ptype ~= 3 then f.energy:Hide() end
     if f.mana and ptype ~= 0 then f.mana:Hide() end
     if ptype == 1 then
@@ -2907,6 +2907,7 @@ local function updatePetHealth(f)
     local cur, max = UnitHealth("pet"), UnitHealthMax("pet")
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
+    if f.maxTip and f.maxTip:IsShown() then setText(f.maxTip.text, cur, max) end
     local c = getCurves()
     colorByPercent(f, cur, max, HEALTH_STOPS, HEALTH_FLASH, c.healthColor, c.healthFlash, petHealthPct)
 end
@@ -2916,6 +2917,7 @@ local function updatePetPower(f)
     local cur, max = UnitPower("pet", ptype), UnitPowerMax("pet", ptype)
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
+    if f.maxTip and f.maxTip:IsShown() then setText(f.maxTip.text, cur, max) end
     local c = POWER[ptype]
     if not c and PowerBarColor and PowerBarColor[ptype] then
         local i = PowerBarColor[ptype]
@@ -2949,6 +2951,24 @@ function Orbs:BuildPet()
     h:SetFrameStrata("LOW")
     p:SetFrameStrata("MEDIUM")
     self.petHealth, self.petPower = h, p
+    -- The pet's orbs carry no number. With the mouse on one, a small dark
+    -- pill over it reads "current / max" and keeps up while it is there.
+    -- (A plain frame, so it may come and go in a fight.)
+    for _, pair in ipairs({ { h, updatePetHealth }, { p, updatePetPower } }) do
+        local orb, update = pair[1], pair[2]
+        local tip = CreateFrame("Frame", nil, orb)
+        tip:SetFrameStrata("HIGH")
+        tip:SetSize(96, 18)
+        tip:SetPoint("BOTTOM", orb, "TOP", 0, 4)
+        ns.RoundedRect(tip, -8, 0, 9, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(tip, -7, 1, 8, 0.06, 0.06, 0.07, 0.97)
+        tip.text = ns:CreateText(tip, 11)
+        tip.text:SetPoint("CENTER")
+        tip:Hide()
+        orb.maxTip = tip
+        orb:HookScript("OnEnter", function(o) tip:Show(); pcall(update, o) end)
+        orb:HookScript("OnLeave", function() tip:Hide() end)
+    end
 
     local ev = CreateFrame("Frame")
     ev:SetScript("OnEvent", function(_, event)
@@ -3036,15 +3056,7 @@ function Orbs:OnInit(db)
     ev:RegisterEvent("PLAYER_ENTERING_WORLD")
     updateHealth(self.health)
     updatePower(self.power)
-    -- Under the mouse an orb's number reads "current / max".
-    for _, pair in ipairs({ { self.health, updateHealth }, { self.power, updatePower } }) do
-        local orb, update = pair[1], pair[2]
-        if orb and not orb.__menMaxHook then
-            orb.__menMaxHook = true
-            orb:HookScript("OnEnter", function(o) o.showMax = true; pcall(update, o) end)
-            orb:HookScript("OnLeave", function(o) o.showMax = false; pcall(update, o) end)
-        end
-    end
+
     buildCombo(self)
     pcall(self.BuildAmmo, self)
     -- Pet orbs first: the player-style pass below hides the pet's own frame
