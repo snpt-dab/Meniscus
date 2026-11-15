@@ -2311,34 +2311,68 @@ end
 -- points to spend: there, quiet, until you spend them. It breathes for a
 -- few seconds when a point arrives and once when you log in, and otherwise
 -- sits still. Click it for the talent window.
+-- How many points are waiting. The client has several ways of saying, and
+-- on Forever the first one tried answered "0" with a point unspent: so all
+-- of them are asked and the largest answer is taken. (What each said is
+-- kept in MinimalUIDB.talentdiag.) Returns the count, or 1 when the game
+-- only says "yes, some".
 local function unspentTalents()
-    local how
+    local best, said = 0, {}
+    local function note(how, n)
+        said[#said + 1] = how .. "=" .. tostring(n)
+        if num(n) and n > best then best = n end
+    end
     if type(_G.UnitCharacterPoints) == "function" then
         local ok, n = pcall(_G.UnitCharacterPoints, "player")
-        if ok and num(n) then how = "UnitCharacterPoints"; return n, how end
+        note("UnitCharacterPoints", ok and n or "err")
     end
     if type(_G.GetNumUnspentTalents) == "function" then
         local ok, n = pcall(_G.GetNumUnspentTalents)
-        if ok and num(n) then return n, "GetNumUnspentTalents" end
+        note("GetNumUnspentTalents", ok and n or "err")
     end
     local CT, TR = C_ClassTalents, C_Traits
     if CT and CT.GetActiveConfigID and TR and TR.GetConfigInfo and TR.GetTreeCurrencyInfo then
         local okC, cfg = pcall(CT.GetActiveConfigID)
-        local okI, info = pcall(TR.GetConfigInfo, okC and cfg or nil)
-        if okI and type(info) == "table" and type(info.treeIDs) == "table" then
-            local sum = 0
-            for _, tree in ipairs(info.treeIDs) do
-                local okT, list = pcall(TR.GetTreeCurrencyInfo, cfg, tree, false)
-                if okT and type(list) == "table" then
-                    for _, c in ipairs(list) do
-                        if type(c) == "table" and num(c.quantity) then sum = sum + c.quantity end
+        if okC and cfg then
+            local okI, info = pcall(TR.GetConfigInfo, cfg)
+            if okI and type(info) == "table" and type(info.treeIDs) == "table" then
+                local sum = 0
+                for _, tree in ipairs(info.treeIDs) do
+                    local okT, list = pcall(TR.GetTreeCurrencyInfo, cfg, tree, false)
+                    if okT and type(list) == "table" then
+                        for _, c in ipairs(list) do
+                            if type(c) == "table" and num(c.quantity) then sum = sum + c.quantity end
+                        end
                     end
                 end
+                note("C_Traits", sum)
+            else
+                note("C_Traits", "no config info")
             end
-            return sum, "C_Traits"
+        else
+            note("C_Traits", "no active config")
         end
     end
-    return 0, "none"
+    if CT and CT.HasUnspentTalentPoints then
+        local ok, yes = pcall(CT.HasUnspentTalentPoints)
+        said[#said + 1] = "HasUnspentTalentPoints=" .. tostring(ok and yes)
+        if ok and yes == true and best == 0 then best = 1 end
+    end
+    if CT and CT.HasUnspentHeroTalentPoints then
+        local ok, yes = pcall(CT.HasUnspentHeroTalentPoints)
+        if ok and yes == true and best == 0 then best = 1 end
+    end
+    -- The talent button on the micro menu lights up when points wait: the
+    -- game's own opinion, where it has one.
+    for _, name in ipairs({ "PlayerSpellsMicroButton", "TalentMicroButton" }) do
+        local mb = _G[name]
+        if mb and type(mb.HasTalentAlertToShow) == "function" then
+            local ok, yes = pcall(mb.HasTalentAlertToShow, mb)
+            said[#said + 1] = name .. ".alert=" .. tostring(ok and yes)
+            if ok and yes and best == 0 then best = 1 end
+        end
+    end
+    return best, table.concat(said, ", ")
 end
 local function buildTalentMark()
     local chip = EX:Chip("micro_talent.tga")
