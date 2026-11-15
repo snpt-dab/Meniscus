@@ -734,19 +734,20 @@ local function buildNumbers()
     -- would have): there is its log line, the log's white "You killed"
     -- notice, and nothing else, and the amount is inside the sealed line.
     -- So that case shows the words "Killing blow" where the number would
-    -- have been: a line that came with the kill notice and that no hit
-    -- claimed within the second.
+    -- have been: more lines printed with the kill notice than hits
+    -- reported with it.
     local CL = C_CombatLog
     local logLines, held = {}, {}
     local logHeard = false
     local lastLine, lineCount = -99, 0
-    local killCredit
+    local lineTimes, claimTimes = {}, {} -- when lines came, and when a hit took one (the last dozen of each)
     -- One line taken for a hit: the oldest still good.
     local function takeLine(now)
         while logLines[1] and logLines[1] < now do table.remove(logLines, 1) end
         local got = table.remove(logLines, 1)
         if not got then return false end
-        if got == killCredit then killCredit = nil end
+        claimTimes[#claimTimes + 1] = now
+        if #claimTimes > 12 then table.remove(claimTimes, 1) end
         return true
     end
     local MY_ACTIONS = _G.QUICKBUTTON_NAME_MY_ACTIONS or "My actions"
@@ -780,30 +781,42 @@ local function buildNumbers()
                 -- (White lines are the log's notices, "You killed ..." and
                 -- the like: not a hit.)
                 if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then
-                    local now = GetTime()
-                    local last = logLines[#logLines]
-                    -- (A line printed this instant, still unclaimed.)
-                    if last and last - 0.8 > now - 0.15 and last > now then
-                        killCredit = last
-                        C_Timer.After(0.9, function()
-                            if killCredit ~= last then return end
-                            killCredit = nil
-                            note("  the kill's line was never claimed by a hit: \"Killing blow\" shown")
+                    -- The kill notice. It is printed among the lines of the
+                    -- blow that killed, not always after them (seen: before
+                    -- one of them), so the lines and the hits around it are
+                    -- counted a moment later: more lines than hits means a
+                    -- hit the game will never report.
+                    local at = GetTime()
+                    note("LINE (white: a notice)")
+                    C_Timer.After(0.2, function()
+                        local lines, claims = 0, 0
+                        for i = 1, #lineTimes do if math.abs(lineTimes[i] - at) <= 0.15 then lines = lines + 1 end end
+                        for i = 1, #claimTimes do if claimTimes[i] >= at - 0.15 and claimTimes[i] <= at + 0.2 then claims = claims + 1 end end
+                        if lines > claims then
+                            note(string.format("  at the kill: %d lines, %d hits reported: \"Killing blow\" shown", lines, claims))
+                            -- (Those lines are spent: nothing later may use them.)
+                            for i = #logLines, 1, -1 do
+                                if math.abs((logLines[i] - 0.8) - at) <= 0.15 then table.remove(logLines, i) end
+                            end
                             local kx, ky = railSpot(nil, true)
                             showUnit = nil
                             show(nil, kx, ky, "Killing blow", 1.00, 0.86, 0.50, false, false)
-                        end)
-                    end
+                        end
+                    end)
                     return
                 end
                 local now = GetTime()
                 lastLine = now
                 lineCount = lineCount + 1
+                lineTimes[#lineTimes + 1] = now
+                if #lineTimes > 12 then table.remove(lineTimes, 1) end
                 if MinimalUIDB then MinimalUIDB.ctlines = lineCount .. " log lines heard this session, the last at " .. string.format("%.2f", now % 1000) end
                 note("LINE")
                 dropStale(now)
                 local h = table.remove(held, 1)
                 if h then
+                    claimTimes[#claimTimes + 1] = now
+                    if #claimTimes > 12 then table.remove(claimTimes, 1) end
                     note("  its log line came: shown")
                     present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.school, false, h.pet)
                     return
