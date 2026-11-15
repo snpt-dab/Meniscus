@@ -254,14 +254,20 @@ local function buildNumbers()
                     local sc = f.scale
                     if f.crit and f.age < 0.16 then sc = 1.7 - 0.4 * f.age / 0.16 end
                     f:SetScale(sc)
-                    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x / sc, (f.y + NUM_RISE * e) / sc)
+                    if not pcall(f.SetPoint, f, "CENTER", f.rel or UIParent, f.rel and "TOP" or "BOTTOMLEFT", f.x / sc, (f.y + NUM_RISE * e) / sc) then
+                        f.live = false
+                        f:Hide()
+                    end
                     f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
                 end
             end
         end
         if not any then self:Hide() end
     end)
-    local function show(x, y, value, r, g, b, crit, small)
+    -- rel: the frame the number rises from (a nameplate), or nil for a
+    -- place on the screen. A nameplate may not be measured by an addon
+    -- ("restricted region"), only anchored to: so the number is hung on it.
+    local function show(rel, x, y, value, r, g, b, crit, small)
         local f = item()
         if not f then return end
         -- (A hidden amount goes straight in; nothing is done with it here.)
@@ -274,31 +280,35 @@ local function buildNumbers()
         local scale = crit and 1.3 or (small and 0.8 or 1)
         f.crit, f.scale = crit, scale
         f:SetScale(scale)
+        f.rel = rel
         f.x = x + ((spawned % 5) - 2) * 13
         f.y = y
         f.fs:SetTextColor(r, g, b)
         f.age, f.live = 0, true
         f:SetAlpha(1)
         f:ClearAllPoints()
-        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", f.x / scale, f.y / scale)
+        local okP, errP = pcall(f.SetPoint, f, "CENTER", rel or UIParent, rel and "TOP" or "BOTTOMLEFT", f.x / scale, f.y / scale)
+        if not okP then
+            -- (Not allowed to hang on this plate either: give this one up.)
+            f.live = false
+            if MinimalUIDB then MinimalUIDB.ctdiag = "anchor refused: " .. tostring(errP) end
+            return
+        end
         f:Show()
         driver:Show()
     end
     -- Where a unit's numbers start: just above its nameplate.
-    local function plateSpot(unit)
+    local function plateOf(unit)
         local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
         if not ok or not plate or (plate.IsForbidden and plate:IsForbidden()) then return end
-        local x, y = plate:GetCenter()
-        if not (x and y) then return end
-        local k = plate:GetEffectiveScale() / UIParent:GetEffectiveScale()
-        return x * k, y * k + 16
+        return plate
     end
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("UNIT_COMBAT")
     ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
         if type(unit) ~= "string" or secret(unit) or secret(action) or type(action) ~= "string" then return end
         local mine = unit == "player"
-        local x, y
+        local x, y, rel
         if mine then
             -- What you take already rises out of the health orb, when that
             -- is on (Extras: orbText): not shown a second time here.
@@ -308,21 +318,22 @@ local function buildNumbers()
             local w, h = UIParent:GetWidth(), UIParent:GetHeight()
             x, y = w / 2 + (action == "HEAL" and 80 or -80), h * 0.46
         elseif unit:find("^nameplate") then
-            x, y = plateSpot(unit)
+            rel = plateOf(unit)
+            if rel then x, y = 0, 4 end
         end
         if not x then return end
         local crit = not secret(indicator) and indicator == "CRITICAL"
         if action == "HEAL" then
-            show(x, y, amount, 0.42, 0.92, 0.50, crit)
+            show(rel, x, y, amount, 0.42, 0.92, 0.50, crit)
         elseif action == "WOUND" then
             if mine then
-                show(x, y, amount, 0.96, 0.42, 0.38, crit)
+                show(rel, x, y, amount, 0.96, 0.42, 0.38, crit)
             else
                 local c = (not secret(school) and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
-                show(x, y, amount, c[1], c[2], c[3], crit)
+                show(rel, x, y, amount, c[1], c[2], c[3], crit)
             end
         elseif WORDS[action] then
-            show(x, y, WORDS[action], 0.62, 0.62, 0.68, false, true)
+            show(rel, x, y, WORDS[action], 0.62, 0.62, 0.68, false, true)
         end
     end)
 end
