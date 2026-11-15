@@ -1465,6 +1465,7 @@ function UF:BuildCure()
     -- Has this unit something we can cure? Returns the aura (its picture and
     -- kind may be hidden values in combat: they are only handed on).
     local diag = false
+    local pill -- (the out-of-combat pill, made further down)
     local function afflicted(unit)
         if not UnitExists(unit) then return nil end
         for idx = 1, 8 do
@@ -1482,6 +1483,9 @@ function UF:BuildCure()
     end
     local function update(b)
         if #spells == 0 then b.vis:Hide() return end
+        -- While the pill is up (out of combat) it speaks for everyone: the
+        -- chips stay dark, so the same thing isn't shown in two places.
+        if pill and pill:IsShown() then b.vis:Hide() return end
         local a = afflicted(b.unit)
         if not a then b.vis:Hide() return end
         b.icon:SetTexture(a.icon)
@@ -1504,7 +1508,7 @@ function UF:BuildCure()
     -- next. Out of combat only: it steps aside as a fight starts, and the
     -- chips take over.
     local PH = 24
-    local pill = CreateFrame("Button", "MeniscusQuickCure", UIParent, "SecureActionButtonTemplate")
+    pill = CreateFrame("Button", "MeniscusQuickCure", UIParent, "SecureActionButtonTemplate")
     pill:SetSize(160, PH)
     pill:SetFrameStrata("HIGH")
     pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
@@ -1552,7 +1556,8 @@ function UF:BuildCure()
         local d = a.dispelName
         local kind = type(d) == "string" and not issecretvalue(d) and d or nil
         local spell = (kind and typeSpell[kind]) or spells[1]
-        if showing.unit == unit and showing.spell == spell and pill:IsShown() then return end
+        -- (Placed afresh each time: the map it sits over is built after
+        -- this, and the first placing used to be kept.)
         showing.unit, showing.spell = unit, spell
         pill:SetAttribute("type", "spell")
         pill:SetAttribute("spell", spell)
@@ -1593,23 +1598,24 @@ function UF:BuildCure()
                 pill:Hide()
                 showing.unit = nil
             end
+            updateAll() -- the chips take over
             return
         end
         if e == "UNIT_AURA" then
             if type(unit) ~= "string" or issecretvalue(unit) then return end
-            for _, b in ipairs(chips) do
-                if b.unit == unit then pcall(update, b) end
-            end
+            -- (Only you and your party: this event fires for every unit in sight.)
+            if unit ~= "player" and not unit:find("^party%d$") then return end
             pcall(updatePill)
+            updateAll()
             return
         end
         if e ~= "PLAYER_REGEN_ENABLED" or stale then pcall(assign) end
-        updateAll()
         pcall(updatePill)
+        updateAll()
     end)
     assign()
     -- (The map and its rim are built after this module.)
-    C_Timer.After(3, function() pcall(assign); updateAll() end)
+    C_Timer.After(3, function() pcall(assign); pcall(updatePill); updateAll() end)
 end
 
 -- ── Party ─────────────────────────────────────────────────────────────────
