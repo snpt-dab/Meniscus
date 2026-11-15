@@ -363,16 +363,26 @@ function TR:Refresh()
     win.trainAll:SetEnabled(avail > 0)
     win.unavail.on = self.db.showUnavailable
     win.unavail:Repaint()
-    -- Train all: keep learning the first affordable spell after each update.
+    -- Train all: every one you can afford, asked for there and then, inside
+    -- the click itself. (It used to learn one, wait for the list to come
+    -- back, and learn the next from there: but buying is something the game
+    -- only lets an addon do as part of a click, and every one after the
+    -- first raised its "blocked from an action" box.) From the bottom of
+    -- the list up, so one being learned can't shift those still to come.
     if trainingAll then
-        local myMoney = GetMoney()
-        for _, e in ipairs(data) do
-            if not e.header and e.available and (not num(e.cost) or e.cost <= myMoney) then
-                call(_G.BuyTrainerService, e.index)
-                return
+        trainingAll = false
+        local left = GetMoney()
+        if not num(left) then left = math.huge end
+        for i = #data, 1, -1 do
+            local e = data[i]
+            if not e.header and e.available then
+                local cost = num(e.cost) and e.cost or 0
+                if cost <= left then
+                    left = left - cost
+                    call(_G.BuyTrainerService, e.index)
+                end
             end
         end
-        trainingAll = false
     end
 end
 
