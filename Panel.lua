@@ -421,6 +421,10 @@ local PAGES = {
               set = function() cmd("party", "test") end },
         } },
         { title = "Group and healing", items = {
+            { "Class and role marks on portraits", kind = "switch",
+              note = "A player's class emblem, and a tank's shield or healer's plus in a group",
+              get = function() return ns.modules.UnitFrames.db.whoBadges ~= false end,
+              set = function() local d = ns.modules.UnitFrames.db; d.whoBadges = d.whoBadges == false end },
             { "Quick Cure chips", kind = "switch", reload = true,
               note = "Lights up beside someone you can cure; click to cast",
               get = function() return ns.modules.UnitFrames.db.cure ~= false end,
@@ -794,6 +798,7 @@ local KEYS = {
     ["Frame positions"] = "move reset unlock drag",
     ["Nameplates"] = "enemy bars overhead plates",
     ["Party frames"] = "group members stack",
+    ["Class and role marks on portraits"] = "class icon emblem tank healer role badge portrait party target",
     ["Quick Cure chips"] = "dispel decurse cleanse poison disease curse magic remove debuff",
     ["Healer notes on group frames"] = "weakened soul shield resurrection res rez priest",
     ["3D portraits (target, window headers)"] = "model avatar face",
