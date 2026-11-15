@@ -526,10 +526,10 @@ local PAGES = {
                   if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
               end },
             { "Where your hits show", kind = "dropdown",
-              note = "A killing blow, or a target too far for a nameplate, uses the rail either way",
+              note = "A killing blow or a far target uses the rail either way",
               options = function() return { { key = "plate", label = "Over the enemy" },
                                             { key = "rail", label = "Beside your character" } } end,
-              get = function() return ns.modules.Nameplates.db.numbersWhere or "plate" end,
+              get = function() return ns.modules.Nameplates.db.numbersWhere or "rail" end,
               set = function(k) ns.modules.Nameplates.db.numbersWhere = k end },
             { "Damage type beside the number", kind = "switch",
               note = "A small emblem for fire, frost, shadow and the rest (a blade for physical)",
