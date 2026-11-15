@@ -2306,8 +2306,83 @@ local function buildFlyout(spec)
     C_Timer.After(8, soon)
 end
 
+-- ── Talent points waiting ─────────────────────────────────────────────────
+-- A mark in the row with the mail and whisper marks while you have talent
+-- points to spend: there, quiet, until you spend them. It breathes for a
+-- few seconds when a point arrives and once when you log in, and otherwise
+-- sits still. Click it for the talent window.
+local function unspentTalents()
+    local how
+    if type(_G.UnitCharacterPoints) == "function" then
+        local ok, n = pcall(_G.UnitCharacterPoints, "player")
+        if ok and num(n) then how = "UnitCharacterPoints"; return n, how end
+    end
+    if type(_G.GetNumUnspentTalents) == "function" then
+        local ok, n = pcall(_G.GetNumUnspentTalents)
+        if ok and num(n) then return n, "GetNumUnspentTalents" end
+    end
+    local CT, TR = C_ClassTalents, C_Traits
+    if CT and CT.GetActiveConfigID and TR and TR.GetConfigInfo and TR.GetTreeCurrencyInfo then
+        local okC, cfg = pcall(CT.GetActiveConfigID)
+        local okI, info = pcall(TR.GetConfigInfo, okC and cfg or nil)
+        if okI and type(info) == "table" and type(info.treeIDs) == "table" then
+            local sum = 0
+            for _, tree in ipairs(info.treeIDs) do
+                local okT, list = pcall(TR.GetTreeCurrencyInfo, cfg, tree, false)
+                if okT and type(list) == "table" then
+                    for _, c in ipairs(list) do
+                        if type(c) == "table" and num(c.quantity) then sum = sum + c.quantity end
+                    end
+                end
+            end
+            return sum, "C_Traits"
+        end
+    end
+    return 0, "none"
+end
+local function buildTalentMark()
+    local chip = EX:Chip("micro_talent.tga")
+    local GOLDEN = { 0.95, 0.78, 0.36 }
+    local was, calmAt = nil, 0
+    chip.tip = function(tip)
+        local n = unspentTalents()
+        tip:SetText(n == 1 and "1 talent point to spend" or (n .. " talent points to spend"), 1, 1, 1)
+        tip:AddLine("Click to open your talents.", 0.7, 0.7, 0.75)
+    end
+    chip.click = function()
+        if InCombatLockdown() then return end
+        if PlayerSpellsUtil and PlayerSpellsUtil.ToggleClassTalentFrame then pcall(PlayerSpellsUtil.ToggleClassTalentFrame)
+        elseif _G.ToggleTalentFrame then pcall(_G.ToggleTalentFrame) end
+    end
+    local function update(fresh)
+        local n, how = unspentTalents()
+        if MinimalUIDB then MinimalUIDB.talentdiag = "unspent " .. tostring(n) .. " via " .. tostring(how) end
+        -- A point just arrived (or you have just logged in with some): a
+        -- short spell of breathing, then still.
+        if n > 0 and (fresh or (was ~= nil and n > was)) then
+            calmAt = GetTime() + 12
+            C_Timer.After(12.2, function() update() end)
+        end
+        was = n
+        chip:Set(n > 0, GOLDEN[1], GOLDEN[2], GOLDEN[3], n > 0 and GetTime() < calmAt)
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_LEVEL_UP", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED",
+                         "TRAIT_TREE_CURRENCY_INFO_UPDATED", "PLAYER_ENTERING_WORLD" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_ENTERING_WORLD" then
+            C_Timer.After(5, function() update(true) end)
+        else
+            C_Timer.After(0.5, function() update() end)
+        end
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.talentMark ~= false then pcall(buildTalentMark) end
     if db.potions ~= false then
         local ok, err = pcall(buildFlyout, { name = "MeniscusPotions", row = "MeniscusPotionRow", btn = "MeniscusPotion",
             glyph = "micro_potion.tga", title = "Potions", is = isPotion, rank = potionRank, slot = 0, label = "potion row" })

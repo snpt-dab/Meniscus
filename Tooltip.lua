@@ -194,6 +194,25 @@ local function compactPlayer(tip, unit)
         fs:SetText(nil)
         fs:Hide()
     end
+    -- Wide enough for the name: with the long "Level 22 Dwarf (Player)"
+    -- line gone, the tooltip shrank to the icon row and cut the name short.
+    local nameFS = _G.GameTooltipTextLeft1
+    local okW, w = pcall(function() return nameFS and nameFS:GetUnboundedStringWidth() end)
+    if okW and type(w) == "number" and not issecretvalue(w) and tip.SetMinimumWidth then
+        tip:SetMinimumWidth(math.ceil(w) + 24)
+        if not tip.__muiMinHook then
+            tip.__muiMinHook = true
+            tip:HookScript("OnHide", function(self)
+                if self.__muiMinW then self.__muiMinW = nil; pcall(self.SetMinimumWidth, self, 0) end
+            end)
+            if tip:HasScript("OnTooltipCleared") then
+                tip:HookScript("OnTooltipCleared", function(self)
+                    if self.__muiMinW then self.__muiMinW = nil; pcall(self.SetMinimumWidth, self, 0) end
+                end)
+            end
+        end
+        tip.__muiMinW = true
+    end
     tip:Show() -- (fits the tooltip to its fewer lines)
 end
 
