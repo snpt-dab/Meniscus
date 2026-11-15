@@ -222,14 +222,36 @@ local function buildNumbers()
     local items, spawned = {}, 0
     local driver = CreateFrame("Frame")
     driver:Hide()
+    -- How a number looks and moves (larger than the first version, and
+    -- dressed a little, in the addon's own way):
+    --   * a soft dark patch behind it, so it reads over grass or snow
+    --     without a hard outline box;
+    --   * it opens small and settles to size in a tenth of a second, then
+    --     drifts up and a little outward, like a spark leaving a fire;
+    --   * a critical is larger, lands with a pop, and for a moment shows
+    --     the lens fringe the Quick Buff pill has: a faint warm copy to one
+    --     side and a cool one to the other, closing in.
+    local SIZE = 20
     local function item()
         for i = 1, #items do if not items[i].live then return items[i] end end
         if #items >= NUM_POOL then return nil end
         local f = CreateFrame("Frame", nil, host)
         f:SetSize(10, 10)
-        f.fs = f:CreateFontString(nil, "OVERLAY")
-        ns:SetFont(f.fs, 15, "OUTLINE", true)
-        f.fs:SetPoint("CENTER")
+        f.back = f:CreateTexture(nil, "BACKGROUND")
+        f.back:SetTexture("Interface/AddOns/Meniscus/Media/spot.tga")
+        f.back:SetVertexColor(0, 0, 0, 0.42)
+        f.back:SetSize(SIZE * 3.4, SIZE * 1.9)
+        f.back:SetPoint("CENTER")
+        local function line(layer, sub)
+            local t = f:CreateFontString(nil, layer, nil)
+            ns:SetFont(t, SIZE, "OUTLINE", true)
+            t:SetPoint("CENTER")
+            return t
+        end
+        f.warm, f.cool = line("ARTWORK"), line("ARTWORK")
+        f.warm:SetTextColor(1.00, 0.45, 0.40)
+        f.cool:SetTextColor(0.45, 0.62, 1.00)
+        f.fs = line("OVERLAY")
         f.fs:SetShadowOffset(1, -1)
         f.fs:SetShadowColor(0, 0, 0, 0.9)
         items[#items + 1] = f
@@ -249,16 +271,29 @@ local function buildNumbers()
                     any = true
                     -- Up quickly, then easing off; clear until the last third.
                     local e = 1 - (1 - k) * (1 - k)
-                    -- (A critical lands large and settles; positions are in
-                    -- the frame's own units, so the scale is divided out.)
+                    -- Opening: small (a critical: large) to its own size.
+                    -- (Positions are in the frame's own units, so the scale
+                    -- is divided out.)
                     local sc = f.scale
-                    if f.crit and f.age < 0.16 then sc = 1.7 - 0.4 * f.age / 0.16 end
+                    if f.crit then
+                        if f.age < 0.18 then sc = f.scale * (1.45 - 0.45 * f.age / 0.18) end
+                    elseif f.age < 0.10 then
+                        sc = f.scale * (0.6 + 0.4 * f.age / 0.10)
+                    end
                     f:SetScale(sc)
-                    if not pcall(f.SetPoint, f, "CENTER", f.rel or UIParent, f.rel and "TOP" or "BOTTOMLEFT", f.x / sc, (f.y + NUM_RISE * e) / sc) then
+                    if not pcall(f.SetPoint, f, "CENTER", f.rel or UIParent, f.rel and "TOP" or "BOTTOMLEFT",
+                                 (f.x + f.drift * e) / sc, (f.y + NUM_RISE * e) / sc) then
                         f.live = false
                         f:Hide()
                     end
                     f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
+                    if f.crit then
+                        -- The fringe: apart at first, closing and fading in half a second.
+                        local q = f.age < 0.5 and (1 - f.age / 0.5) or 0
+                        f.warm:SetPoint("CENTER", -3.2 * q, 0.6 * q)
+                        f.cool:SetPoint("CENTER", 3.2 * q, -0.6 * q)
+                        f.warm:SetAlpha(0.75 * q); f.cool:SetAlpha(0.75 * q)
+                    end
                 end
             end
         end
@@ -276,12 +311,24 @@ local function buildNumbers()
             MinimalUIDB.ctdiag = "first number: hidden=" .. tostring(secret(value)) .. " type=" .. type(value) .. " shown=" .. tostring(ok)
         end
         if not ok then return end
+        if crit then
+            pcall(f.warm.SetText, f.warm, value)
+            pcall(f.cool.SetText, f.cool, value)
+        else
+            f.warm:SetText(""); f.cool:SetText("")
+        end
+        f.warm:SetAlpha(0); f.cool:SetAlpha(0)
+        f.back:SetShown(not small)
         spawned = spawned + 1
-        local scale = crit and 1.3 or (small and 0.8 or 1)
+        local scale = crit and 1.3 or (small and 0.7 or 1)
         f.crit, f.scale = crit, scale
         f:SetScale(scale)
         f.rel = rel
-        f.x = x + ((spawned % 5) - 2) * 13
+        -- Five lanes side by side, so a burst doesn't stack; each drifts a
+        -- little further out the way it already leans.
+        local lane = (spawned % 5) - 2
+        f.x = x + lane * 16
+        f.drift = lane * 7
         f.y = y
         f.fs:SetTextColor(r, g, b)
         f.age, f.live = 0, true
