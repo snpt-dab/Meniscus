@@ -342,6 +342,22 @@ local PAGES = {
     } },
     { key = "console", title = "Console", groups = {
         { title = "Layout", items = {
+            { "Console opacity", kind = "dropdown",
+              note = "How dark the tray behind the bottom row is",
+              options = function()
+                  return { { key = 100, label = "Solid (as designed)" }, { key = 85, label = "85%" }, { key = 70, label = "70%" },
+                           { key = 55, label = "55%" }, { key = 40, label = "40%" }, { key = 25, label = "25%" },
+                           { key = 10, label = "10%" }, { key = 0, label = "Clear (no backing)" } }
+              end,
+              get = function()
+                  local k = ns.modules.Bars.db.plateAlpha
+                  return math.floor(((type(k) == "number" and k or 1) * 100) + 0.5)
+              end,
+              set = function(v)
+                  local B = ns.modules.Bars
+                  B.db.plateAlpha = v / 100
+                  if B.ApplyPlateAlpha then pcall(B.ApplyPlateAlpha, B) end
+              end },
             { "Plate behind the bottom row", kind = "switch",
               get = function() return ns.modules.Bars.db.plate end,
               set = function() cmd("console") end },
@@ -762,6 +778,7 @@ local KEYS = {
     ["Active profile"] = "character layout copy alt settings",
     ["Reset to defaults"] = "factory wipe start over profile",
     ["Plate behind the bottom row"] = "console panel background dark bar",
+    ["Console opacity"] = "transparency transparent alpha see through tray plate background fade dark",
     ["Chat and context panel in the plate"] = "wings chat window damage meter seat",
     ["Minimap between the action bars"] = "dome round map split",
     ["Dock windows above the console"] = "window manager position left right snap",

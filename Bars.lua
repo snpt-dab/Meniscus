@@ -952,8 +952,9 @@ function Bars:ApplyCharWell()
         w = CreateFrame("Frame", "MinimalUI_CharWell", UIParent)
         w:SetFrameStrata("BACKGROUND")
         w:SetFrameLevel(2)
-        ns.RoundedRect(w, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
-        ns.RoundedRect(w, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
+        local wring = ns.RoundedRect(w, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
+        local wfill = ns.RoundedRect(w, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
+        if Bars.PlateBacking then Bars.PlateBacking(w, wring, wfill, 0.03, 0.03, 0.035, 0.95) end
         local pill = CreateFrame("Frame", nil, w)
         pill:SetHeight(14)
         pill:SetFrameLevel(w:GetFrameLevel() + 3)
@@ -1224,14 +1225,36 @@ function Bars:Slots()
     }
 end
 
+-- How see-through the console is (db.plateAlpha: 1 = as designed, 0 = no
+-- backing at all). The plate, the wells seated in it and the character
+-- panel all follow it: each keeps its own darkness, scaled, and their
+-- hairline borders thin out with them (gone entirely at 0). Their contents
+-- (chat, buttons, the map) are not faded: only the dark backing is.
+local backs = {} -- { ring = paint, fill = paint, r, g, b, a }
+local function backing(frame, ringPaint, fillPaint, r, g, b, a)
+    backs[#backs + 1] = { ring = ringPaint, fill = fillPaint, r = r, g = g, b = b, a = a }
+    return frame
+end
+Bars.PlateBacking = function(...) backing(...); Bars:ApplyPlateAlpha() end
+function Bars:ApplyPlateAlpha()
+    local k = self.db and self.db.plateAlpha
+    if type(k) ~= "number" then k = 1 end
+    for _, e in ipairs(backs) do
+        e.fill(e.r, e.g, e.b, e.a * k)
+        e.ring(T.border[1], T.border[2], T.border[3], k <= 0 and 0 or (0.35 + 0.65 * k))
+    end
+end
+
 local function well(plate, key)
     local wl = plate[key]
     if not wl then
         wl = CreateFrame("Frame", nil, plate)
         wl:SetFrameLevel(plate:GetFrameLevel() + 1)
-        ns.RoundedRect(wl, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
-        ns.RoundedRect(wl, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
+        local ring = ns.RoundedRect(wl, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
+        local fill = ns.RoundedRect(wl, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
+        backing(wl, ring, fill, 0.03, 0.03, 0.035, 0.95)
         plate[key] = wl
+        Bars:ApplyPlateAlpha()
     end
     return wl
 end
@@ -1293,8 +1316,10 @@ function Bars:ApplyPlate()
         p:SetFrameStrata("BACKGROUND")
         p:SetFrameLevel(0)
         p:EnableMouse(false)
-        ns.RoundedRect(p, -8, 0, 16, T.border[1], T.border[2], T.border[3], 1)
-        ns.RoundedRect(p, -7, 1, 15, 0.05, 0.05, 0.06, 0.90)
+        local pring = ns.RoundedRect(p, -8, 0, 16, T.border[1], T.border[2], T.border[3], 1)
+        local pfill = ns.RoundedRect(p, -7, 1, 15, 0.05, 0.05, 0.06, 0.90)
+        backing(p, pring, pfill, 0.05, 0.05, 0.06, 0.90)
+        Bars:ApplyPlateAlpha()
         -- (The header bands' noise grain was tried on the plate and dropped.)
         self.plate = p
     end
