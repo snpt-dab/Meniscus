@@ -764,9 +764,11 @@ local function updateFooter()
     win.money:SetText(moneyText(GetMoney()))
     for _, t in ipairs(win.bagTiles) do
         local tex = GetInventoryItemTexture("player", t.inv)
-        t.icon:SetTexture(tex or t.empty)
-        t.icon:SetDesaturated(not tex)
-        t.icon:SetAlpha(tex and 1 or 0.35)
+        t.icon:SetTexture(tex)
+        t.icon:SetShown(tex ~= nil)
+        t.icon:SetDesaturated(false)
+        t.icon:SetAlpha(1)
+        for _, l in ipairs(t.plus or {}) do l:SetShown(not tex) end
     end
 end
 
@@ -818,6 +820,18 @@ local function makeBagTile(parent, index)
     t.icon:AddMaskTexture(mask)
     local hl = t:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints(mask); hl:SetColorTexture(1, 1, 1, 0.12); hl:AddMaskTexture(mask)
+    -- An empty slot: a plain "+" in place of a picture, so free slots are
+    -- seen at a glance (and read as somewhere a bag can be dropped).
+    t.plus = {}
+    for i, q in ipairs({ { -4, 0, 4, 0 }, { 0, -4, 0, 4 } }) do
+        local l = t:CreateLine(nil, "OVERLAY")
+        l:SetThickness(1.6)
+        l:SetColorTexture(T.textDim[1], T.textDim[2], T.textDim[3], 0.9)
+        l:SetStartPoint("CENTER", t, q[1], q[2])
+        l:SetEndPoint("CENTER", t, q[3], q[4])
+        t.plus[i] = l
+    end
+    t.extra = index > (_G.NUM_BAG_SLOTS or 4)
     t:RegisterForClicks("LeftButtonUp")
     t:RegisterForDrag("LeftButton")
     local function swap()
@@ -828,7 +842,11 @@ local function makeBagTile(parent, index)
     t:SetScript("OnReceiveDrag", swap)
     t:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        if not GameTooltip:SetInventoryItem("player", inv) then GameTooltip:SetText(BAGSLOT or "Bag slot") end
+        if not GameTooltip:SetInventoryItem("player", inv) then
+            GameTooltip:SetText(self.extra and "Empty profession bag slot" or "Empty bag slot", 1, 1, 1)
+            GameTooltip:AddLine(self.extra and "Drop a herb, mining or other profession bag here."
+                or "Drop a bag here.", 0.7, 0.7, 0.75)
+        end
         GameTooltip:Show()
     end)
     t:SetScript("OnLeave", function() GameTooltip:Hide() end)
