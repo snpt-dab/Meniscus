@@ -318,6 +318,11 @@ local function buildNumbers()
         local f = item()
         if not f then return end
         f.unit = showUnit
+        f.onTarget = false
+        if showUnit and showUnit ~= "player" then
+            local okT, isT = pcall(UnitIsUnit, showUnit, "target")
+            f.onTarget = okT and not secret(isT) and isT == true
+        end
         if kind then
             f.kind:SetTexture("Interface/AddOns/Meniscus/Media/" .. kind)
             f.kind:SetVertexColor(r, g, b, 1)
@@ -508,16 +513,57 @@ local function buildNumbers()
         local UFm = ns.modules.UnitFrames
         local tf = UFm and UFm.target
         local home = tf and tf:IsShown() and (tf.healthPill or tf) or nil
+        local moved, dropped = 0, 0
         for i = 1, #items do
             local f = items[i]
             if f.live and f.unit == unit then
-                if home then
+                if home and f.onTarget then
                     f.rel, f.unit = home, nil
+                    moved = moved + 1
                 else
                     f.live = false
                     f:Hide()
+                    dropped = dropped + 1
                 end
             end
+        end
+        if MinimalUIDB and (moved + dropped) > 0 then
+            local d = MinimalUIDB.ctlog
+            if type(d) == "table" then
+                d[#d + 1] = string.format("%.2f PLATE GONE %s: %d moved to the target frame, %d dropped", GetTime() % 1000, unit, moved, dropped)
+            end
+        end
+    end)
+    -- The same, found another way: your target is dead. (Its nameplate can
+    -- stop being drawn at death without being reported as removed; a number
+    -- hung on it went with it.) Looked for ten times a second while any
+    -- number is up.
+    local watch = CreateFrame("Frame")
+    local wacc = 0
+    watch:SetScript("OnUpdate", function(_, dt)
+        wacc = wacc + dt
+        if wacc < 0.1 then return end
+        wacc = 0
+        local any = false
+        for i = 1, #items do if items[i].live and items[i].onTarget and items[i].unit then any = true break end end
+        if not any then return end
+        local okD, dead = pcall(UnitIsDeadOrGhost, "target")
+        if not okD or secret(dead) or not dead then return end
+        local UFm = ns.modules.UnitFrames
+        local tf = UFm and UFm.target
+        local home = tf and tf:IsShown() and (tf.healthPill or tf) or nil
+        if not home then return end
+        local moved = 0
+        for i = 1, #items do
+            local f = items[i]
+            if f.live and f.onTarget and f.unit then
+                f.rel, f.unit = home, nil
+                moved = moved + 1
+            end
+        end
+        if MinimalUIDB and moved > 0 and type(MinimalUIDB.ctlog) == "table" then
+            local d = MinimalUIDB.ctlog
+            d[#d + 1] = string.format("%.2f TARGET DEAD: %d moved to the target frame", GetTime() % 1000, moved)
         end
     end)
 
@@ -571,7 +617,8 @@ local function buildNumbers()
             if MinimalUIDB then
                 local d = MinimalUIDB.ctlog
                 if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
-                d[#d + 1] = string.format("%.2f %s / %s  amount %s  school %s  %s%s", GetTime() % 1000, action,
+                d[#d + 1] = string.format("%.2f %s %s / %s  amount %s  school %s  %s%s", GetTime() % 1000,
+                    unit == "target" and (rel and "target(frame)" or "target(skipped: has a plate)") or "plate", action,
                     tostring(not secret(indicator) and indicator or "?"),
                     secret(amount) and "hidden" or tostring(amount),
                     secret(school) and "hidden" or tostring(school),
