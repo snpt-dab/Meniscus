@@ -377,12 +377,19 @@ local function buildNumbers()
         if action == "HEAL" then return take(heals, now) end
         local okT, isTarget = pcall(UnitIsUnit, unit, "target")
         if okT and not secret(isTarget) and isTarget == true and take(hits, now) then return true end
-        local t0 = plate and dots[plate]
-        if t0 and now - t0 < 31 then
+        local list = plate and dots[plate]
+        if list and #list > 0 then
             local okA, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, 1, "HARMFUL|PLAYER")
             if okA and a then
-                local ph = (now - t0) % 3
-                if now - t0 > 1 and (ph < 0.45 or ph > 2.55) then return true end
+                for i = #list, 1, -1 do
+                    local age = now - list[i]
+                    if age > 31 then
+                        table.remove(list, i)
+                    elseif age > 1 then
+                        local ph = age % 3
+                        if ph < 0.5 or ph > 2.5 then return true end
+                    end
+                end
             end
         end
         return false
@@ -401,8 +408,27 @@ local function buildNumbers()
             if not ok or secret(can) or not can then return end
             hits[#hits + 1] = now + 1.2
             if #hits > 6 then table.remove(hits, 1) end
-            local plate = plateOf("target")
-            if plate then dots[plate] = now end
+            -- When an effect of yours may have gone on (its ticks are counted
+            -- from here). Not a wand or bow shot: those repeat every second
+            -- or two, and each one was moving the count, so no tick ever
+            -- fell on it.
+            local auto = false
+            local fa = C_Spell and C_Spell.IsAutoRepeatSpell
+            if fa then
+                local okR, r = pcall(fa, spellID)
+                auto = okR and not secret(r) and r == true
+            end
+            if not auto then
+                local okN, n = pcall(C_Spell.GetSpellName, spellID)
+                auto = okN and not secret(n) and (n == "Shoot" or n == "Auto Shot")
+            end
+            local plate = not auto and plateOf("target")
+            if plate then
+                local list = dots[plate]
+                if not list then list = {}; dots[plate] = list end
+                list[#list + 1] = now
+                if #list > 4 then table.remove(list, 1) end
+            end
         end)
     end
 
