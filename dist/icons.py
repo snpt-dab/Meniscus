@@ -153,6 +153,54 @@ def icons():
     I['mug'] = (Icon().box(5.6, 8.6, 14.6, 19.6, rad=1.6, w=2.0)
                 .arc(14.8, 13.8, 3.5, -78, 78, w=2.0)
                 .dot(7.3, 7.4, 2.0).dot(10.1, 6.4, 2.2).dot(12.9, 7.4, 2.0))
+    # ── who someone is: class, faction, race (player tooltips) ──
+    # One plain emblem each, in the set's stroke: what the class is known
+    # by, a banner shape for the faction, a sign for the race.
+    import math as _m
+    def rays(ic, cx, cy, r0, r1, n, w, turn=0.0):
+        for i in range(n):
+            a = turn + 2 * _m.pi * i / n
+            ic.line([(cx + r0 * _m.cos(a), cy + r0 * _m.sin(a)), (cx + r1 * _m.cos(a), cy + r1 * _m.sin(a))], w=w)
+        return ic
+    # warrior: a sword
+    I['class_warrior'] = Icon().line([(8.8, 15.2), (18.6, 5.4)], w=2.6).line([(6.2, 12.2), (11.8, 17.8)], w=2.4).dot(5.6, 18.4, 1.8)
+    # paladin: a war hammer
+    I['class_paladin'] = Icon().line([(12, 10.5), (12, 20)], w=2.6).box(6.2, 4.4, 17.8, 10.6, rad=1.6, fill=True)
+    # hunter: a drawn bow
+    I['class_hunter'] = (Icon().arc(5.6, 12, 8.8, -52, 52, w=2.3).line([(11, 5.1), (11, 18.9)], w=1.7)
+                         .line([(5, 12), (19.6, 12)], w=2.0).line([(16.6, 9.2), (19.6, 12), (16.6, 14.8)], w=2.0))
+    # rogue: a dagger, point down
+    I['class_rogue'] = Icon().poly([(12, 20.4), (9.3, 10.2), (14.7, 10.2)]).line([(7.6, 9.6), (16.4, 9.6)], w=2.4).line([(12, 9), (12, 4.6)], w=2.6)
+    # priest: a cross
+    I['class_priest'] = Icon().line([(12, 4.6), (12, 19.8)], w=2.8).line([(7.2, 9.6), (16.8, 9.6)], w=2.8)
+    # shaman: a bolt of lightning
+    I['class_shaman'] = Icon().poly([(14, 3.8), (7, 13.2), (11.4, 13.2), (9.8, 20.4), (17.2, 10.4), (12.8, 10.4)])
+    # mage: a six-pointed spark
+    I['class_mage'] = rays(Icon().dot(12, 12, 1.9), 12, 12, 2.6, 8.0, 6, 2.2, turn=_m.pi / 2)
+    # warlock: a flame
+    I['class_warlock'] = Icon().line([(12, 3.8), (16.4, 10.6), (17.2, 15), (14.6, 19.2), (9.4, 19.2), (6.8, 15), (8.2, 10.4), (10.6, 12.8)], w=2.2, close=True)
+    # druid: a paw print
+    I['class_druid'] = Icon().dot(12, 15.4, 3.8).dot(6.6, 11.2, 1.9).dot(10, 7.2, 1.9).dot(14, 7.2, 1.9).dot(17.4, 11.2, 1.9)
+    # monk, death knight, demon hunter, evoker (should the client have them): a plain ring
+    I['class_other'] = Icon().ring(12, 12, 6.2)
+    # Alliance: a shield.  Horde: a swallow-tailed banner.
+    I['faction_alliance'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12.4), (12, 20), (6, 12.4)], w=2.3, close=True)
+    I['faction_horde'] = Icon().line([(7, 4.6), (17, 4.6), (17, 19.6), (12, 14.8), (7, 19.6)], w=2.3, close=True)
+    # races
+    I['race_human'] = Icon().line([(5, 17.4), (5, 8.2), (8.6, 12.2), (12, 6.4), (15.4, 12.2), (19, 8.2), (19, 17.4)], w=2.2, close=True)   # a crown
+    I['race_dwarf'] = Icon().line([(4.2, 18.2), (9.6, 7.6), (13, 13.8), (15.4, 10.2), (19.8, 18.2)], w=2.3)                              # mountains
+    I['race_nightelf'] = Icon().arc(12.6, 12, 6.6, 55, 305, w=2.6)                                                                         # a crescent moon
+    I['race_gnome'] = rays(Icon().ring(12, 12, 3.8, w=2.2), 12, 12, 6.0, 8.2, 6, 3.0)                                                      # a cog
+    I['race_orc'] = (Icon().line([(12, 4.4), (12, 20)], w=2.4)                                                                             # a two-bladed axe
+                     .poly([(12, 6.2), (5.8, 4.6), (6.8, 9.4), (5.8, 13.8), (12, 12.2)])
+                     .poly([(12, 6.2), (18.2, 4.6), (17.2, 9.4), (18.2, 13.8), (12, 12.2)]))
+    I['race_scourge'] = Icon().ring(12, 10.4, 5.4, w=2.2).box(9, 13.4, 15, 19, rad=1.2, w=2.0).dot(10, 10.6, 1.25).dot(14, 10.6, 1.25)     # a skull
+    I['race_tauren'] = Icon().arc(12, 6.4, 7.2, 180, 360, w=2.6).ring(12, 17.6, 2.0, w=1.9)                                               # horns and a nose ring
+    I['race_troll'] = Icon().line([(6, 5), (18, 5), (12, 20)], w=2.3, close=True).line([(8.8, 9), (11, 10.2)], w=1.9).line([(15.2, 9), (13, 10.2)], w=1.9)  # a mask
+    I['race_bloodelf'] = rays(Icon().dot(12, 12, 3.1), 12, 12, 5.2, 8.4, 8, 1.7)                                                           # a sun
+    I['race_draenei'] = Icon().line([(12, 3.8), (18, 10.6), (12, 20.2), (6, 10.6)], w=2.2, close=True).line([(6, 10.6), (18, 10.6)], w=1.7)  # a crystal
+    I['race_other'] = Icon().ring(12, 9, 3.6).arc(12, 22, 7.0, 25, 155)                                                                     # head and shoulders
+
     # ── character stats page ──
     # strength: a flexed arm, in outline: the fist curled in at the top, the bicep's swell at the right
     def fit(pts, k=0.86):

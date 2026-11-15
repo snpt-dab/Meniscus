@@ -158,8 +158,67 @@ local function factionMark(unit)
     local word = type(name) == "string" and not issecretvalue(name) and name or nil
     return markCache[key] or word, word
 end
+-- Our own emblems (dist/icons.py: one flat sign per class, faction and
+-- race, in the stroke of the rest of the set), tinted: the class in its
+-- class colour, the faction blue or red, the race plain.
+local OUR_CLASS = { WARRIOR = 1, PALADIN = 1, HUNTER = 1, ROGUE = 1, PRIEST = 1, SHAMAN = 1, MAGE = 1, WARLOCK = 1, DRUID = 1 }
+local OUR_RACE = { Human = 1, Dwarf = 1, NightElf = 1, Gnome = 1, Orc = 1, Scourge = 1, Tauren = 1, Troll = 1,
+                   BloodElf = 1, Draenei = 1 }
+local FACTION_TINT = { Alliance = { 0.40, 0.62, 1.00 }, Horde = { 0.92, 0.32, 0.26 } }
+local function ourMark(file, r, g, b, size)
+    size = size or 15
+    return string.format("|TInterface/AddOns/Meniscus/Media/micro_%s.tga:%d:%d:0:0:32:32:0:32:0:32:%d:%d:%d|t",
+        file, size, size, math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
+end
+local function ourMarks(unit)
+    local okC, _, ctoken = pcall(UnitClass, unit)
+    local okR, _, rtoken = pcall(UnitRace, unit)
+    local okF, ftoken = pcall(UnitFactionGroup, unit)
+    if not (okC and okR) or issecretvalue(ctoken) or issecretvalue(rtoken) then return nil end
+    if type(ctoken) ~= "string" or type(rtoken) ~= "string" then return nil end
+    local cc = RAID_CLASS_COLORS and RAID_CLASS_COLORS[ctoken]
+    local class = ourMark(OUR_CLASS[ctoken] and ("class_" .. ctoken:lower()) or "class_other",
+        cc and cc.r or 0.9, cc and cc.g or 0.9, cc and cc.b or 0.9)
+    local race = ourMark(OUR_RACE[rtoken] and ("race_" .. rtoken:lower()) or "race_other", 0.86, 0.86, 0.90)
+    local faction
+    if okF and type(ftoken) == "string" and not issecretvalue(ftoken) and FACTION_TINT[ftoken] then
+        local t = FACTION_TINT[ftoken]
+        faction = ourMark("faction_" .. ftoken:lower(), t[1], t[2], t[3])
+    end
+    return race, class, faction
+end
+-- The level, as a small orb at the start of the line: a dark disc in a
+-- ring of the level's difficulty colour, the number inside. (A frame of
+-- ours laid over the line; the line leaves room for it.)
+local ORB = 19
+local function levelOrb(tip)
+    local o = tip.__muiLevel
+    if o then return o end
+    o = CreateFrame("Frame", nil, tip)
+    o:SetSize(ORB, ORB)
+    o:SetFrameLevel(tip:GetFrameLevel() + 5)
+    o.ring = o:CreateTexture(nil, "ARTWORK", nil, 0)
+    o.ring:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga")
+    o.ring:SetAllPoints()
+    o.fill = o:CreateTexture(nil, "ARTWORK", nil, 1)
+    o.fill:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga")
+    o.fill:SetPoint("TOPLEFT", 1.5, -1.5)
+    o.fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    o.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+    o.text = o:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(o.text, 10, "", true)
+    o.text:SetPoint("CENTER", 0, 0)
+    o:Hide()
+    tip.__muiLevel = o
+    local function away(self) if self.__muiLevel then self.__muiLevel:Hide() end end
+    tip:HookScript("OnHide", away)
+    if tip:HasScript("OnTooltipCleared") then tip:HookScript("OnTooltipCleared", away) end
+    return o
+end
 local function compactPlayer(tip, unit)
-    if not (TT.db and TT.db.icons ~= false) then return end
+    if tip.__muiLevel then tip.__muiLevel:Hide() end
+    local style = TT.db and TT.db.tipIcons or (TT.db and TT.db.icons == false and "off") or "ours"
+    if style == "off" then return end
     local okP, isPlayer = pcall(UnitIsPlayer, unit)
     if not okP or issecretvalue(isPlayer) or not isPlayer then return end
     local okL, level = pcall(UnitLevel, unit)
@@ -167,6 +226,10 @@ local function compactPlayer(tip, unit)
     local race = raceMark(unit)
     local class, classWord = classMark(unit)
     local faction, factionWord = factionMark(unit)
+    if style == "ours" then
+        local r2, c2, f2 = ourMarks(unit)
+        if r2 then race, class, faction = r2, c2, f2 or faction end
+    end
     if not (race and class) then return end
     -- The lines the game wrote: the level line, and those that are just
     -- the class and the faction.
@@ -186,10 +249,26 @@ local function compactPlayer(tip, unit)
         end
     end
     if not levelLine then return end
-    local row = wantLevel .. "   " .. race .. "  " .. class
+    -- Room for the orb (a dark disc of its size, which it then covers),
+    -- then the three emblems.
+    local row = ourMark("up", 0.06, 0.06, 0.07, ORB):gsub("micro_up", "circle") .. "  " .. race .. "  " .. class
     if faction then row = row .. "  " .. faction end
     levelLine:SetText(row)
     levelLine:SetTextColor(T.text[1], T.text[2], T.text[3])
+    local orb = levelOrb(tip)
+    local dc
+    if level > 0 then
+        local fn = _G.GetCreatureDifficultyColor or _G.GetQuestDifficultyColor
+        local okD, c = pcall(fn, level)
+        if okD and type(c) == "table" and c.r then dc = c end
+    end
+    local dr, dg, db2 = dc and dc.r or 0.90, dc and dc.g or 0.30, dc and dc.b or 0.28
+    orb.ring:SetVertexColor(dr * 0.8, dg * 0.8, db2 * 0.8, 1)
+    orb.text:SetText(wantLevel)
+    orb.text:SetTextColor(dr, dg, db2)
+    orb:ClearAllPoints()
+    orb:SetPoint("LEFT", levelLine, "LEFT", 0, 0)
+    orb:Show()
     for _, fs in ipairs(drop) do
         fs:SetText(nil)
         fs:Hide()
