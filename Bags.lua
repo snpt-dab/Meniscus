@@ -326,7 +326,7 @@ local function newButton(bag, slot)
         if GameTooltip_SetDefaultAnchor then GameTooltip_SetDefaultAnchor(GameTooltip, self)
         else GameTooltip:SetOwner(self, "ANCHOR_RIGHT") end
         if itemInfo(self.bag, self.slot) then GameTooltip:SetBagItem(self.bag, self.slot) end
-        if self.dropWorth and B.DropLine then B.DropLine(self.dropWorth) end
+        if self.dropWorth and B.DropLine then B.DropLine(self.dropWorth, self.dropRank) end
         GameTooltip:Show()
         if self.glow:IsShown() and C_NewItems and C_NewItems.RemoveNewItem then
             pcall(C_NewItems.RemoveNewItem, self.bag, self.slot)
@@ -520,6 +520,7 @@ end
 local DROP_SKIP_CLASS = { [1] = true, [6] = true, [11] = true, [12] = true, [13] = true }
 local priceCache = {}
 local dropSet, dropList = {}, {}
+local dropRank = {} -- which of the marked ones: 1 is the cheapest
 -- (Why stacks were passed over, counted: read back from MinimalUIDB.dropdiag.)
 local why = {}
 local function pass(reason) why[reason] = (why[reason] or 0) + 1 end
@@ -551,7 +552,7 @@ local function byWorth(a, b)
 end
 -- Fills dropList (cheapest first) and dropSet (the first `mark` of them).
 local function findCheapest(mark)
-    for k in pairs(dropSet) do dropSet[k] = nil end
+    for k in pairs(dropSet) do dropSet[k] = nil; dropRank[k] = nil end
     local n = 0
     for _, bag in ipairs(bagList()) do
         if isInventoryBag(bag) then
@@ -574,6 +575,7 @@ local function findCheapest(mark)
     for i = 1, math.min(mark or 0, #dropList) do
         local e = dropList[i]
         dropSet[e.bag * 1000 + e.slot] = e.worth
+        dropRank[e.bag * 1000 + e.slot] = i
     end
     return dropList
 end
@@ -618,7 +620,14 @@ local function updateButton(b)
         local up = lvl and ns.IsUpgrade and ns.IsUpgrade(link) or false
         b.up:SetShown(up); b.upBack:SetShown(up)
         b.dropWorth = dropSet[b.bag * 1000 + b.slot]
+        b.dropRank = dropRank[b.bag * 1000 + b.slot]
         b.drop:SetShown(b.dropWorth ~= nil)
+        -- The one to throw away first is the full red badge; the next two
+        -- are the same badge smaller and faded, so the answer is one tile,
+        -- with the runners-up still findable.
+        local first = b.dropRank == 1
+        b.drop:SetScale(first and 1 or 0.72)
+        b.drop:SetAlpha(first and 1 or 0.55)
         b.glow:SetShown(C_NewItems and call(C_NewItems.IsNewItem, b.bag, b.slot) == true or false)
         local m = matches(info)
         b.icon:SetAlpha(m and 1 or 0.2)
@@ -1161,9 +1170,10 @@ function B.OfferDestroy(e)
     C_Timer.After(12, function() if tok == destroyTok and destroyPill then destroyPill:Hide() end end)
 end
 
-function B.DropLine(worth)
+function B.DropLine(worth, rank)
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine("Cheapest to throw away: the stack sells for " .. moneyText(worth), 0.95, 0.55, 0.50, true)
+    local lead = (rank == 2 and "Second cheapest to throw away") or (rank == 3 and "Third cheapest to throw away") or "Cheapest to throw away"
+    GameTooltip:AddLine(lead .. ": the stack sells for " .. moneyText(worth), 0.95, 0.55, 0.50, true)
 end
 -- What is still lying in the open loot window, at its best: the most any
 -- one of the things in it sells for. Returns nil when that can't be said
