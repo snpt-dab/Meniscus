@@ -133,30 +133,17 @@ local function setLevel(badge, unit)
     end
 end
 
--- The class and role bubbles on a portrait (see where they are made).
-local CLASS_EMBLEM = { WARRIOR = 1, PALADIN = 1, HUNTER = 1, ROGUE = 1, PRIEST = 1, SHAMAN = 1, MAGE = 1, WARLOCK = 1, DRUID = 1 }
+-- The role bubble on a portrait (see where it is made).
 local ROLE_EMBLEM = { TANK = { "micro_stat_defense.tga", 0.45, 0.68, 1.00 }, HEALER = { "micro_role_healer.tga", 0.45, 0.90, 0.55 } }
 function UF.SetWho(self, unit)
-    local cb, rb = self.classBadge, self.roleBadge
-    local shown = false
-    -- (Not on your own portrait: you know what you are.)
-    if UF.db.whoBadges ~= false and self.key ~= "player" then
+    local rb = self.roleBadge
+    local role
+    if UF.db.whoBadges ~= false and self.key ~= "player" and UnitGroupRolesAssigned then
         local okP, isPlayer = pcall(UnitIsPlayer, unit)
         if okP and not issecretvalue(isPlayer) and isPlayer then
-            local okC, _, token = pcall(UnitClass, unit)
-            if okC and type(token) == "string" and not issecretvalue(token) then
-                local c = RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
-                cb.icon:SetTexture(MEDIA .. "micro_class_" .. (CLASS_EMBLEM[token] and token:lower() or "other") .. ".tga")
-                cb.icon:SetVertexColor(c and c.r or 0.9, c and c.g or 0.9, c and c.b or 0.9, 1)
-                shown = true
-            end
+            local okR, r = pcall(UnitGroupRolesAssigned, unit)
+            role = okR and type(r) == "string" and not issecretvalue(r) and ROLE_EMBLEM[r] or nil
         end
-    end
-    cb:SetShown(shown)
-    local role
-    if shown and UnitGroupRolesAssigned then
-        local okR, r = pcall(UnitGroupRolesAssigned, unit)
-        role = okR and type(r) == "string" and not issecretvalue(r) and ROLE_EMBLEM[r] or nil
     end
     if role then
         rb.icon:SetTexture(MEDIA .. role[1])
@@ -521,7 +508,7 @@ local function update(self)
     end
     self.name:SetText(UnitName(unit))
     if self.levelBadge then setLevel(self.levelBadge, unit) end
-    if self.classBadge then pcall(UF.SetWho, self, unit) end
+    if self.roleBadge then pcall(UF.SetWho, self, unit) end
     self.hpPath = setHealthText(self, unit)
     local ptype = UnitPowerType(unit)
     local pmax, pcur = UnitPowerMax(unit, ptype), UnitPower(unit, ptype)
@@ -853,10 +840,10 @@ local function create(unit, label, cfg)
         badge.text:SetShadowColor(0, 0, 0, 0.9)
         f.levelBadge = badge
 
-        -- Who they are, on the portrait's upper edge, in the same bubbles:
-        -- a player's class emblem (in the class colour) on the outer side,
-        -- and in a group a tank's shield or a healer's plus on the inner
-        -- side. (Damage dealers get no mark: it is the two that matter.)
+        -- Their part in a group, on the portrait's upper edge, in the same
+        -- bubble: a tank's shield or a healer's plus. (Damage dealers get
+        -- no mark: it is the two that matter. A class emblem was tried
+        -- here too and taken out: the bar's colour already says the class.)
         local function bubble(side)
             local bb = CreateFrame("Frame", nil, f.avatar)
             bb:SetSize(d, d)
@@ -879,8 +866,7 @@ local function create(unit, label, cfg)
             return bb
         end
         local outer = cfg.side == "LEFT" and -1 or 1
-        f.classBadge = bubble(outer)
-        f.roleBadge = bubble(-outer)
+        f.roleBadge = bubble(outer)
     end
 
     local ev = CreateFrame("Frame")

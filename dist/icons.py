@@ -9,7 +9,7 @@
 import math, os, struct
 
 GRID = 24.0
-SIZE = 32          # texture is SIZE x SIZE pixels
+SIZE = 64          # texture is SIZE x SIZE pixels (32 looked soft drawn large on a dense screen)
 STROKE = 2.3       # default stroke width, in grid units
 
 
