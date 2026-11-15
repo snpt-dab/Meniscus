@@ -410,10 +410,31 @@ local function buildNumbers()
     -- It misses melee swings (they announce nothing), and lets through
     -- someone else's hit that lands in the same instant as yours.
     local RAILKEY = {} -- stands for "your target, with no nameplate" where a nameplate would be the key
-    -- The rail: to the right of your character, below the loot and
-    -- experience pills (which start higher and climb).
-    local function railSpot()
-        return UIParent:GetWidth() / 2 + 112, UIParent:GetHeight() * 0.44
+    -- The rails: three of them, their own, high on the screen (above where
+    -- the loot and experience pills finish their climb). Your target's
+    -- numbers rise on the middle one; other enemies you are hitting take
+    -- the right and the left, each keeping its rail while the hits keep
+    -- coming, so two enemies' numbers don't pile into one column.
+    local RAIL_DX = { [0] = 0, 150, -150 }
+    local RAIL_DY = { [0] = 0, -22, -22 }
+    local RAIL_KEEP = 5 -- seconds an enemy keeps its rail after its last number
+    local railOf = setmetatable({}, { __mode = "k" }) -- [key] = { rail, when }
+    local sideUsed = { 0, 0 }
+    local function railSpot(key, isTarget)
+        local now = GetTime()
+        local idx = 0
+        local had = key and railOf[key]
+        if had and now - had[2] < RAIL_KEEP then
+            idx = had[1]
+            had[2] = now
+        elseif key then
+            if not isTarget then
+                idx = (sideUsed[1] <= sideUsed[2]) and 1 or 2
+            end
+            if had then had[1], had[2] = idx, now else railOf[key] = { idx, now } end
+        end
+        if idx > 0 then sideUsed[idx] = now end
+        return UIParent:GetWidth() / 2 + RAIL_DX[idx], UIParent:GetHeight() * 0.72 + RAIL_DY[idx]
     end
     local guess = NP.db.numbersMine ~= false
     local hits, heals, dots = {}, {}, {}   -- when each allowance runs out; plate -> when your effect went on
@@ -535,7 +556,7 @@ local function buildNumbers()
     pcall(gone.RegisterEvent, gone, "NAME_PLATE_UNIT_REMOVED")
     gone:SetScript("OnEvent", function(_, _, unit)
         if type(unit) ~= "string" or secret(unit) then return end
-        local rx, ry = railSpot()
+        local rx, ry = railSpot(plateOf(unit), false)
         local moved = 0
         for i = 1, #items do
             local f = items[i]
@@ -594,8 +615,13 @@ local function buildNumbers()
                 end
             end
             if onRail then
+                local isT = key == RAILKEY
+                if not isT then
+                    local okT, t = pcall(UnitIsUnit, unit, "target")
+                    isT = okT and not secret(t) and t == true
+                end
                 rel = nil
-                x, y = railSpot()
+                x, y = railSpot(key, isT)
             elseif rel then
                 x, y = 0, 4
             end
