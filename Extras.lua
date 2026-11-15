@@ -2095,8 +2095,11 @@ local function buildFlyout(spec)
         local row = self:GetFrameRef("row")
         if row:IsShown() then row:Hide() else row:Show() end
     ]])
+    -- (No tooltip while the row is open: it sat on top of the row.)
+    fly:HookScript("OnShow", function() if GameTooltip:IsOwned(anchor) then GameTooltip:Hide() end end)
     anchor:SetScript("OnEnter", function(self)
         ring:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
+        if fly:IsShown() then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(spec.title, 1, 1, 1)
         GameTooltip:AddLine("Click to open or close.", 0.7, 0.7, 0.75)
