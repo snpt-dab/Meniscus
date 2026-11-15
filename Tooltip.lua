@@ -83,10 +83,125 @@ local function unitColor(unit)
     end
 end
 
+-- Another player's tooltip, with pictures for words. The game writes
+--     Torinth Nightslayer / Legends of War / Level 22 Dwarf (Player) / Rogue / Alliance
+-- which becomes
+--     Torinth Nightslayer / Legends of War / 22 [dwarf] [rogue] [alliance]
+-- The name keeps its colour, the guild its line; level, race, class and
+-- faction share one line as a number and three small icons. A picture the
+-- client doesn't have falls back to the word. Nothing is touched when the
+-- tooltip's text can't be read (hidden in combat).
+local function atlasOK(name)
+    if not (C_Texture and C_Texture.GetAtlasInfo) then return false end
+    local ok, info = pcall(C_Texture.GetAtlasInfo, name)
+    return ok and info ~= nil
+end
+local ICON = 16
+local function atlasMark(name) return string.format("|A:%s:%d:%d|a", name, ICON, ICON) end
+local RACE_ATLAS = { Scourge = "undead", HighmountainTauren = "highmountain", LightforgedDraenei = "lightforged",
+                     ZandalariTroll = "zandalari", KulTiran = "kultiran", DarkIronDwarf = "darkirondwarf",
+                     MagharOrc = "magharorc" }
+local FACTION_ATLAS = {
+    Alliance = { "MountJournalIcons-Alliance", "AllianceEmblem", "bfa-landingbutton-alliance-up", "poi-alliance" },
+    Horde = { "MountJournalIcons-Horde", "HordeEmblem", "bfa-landingbutton-horde-up", "poi-horde" },
+}
+local markCache = {}
+local function raceMark(unit)
+    local ok, name, token = pcall(UnitRace, unit)
+    if not ok or type(token) ~= "string" or issecretvalue(token) then return nil end
+    local okS, sex = pcall(UnitSex, unit)
+    local gender = (okS and not issecretvalue(sex) and sex == 3) and "female" or "male"
+    local key = "race:" .. token .. gender
+    if markCache[key] == nil then
+        local base = (RACE_ATLAS[token] or token):lower()
+        local found = false
+        for _, a in ipairs({ "raceicon-" .. base .. "-" .. gender, "raceicon128-" .. base .. "-" .. gender }) do
+            if atlasOK(a) then found = atlasMark(a) break end
+        end
+        markCache[key] = found
+    end
+    return markCache[key] or (type(name) == "string" and not issecretvalue(name) and name) or nil
+end
+local function classMark(unit)
+    local ok, name, token = pcall(UnitClass, unit)
+    if not ok or type(token) ~= "string" or issecretvalue(token) then return nil, nil end
+    local key = "class:" .. token
+    if markCache[key] == nil then
+        local a = "classicon-" .. token:lower()
+        local found = false
+        if atlasOK(a) then
+            found = atlasMark(a)
+        elseif CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[token] then
+            local c = CLASS_ICON_TCOORDS[token]
+            found = string.format("|TInterface/Glues/CharacterCreate/UI-CharacterCreate-Classes:%d:%d:0:0:256:256:%d:%d:%d:%d|t",
+                ICON, ICON, c[1] * 256, c[2] * 256, c[3] * 256, c[4] * 256)
+        end
+        markCache[key] = found
+    end
+    local word = type(name) == "string" and not issecretvalue(name) and name or nil
+    return markCache[key] or word, word
+end
+local function factionMark(unit)
+    local ok, token, name = pcall(UnitFactionGroup, unit)
+    if not ok or type(token) ~= "string" or issecretvalue(token) then return nil, nil end
+    local key = "faction:" .. token
+    if markCache[key] == nil then
+        local found = false
+        for _, a in ipairs(FACTION_ATLAS[token] or {}) do
+            if atlasOK(a) then found = atlasMark(a) break end
+        end
+        if not found and (token == "Alliance" or token == "Horde") then
+            found = string.format("|TInterface/PVPFrame/PVP-Currency-%s:%d:%d|t", token, ICON, ICON)
+        end
+        markCache[key] = found
+    end
+    local word = type(name) == "string" and not issecretvalue(name) and name or nil
+    return markCache[key] or word, word
+end
+local function compactPlayer(tip, unit)
+    if not (TT.db and TT.db.icons ~= false) then return end
+    local okP, isPlayer = pcall(UnitIsPlayer, unit)
+    if not okP or issecretvalue(isPlayer) or not isPlayer then return end
+    local okL, level = pcall(UnitLevel, unit)
+    if not okL or issecretvalue(level) or type(level) ~= "number" then return end
+    local race = raceMark(unit)
+    local class, classWord = classMark(unit)
+    local faction, factionWord = factionMark(unit)
+    if not (race and class) then return end
+    -- The lines the game wrote: the level line, and those that are just
+    -- the class and the faction.
+    local n = tip:NumLines()
+    local levelLine, drop = nil, {}
+    local wantLevel = level > 0 and tostring(level) or "??"
+    for i = 2, n do
+        local fs = _G["GameTooltipTextLeft" .. i]
+        local t = fs and fs:GetText()
+        if issecretvalue(t) then return end
+        if type(t) == "string" and t ~= "" then
+            if not levelLine and (t:find("(", 1, true) and t:find(wantLevel, 1, true)) then
+                levelLine = fs
+            elseif levelLine and (t == classWord or t == factionWord) then
+                drop[#drop + 1] = fs
+            end
+        end
+    end
+    if not levelLine then return end
+    local row = wantLevel .. "   " .. race .. "  " .. class
+    if faction then row = row .. "  " .. faction end
+    levelLine:SetText(row)
+    levelLine:SetTextColor(T.text[1], T.text[2], T.text[3])
+    for _, fs in ipairs(drop) do
+        fs:SetText(nil)
+        fs:Hide()
+    end
+    tip:Show() -- (fits the tooltip to its fewer lines)
+end
+
 local function onUnit(tip)
     if tip ~= GameTooltip then return end
     local _, unit = tip:GetUnit()
     if not unit then return end
+    pcall(compactPlayer, tip, unit)
     local r, g, b = unitColor(unit)
     if r then
         local line = _G.GameTooltipTextLeft1

@@ -652,6 +652,10 @@ local PAGES = {
         } },
         { title = "Restyled Blizzard parts", items = {
             moduleSwitch("Tooltips", "Tooltip"),
+            { "Icons on player tooltips", kind = "switch",
+              note = "Level, race, class and faction on one line, as pictures",
+              get = function() local d = ns.modules.Tooltip.db; return d and d.icons ~= false end,
+              set = function() local d = ns.modules.Tooltip.db; if d then d.icons = d.icons == false end end },
             moduleSwitch("Menus, popups, map and other windows", "Skins"),
             { "Game Options window", kind = "switch", reload = true,
               note = "The frame only; the settings' own controls stay Blizzard's",
@@ -815,6 +819,7 @@ local KEYS = {
     ["Inspect"] = "other players gear",
     ["Dialog text types itself out"] = "typewriter animation quest text",
     ["Tooltips"] = "hover info box",
+    ["Icons on player tooltips"] = "class race faction alliance horde compact pictures hover",
     ["Menus, popups, map and other windows"] = "skin restyle dropdown friends guild",
     ["Performance monitor"] = "fps lag cpu memory slow",
     ["Report a bug"] = "problem issue broken feedback",
