@@ -314,6 +314,7 @@ local function snapshot()
         local tex, item, qty, _, quality = call(GetLootSlotInfo, slot)
         e.tex, e.name, e.qty, e.quality = tex, item, qty, quality
         e.money = (call(GetLootSlotType, slot) == MONEY_SLOT)
+        e.link = not e.money and call(GetLootSlotLink, slot) or nil
     end
 end
 
@@ -678,6 +679,7 @@ local function floatQuest(msg)
     return ok
 end
 
+local UP_MARK = " |TInterface/AddOns/Meniscus/Media/micro_up.tga:12:12:0:0:64:64:0:64:0:64:92:235:117|t"
 local function floatSlot(slot)
     if not (L.db and L.db.float ~= false) then return end
     local e = type(slot) == "number" and slot <= snapN and snap[slot]
@@ -710,7 +712,17 @@ local function floatSlot(slot)
     local rr, rg, rb = T.border[1], T.border[2], T.border[3]
     if fine then tr, tg, tb, rr, rg, rb = cr, cg, cb, cr * 0.75, cg * 0.75, cb * 0.75 end
     floatRail = "left"
-    floatPill(tex, name, tr, tg, tb, many and ("\195\151" .. qty) or nil, rr, rg, rb)
+    local f = floatPill(tex, name, tr, tg, tb, many and ("\195\151" .. qty) or nil, rr, rg, rb)
+    -- Better than what you are wearing: the small green arrow the bags use,
+    -- after the name.
+    local link = e.link
+    if f and type(link) == "string" and not secret(link) and ns.IsUpgrade then
+        local okU, up = pcall(ns.IsUpgrade, link)
+        if okU and up then
+            f.text:SetText(name .. UP_MARK)
+            f.full = f.full + 15
+        end
+    end
 end
 
 -- Things you make (cooking, crafting) never pass through a loot window: the
