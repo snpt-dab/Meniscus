@@ -211,6 +211,11 @@ def icons():
                           .dot(12, 7.6, 1.5).line([(12, 11.2), (12, 16.4)], w=2.3)
                           .line([(12, 16.4), (8.8, 20.2)], w=1.8).line([(12, 16.4), (12, 20.6)], w=1.8).line([(12, 16.4), (15.2, 20.2)], w=1.8))
     I['race_draenei'] = Icon().line([(12, 3.8), (18, 10.6), (12, 20.2), (6, 10.6)], w=2.2, close=True).line([(6, 10.6), (18, 10.6)], w=1.7)  # a crystal
+    # sky elf (Forever's own): a wing
+    I['race_skyelf'] = (Icon().line([(4.4, 15.6), (8.2, 9.2), (13.4, 6.2), (19.8, 5.6)], w=2.2)
+                        .line([(19.8, 5.6), (17.6, 10.2), (12.8, 11.6)], w=2.0)
+                        .line([(16.2, 10.6), (14.2, 14.4), (9.6, 15.2)], w=2.0)
+                        .line([(12.6, 14.8), (10.4, 18.2), (4.4, 15.6)], w=2.0))
     I['race_other'] = Icon().ring(12, 9, 3.6).arc(12, 22, 7.0, 25, 155)                                                                     # head and shoulders
 
     # ── what kind of affliction (debuff icons): magic, curse, disease, poison ──
