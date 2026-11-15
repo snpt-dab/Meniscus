@@ -313,9 +313,11 @@ local function buildNumbers()
     -- rel: the frame the number rises from (a nameplate), or nil for a
     -- place on the screen. A nameplate may not be measured by an addon
     -- ("restricted region"), only anchored to: so the number is hung on it.
+    local showUnit -- (the unit the hit being shown is on; set by the event below)
     local function show(rel, x, y, value, r, g, b, crit, small, kind)
         local f = item()
         if not f then return end
+        f.unit = showUnit
         if kind then
             f.kind:SetTexture("Interface/AddOns/Meniscus/Media/" .. kind)
             f.kind:SetVertexColor(r, g, b, 1)
@@ -493,10 +495,34 @@ local function buildNumbers()
         end)
     end
 
+    -- A nameplate going away with numbers still rising from it (the mob
+    -- died a moment after the hit was shown): they move to the target
+    -- frame and finish there, instead of vanishing with the plate.
+    local gone = CreateFrame("Frame")
+    pcall(gone.RegisterEvent, gone, "NAME_PLATE_UNIT_REMOVED")
+    gone:SetScript("OnEvent", function(_, _, unit)
+        if type(unit) ~= "string" or secret(unit) then return end
+        local UFm = ns.modules.UnitFrames
+        local tf = UFm and UFm.target
+        local home = tf and tf:IsShown() and (tf.healthPill or tf) or nil
+        for i = 1, #items do
+            local f = items[i]
+            if f.live and f.unit == unit then
+                if home then
+                    f.rel, f.unit = home, nil
+                else
+                    f.live = false
+                    f:Hide()
+                end
+            end
+        end
+    end)
+
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("UNIT_COMBAT")
     ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
         if type(unit) ~= "string" or secret(unit) or secret(action) or type(action) ~= "string" then return end
+        showUnit = unit
         local mine = unit == "player"
         local x, y, rel
         if mine then
@@ -520,6 +546,16 @@ local function buildNumbers()
                 end
             else
                 rel = plateOf(unit)
+                -- The blow that kills: the nameplate is on its way out (it
+                -- goes with the mob), and a number hung on it went with it.
+                -- If it is your target, the number goes on the target frame.
+                local okD, dead = pcall(UnitIsDeadOrGhost, unit)
+                if rel and okD and not secret(dead) and dead then
+                    local okT, isT = pcall(UnitIsUnit, unit, "target")
+                    local UFm = ns.modules.UnitFrames
+                    local tf = UFm and UFm.target
+                    if okT and not secret(isT) and isT and tf and tf:IsShown() then rel = tf.healthPill or tf end
+                end
             end
             if rel then x, y = 0, 4 end
             -- A hit for nothing at all isn't worth a number (when the
