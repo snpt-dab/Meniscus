@@ -2383,7 +2383,7 @@ end
 local function buildTalentMark()
     local chip = EX:Chip("micro_talent.tga")
     local GOLDEN = { 0.95, 0.78, 0.36 }
-    local was, calmAt = nil, 0
+    local was = nil
     chip.tip = function(tip)
         local n = unspentTalents()
         tip:SetText(n == 1 and "1 talent point to spend" or (n .. " talent points to spend"), 1, 1, 1)
@@ -2394,17 +2394,57 @@ local function buildTalentMark()
         if PlayerSpellsUtil and PlayerSpellsUtil.ToggleClassTalentFrame then pcall(PlayerSpellsUtil.ToggleClassTalentFrame)
         elseif _G.ToggleTalentFrame then pcall(_G.ToggleTalentFrame) end
     end
+    -- The flash: the emblem's two coloured ghosts (a warm one and a cool
+    -- one, as on a critical hit's number) thrown apart and drawn back into
+    -- it, with a brief brightening of the emblem itself. When a point
+    -- arrives, and again every minute and a half while one waits.
+    local fx = CreateFrame("Frame", nil, chip)
+    fx:SetAllPoints()
+    fx:SetFrameLevel(chip:GetFrameLevel() + 3)
+    local function ghost(r, g, b)
+        local t = fx:CreateTexture(nil, "OVERLAY")
+        t:SetTexture(MEDIA .. "micro_talent.tga")
+        t:SetSize(14, 14)
+        t:SetBlendMode("ADD")
+        t:SetVertexColor(r, g, b, 0)
+        t:SetPoint("CENTER")
+        return t
+    end
+    local warm, cool, white = ghost(1.00, 0.30, 0.42), ghost(0.30, 0.62, 1.00), ghost(1, 1, 1)
+    local FLASH, SPREAD = 0.9, 9
+    local age = FLASH
+    fx:Hide()
+    fx:SetScript("OnUpdate", function(self, dt)
+        age = age + dt
+        local p = age / FLASH
+        if p >= 1 then
+            warm:SetVertexColor(1.00, 0.30, 0.42, 0); cool:SetVertexColor(0.30, 0.62, 1.00, 0); white:SetVertexColor(1, 1, 1, 0)
+            self:Hide()
+            return
+        end
+        -- Out fast, back slowly; the light dies as they come home.
+        local out = p < 0.18 and (p / 0.18) or (1 - (p - 0.18) / 0.82) ^ 2
+        local a = (p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88) * 0.85
+        warm:SetPoint("CENTER", -SPREAD * out, 0)
+        cool:SetPoint("CENTER", SPREAD * out, 0)
+        warm:SetVertexColor(1.00, 0.30, 0.42, a)
+        cool:SetVertexColor(0.30, 0.62, 1.00, a)
+        white:SetVertexColor(1, 1, 1, a * 0.5)
+    end)
+    local function flash()
+        if not chip.on then return end
+        age = 0
+        fx:Show()
+    end
+    C_Timer.NewTicker(90, flash)
     local function update(fresh)
         local n, how = unspentTalents()
         if MinimalUIDB then MinimalUIDB.talentdiag = "unspent " .. tostring(n) .. " via " .. tostring(how) end
-        -- A point just arrived (or you have just logged in with some): a
-        -- short spell of breathing, then still.
-        if n > 0 and (fresh or (was ~= nil and n > was)) then
-            calmAt = GetTime() + 12
-            C_Timer.After(12.2, function() update() end)
-        end
+        local arrived = n > 0 and (fresh or (was ~= nil and n > was))
         was = n
-        chip:Set(n > 0, GOLDEN[1], GOLDEN[2], GOLDEN[3], n > 0 and GetTime() < calmAt)
+        -- While a point waits the emblem breathes, all the time.
+        chip:Set(n > 0, GOLDEN[1], GOLDEN[2], GOLDEN[3], n > 0)
+        if arrived then flash() end
     end
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_LEVEL_UP", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED",
