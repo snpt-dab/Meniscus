@@ -332,6 +332,7 @@ local function buildNumbers()
     -- place on the screen. A nameplate may not be measured by an addon
     -- ("restricted region"), only anchored to: so the number is hung on it.
     local showUnit -- (the unit the hit being shown is on; set by the event below)
+    local WIDE_ORDER = { 0, 2, -2, 1, -1, 3, -3 }
     local function show(rel, x, y, value, r, g, b, crit, small, kind)
         local f = item()
         if not f then return end
@@ -372,12 +373,24 @@ local function buildNumbers()
         f.life = crit and (NUM_LIFE + 0.9) or NUM_LIFE
         f:SetScale(scale)
         f.rel = rel
-        -- Five lanes side by side, so a burst doesn't stack; each drifts a
-        -- little further out the way it already leans.
-        local lane = (spawned % 5) - 2
-        f.x = x + lane * 16
-        f.drift = lane * 7
-        f.y = y
+        -- Lanes side by side, so a burst doesn't stack; each drifts a little
+        -- further out the way it already leans. Over a nameplate: five
+        -- narrow ones. From the target frame or on the rails there is room,
+        -- and every hit starts from the one spot, so: seven, well apart,
+        -- taken in an order that puts each new number far from the last
+        -- (middle, right, left, further right, ...) and on alternating
+        -- heights, so two numbers a moment apart never share a line.
+        if rel then
+            local lane = (spawned % 5) - 2
+            f.x = x + lane * 16
+            f.drift = lane * 7
+            f.y = y
+        else
+            local lane = WIDE_ORDER[(spawned % 7) + 1]
+            f.x = x + lane * 38
+            f.drift = lane * 9
+            f.y = y + ((spawned % 2 == 0) and 0 or 16)
+        end
         f.fs:SetTextColor(r, g, b)
         f.age, f.live = 0, true
         f:SetAlpha(1)
