@@ -1685,3 +1685,88 @@ do
         end
     end
 end
+
+-- ── Can the combat log window be read? ───────────────────────────────────
+-- The client hands addons no combat log events, but its own Combat Log tab
+-- prints every hit with who dealt it ("Your Melee hit Wretched Zombie 11
+-- Physical."). If the lines can be read as they are printed, the combat
+-- numbers need no guessing. This looks, by itself, every session: which
+-- ways in exist, and for the first lines printed after login whether their
+-- text is readable or a hidden value, and when they came relative to the
+-- hit they describe. Kept in MinimalUIDB.clprobe (read after a /reload).
+do
+    local sec = issecretvalue or function() return false end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        if not MinimalUIDB then return end
+        local out = { "at " .. date("%H:%M:%S") }
+        MinimalUIDB.clprobe = out
+        local function add(t) if #out < 60 then out[#out + 1] = t end end
+        local function show(v)
+            if sec(v) then return "<hidden " .. type(v) .. ">" end
+            if type(v) == "string" then return '"' .. v:sub(1, 140):gsub("|", "||") .. '"' end
+            return tostring(v)
+        end
+        add("CombatLogGetCurrentEventInfo: " .. type(_G.CombatLogGetCurrentEventInfo))
+        for _, nsName in ipairs({ "C_CombatLog", "C_CombatText", "C_DamageMeter", "C_ChatInfo" }) do
+            local t = _G[nsName]
+            if type(t) == "table" then
+                local names = {}
+                for k in pairs(t) do if type(k) == "string" then names[#names + 1] = k end end
+                table.sort(names)
+                add(nsName .. " (" .. #names .. "): " .. table.concat(names, ", "):sub(1, 900))
+            else
+                add(nsName .. ": none")
+            end
+        end
+        for _, e in ipairs({ "COMBAT_LOG_EVENT_UNFILTERED", "COMBAT_LOG_EVENT", "COMBAT_TEXT_UPDATE", "CHAT_MSG_COMBAT_SELF_HITS",
+                             "CHAT_MSG_SPELL_SELF_DAMAGE", "COMBAT_LOG_MESSAGE" }) do
+            local probe = CreateFrame("Frame")
+            local ok = pcall(probe.RegisterEvent, probe, e)
+            add("event " .. e .. ": " .. (ok and "can be registered" or "refused"))
+            if ok then
+                local seen = 0
+                probe:SetScript("OnEvent", function(_, ev, ...)
+                    seen = seen + 1
+                    if seen > 4 then return end
+                    local parts = {}
+                    for i = 1, math.min(select("#", ...), 8) do parts[#parts + 1] = show((select(i, ...))) end
+                    add(string.format("%.2f EVENT %s: %s", GetTime() % 1000, ev, table.concat(parts, ", ")))
+                end)
+            end
+        end
+        -- The window itself: which chat frame it is, and its lines.
+        local log = _G.COMBATLOG or _G.ChatFrame2
+        add("combat log frame: " .. tostring(log and log.GetName and log:GetName()) .. "  COMBATLOG global " .. type(_G.COMBATLOG))
+        if not log then return end
+        local okN, n = pcall(log.GetNumMessages, log)
+        add("GetNumMessages: " .. tostring(okN) .. " " .. show(n))
+        if okN and type(n) == "number" and not sec(n) and n > 0 then
+            local okM, text = pcall(log.GetMessageInfo, log, n)
+            add("last line already there: " .. tostring(okM) .. " " .. show(text))
+        end
+        local lines = 0
+        local okH, errH = pcall(hooksecurefunc, log, "AddMessage", function(_, text, r, g, b)
+            lines = lines + 1
+            if lines > 14 then return end
+            add(string.format("%.2f LINE %s", GetTime() % 1000, show(text)))
+            if lines == 3 then
+                local okN2, n2 = pcall(log.GetNumMessages, log)
+                local okM2, t2 = false, nil
+                if okN2 and type(n2) == "number" and not sec(n2) and n2 > 0 then okM2, t2 = pcall(log.GetMessageInfo, log, n2) end
+                add("  read back by GetMessageInfo: " .. tostring(okM2) .. " " .. show(t2))
+            end
+        end)
+        add("hook on AddMessage: " .. tostring(okH) .. " " .. tostring(errH or ""))
+        -- A hit as the unit events report it, for the timing against a line.
+        local uc = CreateFrame("Frame")
+        pcall(uc.RegisterUnitEvent, uc, "UNIT_COMBAT", "target")
+        local hits = 0
+        uc:SetScript("OnEvent", function(_, _, _, action)
+            hits = hits + 1
+            if hits <= 8 then add(string.format("%.2f HIT on target (%s)", GetTime() % 1000, show(action))) end
+        end)
+    end)
+end
