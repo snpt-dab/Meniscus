@@ -499,7 +499,9 @@ function Bars:Arrange()
     if type(nForms) ~= "number" or issecretvalue(nForms) then nForms = 0 end
     local cs = self.charSlot
     local stanceW = nForms * STANCE + math.max(0, nForms - 1) * 4
-    self.stanceLift = (cs and nForms > 0) and (STANCE / 2 + 5) or 0
+    -- (They sit wholly above the panel's top edge: straddling it, the lower
+    -- half of each disc lay over the top row of buffs inside the panel.)
+    self.stanceLift = (cs and nForms > 0) and (STANCE + 8) or 0
     for i = 1, 10 do
         local col, up = i - 1, 0
         if gap then col, up = (i - 1) % 5, math.floor((i - 1) / 5) * step end
@@ -514,7 +516,7 @@ function Bars:Arrange()
                     -- From the panel's right end leftwards: the first stance
                     -- is the rightmost, each further one to its left.
                     b:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
-                        wl.x + wl.w - 14 - STANCE - (i - 1) * (STANCE + 4), wl.y + wl.h - STANCE / 2)
+                        wl.x + wl.w - 10 - STANCE - (i - 1) * (STANCE + 4), wl.y + wl.h + 4)
                     b:SetSize(STANCE, STANCE)
                 else
                     b:SetPoint("BOTTOMLEFT", self.main, "TOPLEFT", col * step, 8 + up)
