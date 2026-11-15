@@ -1379,7 +1379,9 @@ local function well(plate, key)
     local wl = plate[key]
     if not wl then
         wl = CreateFrame("Frame", nil, plate)
-        wl:SetFrameLevel(plate:GetFrameLevel() + 1)
+        -- (Two above the plate, not one: the in-combat line on the plate's
+        -- top edge is at one, and runs behind these panels, not across them.)
+        wl:SetFrameLevel(plate:GetFrameLevel() + 2)
         local ring = ns.RoundedRect(wl, -6, 0, 10, T.border[1], T.border[2], T.border[3], 1)
         local fill = ns.RoundedRect(wl, -5, 1, 9, 0.03, 0.03, 0.035, 0.95)
         backing(wl, ring, fill, 0.03, 0.03, 0.035, 0.95)
