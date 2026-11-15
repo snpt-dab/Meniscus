@@ -2022,9 +2022,38 @@ local function foodRank(id)
     local n = useName(id)
     return (n:find("Refreshment") and 0) or (n:find("Food") and 1) or (n:find("Drink") and 2) or 3
 end
+-- Professions: the third disc, on the other side of the map (above the
+-- queue eye's place). What you can press for each profession: the spell
+-- that opens it, and its extras (Smelting, Find Minerals, Disenchant, a
+-- campfire...). Your two main professions first, then cooking, first aid
+-- and fishing. A profession with nothing to press (Skinning) isn't there.
+_G["BINDING_NAME_CLICK MeniscusProfs:LeftButton"] = "Professions (open or close)"
+local function profSpells(out)
+    local SBk = C_SpellBook
+    if not (GetProfessions and GetProfessionInfo and SBk and SBk.GetSpellBookItemInfo) then return end
+    local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+    local p1, p2, arch, fish, cook, aid = GetProfessions()
+    local seen = {}
+    local function add(index)
+        if not index then return end
+        local name, _, _, _, numSpells, offset = call(GetProfessionInfo, index)
+        if type(name) ~= "string" or not num(numSpells) or not num(offset) then return end
+        for i = 1, numSpells do
+            local info = call(SBk.GetSpellBookItemInfo, offset + i, bank)
+            local id = type(info) == "table" and (info.spellID or info.actionID)
+            if num(id) and not info.isPassive and not seen[id] then
+                seen[id] = true
+                out[#out + 1] = id
+            end
+        end
+    end
+    add(p1); add(p2); add(cook); add(aid); add(fish); add(arch)
+end
 -- spec: name (the disc, and its key binding), row, btn (frame names), glyph,
 -- title, is(id), rank(id), slot (0 = lowest place on the rim, 1 = the next
--- one up), label (for /men perf).
+-- one up), label (for /men perf). For spells instead of things in your
+-- bags: spells(out) fills the list, in order. side = -1 puts the disc on
+-- the map's left and opens its row leftward.
 local function buildFlyout(spec)
     local S = 24
     local anchor = CreateFrame("Button", spec.name, UIParent, "SecureHandlerClickTemplate")
@@ -2050,7 +2079,9 @@ local function buildFlyout(spec)
 
     local fly = CreateFrame("Frame", spec.row, anchor, "SecureHandlerBaseTemplate")
     fly:SetFrameStrata("HIGH")
-    fly:SetPoint("BOTTOMLEFT", anchor, "TOPRIGHT", 0, 0)
+    local side = spec.side or 1
+    if side < 0 then fly:SetPoint("BOTTOMRIGHT", anchor, "TOPLEFT", 0, 0)
+    else fly:SetPoint("BOTTOMLEFT", anchor, "TOPRIGHT", 0, 0) end
     fly:SetSize(PO_SIZE, PO_SIZE)
     fly:Hide()
     anchor:SetFrameRef("row", fly)
@@ -2075,7 +2106,8 @@ local function buildFlyout(spec)
     for i = 1, PO_MAX do
         local b = CreateFrame("Button", spec.btn .. i, fly, "SecureActionButtonTemplate")
         b:SetSize(PO_SIZE, PO_SIZE)
-        b:SetPoint("BOTTOMLEFT", fly, "BOTTOMLEFT", ((i - 1) % PO_ROW) * (PO_SIZE + PO_GAP),
+        b:SetPoint(side < 0 and "BOTTOMRIGHT" or "BOTTOMLEFT", fly, side < 0 and "BOTTOMRIGHT" or "BOTTOMLEFT",
+            side * ((i - 1) % PO_ROW) * (PO_SIZE + PO_GAP),
             math.floor((i - 1) / PO_ROW) * (PO_SIZE + PO_GAP))
         b:RegisterForClicks("AnyDown", "AnyUp")
         b:Hide()
@@ -2111,9 +2143,13 @@ local function buildFlyout(spec)
         b.ring, b.icon, b.cd, b.count = bring, icon, cd, count
         b:SetScript("OnEnter", function(self)
             self.ring:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
-            if not self.item then return end
+            if not (self.item or self.spell) then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            if GameTooltip.SetItemByID then GameTooltip:SetItemByID(self.item) end
+            if self.spell then
+                if GameTooltip.SetSpellByID then GameTooltip:SetSpellByID(self.spell) end
+            elseif GameTooltip.SetItemByID then
+                GameTooltip:SetItemByID(self.item)
+            end
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function(self)
@@ -2152,7 +2188,10 @@ local function buildFlyout(spec)
     -- Counts and cooldowns: plain drawing, fine at any time.
     local function update()
         for _, b in ipairs(btns) do
-            if b.item then
+            if b.spell then
+                local okc, c = pcall(C_Spell.GetSpellCooldown, b.spell)
+                if okc and type(c) == "table" then pcall(b.cd.SetCooldown, b.cd, c.startTime, c.duration) end
+            elseif b.item then
                 local n = itemCount(b.item)
                 b.count:SetText(n > 1 and n or "")
                 b.icon:SetDesaturated(n == 0)
@@ -2171,15 +2210,19 @@ local function buildFlyout(spec)
         if InCombatLockdown() then stale = true return end
         stale = false
         wipe(have); wipe(order)
-        for bag = 0, (NUM_BAG_SLOTS or 4) do scanBag(have, bag) end
-        for id in pairs(have) do
-            if spec.is(id) then order[#order + 1] = id end
+        if spec.spells then
+            pcall(spec.spells, order)
+        else
+            for bag = 0, (NUM_BAG_SLOTS or 4) do scanBag(have, bag) end
+            for id in pairs(have) do
+                if spec.is(id) then order[#order + 1] = id end
+            end
+            table.sort(order, function(a, b)
+                local ra, rb = spec.rank(a), spec.rank(b)
+                if ra ~= rb then return ra < rb end
+                return a > b
+            end)
         end
-        table.sort(order, function(a, b)
-            local ra, rb = spec.rank(a), spec.rank(b)
-            if ra ~= rb then return ra < rb end
-            return a > b
-        end)
         local dome = _G.MinimalUI_MinimapDome
         anchor:ClearAllPoints()
         if dome then
@@ -2194,13 +2237,23 @@ local function buildFlyout(spec)
                 local th = math.atan2(ry, rx) + spec.slot * (S + 5) / R
                 rx, ry = R * math.cos(th), R * math.sin(th)
             end
-            anchor:SetPoint("CENTER", dome, "CENTER", rx, ry)
+            anchor:SetPoint("CENTER", dome, "CENTER", side * rx, ry)
         else
-            anchor:SetPoint("BOTTOM", UIParent, "BOTTOM", 120 + (spec.slot or 0) * 30, 150)
+            anchor:SetPoint("BOTTOM", UIParent, "BOTTOM", side * (120 + (spec.slot or 0) * 30), 150)
         end
         for i, b in ipairs(btns) do
             local id = order[i]
-            if id then
+            if id and spec.spells then
+                b.spell, b.item = id, nil
+                b:SetAttribute("type", "spell")
+                b:SetAttribute("spell", id)
+                local tex = C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, id)
+                b.icon:SetTexture(tex or 134400)
+                b.icon:SetDesaturated(false)
+                b.icon:SetAlpha(1)
+                b.count:SetText("")
+                b:Show()
+            elseif id then
                 b.item = id
                 b:SetAttribute("type", "item")
                 b:SetAttribute("item", "item:" .. id)
@@ -2209,7 +2262,7 @@ local function buildFlyout(spec)
                 b.icon:SetTexture(tex or 134400)
                 b:Show()
             else
-                b.item = nil
+                b.item, b.spell = nil, nil
                 b:SetAttribute("type", nil)
                 b:Hide()
             end
@@ -2231,11 +2284,12 @@ local function buildFlyout(spec)
         end)
     end
     local ev = CreateFrame("Frame")
-    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "BAG_UPDATE_COOLDOWN" }) do
+    for _, e in ipairs(spec.spells and { "SPELLS_CHANGED", "SKILL_LINES_CHANGED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "SPELL_UPDATE_COOLDOWN" }
+                       or { "BAG_UPDATE_DELAYED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "BAG_UPDATE_COOLDOWN" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
     ev:SetScript("OnEvent", function(_, e)
-        if e == "BAG_UPDATE_COOLDOWN" then pcall(update) return end
+        if e == "BAG_UPDATE_COOLDOWN" or e == "SPELL_UPDATE_COOLDOWN" then pcall(update) return end
         if e == "PLAYER_REGEN_ENABLED" and not stale then return end
         soon()
     end)
@@ -2256,6 +2310,12 @@ function EX:OnInit(db)
             glyph = "micro_mug.tga", title = "Food and drink", is = isFood, rank = foodRank,
             slot = db.potions ~= false and 1 or 0, label = "food row" })
         if not ok and MinimalUIDB then MinimalUIDB.foodErr = tostring(err) end
+    end
+    if db.profFly ~= false then
+        local ok, err = pcall(buildFlyout, { name = "MeniscusProfs", row = "MeniscusProfRow", btn = "MeniscusProfBtn",
+            glyph = "micro_profession.tga", title = "Professions", spells = profSpells, slot = 1, side = -1,
+            label = "profession row" })
+        if not ok and MinimalUIDB then MinimalUIDB.profErr = tostring(err) end
     end
     if db.reactive ~= false then pcall(buildReactive) end
     if db.usage ~= false then pcall(buildUsage) end
