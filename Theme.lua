@@ -444,7 +444,7 @@ local STAT_MARK = {
     RESISTANCE3_NAME = { "stat_nature", 0.55, 0.90, 0.45 },
     RESISTANCE4_NAME = { "stat_frost", 0.55, 0.82, 1.00 },
     RESISTANCE5_NAME = { "stat_shadow", 0.74, 0.60, 1.00 },
-    RESISTANCE6_NAME = { "stat_arcane", 1.00, 0.86, 0.40 },
+    RESISTANCE6_NAME = { "stat_arcane", 1.00, 0.62, 0.90 },
 }
 function ns.StatMark(key, size)
     local m = STAT_MARK[key]

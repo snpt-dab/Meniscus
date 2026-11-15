@@ -793,7 +793,7 @@ end
 local ORB_WORDS = { DODGE = "Dodge", PARRY = "Parry", BLOCK = "Block", MISS = "Miss", RESIST = "Resist",
                     ABSORB = "Absorb", IMMUNE = "Immune", EVADE = "Evade", DEFLECT = "Deflect", REFLECT = "Reflect" }
 local SCHOOL_TINT = { [2] = { 1.00, 0.90, 0.50 }, [4] = { 1.00, 0.55, 0.25 }, [8] = { 0.55, 0.90, 0.40 },
-                      [16] = { 0.55, 0.80, 1.00 }, [32] = { 0.72, 0.55, 1.00 }, [64] = { 0.95, 0.70, 0.95 } }
+                      [16] = { 0.55, 0.80, 1.00 }, [32] = { 0.72, 0.55, 1.00 }, [64] = { 1.00, 0.62, 0.90 } }
 local function buildOrbText()
     local O = ns.modules.Orbs
     local orb = O and O.health
