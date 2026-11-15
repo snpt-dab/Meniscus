@@ -307,7 +307,7 @@ local function fillCard(c, e)
     c.name:SetTextColor(unpack(future and T.textDim or T.text))
     local m = ccMap()
     c.bind:SetText((e.spellID and m[e.spellID]) or m[e.name] or "")
-    local picked = S.bindMode and ccPick and ccPick.spellID == e.spellID
+    local picked = S.bindMode and ccPick and ccPick.spellID ~= nil and ccPick.spellID == e.spellID
     c.ring(picked and T.accent[1] or T.border[1], picked and T.accent[2] or T.border[2], picked and T.accent[3] or T.border[3], 1)
     -- (While click casting is being set up, a click picks the spell.)
     if castable and not e.passive and not S.bindMode then
@@ -336,13 +336,38 @@ end
 -- casting" (the pill at the right of the tabs), click a spell, then press
 -- the mouse button you want for it over the box in the side panel. While
 -- it is on, clicking a spell picks it; nothing is cast.
---   * Plain left and plain right clicks are kept as they are (target, and
---     the menu): binding over them is how people lock themselves out of
---     targeting. Any other button, or any button with Shift, Ctrl or Alt.
+--   * Targeting someone and opening their menu are bindings too (plain
+--     left and plain right click, unless moved), listed first in the panel.
+--     Click one of them and press a new combination to move it: a healer
+--     who wants plain clicks for spells puts them on Ctrl + Shift + click.
+--   * A click that targets or opens the menu can't be given to a spell
+--     while it still does that: move it first. (That is what stops anyone
+--     ending up with no way to target at all.)
 --   * Binding a combination that another spell has takes it over, and says so.
---   * The panel lists what is bound, each with a cross to unbind it.
+--   * The panel lists what is bound, each spell with a cross to unbind it.
 local ccPanel, ccPill
-local function ccSet(entry, mouseButton)
+local INTERACT_TYPE = (Enum and Enum.ClickBindingType and Enum.ClickBindingType.Interaction) or 3
+local CI = Enum and Enum.ClickBindingInteraction
+local INTERACTIONS = {
+    { id = CI and CI.Target or 1, name = "Target them", was = "BUTTON1",
+      held = "That click is how you target them. Move \"Target them\" to another click first: click it below, then press its new combination." },
+    { id = CI and CI.OpenContextMenu or 2, name = "Open their menu", was = "BUTTON2",
+      held = "That click opens their menu. Move \"Open their menu\" to another click first: click it below, then press its new combination." },
+}
+local function sameButton(a, b)
+    if a == b then return true end
+    return (MOUSE_TO[a] or a) == (MOUSE_TO[b] or b)
+end
+-- Where an interaction is now: its entry in the list, or (not in the list)
+-- the plain click it has by default.
+local function interactionAt(list, it)
+    for _, i in ipairs(list) do
+        if type(i) == "table" and i.type == INTERACT_TYPE and i.actionID == it.id then return i.button, i.modifiers or 0 end
+    end
+    return it.was, 0
+end
+-- pick: a spell from the book ({ spellID, name }), or one of INTERACTIONS.
+local function ccSet(pick, mouseButton)
     local btn = MOUSE_TO[mouseButton]
     if not btn then return "That button can't be used for this." end
     local mods = 0
@@ -350,14 +375,21 @@ local function ccSet(entry, mouseButton)
         local ok, m = pcall(CBn.MakeModifiers)
         if ok and type(m) == "number" then mods = m end
     end
-    if mods == 0 and (btn == "BUTTON1" or btn == "BUTTON2") then
-        return "Plain left and right clicks stay as they are (target, and the menu). Hold Shift, Ctrl or Alt, or use another button."
-    end
-    if CBn.CanSpellBeClickBound then
-        local ok, can = pcall(CBn.CanSpellBeClickBound, entry.spellID)
-        if ok and can == false then return entry.name .. " can't be cast by clicking a frame." end
-    end
     local list, out = ccProfile(), {}
+    local typ, act = SPELL_TYPE, pick.spellID
+    if pick.id then typ, act = INTERACT_TYPE, pick.id end
+    -- Is that click one that targets or opens the menu (and not the very
+    -- thing being moved)?
+    for _, it in ipairs(INTERACTIONS) do
+        if not (pick.id and pick.id == it.id) then
+            local ib, im = interactionAt(list, it)
+            if sameButton(ib, btn) and im == mods then return it.held end
+        end
+    end
+    if typ == SPELL_TYPE and CBn.CanSpellBeClickBound then
+        local ok, can = pcall(CBn.CanSpellBeClickBound, act)
+        if ok and can == false then return pick.name .. " can't be cast by clicking a frame." end
+    end
     -- (Buttons are written the way the list already writes them.)
     local want = btn
     for _, i in ipairs(list) do
@@ -366,13 +398,13 @@ local function ccSet(entry, mouseButton)
     local took
     for _, i in ipairs(list) do
         if type(i) == "table" then
-            local here = (i.button == want or i.button == btn or i.button == mouseButton) and (i.modifiers or 0) == mods
-            local same = i.type == SPELL_TYPE and i.actionID == entry.spellID
+            local here = sameButton(i.button, btn) and (i.modifiers or 0) == mods
+            local same = i.type == typ and i.actionID == act
             if here and not same and i.type == SPELL_TYPE then took = i.actionID end
             if not here and not same then out[#out + 1] = i end
         end
     end
-    out[#out + 1] = { type = SPELL_TYPE, actionID = entry.spellID, button = want, modifiers = mods }
+    out[#out + 1] = { type = typ, actionID = act, button = want, modifiers = mods }
     local ok, err = pcall(CBn.SetProfileByInfo, out)
     if not ok then return "The game refused that: " .. tostring(err) end
     ccCache = nil
@@ -403,8 +435,16 @@ local function ccPaint(note, bad)
     end
     p.note:SetText(note or "")
     if bad then p.note:SetTextColor(0.95, 0.55, 0.50) else p.note:SetTextColor(0.50, 0.92, 0.58) end
+    local list = ccProfile()
+    for k, it in ipairs(INTERACTIONS) do
+        local r = p.fixed[k]
+        local ib, im = interactionAt(list, it)
+        r.label:SetText(ccLabel({ button = ib, modifiers = im }))
+        local on = ccPick and ccPick.id == it.id
+        r.name:SetTextColor(unpack(on and T.accent or T.text))
+    end
     local n = 0
-    for _, info in ipairs(ccProfile()) do
+    for _, info in ipairs(list) do
         if type(info) == "table" and info.type == SPELL_TYPE and info.actionID and n < #p.rows then
             n = n + 1
             local r = p.rows[n]
@@ -418,12 +458,11 @@ local function ccPaint(note, bad)
         end
     end
     for i = n + 1, #p.rows do p.rows[i]:Hide() end
-    p.none:SetShown(n == 0)
 end
 local function ccBuild()
     local p = CreateFrame("Frame", nil, win)
     local PW, IN = 268, 16
-    p:SetSize(PW, 392)
+    p:SetSize(PW, 442)
     p:SetPoint("TOPLEFT", win, "TOPRIGHT", 10, 0)
     p:EnableMouse(true)
     ns.RoundedRect(p, -8, 0, 14, T.border[1], T.border[2], T.border[3], 1)
@@ -438,12 +477,12 @@ local function ccBuild()
         return fs
     end
     local y = -16
-    local t1 = line(14, true, nil, y, "Click casting")
+    line(14, true, nil, y, "Click casting")
     y = y - 24
     local t2 = line(11, false, T.textDim, y, "Cast a spell on someone by clicking their frame. No need to target them first.")
     y = y - (t2:GetStringHeight() or 28) - 12
-    local t3 = line(11, false, nil, y, "1   Click a spell in the book.")
-    y = y - 18
+    local t3 = line(11, false, nil, y, "1   Click a spell in the book, or one of the two lines under \"Your bindings\".")
+    y = y - (t3:GetStringHeight() or 28) - 6
     local t4 = line(11, false, nil, y, "2   Point at the box below and press the mouse button you want for it. Hold Shift, Ctrl or Alt to make a combination.")
     y = y - (t4:GetStringHeight() or 42) - 10
     -- The box that takes the press.
@@ -460,7 +499,7 @@ local function ccBuild()
         if not ccPick then return ccPaint("Click a spell in the book first.", true) end
         local err, took = ccSet(ccPick, button)
         if err then return ccPaint(err, true) end
-        local done = ccPick.name .. " is bound."
+        local done = ccPick.id and (ccPick.name .. " has moved.") or (ccPick.name .. " is bound.")
         if took then done = done .. " (It took that click from " .. took .. ".)" end
         ccPick = nil
         ccPaint(done)
@@ -468,12 +507,41 @@ local function ccBuild()
     end)
     y = y - 54 - 8
     p.note = line(10, false, nil, y, "")
-    y = y - 34
-    local hb = line(10, true, T.textDim, y, "YOUR BINDINGS")
+    y = y - 46
+    line(10, true, T.textDim, y, "YOUR BINDINGS")
     y = y - 18
-    p.none = line(11, false, T.textDim, y, "None yet.")
+    -- Targeting and the menu: always there, each to be moved by clicking it.
+    p.fixed = {}
+    for k, it in ipairs(INTERACTIONS) do
+        local r = CreateFrame("Button", nil, p)
+        r:SetSize(PW - IN * 2, 22)
+        r:SetPoint("TOPLEFT", IN, y)
+        r.hl = ns.RoundedRect(r, -8, -4, 6, 1, 1, 1, 0)
+        r.name = text(r, 11)
+        r.name:SetPoint("LEFT", 0, 0)
+        r.name:SetText(it.name)
+        r.label = text(r, 10, false, T.textDim)
+        r.label:SetPoint("RIGHT", -2, 0)
+        r:SetScript("OnEnter", function(self)
+            self.hl(1, 1, 1, 0.06)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(it.name, 1, 1, 1)
+            GameTooltip:AddLine("Click, then press a new combination in the box to move it. That frees its old click for a spell.", 0.8, 0.8, 0.85, true)
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function(self) self.hl(1, 1, 1, 0); GameTooltip:Hide() end)
+        r:SetScript("OnClick", function()
+            if InCombatLockdown() then return ccPaint("Not during a fight.", true) end
+            ccPick = { id = it.id, name = it.name }
+            ccPaint()
+            S:Refresh()
+        end)
+        p.fixed[k] = r
+        y = y - 24
+    end
+    y = y - 4
     p.rows = {}
-    for i = 1, 7 do
+    for i = 1, 6 do
         local r = CreateFrame("Frame", nil, p)
         r:SetSize(PW - IN * 2, 22)
         r:SetPoint("TOPLEFT", IN, y - (i - 1) * 24)
@@ -501,12 +569,6 @@ local function ccBuild()
         r:Hide()
         p.rows[i] = r
     end
-    local foot = text(p, 10, false, T.textDim)
-    foot:SetPoint("BOTTOMLEFT", IN, 46)
-    foot:SetWidth(PW - IN * 2)
-    foot:SetJustifyH("LEFT")
-    foot:SetWordWrap(true)
-    foot:SetText("Plain left and right clicks stay as they are: target, and the menu.")
     local done = pill(p, "Done", function() S.SetBindMode(false) end)
     done:SetPoint("BOTTOMRIGHT", -IN, 14)
     ccPanel = p
