@@ -221,11 +221,40 @@ local function scanBag(t, bag)
     end
 end
 
+-- The same walk, for which items are there and nothing more: asked for by
+-- item number alone, which makes no table. (Asking for a slot's full
+-- details makes one table per slot; over a hundred slots, on every change
+-- to the bags, that was most of the addon's memory churn.)
+local function scanIDs(t, bag)
+    local getID = CC.GetContainerItemID
+    if not getID then return scanBag(t, bag) end
+    local n = call(CC.GetContainerNumSlots or _G.GetContainerNumSlots, bag)
+    if not num(n) then return end
+    for slot = 1, n do
+        local id = call(getID, bag, slot)
+        if num(id) then t[id] = true end
+    end
+end
+
+local seenIDs = {}
 local function scanBags()
     local rec = invRecord()
     if not rec then return end
     wipe(rec.bags)
-    for bag = 0, (_G.NUM_TOTAL_EQUIPPED_BAG_SLOTS or _G.NUM_BAG_SLOTS or 4) do scanBag(rec.bags, bag) end
+    local last = _G.NUM_TOTAL_EQUIPPED_BAG_SLOTS or _G.NUM_BAG_SLOTS or 4
+    local count = C_Item and C_Item.GetItemCount
+    if CC.GetContainerItemID and count then
+        -- Which items, then how many of each from the game's own count
+        -- (which takes in a copy you are wearing, too).
+        wipe(seenIDs)
+        for bag = 0, last do scanIDs(seenIDs, bag) end
+        for id in pairs(seenIDs) do
+            local n = call(count, id)
+            rec.bags[id] = (num(n) and n > 0) and n or 1
+        end
+        return
+    end
+    for bag = 0, last do scanBag(rec.bags, bag) end
 end
 
 local function scanBank()
@@ -2218,6 +2247,11 @@ local function buildFlyout(spec)
     end
     -- Which potions, and where the flask sits: out of combat only.
     local stale, have, order = false, {}, {}
+    local function byRank(a, b)
+        local ra, rb = spec.rank(a), spec.rank(b)
+        if ra ~= rb then return ra < rb end
+        return a > b
+    end
     local function assign()
         if InCombatLockdown() then stale = true return end
         stale = false
@@ -2225,15 +2259,11 @@ local function buildFlyout(spec)
         if spec.spells then
             pcall(spec.spells, order)
         else
-            for bag = 0, (NUM_BAG_SLOTS or 4) do scanBag(have, bag) end
+            for bag = 0, (NUM_BAG_SLOTS or 4) do scanIDs(have, bag) end
             for id in pairs(have) do
                 if spec.is(id) then order[#order + 1] = id end
             end
-            table.sort(order, function(a, b)
-                local ra, rb = spec.rank(a), spec.rank(b)
-                if ra ~= rb then return ra < rb end
-                return a > b
-            end)
+            table.sort(order, byRank)
         end
         local dome = _G.MinimalUI_MinimapDome
         anchor:ClearAllPoints()
