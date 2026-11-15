@@ -554,6 +554,17 @@ local function skillIcon(name)
     if icon and not secret(icon) then skillIcons[name] = icon return icon end
     return nil
 end
+-- After an item's name on its pill when it is better than what you wear:
+-- the small green arrow the bags use.
+local UP_MARK = " |TInterface/AddOns/Meniscus/Media/micro_up.tga:12:12:0:0:64:64:0:64:0:64:92:235:117|t"
+local function markUpgrade(f, name, link)
+    if not (f and type(link) == "string" and not secret(link) and ns.IsUpgrade) then return end
+    local okU, up = pcall(ns.IsUpgrade, link)
+    if okU and up then
+        f.text:SetText(name .. UP_MARK)
+        f.full = f.full + 15
+    end
+end
 local function floatSkill(msg)
     if not (L.db and L.db.skillFloat ~= false) then return end
     if type(msg) ~= "string" or secret(msg) then return end
@@ -679,7 +690,6 @@ local function floatQuest(msg)
     return ok
 end
 
-local UP_MARK = " |TInterface/AddOns/Meniscus/Media/micro_up.tga:12:12:0:0:64:64:0:64:0:64:92:235:117|t"
 local function floatSlot(slot)
     if not (L.db and L.db.float ~= false) then return end
     local e = type(slot) == "number" and slot <= snapN and snap[slot]
@@ -713,16 +723,7 @@ local function floatSlot(slot)
     if fine then tr, tg, tb, rr, rg, rb = cr, cg, cb, cr * 0.75, cg * 0.75, cb * 0.75 end
     floatRail = "left"
     local f = floatPill(tex, name, tr, tg, tb, many and ("\195\151" .. qty) or nil, rr, rg, rb)
-    -- Better than what you are wearing: the small green arrow the bags use,
-    -- after the name.
-    local link = e.link
-    if f and type(link) == "string" and not secret(link) and ns.IsUpgrade then
-        local okU, up = pcall(ns.IsUpgrade, link)
-        if okU and up then
-            f.text:SetText(name .. UP_MARK)
-            f.full = f.full + 15
-        end
-    end
+    markUpgrade(f, name, e.link)
 end
 
 -- Things you make (cooking, crafting) never pass through a loot window: the
@@ -753,7 +754,10 @@ local function floatMade(msg)
     end
     pcall(floatOrigin)
     floatRail = "left"
-    floatPill(tex or 134400, name, tr, tg, tb, (qty and qty > 1) and ("\195\151" .. qty) or nil, rr, rg, rb)
+    local f = floatPill(tex or 134400, name, tr, tg, tb, (qty and qty > 1) and ("\195\151" .. qty) or nil, rr, rg, rb)
+    -- (Something you made can be an upgrade too. The link as the game wrote
+    -- it, or failing that one made from the item's number.)
+    markUpgrade(f, name, msg:match("(|c%x+|Hitem:.-|h%[.-%]|h|r)") or msg:match("(|Hitem:.-|h%[.-%]|h)") or ("item:" .. id))
 end
 
 -- ── Group loot rolls ──────────────────────────────────────────────────────
