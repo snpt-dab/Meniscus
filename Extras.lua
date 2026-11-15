@@ -596,7 +596,10 @@ local function buildPetFood()
         local w = B and B.petWell
         if w and w.on and w.pill then
             btn:ClearAllPoints()
-            btn:SetPoint("BOTTOMRIGHT", w.pill, "TOPRIGHT", -6, 4)
+            -- On the panel's top edge, at its right end, half over the
+            -- border. (It sat just above the name pill, which is where the
+            -- last pet button is: the button covered it.)
+            btn:SetPoint("RIGHT", w, "TOPRIGHT", -12, 0)
             if not placed then
                 placed = true
                 RegisterStateDriver(btn, "visibility", "[pet,nodead] show; hide")

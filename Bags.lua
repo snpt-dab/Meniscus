@@ -546,9 +546,11 @@ local function stackWorth(info, bag, slot)
     local n = num(info.stackCount) and info.stackCount or 1
     return c * n, q, n, link
 end
+-- Strictly by what the stack sells for (grey junk used to go first whatever
+-- its price); junk before a white thing only when they sell for the same.
 local function byWorth(a, b)
-    if a.q ~= b.q then return a.q < b.q end
-    return a.worth < b.worth
+    if a.worth ~= b.worth then return a.worth < b.worth end
+    return a.q < b.q
 end
 -- Fills dropList (cheapest first) and dropSet (the first `mark` of them).
 local function findCheapest(mark)
