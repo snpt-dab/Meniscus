@@ -590,7 +590,7 @@ local function buildNumbers()
                 key = rel
                 if rel then
                     local okD, dead = pcall(UnitIsDeadOrGhost, unit)
-                    if (okD and not secret(dead) and dead) or NP.db.numbersWhere == "rail" then onRail = true end
+                    if (okD and not secret(dead) and dead) or NP.db.numbersWhere ~= "plate" then onRail = true end
                 end
             end
             if onRail then
