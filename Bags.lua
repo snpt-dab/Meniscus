@@ -1234,10 +1234,22 @@ do
         if not (B.db and B.db.cheapest ~= false and ns.FloatWarning) then return end
         local free = freeSlots()
         if e == "BAG_UPDATE_DELAYED" then
-            if lastFree and lastFree > 1 and free <= 1 and GetTime() - born > 10 then
-                ns.FloatWarning(BAG_ICON, free == 0 and "Bags full" or "Bags nearly full", free == 0 and "no room" or "1 slot left")
-            end
-            lastFree = free
+            -- Said once things have settled: looting several things at once
+            -- reports the bags after each, and "1 slot left" was announced
+            -- on the way to full, with nothing said when the last slot went.
+            -- Half a second after the last change, what is true then is
+            -- what is said: nearly full, or full (also when going from one
+            -- slot to none).
+            f.tok = (f.tok or 0) + 1
+            local tok = f.tok
+            C_Timer.After(0.5, function()
+                if tok ~= f.tok then return end
+                local now = freeSlots()
+                if lastFree and now < lastFree and now <= 1 and GetTime() - born > 10 then
+                    ns.FloatWarning(BAG_ICON, now == 0 and "Bags full" or "Bags nearly full", now == 0 and "no room" or "1 slot left")
+                end
+                lastFree = now
+            end)
             return
         end
         -- QUEST_COMPLETE: the reward page is up.
