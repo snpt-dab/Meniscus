@@ -75,7 +75,7 @@ function MM:OnInit(db)
 
     -- After the other modules (the bar's position decides the default spot).
     if db.dome then
-        C_Timer.After(0, function() MM:ApplyDome(); MM:ArrangeAround() end)
+        ns.AfterInit(function() MM:ApplyDome(); MM:ArrangeAround() end)
         C_Timer.After(3, function() MM:ProbeDome() end)
     end
 end

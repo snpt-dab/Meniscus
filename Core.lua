@@ -183,8 +183,22 @@ f:SetScript("OnEvent", function(_, event, arg1)
                 end
             end
         end
+        -- Work that has to follow every module's setup, done here and now
+        -- rather than a frame later: after a reload in the middle of a fight
+        -- the game's combat lock comes down right after login, and a frame
+        -- later is already too late to place anything protected.
+        local after = ns.afterInit
+        ns.afterInit = nil
+        for i = 1, #after do pcall(after[i]) end
     end
 end)
+
+-- ns.AfterInit(fn): run once every module is set up, still inside login
+-- (see above). Called later than that, it runs at once.
+ns.afterInit = {}
+function ns.AfterInit(fn)
+    if ns.afterInit then ns.afterInit[#ns.afterInit + 1] = fn else pcall(fn) end
+end
 
 ns.commands = {}
 

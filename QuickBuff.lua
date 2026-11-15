@@ -887,8 +887,21 @@ local function buildButton()
     btn:Hide()
 end
 
+local placeLater
 local function place()
     local B = ns.modules.Bars
+    -- (The pill casts, so the game won't let it be moved mid-fight: wait.)
+    if InCombatLockdown() then
+        if not placeLater then
+            placeLater = CreateFrame("Frame")
+            placeLater:SetScript("OnEvent", function(self)
+                self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                pcall(QB.Place)
+            end)
+        end
+        placeLater:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
     btn:ClearAllPoints()
     if B and B.main then
         -- Above the pet/stance row that sits on top of the main bar.
