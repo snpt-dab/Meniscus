@@ -644,8 +644,15 @@ end
 -- After Blizzard's spellbook functions run: close Blizzard's window and
 -- open (or, if ours was already open before this frame, close) ours. In
 -- combat, while ours is closed, Blizzard's stays.
+-- Setting up Click Casting: the game's binding window works by clicking a
+-- spell in the game's OWN spellbook (ours would just cast it). While that
+-- window is open the game's book is left alone, and ours stays shut.
+local function binding()
+    local f = _G.ClickBindingFrame
+    return f and f.IsShown and f:IsShown() or false
+end
 local function takeover(toggle)
-    if S.bypass then return end
+    if S.bypass or binding() then return end
     local f = _G.PlayerSpellsFrame
     local wasOpen = win and win:IsShown() and S.shownAt ~= GetTime()
     if toggle and wasOpen then
@@ -676,9 +683,29 @@ local function hookFrame()
     -- over if it landed on the spellbook. Talents stay Blizzard's.
     f:HookScript("OnShow", function()
         C_Timer.After(0, function()
-            if S.bypass or not f:IsShown() or InCombatLockdown() then return end
+            if S.bypass or binding() or not f:IsShown() or InCombatLockdown() then return end
             local book = f.SpellBookFrame
             if book and book:IsShown() then takeover(false) end
+        end)
+    end)
+end
+
+-- The binding window opening: put ours away and bring up the game's book
+-- beside it (it usually opens the book itself; this covers ours having
+-- been open already).
+local function hookBinding()
+    local f = _G.ClickBindingFrame
+    if not f or S.hookedBinding or not f.HookScript then return end
+    S.hookedBinding = true
+    f:HookScript("OnShow", function()
+        if InCombatLockdown() then return end
+        if win and win:IsShown() then S:Close() end
+        C_Timer.After(0.1, function()
+            local ps = _G.PlayerSpellsFrame
+            if binding() and not (ps and ps:IsShown()) then
+                local U = _G.PlayerSpellsUtil
+                if U and U.OpenToSpellBookTab then pcall(U.OpenToSpellBookTab) end
+            end
         end)
     end)
 end
@@ -714,7 +741,7 @@ local function buildToggle()
         elseif _G.ToggleSpellBook then pcall(_G.ToggleSpellBook, "spell") end
     end
     toggle:HookScript("OnClick", function()
-        if S.bypass then return blizzToggle() end
+        if S.bypass or binding() then return blizzToggle() end
         if InCombatLockdown() then
             -- Ours was never built (a fight right at login): the game's book.
             if not win then blizzToggle() end
@@ -770,6 +797,7 @@ function S:OnInit(db)
     hookUtil()
     hookFrame()
     hookMicro()
+    hookBinding()
     pcall(buildToggle)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "ADDON_LOADED", "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "SPELL_UPDATE_COOLDOWN",
@@ -777,7 +805,7 @@ function S:OnInit(db)
         pcall(ev.RegisterEvent, ev, e)
     end
     ev:SetScript("OnEvent", function(_, event)
-        if event == "ADDON_LOADED" then hookUtil(); hookFrame(); hookMicro(); return end
+        if event == "ADDON_LOADED" then hookUtil(); hookFrame(); hookMicro(); hookBinding(); return end
         if event == "PLAYER_REGEN_ENABLED" then
             if pending.hide then pending.hide = false; if win then win:Hide() end end
             if pending.refresh then S:Refresh() end
