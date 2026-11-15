@@ -745,9 +745,9 @@ local function moneyText(c)
     if not num(c) then return "" end
     local g, s, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
     local parts = {}
-    if g > 0 then table.insert(parts, string.format("%s|cffe6c25a g|r", BreakUpLargeNumbers and BreakUpLargeNumbers(g) or g)) end
-    if g > 0 or s > 0 then table.insert(parts, string.format("%d|cffb8bcc6 s|r", s)) end
-    table.insert(parts, string.format("%d|cffc98a52 c|r", cp))
+    if g > 0 then table.insert(parts, string.format("%s|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t", BreakUpLargeNumbers and BreakUpLargeNumbers(g) or g)) end
+    if g > 0 or s > 0 then table.insert(parts, string.format("%d|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:184:188:198|t", s)) end
+    table.insert(parts, string.format("%d|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:201:138:82|t", cp))
     return table.concat(parts, "  ")
 end
 

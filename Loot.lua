@@ -303,7 +303,7 @@ local lastStart = {}           -- per rail: when its last pill set off
 local floatDriver
 local MONEY_SLOT = (Enum and Enum.LootSlotType and Enum.LootSlotType.Money) or 2
 local PILL_H, PILL_PAD = 24, 10
-local COIN = { g = "|cffe6c25ag|r", s = "|cffb8bcc6s|r", c = "|cffc98a52c|r" }
+local COIN = { g = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t", s = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:184:188:198|t", c = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:201:138:82|t" }
 
 local function snapshot()
     local n = call(GetNumLootItems) or 0
