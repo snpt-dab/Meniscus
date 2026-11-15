@@ -369,8 +369,20 @@ function MM:BuildZonePill(h)
         local zone, sub = GetRealZoneText and GetRealZoneText() or "", GetMinimapZoneText and GetMinimapZoneText() or ""
         GameTooltip:SetText(zone ~= "" and zone or sub, 1, 1, 1)
         if sub ~= "" and sub ~= zone then GameTooltip:AddLine(sub, 0.8, 0.8, 0.85) end
-        local hh, mm = GetGameTime()
-        if type(hh) == "number" then GameTooltip:AddDoubleLine("Server time", string.format("%02d:%02d", hh, mm), 0.6, 0.6, 0.65, 1, 1, 1) end
+        -- The time: the game's own (the realm's clock, which the day and
+        -- night follow) and yours. The realm's is asked two ways, since a
+        -- client may answer only one.
+        local hh, mm
+        if type(GetGameTime) == "function" then
+            local okT, h, m = pcall(GetGameTime)
+            if okT and type(h) == "number" and type(m) == "number" then hh, mm = h, m end
+        end
+        if not hh and C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime then
+            local okC, t = pcall(C_DateAndTime.GetCurrentCalendarTime)
+            if okC and type(t) == "table" and type(t.hour) == "number" then hh, mm = t.hour, t.minute or 0 end
+        end
+        if hh then GameTooltip:AddDoubleLine("Game time", string.format("%02d:%02d", hh, mm), 0.6, 0.6, 0.65, 1, 1, 1) end
+        GameTooltip:AddDoubleLine("Your time", date("%H:%M"), 0.6, 0.6, 0.65, 1, 1, 1)
         local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
         local ok, pos = pcall(function() return mapID and C_Map.GetPlayerMapPosition(mapID, "player") end)
         if ok and pos and pos.GetXY then
