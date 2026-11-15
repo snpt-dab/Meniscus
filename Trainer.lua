@@ -46,9 +46,9 @@ local function money(c, red)
     local g, s, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
     local parts = {}
     local col = red and "|cfff26b66" or "|cffeeeef2"
-    if g > 0 then table.insert(parts, col .. g .. "|r|cffe6c25a g|r") end
-    if s > 0 then table.insert(parts, col .. s .. "|r|cffb8bcc6 s|r") end
-    if cp > 0 then table.insert(parts, col .. cp .. "|r|cffc98a52 c|r") end
+    if g > 0 then table.insert(parts, col .. g .. "|r|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t") end
+    if s > 0 then table.insert(parts, col .. s .. "|r|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:184:188:198|t") end
+    if cp > 0 then table.insert(parts, col .. cp .. "|r|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:201:138:82|t") end
     return table.concat(parts, " ")
 end
 

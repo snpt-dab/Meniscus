@@ -118,9 +118,9 @@ local function money(c)
     if not num(c) then return "" end
     local g, s, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
     local parts = {}
-    if g > 0 then table.insert(parts, g .. "|cffe6c25a g|r") end
-    if g > 0 or s > 0 then table.insert(parts, s .. "|cffb8bcc6 s|r") end
-    table.insert(parts, cp .. "|cffc98a52 c|r")
+    if g > 0 then table.insert(parts, g .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t") end
+    if g > 0 or s > 0 then table.insert(parts, s .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:184:188:198|t") end
+    table.insert(parts, cp .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:201:138:82|t")
     return table.concat(parts, " ")
 end
 

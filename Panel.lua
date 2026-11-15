@@ -521,6 +521,10 @@ local PAGES = {
                   N.db.numbers = N.db.numbers == false
                   if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
               end },
+            { "Damage type beside the number", kind = "switch",
+              note = "A small emblem for fire, frost, shadow and the rest (a blade for physical)",
+              get = function() return ns.modules.Nameplates.db.numbersKind ~= false end,
+              set = function() local d = ns.modules.Nameplates.db; d.numbersKind = d.numbersKind == false end },
             { "Only my own hits and heals", kind = "switch", reload = true,
               note = "A best guess (the client doesn't say who dealt a hit); off shows everyone's",
               get = function() return ns.modules.Nameplates.db.numbersMine ~= false end,
@@ -806,6 +810,7 @@ local KEYS = {
     ["Tracking spells in the professions quickslot"] = "find herbs minerals ore track",
     ["Meniscus combat numbers"] = "floating combat text fct sct damage healing scrolling",
     ["Only my own hits and heals"] = "mine party others filter damage numbers",
+    ["Damage type beside the number"] = "school fire frost shadow nature arcane holy physical icon floating combat text",
     ["Damage and avoidance on the health orb"] = "incoming hits dodge parry block floating text",
     ["Aggro ring on the health orb"] = "threat pull tank warning",
     ["Rare alert"] = "silver dragon elite spawn sound ping",

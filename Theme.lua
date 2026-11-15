@@ -428,6 +428,38 @@ local function statLabel(key)
     return (key:gsub("^ITEM_MOD_", ""):gsub("_SHORT$", ""):gsub("_", " "):lower():gsub("^%l", string.upper))
 end
 
+-- A stat's emblem, as text markup: the character panel's own icons (heart
+-- for Stamina, bulb for Intellect...), each in its own colour, so that a
+-- comparison reads as pictures and numbers. nil for a stat with no emblem.
+local STAT_MARK = {
+    ITEM_MOD_STRENGTH_SHORT = { "stat_str", 0.92, 0.48, 0.38 },
+    ITEM_MOD_AGILITY_SHORT = { "stat_agi", 0.55, 0.85, 0.40 },
+    ITEM_MOD_STAMINA_SHORT = { "stat_sta", 0.95, 0.72, 0.32 },
+    ITEM_MOD_INTELLECT_SHORT = { "stat_int", 0.45, 0.68, 1.00 },
+    ITEM_MOD_SPIRIT_SHORT = { "stat_spi", 0.72, 0.58, 1.00 },
+    RESISTANCE0_NAME = { "stat_defense", 0.78, 0.80, 0.86 },
+    ITEM_MOD_DAMAGE_PER_SECOND_SHORT = { "stat_melee", 0.86, 0.86, 0.90 },
+    ITEM_MOD_SPELL_POWER_SHORT = { "stat_spell", 0.70, 0.80, 1.00 },
+    RESISTANCE2_NAME = { "stat_fire", 1.00, 0.56, 0.28 },
+    RESISTANCE3_NAME = { "stat_nature", 0.55, 0.90, 0.45 },
+    RESISTANCE4_NAME = { "stat_frost", 0.55, 0.82, 1.00 },
+    RESISTANCE5_NAME = { "stat_shadow", 0.74, 0.60, 1.00 },
+    RESISTANCE6_NAME = { "stat_arcane", 1.00, 0.86, 0.40 },
+}
+function ns.StatMark(key, size)
+    local m = STAT_MARK[key]
+    if not m then return nil end
+    size = size or 13
+    return string.format("|TInterface/AddOns/Meniscus/Media/micro_%s.tga:%d:%d:0:0:32:32:0:32:0:32:%d:%d:%d|t",
+        m[1], size, size, math.floor(m[2] * 255), math.floor(m[3] * 255), math.floor(m[4] * 255))
+end
+-- A coin, as text markup: a small flat disc in gold, silver or copper.
+ns.COIN = {
+    g = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t",
+    s = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:184:188:198|t",
+    c = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:201:138:82|t",
+}
+
 -- The same comparison as one short coloured line for a tile:
 -- "+3 Agi  +12 Armor  -2 Sta" (biggest changes first, at most four).
 -- Returns nil for things that aren't gear or whose data hasn't arrived,
@@ -468,8 +500,10 @@ function ns.CompareLine(link)
         local a = math.abs(d)
         local label = statLabel(diffs[i][1])
         label = SHORT[label] or label
-        out = out .. (i > 1 and "   " or "") .. (d > 0 and "|cff73d980+" or "|cffe57373-")
-            .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5)) .. " " .. label .. "|r"
+        local mark = ns.StatMark(diffs[i][1], 12)
+        out = out .. (i > 1 and "   " or "") .. (mark and (mark .. " ") or "") .. (d > 0 and "|cff73d980+" or "|cffe57373-")
+            .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
+            .. (mark and "" or (" " .. label)) .. "|r"
     end
     if #diffs > 4 then out = out .. "  |cff9a9aa5\226\128\166|r" end
     return out
@@ -509,9 +543,11 @@ function ns.CompareRows(link, max)
     for i = 1, math.min(#diffs, max) do
         local d = diffs[i][2]
         local a = math.abs(d)
-        rows[i] = (d > 0 and "|cff73d980+" or "|cffe57373-")
+        -- (The emblem stands for the word where there is one.)
+        local mark = ns.StatMark(diffs[i][1], 13)
+        rows[i] = (mark and (mark .. " ") or "") .. (d > 0 and "|cff73d980+" or "|cffe57373-")
             .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
-            .. " " .. statLabel(diffs[i][1]) .. "|r"
+            .. (mark and "" or (" " .. statLabel(diffs[i][1]))) .. "|r"
     end
     if #diffs > max then rows[max] = rows[max] .. "  |cff9a9aa5+" .. (#diffs - max) .. " more|r" end
     return rows
@@ -720,8 +756,10 @@ function ns.AddCompare(tip, link)
                     local a = math.abs(d)
                     return (d > 0 and "+" or "-") .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
                 end
-                for _, e in ipairs(gains) do tip:AddLine(fmt(e[2]) .. " " .. statLabel(e[1]), 0.45, 0.85, 0.50) end
-                for _, e in ipairs(losses) do tip:AddLine(fmt(e[2]) .. " " .. statLabel(e[1]), 0.90, 0.45, 0.45) end
+                -- (In a tooltip there is room for the word too: emblem, number, name.)
+                local function row(e) return (ns.StatMark(e[1], 13) or "") .. " " .. fmt(e[2]) .. " " .. statLabel(e[1]) end
+                for _, e in ipairs(gains) do tip:AddLine(row(e), 0.45, 0.85, 0.50) end
+                for _, e in ipairs(losses) do tip:AddLine(row(e), 0.90, 0.45, 0.45) end
                 if #gains == 0 and #losses == 0 then tip:AddLine("Same stats", 0.85, 0.85, 0.88) end
                 shownAny = true
             end

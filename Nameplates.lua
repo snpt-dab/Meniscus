@@ -188,6 +188,13 @@ end
 local NUM_POOL, NUM_LIFE, NUM_RISE = 40, 1.05, 44
 local SCHOOL_TINT = { [1] = { 0.94, 0.94, 0.96 }, [2] = { 1.00, 0.90, 0.50 }, [4] = { 1.00, 0.56, 0.28 },
     [8] = { 0.55, 0.90, 0.45 }, [16] = { 0.55, 0.82, 1.00 }, [32] = { 0.74, 0.60, 1.00 }, [64] = { 1.00, 0.62, 0.90 } }
+-- The kind of damage, as the character panel's resistance emblems (and a
+-- blade for physical, a star for holy), drawn just left of the number in
+-- the number's own colour. A pilot: the client names one school per hit,
+-- so a bleed shows as physical and a poison as nature.
+local SCHOOL_ICON = { [1] = "micro_stat_melee.tga", [2] = "micro_buff.tga", [4] = "micro_stat_fire.tga",
+    [8] = "micro_stat_nature.tga", [16] = "micro_stat_frost.tga", [32] = "micro_stat_shadow.tga",
+    [64] = "micro_stat_arcane.tga" }
 local WORDS = { MISS = "Miss", DODGE = "Dodge", PARRY = "Parry", BLOCK = "Block", RESIST = "Resist",
     IMMUNE = "Immune", ABSORB = "Absorb", EVADE = "Evade", DEFLECT = "Deflect", REFLECT = "Reflect" }
 -- The game's own world text: its damage and healing numbers off, and the
@@ -254,6 +261,10 @@ local function buildNumbers()
         f.fs = line("OVERLAY")
         f.fs:SetShadowOffset(1, -1)
         f.fs:SetShadowColor(0, 0, 0, 0.9)
+        f.kind = f:CreateTexture(nil, "OVERLAY")
+        f.kind:SetSize(SIZE * 0.78, SIZE * 0.78)
+        f.kind:SetPoint("RIGHT", f.fs, "LEFT", -2, 0)
+        f.kind:Hide()
         items[#items + 1] = f
         return f
     end
@@ -302,9 +313,16 @@ local function buildNumbers()
     -- rel: the frame the number rises from (a nameplate), or nil for a
     -- place on the screen. A nameplate may not be measured by an addon
     -- ("restricted region"), only anchored to: so the number is hung on it.
-    local function show(rel, x, y, value, r, g, b, crit, small)
+    local function show(rel, x, y, value, r, g, b, crit, small, kind)
         local f = item()
         if not f then return end
+        if kind then
+            f.kind:SetTexture("Interface/AddOns/Meniscus/Media/" .. kind)
+            f.kind:SetVertexColor(r, g, b, 1)
+            f.kind:Show()
+        else
+            f.kind:Hide()
+        end
         -- (A hidden amount goes straight in; nothing is done with it here.)
         local ok = pcall(f.fs.SetText, f.fs, value)
         if MinimalUIDB and not MinimalUIDB.ctdiag then
@@ -496,9 +514,10 @@ local function buildNumbers()
             if MinimalUIDB then
                 local d = MinimalUIDB.ctlog
                 if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
-                d[#d + 1] = string.format("%.2f %s / %s  amount %s  %s%s", GetTime() % 1000, action,
+                d[#d + 1] = string.format("%.2f %s / %s  amount %s  school %s  %s%s", GetTime() % 1000, action,
                     tostring(not secret(indicator) and indicator or "?"),
                     secret(amount) and "hidden" or tostring(amount),
+                    secret(school) and "hidden" or tostring(school),
                     mineHit and "shown" or "dropped", why ~= "" and (" (" .. why .. ")") or "")
                 if #d > 40 then table.remove(d, 1) end
             end
@@ -506,14 +525,15 @@ local function buildNumbers()
         end
         if not x then return end
         local crit = not secret(indicator) and indicator == "CRITICAL"
+        local kind = NP.db.numbersKind ~= false and not secret(school) and SCHOOL_ICON[school] or nil
         if action == "HEAL" then
             show(rel, x, y, amount, 0.42, 0.92, 0.50, crit)
         elseif action == "WOUND" then
             if mine then
-                show(rel, x, y, amount, 0.96, 0.42, 0.38, crit)
+                show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind)
             else
                 local c = (not secret(school) and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
-                show(rel, x, y, amount, c[1], c[2], c[3], crit)
+                show(rel, x, y, amount, c[1], c[2], c[3], crit, nil, kind)
             end
         elseif WORDS[action] then
             show(rel, x, y, WORDS[action], 0.80, 0.80, 0.86, false, true)
