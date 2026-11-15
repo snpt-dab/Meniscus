@@ -751,6 +751,10 @@ local function floatMade(msg)
         if msg:sub(1, #madePrefix[i]) == madePrefix[i] then known = true break end
     end
     if not known then return end
+    -- At a merchant: nothing (you are looking at what you are buying, and
+    -- buying several things queued a pill for each).
+    local mf = _G.MerchantFrame
+    if mf and mf.IsShown and mf:IsShown() then return end
     local id, name = msg:match("|Hitem:(%d+).-|h%[(.-)%]|h")
     id = tonumber(id)
     if not id or not name or name == "" then return end
