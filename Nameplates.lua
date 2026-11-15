@@ -456,10 +456,14 @@ local function buildNumbers()
     local function swinging(now)
         local f = (C_Spell and C_Spell.IsCurrentSpell) or _G.IsCurrentSpell
         local okA, auto = pcall(f, 6603)
-        if not okA or secret(auto) or not auto then return false end
+        if not okA or secret(auto) or not auto then
+            why = "not auto-attacking: " .. (not okA and "error" or secret(auto) and "hidden" or "no")
+            return false
+        end
         local okS, speed = pcall(UnitAttackSpeed, "player")
         if not okS or secret(speed) or type(speed) ~= "number" or speed <= 0 then speed = 2 end
         if now - lastSwing >= speed * 0.8 then lastSwing = now; return true end
+        why = string.format("%.1f s after a swing", now - lastSwing)
         return false
     end
     local function yours(unit, plate, action, now)
@@ -470,6 +474,11 @@ local function buildNumbers()
         if isTarget and take(hits, now) then why = "cast"; return true end
         if isTarget and swinging(now) then why = "swing"; return true end
         local list = plate and dots[plate]
+        -- Your target's effects are also kept under the target itself: its
+        -- nameplate goes when it leaves the screen (the camera turned away,
+        -- or too far off) and comes back as a different one, and the ticks
+        -- were lost with it.
+        if isTarget and not (list and #list > 0) then list = dots[RAILKEY] end
         if list and #list > 0 then
             -- (Whether the unit still carries your effect was asked of the
             -- game here, and the answer could not be relied on: it is only
@@ -534,15 +543,23 @@ local function buildNumbers()
                 local okN, n = pcall(C_Spell.GetSpellName, spellID)
                 auto = okN and not secret(n) and (n == "Shoot" or n == "Auto Shot")
             end
-            local plate = not auto and plateOf("target")
-            if not auto and not plate then plate = RAILKEY end -- (no nameplate at this range)
-            if plate then
-                local list = dots[plate]
-                if not list then list = {}; dots[plate] = list end
-                list[#list + 1] = now
-                if #list > 4 then table.remove(list, 1) end
+            if not auto then
+                local function note(key)
+                    local list = dots[key]
+                    if not list then list = {}; dots[key] = list end
+                    list[#list + 1] = now
+                    if #list > 4 then table.remove(list, 1) end
+                end
+                local plate = plateOf("target")
+                if plate then note(plate) end
+                note(RAILKEY)
             end
         end)
+        -- (A new target: what was kept under "your target" was the old one's.
+        -- The old one's nameplate keeps its own list.)
+        local tc = CreateFrame("Frame")
+        tc:RegisterEvent("PLAYER_TARGET_CHANGED")
+        tc:SetScript("OnEvent", function() dots[RAILKEY] = nil end)
     end
 
     -- A nameplate going away with numbers still rising from it (the mob

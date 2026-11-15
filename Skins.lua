@@ -1634,7 +1634,29 @@ local function deepDriver(f, name)
         deepVisibleOnly = false
         if not ok and not errShown then errShown = true; ns:Print("Skin " .. name .. ": " .. tostring(err)) end
     end
-    d:SetScript("OnShow", function() acc, calm = 0, 0; run(true) end)
+    -- The first time a window opens after a reload, its parts are still
+    -- being made and filled in for a moment (lists, tabs, text in the
+    -- game's fonts), and were seen in Blizzard's dress before ours was on.
+    -- So that first time it stays unseen for a third of a second while the
+    -- restyling passes run, then appears. Every deep-skinned window gets
+    -- this (it began as the friends window's own fix). A window that is
+    -- being kept unseen on purpose (a ghost) is left alone.
+    local firstShow = true
+    local function gate()
+        if not firstShow then return end
+        firstShow = false
+        local okA, was = pcall(f.GetAlpha, f)
+        if not okA or type(was) ~= "number" or was < 0.05 then return end
+        pcall(f.SetAlpha, f, 0)
+        soon = 2
+        C_Timer.After(0.12, function() if f:IsShown() then run(true) end end)
+        C_Timer.After(0.32, function()
+            if f:IsShown() then run(true) end
+            local okN, now = pcall(f.GetAlpha, f)
+            if okN and now == 0 then pcall(f.SetAlpha, f, was) end
+        end)
+    end
+    d:SetScript("OnShow", function() acc, calm = 0, 0; run(true); gate() end)
     -- For a window's own skin: ask for the quick passes now (next frame,
     -- and once more a quarter of a second later).
     f.__muiDeepSoon = function() soon, calm = 2, 0 end
