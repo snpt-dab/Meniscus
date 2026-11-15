@@ -697,6 +697,33 @@ local function hookBinding()
     local f = _G.ClickBindingFrame
     if not f or S.hookedBinding or not f.HookScript then return end
     S.hookedBinding = true
+    -- Side by side: the binding window goes to the right of the game's
+    -- book, level with its top (they were landing one over the other).
+    -- And the book's own tabs (General, your class's schools) get their
+    -- words back: our skin had left them as blank pills, so there was no
+    -- telling them apart to find a spell to bind.
+    local function arrange()
+        local ps = _G.PlayerSpellsFrame
+        if not (binding() and ps and ps:IsShown()) or InCombatLockdown() then return end
+        pcall(function()
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", ps, "TOPRIGHT", 12, 0)
+        end)
+        pcall(function()
+            local book = ps.SpellBookFrame
+            local sys = book and (book.CategoryTabSystem or book.TabSystem)
+            local tabs = sys and (sys.tabs or { sys:GetChildren() })
+            for _, tab in ipairs(tabs or {}) do
+                local fs = tab.Text or (tab.GetFontString and tab:GetFontString())
+                if fs then
+                    fs:SetTextColor(T.text[1], T.text[2], T.text[3])
+                    fs:SetAlpha(1)
+                    pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
+                    fs:Show()
+                end
+            end
+        end)
+    end
     f:HookScript("OnShow", function()
         if InCombatLockdown() then return end
         if win and win:IsShown() then S:Close() end
@@ -707,7 +734,13 @@ local function hookBinding()
                 if U and U.OpenToSpellBookTab then pcall(U.OpenToSpellBookTab) end
             end
         end)
+        C_Timer.After(0.3, arrange)
+        C_Timer.After(1.0, arrange)
     end)
+    local ps0 = _G.PlayerSpellsFrame
+    if ps0 and ps0.HookScript then
+        ps0:HookScript("OnShow", function() C_Timer.After(0.2, arrange) end)
+    end
 end
 
 local function hookMicro()
