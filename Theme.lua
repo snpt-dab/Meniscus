@@ -562,7 +562,7 @@ function ns.IsUpgrade(link)
     local tool = isWeapon and TOOL_WEAPON[subID]
     -- Weapons are judged by their damage per second, not their item level.
     local newDps = isWeapon and weaponDps(link) or nil
-    if not wrongArmor and not tool then
+    if not tool then
         local lowest, empty, same = nil, false, false
         local beats = false
         local main = GetInventoryItemLink("player", 16)
@@ -597,8 +597,14 @@ function ns.IsUpgrade(link)
                 end
             end
         end
+        -- Something is better than nothing: an empty slot makes it an
+        -- upgrade even when it is a lighter kind of armour than your class
+        -- wants (a warrior with a bare chest and a cloth robe in the bag).
+        -- Lighter armour never beats what you are already wearing, though.
         if same then res = false
-        elseif empty or beats then res = true
+        elseif empty then res = true
+        elseif wrongArmor then res = false
+        elseif beats then res = true
         elseif lowest and new > lowest then res = true end
         if res and ns.ItemUnusable(link) then res = false end
     end
