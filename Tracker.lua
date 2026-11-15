@@ -484,12 +484,13 @@ function TR:Console(x, y, w, h)
                 local fs = P.take(11, true)
                 local lvl = (type(e.level) == "number" and not secretv(e.level) and e.level > 0) and ("[" .. e.level .. "] ") or ""
                 fs:SetText(lvl .. tostring(e.title))
-                -- A finished quest: a green mark before its name, the name
-                -- in a brighter green than an easy quest's, and one line
-                -- under it in place of the objectives. (The name alone in
-                -- green looked like any low-level quest.)
-                if e.complete then fs:SetTextColor(0.50, 0.96, 0.60)
-                else fs:SetTextColor(diffColor(e.level)) end
+                -- A finished quest: a green mark before its name and one
+                -- line under it in place of the objectives.
+                -- The name keeps its difficulty colour whatever the quest's
+                -- state: green there means "easy", and a finished quest
+                -- turning green as well said two things with one colour.
+                -- Finished is the dot before the name and the line under it.
+                fs:SetTextColor(diffColor(e.level))
                 fs:SetAlpha(1)
                 local top = yy
                 local focused = ns.QuestFocus ~= nil and ns.QuestFocus.Get() == e.id
