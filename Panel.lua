@@ -481,10 +481,10 @@ local PAGES = {
               set = function() local d = ns.modules.Chat.db; d.quietLoot = d.quietLoot == false end },
             { "Meniscus combat numbers", kind = "switch", reload = true,
               note = "Our own damage and healing numbers over nameplates and your character; turns the game's own floating text down (and back when switched off)",
-              get = function() return ns.modules.Nameplates.db.numbers == true end,
+              get = function() return ns.modules.Nameplates.db.numbers ~= false end,
               set = function()
                   local N = ns.modules.Nameplates
-                  N.db.numbers = not (N.db.numbers == true)
+                  N.db.numbers = N.db.numbers == false
                   if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
               end },
             { "Quick Cure chips", kind = "switch", reload = true,
