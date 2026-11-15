@@ -133,6 +133,38 @@ local function setLevel(badge, unit)
     end
 end
 
+-- The class and role bubbles on a portrait (see where they are made).
+local CLASS_EMBLEM = { WARRIOR = 1, PALADIN = 1, HUNTER = 1, ROGUE = 1, PRIEST = 1, SHAMAN = 1, MAGE = 1, WARLOCK = 1, DRUID = 1 }
+local ROLE_EMBLEM = { TANK = { "micro_stat_defense.tga", 0.45, 0.68, 1.00 }, HEALER = { "micro_role_healer.tga", 0.45, 0.90, 0.55 } }
+function UF.SetWho(self, unit)
+    local cb, rb = self.classBadge, self.roleBadge
+    local shown = false
+    -- (Not on your own portrait: you know what you are.)
+    if UF.db.whoBadges ~= false and self.key ~= "player" then
+        local okP, isPlayer = pcall(UnitIsPlayer, unit)
+        if okP and not issecretvalue(isPlayer) and isPlayer then
+            local okC, _, token = pcall(UnitClass, unit)
+            if okC and type(token) == "string" and not issecretvalue(token) then
+                local c = RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
+                cb.icon:SetTexture(MEDIA .. "micro_class_" .. (CLASS_EMBLEM[token] and token:lower() or "other") .. ".tga")
+                cb.icon:SetVertexColor(c and c.r or 0.9, c and c.g or 0.9, c and c.b or 0.9, 1)
+                shown = true
+            end
+        end
+    end
+    cb:SetShown(shown)
+    local role
+    if shown and UnitGroupRolesAssigned then
+        local okR, r = pcall(UnitGroupRolesAssigned, unit)
+        role = okR and type(r) == "string" and not issecretvalue(r) and ROLE_EMBLEM[r] or nil
+    end
+    if role then
+        rb.icon:SetTexture(MEDIA .. role[1])
+        rb.icon:SetVertexColor(role[2], role[3], role[4], 1)
+    end
+    rb:SetShown(role ~= nil)
+end
+
 local newMask -- (defined with the avatar code below; used by the power orb here)
 
 -- ── Elite / rare / boss ───────────────────────────────────────────────────
@@ -489,6 +521,7 @@ local function update(self)
     end
     self.name:SetText(UnitName(unit))
     if self.levelBadge then setLevel(self.levelBadge, unit) end
+    if self.classBadge then pcall(UF.SetWho, self, unit) end
     self.hpPath = setHealthText(self, unit)
     local ptype = UnitPowerType(unit)
     local pmax, pcur = UnitPowerMax(unit, ptype), UnitPower(unit, ptype)
@@ -819,6 +852,35 @@ local function create(unit, label, cfg)
         badge.text:SetShadowOffset(1, -1)
         badge.text:SetShadowColor(0, 0, 0, 0.9)
         f.levelBadge = badge
+
+        -- Who they are, on the portrait's upper edge, in the same bubbles:
+        -- a player's class emblem (in the class colour) on the outer side,
+        -- and in a group a tank's shield or a healer's plus on the inner
+        -- side. (Damage dealers get no mark: it is the two that matter.)
+        local function bubble(side)
+            local bb = CreateFrame("Frame", nil, f.avatar)
+            bb:SetSize(d, d)
+            bb:SetPoint("CENTER", f.avatar, "CENTER", side * s.D * 0.36, s.D * 0.36)
+            bb:SetFrameLevel(f.avatar:GetFrameLevel() + 5)
+            local br = bb:CreateTexture(nil, "BACKGROUND", nil, 0)
+            br:SetAllPoints()
+            br:SetColorTexture(unpack(T.border))
+            br:AddMaskTexture(newMask(bb, d))
+            local bfm = newMask(bb, d - 3)
+            local bf = bb:CreateTexture(nil, "BACKGROUND", nil, 1)
+            bf:SetPoint("CENTER")
+            bf:SetSize(d - 3, d - 3)
+            bf:SetColorTexture(0.17, 0.17, 0.19, 1)
+            bf:AddMaskTexture(bfm)
+            bb.icon = bb:CreateTexture(nil, "OVERLAY")
+            bb.icon:SetPoint("CENTER")
+            bb.icon:SetSize(d - 4, d - 4)
+            bb:Hide()
+            return bb
+        end
+        local outer = cfg.side == "LEFT" and -1 or 1
+        f.classBadge = bubble(outer)
+        f.roleBadge = bubble(-outer)
     end
 
     local ev = CreateFrame("Frame")

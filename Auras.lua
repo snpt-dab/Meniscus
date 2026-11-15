@@ -115,6 +115,19 @@ local function newIcon(parent, size, secureIndex)
     b.count = top:CreateFontString(nil, "OVERLAY")
     ns:SetFont(b.count, math.max(8, math.floor(size * 0.42)), "OUTLINE")
     b.count:SetPoint("BOTTOMRIGHT", 1, -1)
+    -- What kind of affliction (magic, curse, disease, poison): a small
+    -- emblem in the kind's colour on the icon's lower left, on a dark dot
+    -- so it reads over any picture.
+    local ks = math.max(9, math.floor(size * 0.5))
+    b.kindBack = top:CreateTexture(nil, "OVERLAY", nil, 0)
+    b.kindBack:SetTexture(MEDIA .. "circle.tga")
+    b.kindBack:SetVertexColor(0.05, 0.05, 0.06, 0.92)
+    b.kindBack:SetSize(ks + 2, ks + 2)
+    b.kindBack:SetPoint("CENTER", b, "BOTTOMLEFT", 3, 3)
+    b.kind = top:CreateTexture(nil, "OVERLAY", nil, 1)
+    b.kind:SetSize(ks, ks)
+    b.kind:SetPoint("CENTER", b.kindBack, "CENTER")
+    b.kind:Hide(); b.kindBack:Hide()
 
     -- Hover for the tooltip; clicks pass through (except secure cancel buttons).
     b:EnableMouse(true)
@@ -154,13 +167,22 @@ local function setIcon(b, unit, a, harmful)
         b.count:SetText("")
     end
 
+    local kind
     if harmful then
         local d = a.dispelName
-        local c = (type(d) == "string" and not issecretvalue(d) and DISPEL[d]) or DEBUFF
+        local known = type(d) == "string" and not issecretvalue(d) and DISPEL[d]
+        local c = known or DEBUFF
         b.ring:SetColorTexture(c[1], c[2], c[3], 1)
+        if known then
+            kind = d
+            b.kind:SetTexture(MEDIA .. "micro_dispel_" .. d:lower() .. ".tga")
+            b.kind:SetVertexColor(c[1], c[2], c[3], 1)
+        end
     else
         b.ring:SetColorTexture(unpack(T.border))
     end
+    b.kind:SetShown(kind ~= nil)
+    b.kindBack:SetShown(kind ~= nil)
 
     -- Readable timing: permanent auras (duration 0) get no swipe at all;
     -- otherwise a normal cooldown. Only fall back to the duration object when

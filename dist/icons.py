@@ -206,6 +206,13 @@ def icons():
     I['race_draenei'] = Icon().line([(12, 3.8), (18, 10.6), (12, 20.2), (6, 10.6)], w=2.2, close=True).line([(6, 10.6), (18, 10.6)], w=1.7)  # a crystal
     I['race_other'] = Icon().ring(12, 9, 3.6).arc(12, 22, 7.0, 25, 155)                                                                     # head and shoulders
 
+    # ── what kind of affliction (debuff icons): magic, curse, disease, poison ──
+    I['dispel_magic'] = Icon().line([(12, 4.4), (14.2, 9.8), (19.6, 12), (14.2, 14.2), (12, 19.6), (9.8, 14.2), (4.4, 12), (9.8, 9.8)], w=2.4, close=True)   # a spark
+    I['dispel_curse'] = Icon().arc(13.2, 12, 6.6, 60, 300, w=2.8).dot(15.4, 12, 1.9)                                                                           # a waning moon and its star
+    I['dispel_disease'] = Icon().ring(12, 7.6, 3.0, w=2.2).ring(7.6, 15.4, 3.0, w=2.2).ring(16.4, 15.4, 3.0, w=2.2)                                             # a cluster
+    I['dispel_poison'] = Icon().line([(12, 3.8), (16.6, 11.2), (17.4, 14.6), (15.6, 18.2), (12, 19.8), (8.4, 18.2), (6.6, 14.6), (7.4, 11.2)], w=2.4, close=True)  # a drop
+    # the healer's sign in a group: a plus
+    I['role_healer'] = Icon().line([(12, 5), (12, 19)], w=3.4).line([(5, 12), (19, 12)], w=3.4)
     # ── character stats page ──
     # strength: a flexed arm, in outline: the fist curled in at the top, the bicep's swell at the right
     def fit(pts, k=0.86):
