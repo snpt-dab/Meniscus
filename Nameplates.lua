@@ -174,8 +174,8 @@ end
 
 -- ── Combat numbers ────────────────────────────────────────────────────────
 -- Our own floating numbers, in place of the game's world text (which can't
--- be had without its purple "XP: 1,650" as well). Off unless switched on;
--- switching it on also turns the game's own numbers down (see quietGame).
+-- be had without its purple "XP: 1,650" as well). On unless switched off;
+-- while on, the game's own numbers are turned down (see quietGame).
 --   * Over a unit's nameplate: what it takes (damage in the spell school's
 --     colour, heals in green, "Miss" / "Dodge" and the like, dim). A
 --     critical is larger and lands with a small pop.
@@ -324,7 +324,7 @@ end
 
 function NP:OnInit(db)
     self.db = db
-    if db.numbers == true then
+    if db.numbers ~= false then
         pcall(quietGame, true)
         local ok, err = pcall(buildNumbers)
         if not ok and MinimalUIDB then MinimalUIDB.ctdiag = "build failed: " .. tostring(err) end
