@@ -373,10 +373,27 @@ local function buildNumbers()
         if list[1] then table.remove(list, 1) return true end
         return false
     end
+    -- Melee swings announce nothing, so they are counted by rhythm: while
+    -- you are auto-attacking your target, one hit (or miss, dodge, parry) on
+    -- it is taken as yours each time a swing's worth of time has passed.
+    -- (In a group someone else's blow can take that place; it evens out.)
+    local lastSwing, why = 0, ""
+    local function swinging(now)
+        local f = (C_Spell and C_Spell.IsCurrentSpell) or _G.IsCurrentSpell
+        local okA, auto = pcall(f, 6603)
+        if not okA or secret(auto) or not auto then return false end
+        local okS, speed = pcall(UnitAttackSpeed, "player")
+        if not okS or secret(speed) or type(speed) ~= "number" or speed <= 0 then speed = 2 end
+        if now - lastSwing >= speed * 0.8 then lastSwing = now; return true end
+        return false
+    end
     local function yours(unit, plate, action, now)
-        if action == "HEAL" then return take(heals, now) end
+        why = ""
+        if action == "HEAL" then why = "heal"; return take(heals, now) end
         local okT, isTarget = pcall(UnitIsUnit, unit, "target")
-        if okT and not secret(isTarget) and isTarget == true and take(hits, now) then return true end
+        isTarget = okT and not secret(isTarget) and isTarget == true
+        if isTarget and take(hits, now) then why = "cast"; return true end
+        if isTarget and swinging(now) then why = "swing"; return true end
         local list = plate and dots[plate]
         if list and #list > 0 then
             -- (Whether the unit still carries your effect was asked of the
@@ -391,7 +408,7 @@ local function buildNumbers()
                 elseif age > 1 then
                     local ph = age % 3
                     -- (Measured: ticks arrive 2.91 to 2.99 s after the beat before.)
-                    if ph < 0.3 or ph > 2.6 then hit = true end
+                    if ph < 0.3 or ph > 2.6 then hit = true; why = "tick" end
                     -- What was seen, for tuning (MinimalUIDB.dotdiag, the last 16).
                     if MinimalUIDB then
                         local d = MinimalUIDB.dotdiag
@@ -413,6 +430,13 @@ local function buildNumbers()
         cast:SetScript("OnEvent", function(_, _, _, _, spellID)
             if secret(spellID) or type(spellID) ~= "number" then return end
             local now = GetTime()
+            if MinimalUIDB then
+                local d = MinimalUIDB.ctlog
+                if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
+                local okN, n = pcall(C_Spell.GetSpellName, spellID)
+                d[#d + 1] = string.format("%.2f CAST %s", now % 1000, tostring(okN and not secret(n) and n or spellID))
+                if #d > 40 then table.remove(d, 1) end
+            end
             if helpful(spellID) then
                 heals[#heals + 1] = now + 1.2
                 return
@@ -462,6 +486,9 @@ local function buildNumbers()
         elseif unit:find("^nameplate") then
             rel = plateOf(unit)
             if rel then x, y = 0, 4 end
+            -- A hit for nothing at all isn't worth a number (when the
+            -- amount can be read; in a fight it usually can't).
+            if action == "WOUND" and not secret(amount) and amount == 0 then return end
             local mineHit = not (rel and guess) or yours(unit, rel, action, GetTime())
             -- What arrives for nameplates, and what was done with it (the
             -- last 24, MinimalUIDB.ctlog): to find out why misses and dodges
@@ -469,9 +496,11 @@ local function buildNumbers()
             if MinimalUIDB then
                 local d = MinimalUIDB.ctlog
                 if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
-                d[#d + 1] = action .. " / " .. tostring(not secret(indicator) and indicator or "?") .. " plate "
-                    .. tostring(rel ~= nil) .. (mineHit and " shown" or " dropped")
-                if #d > 24 then table.remove(d, 1) end
+                d[#d + 1] = string.format("%.2f %s / %s  amount %s  %s%s", GetTime() % 1000, action,
+                    tostring(not secret(indicator) and indicator or "?"),
+                    secret(amount) and "hidden" or tostring(amount),
+                    mineHit and "shown" or "dropped", why ~= "" and (" (" .. why .. ")") or "")
+                if #d > 40 then table.remove(d, 1) end
             end
             if not mineHit then return end
         end
