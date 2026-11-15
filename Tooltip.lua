@@ -172,14 +172,28 @@ local function ourMark(file, r, g, b, size)
 end
 local function ourMarks(unit)
     local okC, _, ctoken = pcall(UnitClass, unit)
-    local okR, _, rtoken = pcall(UnitRace, unit)
+    local okR, rname, rtoken = pcall(UnitRace, unit)
     local okF, ftoken = pcall(UnitFactionGroup, unit)
     if not (okC and okR) or issecretvalue(ctoken) or issecretvalue(rtoken) then return nil end
     if type(ctoken) ~= "string" or type(rtoken) ~= "string" then return nil end
     local cc = RAID_CLASS_COLORS and RAID_CLASS_COLORS[ctoken]
     local class = ourMark(OUR_CLASS[ctoken] and ("class_" .. ctoken:lower()) or "class_other",
         cc and cc.r or 0.9, cc and cc.g or 0.9, cc and cc.b or 0.9)
-    local race = ourMark(OUR_RACE[rtoken] and ("race_" .. rtoken:lower()) or "race_other", 0.86, 0.86, 0.90)
+    -- Forever's own races are not in the list by name (what the client
+    -- calls them inside isn't known ahead of time): the sky elves are found
+    -- by "sky" in either name, and every race met is noted with both its
+    -- names (MinimalUIDB.raceSeen), so the next new one can be given a sign.
+    local rfile = OUR_RACE[rtoken] and ("race_" .. rtoken:lower()) or "race_other"
+    if not OUR_RACE[rtoken] then
+        local shown = (type(rname) == "string" and not issecretvalue(rname)) and rname or ""
+        if rtoken:lower():find("sky", 1, true) or shown:lower():find("sky", 1, true) then rfile = "race_skyelf" end
+    end
+    if MinimalUIDB then
+        local seen = MinimalUIDB.raceSeen
+        if type(seen) ~= "table" then seen = {}; MinimalUIDB.raceSeen = seen end
+        if seen[rtoken] == nil then seen[rtoken] = (type(rname) == "string" and not issecretvalue(rname)) and rname or "?" end
+    end
+    local race = ourMark(rfile, 0.86, 0.86, 0.90)
     local faction
     if okF and type(ftoken) == "string" and not issecretvalue(ftoken) and FACTION_TINT[ftoken] then
         local t = FACTION_TINT[ftoken]
