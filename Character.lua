@@ -1549,15 +1549,20 @@ local function makeStatsCard(page, top)
     for i = 1, 5 do
         span(line("BORDER", 0, T.border[1], T.border[2], T.border[3], 0.55), 0, 0, RR * ux[i], RR * uy[i])
     end
+    local BUFF_BLUE = { 0.40, 0.68, 1.00 }
     -- The shapes. A filled wedge is a square texture with its corners
     -- moved: two onto the middle, two onto the shape's corners.
     local BOX = 4
     local shapes = CreateFrame("Frame", nil, holder)
     shapes:SetAllPoints()
+    -- Three colours that can be told apart at a glance (gear and base
+    -- were two greys): what you are is white, what you wear adds green
+    -- (the game's colour for an item's bonus), what is cast on you adds
+    -- blue. Each band shows between its own edge and the one inside it.
     local LAYERS = {
-        { fill = { GREEN[1], GREEN[2], GREEN[3], 0.20 }, edge = { GREEN[1], GREEN[2], GREEN[3], 0.95 }, sub = 1 }, -- total
-        { fill = { 0.80, 0.83, 0.90, 0.30 }, edge = { 0.80, 0.83, 0.90, 0.80 }, sub = 2 },                         -- with gear
-        { fill = { 0.42, 0.44, 0.50, 0.55 }, edge = { 0.55, 0.57, 0.63, 0.80 }, sub = 3 },                         -- bare
+        { fill = { BUFF_BLUE[1], BUFF_BLUE[2], BUFF_BLUE[3], 0.34 }, edge = { BUFF_BLUE[1], BUFF_BLUE[2], BUFF_BLUE[3], 0.95 }, sub = 1 }, -- total
+        { fill = { GREEN[1], GREEN[2], GREEN[3], 0.36 }, edge = { GREEN[1], GREEN[2], GREEN[3], 0.90 }, sub = 2 },                         -- with gear
+        { fill = { 0.60, 0.62, 0.68, 0.62 }, edge = { 0.93, 0.94, 0.97, 0.90 }, sub = 3 },                                                 -- bare
     }
     local canFill = true
     for _, L in ipairs(LAYERS) do
@@ -1631,10 +1636,10 @@ local function makeStatsCard(page, top)
             if plain(self.bare) then
                 GameTooltip:AddDoubleLine("Base", string.format("%d", self.bare), 0.6, 0.6, 0.65, 1, 1, 1)
                 if self.gear and self.gear > 0 then
-                    GameTooltip:AddDoubleLine("From gear", string.format("+%d", self.gear), 0.6, 0.6, 0.65, 0.80, 0.83, 0.90)
+                    GameTooltip:AddDoubleLine("From gear", string.format("+%d", self.gear), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3])
                 end
                 if self.buff and self.buff > 0 then
-                    GameTooltip:AddDoubleLine("From buffs", string.format("+%d", self.buff), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3])
+                    GameTooltip:AddDoubleLine("From buffs", string.format("+%d", self.buff), 0.6, 0.6, 0.65, BUFF_BLUE[1], BUFF_BLUE[2], BUFF_BLUE[3])
                 end
             elseif plain(self.pos) and self.pos > 0 then
                 GameTooltip:AddDoubleLine("Bonus", string.format("+%d", self.pos), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3])
