@@ -1199,8 +1199,17 @@ function UF:BuildNotes()
         if not (f and f.healthPill) then return end
         local chip = CreateFrame("Frame", nil, f)
         chip:SetHeight(13)
-        chip:SetPoint("RIGHT", f.healthPill, "TOPRIGHT", -10, 0)
-        chip:SetFrameLevel(f:GetFrameLevel() + 12)
+        if f == self.player and f.avatar then
+            -- Yours: on the bottom of your portrait (in the console your
+            -- health is an orb, and the pill this would sit on is up among
+            -- the buffs).
+            chip:SetPoint("CENTER", f.avatar, "BOTTOM", 0, 3)
+            chip:SetFrameStrata("MEDIUM")
+            chip:SetFrameLevel((f.avatar:GetFrameLevel() or 1) + 20)
+        else
+            chip:SetPoint("RIGHT", f.healthPill, "TOPRIGHT", -10, 0)
+            chip:SetFrameLevel(f:GetFrameLevel() + 12)
+        end
         chip.ring = ns.RoundedRect(chip, -8, 0, 6.5, T.border[1], T.border[2], T.border[3], 1)
         ns.RoundedRect(chip, -7, 1, 5.5, 0.06, 0.06, 0.07, 1)
         chip.text = ns:CreateText(chip, 9)
