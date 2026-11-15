@@ -496,8 +496,13 @@ function TR:Console(x, y, w, h)
                 put(fs, (focused or e.complete) and 11 or 0, 1)
                 local b = P.takeBtn()
                 b.dot:SetShown(focused or e.complete)
-                if e.complete then b.dot:SetVertexColor(0.42, 0.92, 0.50, 1)
-                else b.dot:SetVertexColor(0.86, 0.89, 0.94, 1) end
+                -- The focus mark (silver) wins over the finished mark
+                -- (green): focusing a finished quest, to go and hand it in,
+                -- showed no change at all. Its name and the line under it
+                -- still say it is complete.
+                if focused then b.dot:SetVertexColor(0.86, 0.89, 0.94, 1)
+                else b.dot:SetVertexColor(0.42, 0.92, 0.50, 1) end
+                b.dot:SetSize(focused and 7 or 6, focused and 7 or 6)
                 b.questID, b.fs = e.id, fs
                 b:ClearAllPoints()
                 b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
