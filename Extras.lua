@@ -1987,18 +1987,20 @@ local function isPotion(id)
     if not f then return false end
     local ok, _, _, _, _, _, classID, subID = pcall(f, id)
     if not ok or not num(classID) or classID ~= 0 then return false end
-    -- Potions, and the buff ones too: elixirs and flasks.
-    if subID == 1 or subID == 2 or subID == 3 then return true end
+    -- Potions, and the buff ones too: elixirs and flasks. Bandages as well:
+    -- the other thing you reach for when hurt.
+    if subID == 1 or subID == 2 or subID == 3 or subID == 7 then return true end
     -- (Older item data files them all under plain "Consumable".)
     local n = itemName(id)
-    return type(n) == "string" and (n:find("Potion") or n:find("Elixir") or n:find("Flask")) ~= nil
+    return type(n) == "string" and (n:find("Potion") or n:find("Elixir") or n:find("Flask") or n:find("Bandage")) ~= nil
 end
--- Healing first, then mana, then other potions, then the elixirs and
--- flasks; within each, the stronger (later made) first.
+-- Healing potions first, then bandages, mana, other potions, and last the
+-- elixirs and flasks; within each, the stronger (later made) first.
 local function potionRank(id)
     local n = itemName(id) or ""
-    if n:find("Elixir") or n:find("Flask") then return 4 end
-    return (n:find("Heal") and 0) or (n:find("Mana") and 1) or (n:find("Rejuv") and 2) or 3
+    if n:find("Elixir") or n:find("Flask") then return 5 end
+    if n:find("Bandage") then return 1 end
+    return (n:find("Heal") and 0) or (n:find("Mana") and 2) or (n:find("Rejuv") and 3) or 4
 end
 -- Food and drink: the same thing again, one place further up the rim.
 -- What counts: the game's "Food & Drink" kind, or anything whose use is
@@ -2041,7 +2043,10 @@ local function profSpells(out)
         for i = 1, numSpells do
             local info = call(SBk.GetSpellBookItemInfo, offset + i, bank)
             local id = type(info) == "table" and (info.spellID or info.actionID)
-            if num(id) and not info.isPassive and not seen[id] then
+            -- (Find Herbs, Find Minerals...: there unless switched off.)
+            local tracking = type(info) == "table" and type(info.name) == "string" and not secret(info.name)
+                and info.name:find("^Find ") ~= nil
+            if num(id) and not info.isPassive and not seen[id] and not (tracking and EX.db and EX.db.profTrack == false) then
                 seen[id] = true
                 out[#out + 1] = id
             end
