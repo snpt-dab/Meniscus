@@ -727,6 +727,7 @@ local function buildNumbers()
     local CL = C_CombatLog
     local logLines, held = {}, {}
     local logHeard = false
+    local lastLine, lineCount = -99, 0
     local MY_ACTIONS = _G.QUICKBUTTON_NAME_MY_ACTIONS or "My actions"
     local function logOn()
         if not logHeard or NP.db.numbersLog == false then return false end
@@ -742,7 +743,7 @@ local function buildNumbers()
         local d = MinimalUIDB.ctlog
         if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
         d[#d + 1] = string.format("%.2f %s", GetTime() % 1000, text)
-        if #d > 40 then table.remove(d, 1) end
+        if #d > 90 then table.remove(d, 1) end
     end
     local function dropStale(now)
         while held[1] and now - held[1].t > 0.25 do
@@ -759,6 +760,10 @@ local function buildNumbers()
                 -- the like: not a hit.)
                 if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then return end
                 local now = GetTime()
+                lastLine = now
+                lineCount = lineCount + 1
+                if MinimalUIDB then MinimalUIDB.ctlines = lineCount .. " log lines heard this session, the last at " .. string.format("%.2f", now % 1000) end
+                note("LINE")
                 dropStale(now)
                 local h = table.remove(held, 1)
                 if h then
@@ -854,6 +859,12 @@ local function buildNumbers()
                 if take(logLines, now) then
                     mineHit, byPet = true, pet
                     why = pet and "log line, pet's" or "log line"
+                elseif (own or pet) and now - lastLine > 3 then
+                    -- No lines have come for a while (in the first test of
+                    -- this they stopped coming altogether, and every hit
+                    -- was thrown away): the old signs are believed.
+                    mineHit, byPet = true, pet
+                    why = "no lines lately: by the old signs" .. (pet and ", pet's" or "")
                 else
                     -- No line yet: it may be a frame behind. Kept a moment.
                     local h = { t = now, unit = unit, rel = rel, x = x, y = y, action = action, indicator = indicator,
@@ -878,7 +889,7 @@ local function buildNumbers()
                     secret(amount) and "hidden" or tostring(amount),
                     secret(school) and "hidden" or tostring(school),
                     mineHit and "shown" or "dropped", why ~= "" and (" (" .. why .. ")") or "")
-                if #d > 40 then table.remove(d, 1) end
+                if #d > 90 then table.remove(d, 1) end
             end
             if not mineHit then return end
             petShown = byPet
