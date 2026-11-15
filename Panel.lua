@@ -931,7 +931,7 @@ local RESULT_MAX = 40
 local function buildResults(parent)
     local view = CreateFrame("Frame", nil, parent)
     view:SetPoint("TOPLEFT", parent, "TOPLEFT", CONTENT_X, -PAD - 34)
-    local viewH = H - PAD * 2 - 34
+    local viewH = H - PAD * 2 - 34 - 16 -- (stops above the foot line of hints)
     view:SetSize(CONTENT_W + 10, viewH)
     view:SetClipsChildren(true)
     local f = CreateFrame("Frame", nil, view)
@@ -1046,7 +1046,7 @@ end
 local function buildPage(parent, page)
     local view = CreateFrame("Frame", nil, parent)
     view:SetPoint("TOPLEFT", parent, "TOPLEFT", CONTENT_X, -PAD - 34)
-    local viewH = H - PAD * 2 - 34
+    local viewH = H - PAD * 2 - 34 - 16 -- (stops above the foot line of hints)
     view:SetSize(CONTENT_W + 10, viewH)
     view:SetClipsChildren(true)
     local f = CreateFrame("Frame", nil, view)

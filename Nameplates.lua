@@ -320,7 +320,7 @@ local function buildNumbers()
         f.warm:SetAlpha(0); f.cool:SetAlpha(0)
         f.back:SetShown(not small)
         spawned = spawned + 1
-        local scale = crit and 1.3 or (small and 0.7 or 1)
+        local scale = crit and 1.3 or (small and 0.85 or 1)
         f.crit, f.scale = crit, scale
         f:SetScale(scale)
         f.rel = rel
@@ -462,7 +462,18 @@ local function buildNumbers()
         elseif unit:find("^nameplate") then
             rel = plateOf(unit)
             if rel then x, y = 0, 4 end
-            if rel and guess and not yours(unit, rel, action, GetTime()) then return end
+            local mineHit = not (rel and guess) or yours(unit, rel, action, GetTime())
+            -- What arrives for nameplates, and what was done with it (the
+            -- last 24, MinimalUIDB.ctlog): to find out why misses and dodges
+            -- on a mob were not showing.
+            if MinimalUIDB then
+                local d = MinimalUIDB.ctlog
+                if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
+                d[#d + 1] = action .. " / " .. tostring(not secret(indicator) and indicator or "?") .. " plate "
+                    .. tostring(rel ~= nil) .. (mineHit and " shown" or " dropped")
+                if #d > 24 then table.remove(d, 1) end
+            end
+            if not mineHit then return end
         end
         if not x then return end
         local crit = not secret(indicator) and indicator == "CRITICAL"
@@ -476,7 +487,7 @@ local function buildNumbers()
                 show(rel, x, y, amount, c[1], c[2], c[3], crit)
             end
         elseif WORDS[action] then
-            show(rel, x, y, WORDS[action], 0.62, 0.62, 0.68, false, true)
+            show(rel, x, y, WORDS[action], 0.80, 0.80, 0.86, false, true)
         end
     end)
 end
