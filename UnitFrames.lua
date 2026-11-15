@@ -1470,7 +1470,11 @@ function UF:BuildCure()
         if not UnitExists(unit) then return nil end
         for idx = 1, 8 do
             local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, idx, "HARMFUL|RAID")
-            if not ok or not a then return nil end
+            -- (In a fight the game can refuse an addon any look at a unit's
+            -- auras: "blind". The caller is told, so it need not pretend
+            -- the unit is clean.)
+            if not ok then return nil, true end
+            if not a then return nil end
             local d = a.dispelName
             if not diag and MinimalUIDB then
                 diag = true
@@ -1486,8 +1490,23 @@ function UF:BuildCure()
         -- While the pill is up (out of combat) it speaks for everyone: the
         -- chips stay dark, so the same thing isn't shown in two places.
         if pill and pill:IsShown() then b.vis:Hide() return end
-        local a = afflicted(b.unit)
-        if not a then b.vis:Hide() return end
+        local a, blind = afflicted(b.unit)
+        if not a then
+            if blind and InCombatLockdown() and UnitExists(b.unit) then
+                -- Can't tell who needs it: the chip shows dim and plain, so
+                -- it can still be found and pressed on your own judgement.
+                local okI, info = pcall(C_Spell.GetSpellInfo, spells[1])
+                b.icon:SetTexture(okI and type(info) == "table" and info.iconID or 134400)
+                b.ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+                b.hint:SetText("")
+                b.vis:SetAlpha(0.45)
+                b.vis:Show()
+            else
+                b.vis:Hide()
+            end
+            return
+        end
+        b.vis:SetAlpha(1)
         b.icon:SetTexture(a.icon)
         local d = a.dispelName
         local c, right = nil, false
