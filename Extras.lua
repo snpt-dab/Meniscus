@@ -852,7 +852,10 @@ local function buildOrbText()
     end
     local ev = CreateFrame("Frame")
     pcall(ev.RegisterUnitEvent, ev, "UNIT_COMBAT", "player")
+    local healsOnly = ns.modules.Extras.db and ns.modules.Extras.db.orbText == false
     ev:SetScript("OnEvent", function(_, _, _, action, indicator, amount, school)
+        -- (Switched off: the damage and the dodges go, heals stay.)
+        if healsOnly and (secret(action) or action ~= "HEAL") then return end
         if secret(action) then
             -- Nothing to go on but the number itself.
             if amount ~= nil then pop(function(fs) fs:SetText(amount) end, 1.0, 0.86, 0.84, false) end
@@ -2450,7 +2453,7 @@ function EX:OnInit(db)
         local setcv = (C_CVar and C_CVar.SetCVar) or _G.SetCVar
         if setcv then pcall(setcv, "showInGameNavigation", "0") end
     end
-    if db.orbText ~= false then pcall(buildOrbText) end
+    pcall(buildOrbText) -- (off: heals only; see there)
     if db.aggro ~= false then pcall(buildAggro) end
     if db.durability ~= false then pcall(buildDurability) end
     if db.mail ~= false then pcall(buildMail) end
