@@ -1745,11 +1745,11 @@ do
                     -- (At login the log refills with its old lines, a burst
                     -- of these: counted, not kept, so the room is left for
                     -- the fight.)
-                    if GetTime() - born < 4 then
+                    if GetTime() - born < 12 then
                         early = early + 1
                         return
                     end
-                    if early > 0 then add(ev .. ": " .. early .. " in the first 4 s (the log refilling)"); early = 0 end
+                    if early > 0 then add(ev .. ": " .. early .. " in the first 12 s (the log refilling)"); early = 0 end
                     seen = seen + 1
                     if seen > 40 then return end
                     local parts = {}
