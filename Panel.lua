@@ -553,6 +553,10 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.whisper = d.whisper == false end end },
         } },
         { title = "Combat", items = {
+            { "Only my own hits and heals", kind = "switch", reload = true,
+              note = "A best guess (the client doesn't say who dealt a hit); off shows everyone's",
+              get = function() return ns.modules.Nameplates.db.numbersMine ~= false end,
+              set = function() local d = ns.modules.Nameplates.db; d.numbersMine = d.numbersMine == false end },
             { "Meniscus combat numbers", kind = "switch", reload = true,
               note = "Our damage and healing numbers; the game's own are turned down",
               get = function() return ns.modules.Nameplates.db.numbers ~= false end,
