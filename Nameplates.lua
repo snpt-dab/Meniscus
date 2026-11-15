@@ -390,7 +390,8 @@ local function buildNumbers()
                     table.remove(list, i)
                 elseif age > 1 then
                     local ph = age % 3
-                    if ph < 0.6 or ph > 2.4 then hit = true end
+                    -- (Measured: ticks arrive 2.91 to 2.99 s after the beat before.)
+                    if ph < 0.3 or ph > 2.6 then hit = true end
                     -- What was seen, for tuning (MinimalUIDB.dotdiag, the last 16).
                     if MinimalUIDB then
                         local d = MinimalUIDB.dotdiag
