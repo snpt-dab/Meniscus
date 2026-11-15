@@ -1042,6 +1042,13 @@ local function buildWaypoint()
         if secret(cur) then return end
         if cur == 0 then cur = nil end
         rec.want, rec.cur = want, cur
+        -- While the world map is open the game's own quest list is in use
+        -- there, and it follows whichever quest is "super-tracked": putting
+        -- that back to the focused quest snapped the list straight back to
+        -- it whenever another quest was clicked. So nothing is forced while
+        -- the map is up; the focus is put back when it closes.
+        local wm = _G.WorldMapFrame
+        if wm and wm:IsShown() then rec.left = "map open"; return end
         if want then
             if cur ~= want then pcall(ST.SetSuperTrackedQuestID, want) end
         elseif cur then
@@ -1077,6 +1084,9 @@ local function buildWaypoint()
         soon()
     end)
     C_Timer.NewTicker(5, soon)
+    if _G.WorldMapFrame and _G.WorldMapFrame.HookScript then
+        _G.WorldMapFrame:HookScript("OnHide", soon)
+    end
 end
 
 -- ── A profession at its cap ───────────────────────────────────────────────
