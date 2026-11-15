@@ -1703,7 +1703,7 @@ do
         if not MinimalUIDB then return end
         local out = { "at " .. date("%H:%M:%S") }
         MinimalUIDB.clprobe = out
-        local function add(t) if #out < 60 then out[#out + 1] = t end end
+        local function add(t) if #out < 90 then out[#out + 1] = t end end
         local function show(v)
             if sec(v) then return "<hidden " .. type(v) .. ">" end
             if type(v) == "string" then return '"' .. v:sub(1, 140):gsub("|", "||") .. '"' end
@@ -1721,8 +1721,21 @@ do
                 add(nsName .. ": none")
             end
         end
-        for _, e in ipairs({ "COMBAT_LOG_EVENT_UNFILTERED", "COMBAT_LOG_EVENT", "COMBAT_TEXT_UPDATE", "CHAT_MSG_COMBAT_SELF_HITS",
-                             "CHAT_MSG_SPELL_SELF_DAMAGE", "COMBAT_LOG_MESSAGE" }) do
+        -- (Asking for COMBAT_LOG_EVENT or COMBAT_LOG_EVENT_UNFILTERED is
+        -- itself forbidden: the game put up its "blocked from an action"
+        -- box. They are not asked for again.)
+        for _, fn in ipairs({ "IsCombatLogRestricted", "AreFilteredEventsEnabled", "GetMessageLimit" }) do
+            local f = C_CombatLog and C_CombatLog[fn]
+            if f then
+                local okF, v = pcall(f)
+                add("C_CombatLog." .. fn .. ": " .. tostring(okF) .. " " .. show(v))
+            end
+        end
+        local cur = _G.Blizzard_CombatLog_CurrentSettings
+        add("log's current filter: " .. show(type(cur) == "table" and cur.name or cur))
+        local shownTab = _G.SELECTED_CHAT_FRAME
+        add("chat tab in front: " .. tostring(shownTab and shownTab.GetName and shownTab:GetName()))
+        for _, e in ipairs({ "COMBAT_TEXT_UPDATE", "COMBAT_LOG_MESSAGE" }) do
             local probe = CreateFrame("Frame")
             local ok = pcall(probe.RegisterEvent, probe, e)
             add("event " .. e .. ": " .. (ok and "can be registered" or "refused"))
@@ -1730,10 +1743,23 @@ do
                 local seen = 0
                 probe:SetScript("OnEvent", function(_, ev, ...)
                     seen = seen + 1
-                    if seen > 4 then return end
+                    if seen > 16 then return end
                     local parts = {}
                     for i = 1, math.min(select("#", ...), 8) do parts[#parts + 1] = show((select(i, ...))) end
-                    add(string.format("%.2f EVENT %s: %s", GetTime() % 1000, ev, table.concat(parts, ", ")))
+                    local extra = ""
+                    if ev == "COMBAT_TEXT_UPDATE" and C_CombatText and C_CombatText.GetCurrentEventInfo then
+                        local r = { pcall(C_CombatText.GetCurrentEventInfo) }
+                        for i = 1, math.min(#r, 6) do r[i] = show(r[i]) end
+                        extra = "  info: " .. table.concat(r, ", ")
+                    elseif ev == "COMBAT_LOG_MESSAGE" then
+                        -- Is the line's text a real string underneath, or
+                        -- only a ticket for the screen to redeem?
+                        local text = ...
+                        if type(text) == "string" and not sec(text) then
+                            extra = "  length " .. #text .. "  has digits after the ticket: " .. tostring(text:gsub("|K.-|k", ""):find("%d") ~= nil)
+                        end
+                    end
+                    add(string.format("%.2f EVENT %s: %s%s", GetTime() % 1000, ev, table.concat(parts, ", "), extra))
                 end)
             end
         end
