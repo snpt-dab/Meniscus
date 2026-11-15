@@ -604,6 +604,7 @@ function ns.IsUpgrade(link)
     if not tool then
         local lowest, empty, same = nil, false, false
         local beats = false
+        local heavierWorn = false -- what is worn there is a heavier kind of armour than this
         local main = GetInventoryItemLink("player", 16)
         local mainLoc = main and equipLocOf(main)
         for _, slot in ipairs(slots) do
@@ -624,6 +625,10 @@ function ns.IsUpgrade(link)
                 elseif worn == link then same = true
                 else
                     local _, wClass, wSub = equipLocOf(worn)
+                    if classID == 4 and wClass == 4 and type(wSub) == "number" and type(subID) == "number"
+                        and wSub >= 1 and wSub <= 4 and wSub > subID then
+                        heavierWorn = true
+                    end
                     local wornDps = isWeapon and wClass == 2 and weaponDps(worn) or nil
                     if isWeapon and wClass == 2 and TOOL_WEAPON[wSub] then
                         beats = true -- any real weapon beats a tool
@@ -639,10 +644,12 @@ function ns.IsUpgrade(link)
         -- Something is better than nothing: an empty slot makes it an
         -- upgrade even when it is a lighter kind of armour than your class
         -- wants (a warrior with a bare chest and a cloth robe in the bag).
-        -- Lighter armour never beats what you are already wearing, though.
+        -- Armour lighter than your class's best is judged against what is
+        -- actually worn: cloth can replace cloth (a shaman still in cloth,
+        -- finding better cloth), but never the leather or mail already on.
         if same then res = false
         elseif empty then res = true
-        elseif wrongArmor then res = false
+        elseif wrongArmor and heavierWorn then res = false
         elseif beats then res = true
         elseif lowest and new > lowest then res = true end
         if res and ns.ItemUnusable(link) then res = false end
