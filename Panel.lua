@@ -656,10 +656,16 @@ local PAGES = {
         } },
         { title = "Restyled Blizzard parts", items = {
             moduleSwitch("Tooltips", "Tooltip"),
-            { "Icons on player tooltips", kind = "switch",
-              note = "Level, race, class and faction on one line, as pictures",
-              get = function() local d = ns.modules.Tooltip.db; return d and d.icons ~= false end,
-              set = function() local d = ns.modules.Tooltip.db; if d then d.icons = d.icons == false end end },
+            { "Icons on player tooltips", kind = "dropdown",
+              note = "Level, race, class and faction on one line",
+              options = function() return { { key = "ours", label = "Meniscus emblems" },
+                                            { key = "game", label = "The game's pictures" },
+                                            { key = "off", label = "Off (words)" } } end,
+              get = function()
+                  local d = ns.modules.Tooltip.db
+                  return d and (d.tipIcons or (d.icons == false and "off")) or "ours"
+              end,
+              set = function(k) local d = ns.modules.Tooltip.db; if d then d.tipIcons = k; d.icons = nil end end },
             moduleSwitch("Menus, popups, map and other windows", "Skins"),
             { "Game Options window", kind = "switch", reload = true,
               note = "The frame only; the settings' own controls stay Blizzard's",
