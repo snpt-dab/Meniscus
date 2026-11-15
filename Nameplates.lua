@@ -303,6 +303,62 @@ local function buildNumbers()
         if not ok or not plate or (plate.IsForbidden and plate:IsForbidden()) then return end
         return plate
     end
+    -- Whose hit was that? The client has no combat log: it says a unit took
+    -- damage, never who dealt it. So, a best guess (db.numbersMine): a
+    -- number over a nameplate is shown only if you did something that could
+    -- have caused it:
+    --   * a harmful spell or wand shot of yours has just gone off (within
+    --     1.2 s; each one accounts for one hit) and the unit is your target;
+    --   * or the unit carries a damage-over-time effect of yours and the
+    --     hit falls on a tick (every 3 s from when you cast it);
+    --   * a heal: you have just cast a helping spell.
+    -- It misses melee swings (they announce nothing), and lets through
+    -- someone else's hit that lands in the same instant as yours.
+    local guess = NP.db.numbersMine ~= false
+    local hits, heals, dots = {}, {}, {}   -- when each allowance runs out; plate -> when your effect went on
+    local function helpful(spellID)
+        local f = C_Spell and C_Spell.IsSpellHelpful
+        local ok, h = pcall(f or _G.IsHelpfulSpell, spellID)
+        return ok and not secret(h) and h == true
+    end
+    local function take(list, now)
+        while list[1] and list[1] < now do table.remove(list, 1) end
+        if list[1] then table.remove(list, 1) return true end
+        return false
+    end
+    local function yours(unit, plate, action, now)
+        if action == "HEAL" then return take(heals, now) end
+        local okT, isTarget = pcall(UnitIsUnit, unit, "target")
+        if okT and not secret(isTarget) and isTarget == true and take(hits, now) then return true end
+        local t0 = plate and dots[plate]
+        if t0 and now - t0 < 31 then
+            local okA, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, 1, "HARMFUL|PLAYER")
+            if okA and a then
+                local ph = (now - t0) % 3
+                if now - t0 > 1 and (ph < 0.45 or ph > 2.55) then return true end
+            end
+        end
+        return false
+    end
+    if guess then
+        local cast = CreateFrame("Frame")
+        pcall(cast.RegisterUnitEvent, cast, "UNIT_SPELLCAST_SUCCEEDED", "player")
+        cast:SetScript("OnEvent", function(_, _, _, _, spellID)
+            if secret(spellID) or type(spellID) ~= "number" then return end
+            local now = GetTime()
+            if helpful(spellID) then
+                heals[#heals + 1] = now + 1.2
+                return
+            end
+            local ok, can = pcall(UnitCanAttack, "player", "target")
+            if not ok or secret(can) or not can then return end
+            hits[#hits + 1] = now + 1.2
+            if #hits > 6 then table.remove(hits, 1) end
+            local plate = plateOf("target")
+            if plate then dots[plate] = now end
+        end)
+    end
+
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("UNIT_COMBAT")
     ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
@@ -320,6 +376,7 @@ local function buildNumbers()
         elseif unit:find("^nameplate") then
             rel = plateOf(unit)
             if rel then x, y = 0, 4 end
+            if rel and guess and not yours(unit, rel, action, GetTime()) then return end
         end
         if not x then return end
         local crit = not secret(indicator) and indicator == "CRITICAL"
