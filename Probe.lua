@@ -1703,7 +1703,7 @@ do
         if not MinimalUIDB then return end
         local out = { "at " .. date("%H:%M:%S") }
         MinimalUIDB.clprobe = out
-        local function add(t) if #out < 90 then out[#out + 1] = t end end
+        local function add(t) if #out < 130 then out[#out + 1] = t end end
         local function show(v)
             if sec(v) then return "<hidden " .. type(v) .. ">" end
             if type(v) == "string" then return '"' .. v:sub(1, 140):gsub("|", "||") .. '"' end
@@ -1740,10 +1740,18 @@ do
             local ok = pcall(probe.RegisterEvent, probe, e)
             add("event " .. e .. ": " .. (ok and "can be registered" or "refused"))
             if ok then
-                local seen = 0
+                local seen, born, early = 0, GetTime(), 0
                 probe:SetScript("OnEvent", function(_, ev, ...)
+                    -- (At login the log refills with its old lines, a burst
+                    -- of these: counted, not kept, so the room is left for
+                    -- the fight.)
+                    if GetTime() - born < 4 then
+                        early = early + 1
+                        return
+                    end
+                    if early > 0 then add(ev .. ": " .. early .. " in the first 4 s (the log refilling)"); early = 0 end
                     seen = seen + 1
-                    if seen > 16 then return end
+                    if seen > 40 then return end
                     local parts = {}
                     for i = 1, math.min(select("#", ...), 8) do parts[#parts + 1] = show((select(i, ...))) end
                     local extra = ""
@@ -1792,7 +1800,7 @@ do
         local hits = 0
         uc:SetScript("OnEvent", function(_, _, _, action)
             hits = hits + 1
-            if hits <= 8 then add(string.format("%.2f HIT on target (%s)", GetTime() % 1000, show(action))) end
+            if hits <= 24 then add(string.format("%.2f HIT on target (%s)", GetTime() % 1000, show(action))) end
         end)
     end)
 end
