@@ -145,6 +145,7 @@ local function skin(b, fontSize, thick)
         -- Proc glow (spell activation): a gold rounded halo just outside the
         -- button plus a gold ring, pulsing. Replaces Blizzard's square flipbook.
         local halo = newMask(back)
+        b.__muiMasks = { outer, innerBack, innerB, halo }
         halo:SetPoint("TOPLEFT", back, "TOPLEFT", -4, 4)
         halo:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", 4, -4)
         local glow = back:CreateTexture(nil, "BACKGROUND", nil, -1)
@@ -505,6 +506,7 @@ function Bars:Arrange()
         local b = _G["StanceButton" .. i]
         if b then
             skin(b, 8, 1.5)
+            Bars.RoundStance(b, cs and nForms > 0)
             safe(function()
                 b:ClearAllPoints()
                 if cs and nForms > 0 then
@@ -1750,6 +1752,62 @@ end
 
 ns.commands.barerr = function()
     ns:Print("last Bars error:", tostring(Bars.lastError))
+end
+
+-- Stances as discs. On the character panel's top edge they are drawn round,
+-- like the quickslots on the map's rim (the same shape for every small
+-- round thing on the console): a dark disc in a hairline ring, the stance
+-- you are in ringed in the accent colour, one you can't use right now
+-- greyed and faint. (Off the panel, on the classic bar, they stay the
+-- rounded squares the other buttons are.)
+local CIRCLE_TEX = "Interface/AddOns/Meniscus/Media/circle.tga"
+function Bars.RoundStance(b, round)
+    local masks = b.__muiMasks
+    if not masks or b.__muiRound == round then return end
+    b.__muiRound = round
+    for _, m in ipairs(masks) do
+        pcall(m.SetTexture, m, round and CIRCLE_TEX or ROUND, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    end
+    for _, cd in ipairs({ b.cooldown, b.chargeCooldown }) do
+        if cd then pcall(cd.SetSwipeTexture, cd, round and CIRCLE_TEX or ROUND) end
+    end
+    -- The game marks the stance you are in with a wash over the picture;
+    -- on a disc the ring says it instead.
+    local ck = b.GetCheckedTexture and b:GetCheckedTexture()
+    if ck then pcall(ck.SetAlpha, ck, round and 0 or 1) end
+end
+function Bars.StanceRings()
+    if not GetShapeshiftFormInfo then return end
+    for i = 1, 10 do
+        local b = _G["StanceButton" .. i]
+        local ring = b and b.__muiRing
+        if ring and b.__muiRound then
+            local ok, _, active, castable = pcall(GetShapeshiftFormInfo, i)
+            if ok and not issecretvalue(active) and not issecretvalue(castable) then
+                if active then ring:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+                else ring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1) end
+                local icon = b.icon or b.Icon
+                if icon then
+                    pcall(icon.SetDesaturated, icon, not castable)
+                    pcall(icon.SetAlpha, icon, castable and 1 or 0.45)
+                end
+            end
+        end
+    end
+end
+do
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "UPDATE_SHAPESHIFT_FORM", "UPDATE_SHAPESHIFT_FORMS", "UPDATE_SHAPESHIFT_USABLE",
+                         "UPDATE_SHAPESHIFT_COOLDOWN", "PLAYER_ENTERING_WORLD", "ACTIONBAR_UPDATE_USABLE" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    local due = false
+    ev:SetScript("OnEvent", function()
+        if due then return end
+        due = true
+        -- (After the game's own update of the buttons, which re-colours them.)
+        C_Timer.After(0.05, function() due = false; pcall(Bars.StanceRings) end)
+    end)
 end
 
 -- Stances learned or lost (a new form, a respec): the stance row's width and
