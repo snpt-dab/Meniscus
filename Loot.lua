@@ -933,6 +933,30 @@ function L:OnInit(db)
                          "START_LOOT_ROLL", "CANCEL_LOOT_ROLL" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
+    -- A recipe learned: a pill like the rest, in place of the game's
+    -- parchment banner ("New Recipe Learned!") over the middle of the bars.
+    if L.db.skillFloat ~= false then
+        local rl = CreateFrame("Frame")
+        if pcall(rl.RegisterEvent, rl, "NEW_RECIPE_LEARNED") then
+            local AF = _G.AlertFrame
+            if AF and AF.UnregisterEvent then pcall(AF.UnregisterEvent, AF, "NEW_RECIPE_LEARNED") end
+            rl:SetScript("OnEvent", function(_, _, recipeID)
+                if type(recipeID) ~= "number" or secret(recipeID) then return end
+                local info = C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo and call(C_TradeSkillUI.GetRecipeInfo, recipeID)
+                local name = type(info) == "table" and info.name
+                local tex = type(info) == "table" and info.icon
+                if type(name) ~= "string" or secret(name) then
+                    name = C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, recipeID)
+                    tex = C_Spell and C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, recipeID)
+                end
+                if type(name) ~= "string" or secret(name) or name == "" then return end
+                if not pcall(floatOrigin) then return end
+                floatRail = "left"
+                pcall(floatPill, (tex and not secret(tex)) and tex or 134939, name, T.text[1], T.text[2], T.text[3],
+                      "learned", 0.80, 0.66, 0.30)
+            end)
+        end
+    end
     local sk = CreateFrame("Frame")
     sk:RegisterEvent("CHAT_MSG_SKILL")
     sk:RegisterEvent("SKILL_LINES_CHANGED")
