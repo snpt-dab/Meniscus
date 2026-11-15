@@ -733,9 +733,9 @@ local function buildNumbers()
     -- the game never reports the hit at all (the enemy is gone before it
     -- would have): there is its log line, the log's white "You killed"
     -- notice, and nothing else, and the amount is inside the sealed line.
-    -- So that case shows the words "Killing blow" where the number would
-    -- have been: more lines printed with the kill notice than hits
-    -- reported with it.
+    -- That case is recognised (more lines printed with the kill notice than
+    -- hits reported with it) so that its line is not left over for some
+    -- later hit to use, and nothing is shown for it: there is no amount.
     local CL = C_CombatLog
     local logLines, held = {}, {}
     local logHeard = false
@@ -793,14 +793,14 @@ local function buildNumbers()
                         for i = 1, #lineTimes do if math.abs(lineTimes[i] - at) <= 0.15 then lines = lines + 1 end end
                         for i = 1, #claimTimes do if claimTimes[i] >= at - 0.15 and claimTimes[i] <= at + 0.2 then claims = claims + 1 end end
                         if lines > claims then
-                            note(string.format("  at the kill: %d lines, %d hits reported: \"Killing blow\" shown", lines, claims))
+                            note(string.format("  at the kill: %d lines, %d hits reported: the unreported one has no number, nothing shown", lines, claims))
                             -- (Those lines are spent: nothing later may use them.)
                             for i = #logLines, 1, -1 do
                                 if math.abs((logLines[i] - 0.8) - at) <= 0.15 then table.remove(logLines, i) end
                             end
-                            local kx, ky = railSpot(nil, true)
-                            showUnit = nil
-                            show(nil, kx, ky, "Killing blow", 1.00, 0.86, 0.50, false, false)
+                            -- (The words "Killing blow" were shown here for a
+                            -- while. Taken out by request: with no amount to
+                            -- give, better nothing than words.)
                         end
                     end)
                     return
