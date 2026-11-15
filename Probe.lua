@@ -1801,6 +1801,14 @@ do
         uc:SetScript("OnEvent", function(_, _, _, action)
             hits = hits + 1
             if hits <= 24 then add(string.format("%.2f HIT on target (%s)", GetTime() % 1000, show(action))) end
+            if hits == 1 or hits == 5 then
+                -- Is the log sending its lines out right now, and which tab is up?
+                local f = C_CombatLog and C_CombatLog.AreFilteredEventsEnabled
+                local okF, on = pcall(f or error)
+                local tab = _G.SELECTED_CHAT_FRAME
+                add("  lines being sent out: " .. tostring(okF and on) .. "  tab in front: " .. tostring(tab and tab.GetName and tab:GetName())
+                    .. "  log frame shown: " .. tostring(log:IsShown()) .. " visible: " .. tostring(log:IsVisible()))
+            end
         end)
     end)
 end
