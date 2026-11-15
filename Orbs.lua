@@ -46,7 +46,27 @@ local function newMask(frame, size)
     return m
 end
 
-local function setText(fs, value)
+-- A number as short text ("451", "12.3k"); a hidden one through the
+-- client's own abbreviation, which gives back hidden text.
+local function shortNum(value)
+    if not issecretvalue(value) then
+        if type(value) ~= "number" then return nil end
+        if value >= 1e6 then return string.format("%.1fm", value / 1e6)
+        elseif value >= 1e3 then return string.format("%.1fk", value / 1e3) end
+        return tostring(math.floor(value))
+    end
+    if AbbreviateNumbers then
+        local ok, t = pcall(AbbreviateNumbers, value)
+        if ok and t ~= nil then return t end
+    end
+    return nil
+end
+-- With `max` (the orb is under the mouse): "current / max".
+local function setText(fs, value, max)
+    if max ~= nil and max ~= false then
+        local a, b = shortNum(value), shortNum(max)
+        if a ~= nil and b ~= nil and pcall(fs.SetFormattedText, fs, "%s / %s", a, b) then return end
+    end
     if not issecretvalue(value) then
         local n = value
         if n >= 1e6 then fs:SetText(string.format("%.1fm", n / 1e6))
@@ -2466,7 +2486,7 @@ local function updateHealth(f)
     local cur, max = UnitHealth("player"), UnitHealthMax("player")
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
-    setText(f.text, cur)
+    setText(f.text, cur, f.showMax and max)
     local c = getCurves()
     colorByPercent(f, cur, max, HEALTH_STOPS, HEALTH_FLASH, c.healthColor, c.healthFlash,
         healthPct)
@@ -2478,7 +2498,7 @@ local function updatePower(f)
     local cur, max = UnitPower("player", ptype), UnitPowerMax("player", ptype)
     f.bar:SetMinMaxValues(0, max)
     setValue(f.bar, cur)
-    setText(f.text, cur)
+    setText(f.text, cur, f.showMax and max)
     if f.energy and ptype ~= 3 then f.energy:Hide() end
     if f.mana and ptype ~= 0 then f.mana:Hide() end
     if ptype == 1 then
@@ -3016,6 +3036,15 @@ function Orbs:OnInit(db)
     ev:RegisterEvent("PLAYER_ENTERING_WORLD")
     updateHealth(self.health)
     updatePower(self.power)
+    -- Under the mouse an orb's number reads "current / max".
+    for _, pair in ipairs({ { self.health, updateHealth }, { self.power, updatePower } }) do
+        local orb, update = pair[1], pair[2]
+        if orb and not orb.__menMaxHook then
+            orb.__menMaxHook = true
+            orb:HookScript("OnEnter", function(o) o.showMax = true; pcall(update, o) end)
+            orb:HookScript("OnLeave", function(o) o.showMax = false; pcall(update, o) end)
+        end
+    end
     buildCombo(self)
     pcall(self.BuildAmmo, self)
     -- Pet orbs first: the player-style pass below hides the pet's own frame
