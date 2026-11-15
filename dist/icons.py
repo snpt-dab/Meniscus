@@ -187,7 +187,14 @@ def icons():
     I['faction_alliance'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12.4), (12, 20), (6, 12.4)], w=2.3, close=True)
     I['faction_horde'] = Icon().line([(7, 4.6), (17, 4.6), (17, 19.6), (12, 14.8), (7, 19.6)], w=2.3, close=True)
     # races
-    I['race_human'] = Icon().line([(5, 17.4), (5, 8.2), (8.6, 12.2), (12, 6.4), (15.4, 12.2), (19, 8.2), (19, 17.4)], w=2.2, close=True)   # a crown
+    # human: a lion's head, face on (Stormwind's lion): a mane of tufts, eyes, nose
+    _mane = []
+    for _i in range(18):
+        _a = _m.pi / 2 + _m.pi * _i / 9
+        _r = 9.6 if _i % 2 == 0 else 7.0
+        _mane.append((12 + _r * _m.cos(_a), 12.4 - _r * _m.sin(_a)))
+    I['race_human'] = (Icon().line(_mane, w=2.1, close=True).dot(9.3, 11.0, 1.3).dot(14.7, 11.0, 1.3)
+                       .poly([(10.2, 13.4), (13.8, 13.4), (12, 15.8)]).line([(12, 15.8), (12, 17.4)], w=1.6))
     I['race_dwarf'] = Icon().poly([(4.2, 8.6), (19.8, 8.6), (19.8, 11.8), (15.2, 12.6), (14.4, 15.6), (17.4, 15.6),
                                   (17.4, 19.6), (6.6, 19.6), (6.6, 15.6), (9.6, 15.6), (8.8, 12.6), (4.2, 11.4)])       # an anvil
     I['race_nightelf'] = Icon().arc(12.6, 12, 6.6, 55, 305, w=2.6)                                                                         # a crescent moon
