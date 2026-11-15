@@ -734,12 +734,23 @@ local function floatMade(msg)
     if not (L.db and L.db.float ~= false) then return end
     if type(msg) ~= "string" or secret(msg) then return end
     if madePrefix == nil then
-        -- The client's own wording, up to where the item goes ("You create: ").
-        local fmt = _G.LOOT_ITEM_CREATED_SELF
-        madePrefix = type(fmt) == "string" and fmt:match("^(.-)%%") or false
-        if madePrefix == "" then madePrefix = false end
+        -- The client's own wording, up to where the item goes: what you
+        -- made ("You create: "), and what was handed to you ("You receive
+        -- item: "): a quest's reward, something bought, a trade, the mail.
+        -- (What comes out of a loot window is worded differently, "You
+        -- receive loot: ", and has its pill already.)
+        madePrefix = {}
+        for _, key in ipairs({ "LOOT_ITEM_CREATED_SELF", "LOOT_ITEM_PUSHED_SELF" }) do
+            local fmt = _G[key]
+            local pre = type(fmt) == "string" and fmt:match("^(.-)%%") or nil
+            if pre and pre ~= "" then madePrefix[#madePrefix + 1] = pre end
+        end
     end
-    if not madePrefix or msg:sub(1, #madePrefix) ~= madePrefix then return end
+    local known = false
+    for i = 1, #madePrefix do
+        if msg:sub(1, #madePrefix[i]) == madePrefix[i] then known = true break end
+    end
+    if not known then return end
     local id, name = msg:match("|Hitem:(%d+).-|h%[(.-)%]|h")
     id = tonumber(id)
     if not id or not name or name == "" then return end
