@@ -2486,13 +2486,18 @@ local function buildTalentMark()
         -- Out fast, back slowly; the light dies as they come home.
         local out = p < 0.18 and (p / 0.18) or (1 - (p - 0.18) / 0.82) ^ 2
         local a = (p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88) * 1.0
-        warm:SetPoint("CENTER", -SPREAD * out, 0)
-        cool:SetPoint("CENTER", SPREAD * out, 0)
+        -- The two ghosts sit opposite each other and go round the disc
+        -- counter-clockwise as they are thrown out and drawn back: half a
+        -- turn to each beat, so over the three the pair orbits.
+        local th = math.pi + math.pi * (age / FLASH)
+        local ox, oy = math.cos(th) * SPREAD * out, math.sin(th) * SPREAD * out
+        warm:SetPoint("CENTER", ox, oy)
+        cool:SetPoint("CENTER", -ox, -oy)
         warm:SetVertexColor(1.00, 0.30, 0.42, a)
         cool:SetVertexColor(0.30, 0.62, 1.00, a)
         white:SetVertexColor(1, 1, 1, a * 0.5)
-        dWarm:SetPoint("CENTER", -SPREAD * out, 0)
-        dCool:SetPoint("CENTER", SPREAD * out, 0)
+        dWarm:SetPoint("CENTER", ox, oy)
+        dCool:SetPoint("CENTER", -ox, -oy)
         dWarm:SetVertexColor(1.00, 0.30, 0.42, a * 0.55)
         dCool:SetVertexColor(0.30, 0.62, 1.00, a * 0.55)
         -- (The white: hard at the start, gone by a third of the way.)
