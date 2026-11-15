@@ -958,6 +958,11 @@ local function build()
         for _, card in pairs(cards) do
             card.title = text(card, 11, true, T.textDim)
             card.title:SetPoint("TOPLEFT", PAD + 2, -11)
+            -- (A long bag name on a narrow card is cut short with dots, not
+            -- left to run off the card's edge.)
+            card.title:SetPoint("RIGHT", card, "RIGHT", -(PAD + 2), 0)
+            card.title:SetJustifyH("LEFT")
+            card.title:SetWordWrap(false)
         end
     end
 
