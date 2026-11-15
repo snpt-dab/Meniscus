@@ -434,7 +434,21 @@ local function buildNumbers()
             if had then had[1], had[2] = idx, now else railOf[key] = { idx, now } end
         end
         if idx > 0 then sideUsed[idx] = now end
-        return UIParent:GetWidth() / 2 + RAIL_DX[idx], UIParent:GetHeight() * 0.72 + RAIL_DY[idx]
+        -- The closer the camera, the bigger the enemy stands on the screen,
+        -- up into where the rails are: so the rails climb (and the side
+        -- ones move out a little) as you zoom in. Fully out: 72% of the
+        -- way up; at 3 yards or closer: 86%.
+        local up, wide = 0.72, 1
+        local okZ, zoom = pcall(_G.GetCameraZoom or error)
+        if okZ and type(zoom) == "number" and not secret(zoom) then
+            local k = (15 - zoom) / 12
+            k = k < 0 and 0 or k > 1 and 1 or k
+            up, wide = 0.72 + 0.14 * k, 1 + 0.4 * k
+            if MinimalUIDB then MinimalUIDB.zoomdiag = string.format("zoom %.1f -> %.0f%% up", zoom, up * 100) end
+        elseif MinimalUIDB then
+            MinimalUIDB.zoomdiag = "no camera zoom from the client"
+        end
+        return UIParent:GetWidth() / 2 + RAIL_DX[idx] * wide, UIParent:GetHeight() * up + RAIL_DY[idx]
     end
     local guess = NP.db.numbersMine ~= false
     local hits, heals, dots = {}, {}, {}   -- when each allowance runs out; plate -> when your effect went on
