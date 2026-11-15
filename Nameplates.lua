@@ -403,7 +403,7 @@ local function buildNumbers()
     -- number over a nameplate is shown only if you did something that could
     -- have caused it:
     --   * a harmful spell or wand shot of yours has just gone off (within
-    --     1.2 s; each one accounts for one hit) and the unit is your target;
+    --     2.6 s; each one accounts for one hit) and the unit is your target;
     --   * or the unit carries a damage-over-time effect of yours and the
     --     hit falls on a tick (every 3 s from when you cast it);
     --   * a heal: you have just cast a helping spell.
@@ -518,7 +518,7 @@ local function buildNumbers()
             end
             local ok, can = pcall(UnitCanAttack, "player", "target")
             if not ok or secret(can) or not can then return end
-            hits[#hits + 1] = now + 1.2
+            hits[#hits + 1] = now + 2.6 -- (a bolt thrown from far off is in the air well over a second: 1.2 lost those)
             if #hits > 6 then table.remove(hits, 1) end
             -- When an effect of yours may have gone on (its ticks are counted
             -- from here). Not a wand or bow shot: those repeat every second
