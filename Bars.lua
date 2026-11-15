@@ -606,6 +606,11 @@ function Bars:Arrange()
     self:ApplyPetWell()
     self:ApplyCharWell()
     -- Once the anchors above have real positions.
+    -- (Inside login, not a frame later: after a reload mid-fight the combat
+    -- lock is down by then, and the console waited for the fight's end.)
+    ns.AfterInit(function() Bars:ApplyPlate() end)
+    -- (And a frame later as before, when everything has a measured place;
+    -- in a fight that one waits for the end and the first has to do.)
     C_Timer.After(0, function() Bars:ApplyPlate() end)
 end
 

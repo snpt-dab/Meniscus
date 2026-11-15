@@ -2301,6 +2301,8 @@ local function buildFlyout(spec)
         soon()
     end)
     -- (Item names may not be known the moment you log in.)
+    -- (And once inside login, for a reload mid-fight: later is locked.)
+    ns.AfterInit(function() pcall(assign); pcall(update) end)
     C_Timer.After(2, soon)
     C_Timer.After(8, soon)
 end
