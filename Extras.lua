@@ -624,16 +624,16 @@ local function buildPetFood()
     btn:SetScript("OnEnter", function(self)
         ring(unpack(T.accent))
         GameTooltip:SetOwner(self, "ANCHOR_TOP", 0, 4)
-        GameTooltip:AddLine("Feed your pet", 1, 1, 1)
+        GameTooltip:AddLine("Feed pet", 1, 1, 1)
         if best then
-            GameTooltip:AddLine("Click: feeds it " .. itemName(best) .. ".", 0.86, 0.86, 0.89)
-            GameTooltip:AddLine(good .. " feedings of food it eats in your bags.", 0.6, 0.6, 0.65)
+            GameTooltip:AddLine("Click to feed: " .. itemName(best), 0.86, 0.86, 0.89)
+            GameTooltip:AddLine(good == 1 and "1 feeding left" or (good .. " feedings left"), 0.6, 0.6, 0.65)
         else
-            GameTooltip:AddLine("No food it is known to eat in your bags.", 0.95, 0.38, 0.36)
+            GameTooltip:AddLine("Nothing in your bags it eats", 0.95, 0.38, 0.36)
         end
         if unknown > 0 then
-            GameTooltip:AddLine(unknown .. " food(s) not tried on this kind of pet yet: use Feed Pet and click"
-                .. " one, and it will be remembered either way.", 0.6, 0.6, 0.65, true)
+            GameTooltip:AddLine(unknown == 1 and "1 untested food: try feeding it by hand" or (unknown .. " untested foods: try feeding them by hand"),
+                                0.6, 0.6, 0.65)
         end
         GameTooltip:Show()
     end)
