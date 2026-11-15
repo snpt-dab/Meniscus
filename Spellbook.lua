@@ -204,6 +204,27 @@ local function newCard(i)
     return c
 end
 
+-- A card's looks (picture, name, the line under it): nothing here is
+-- protected, so it may be done in a fight.
+local function paintCard(c, e)
+    c.entry = e
+    if not e then return end
+    c.icon:SetTexture(e.icon)
+    c.name:SetText(e.name)
+    local future = e.itemType == TYPE_FUTURE
+    if future then
+        local lvl = call(SB.GetSpellBookItemLevelLearned, e.index, e.bank)
+        c.sub:SetText(num(lvl) and lvl > 0 and ("Learn at level " .. lvl) or "Not learned yet")
+    elseif e.passive then
+        c.sub:SetText("Passive")
+    else
+        c.sub:SetText((e.sub and not secret(e.sub) and e.sub ~= "") and e.sub or "")
+    end
+    c.icon:SetDesaturated(future)
+    c.icon:SetAlpha(future and 0.45 or 1)
+    c.name:SetTextColor(unpack(future and T.textDim or T.text))
+end
+
 local function fillCard(c, e)
     c.entry = e
     if not e then
@@ -249,6 +270,155 @@ local function updateCooldowns()
     end
 end
 
+-- ── In a fight ────────────────────────────────────────────────────────────
+-- Turning a page means giving each card another spell to cast, and ordinary
+-- code may not do that in combat. Secure code may. So, as a fight starts,
+-- the whole book is written down for it (every tab, every page, which spell
+-- sits on which card: the book doesn't change mid-fight), and the tabs, the
+-- page buttons and the close button each get an unseen secure twin lying
+-- on top of them. In combat the twin's own snippet turns the page from
+-- that record (or closes the window), and ordinary code then repaints the
+-- pictures and names, which is allowed. Out of combat the twin just does
+-- what the button under it always did.
+local ctl
+local snapTabs, snap = {}, {}
+local function castValue(e)
+    -- What a card casts; 0 = a card that is shown but casts nothing.
+    if (e.itemType ~= TYPE_SPELL and e.itemType ~= TYPE_PET) or e.passive then return 0 end
+    return (e.bank == BANK_PET and e.name) or e.spellID or 0
+end
+local function snapshot()
+    if not ctl or InCombatLockdown() then return end
+    local tabs = tabList()
+    for i = #snapTabs, 1, -1 do snapTabs[i] = nil end
+    local tabAt
+    for ti, t in ipairs(tabs) do
+        snapTabs[ti] = t
+        local list = spellsFor(t, nil)
+        local pages = math.max(1, math.ceil(#list / PER_PAGE))
+        local st = snap[ti]
+        if not st then st = {}; snap[ti] = st end
+        -- (As many pages as the larger of now and last time, so a page
+        -- that no longer exists is written down as empty.)
+        for pi = 1, math.max(pages, st.n or 0) do
+            local sp = st[pi]
+            if not sp then sp = {}; st[pi] = sp end
+            for ci = 1, PER_PAGE do
+                local e = pi <= pages and list[(pi - 1) * PER_PAGE + ci] or nil
+                sp[ci] = e or false
+                ctl:SetAttribute("s" .. ti .. "_" .. pi .. "_" .. ci, e and castValue(e) or nil)
+            end
+        end
+        st.n = pages
+        ctl:SetAttribute("pages" .. ti, pages)
+        if t.key == S.tab then tabAt = ti end
+    end
+    ctl:SetAttribute("tab", tabAt or 1)
+    ctl:SetAttribute("page", S.page or 1)
+end
+S.Snapshot = snapshot
+-- After a secure twin has turned the page in combat: the looks to match.
+local function combatPaint()
+    if not ctl then return end
+    local ti, pi = ctl:GetAttribute("tab") or 1, ctl:GetAttribute("page") or 1
+    local t = snapTabs[ti]
+    if not t then return end
+    S.tab, S.page = t.key, pi
+    local page = snap[ti] and snap[ti][pi]
+    local n = 0
+    for ci, c in ipairs(cards) do
+        local e = page and page[ci] or nil
+        paintCard(c, e or nil)
+        if e then n = n + 1 end
+    end
+    updateCooldowns()
+    for _, b in ipairs(tabButtons) do b.on = (b.key == S.tab); b:Repaint() end
+    local pages = ctl:GetAttribute("pages" .. ti) or 1
+    win.pageText:SetText(pages > 1 and string.format("%d / %d", pi, pages) or "")
+    win.prev:SetShown(pages > 1)
+    win.next:SetShown(pages > 1)
+    win.shell:SetSubtitle(t.label)
+    win.empty:SetShown(n == 0)
+end
+-- An unseen secure button over `target`: `snippet` runs in combat (it
+-- begins by leaving if there is no fight), `plain` otherwise.
+local function secureOver(target, snippet, plain)
+    local o = CreateFrame("Button", nil, win, "SecureHandlerClickTemplate")
+    o:SetAllPoints(target)
+    o:SetFrameLevel(target:GetFrameLevel() + 6)
+    o:RegisterForClicks("AnyUp")
+    o:SetAttribute("_onclick", snippet)
+    if SecureHandlerSetFrameRef then
+        SecureHandlerSetFrameRef(o, "ctl", ctl)
+        SecureHandlerSetFrameRef(o, "win", win)
+    end
+    o:HookScript("OnClick", function()
+        if InCombatLockdown() then pcall(combatPaint) else plain() end
+    end)
+    o:SetScript("OnEnter", function() local f = target:GetScript("OnEnter"); if f then pcall(f, target) end end)
+    o:SetScript("OnLeave", function() local f = target:GetScript("OnLeave"); if f then pcall(f, target) end end)
+    return o
+end
+local TAB_SNIPPET = [[
+    if not PlayerInCombat() then return end
+    local ctl = self:GetFrameRef("ctl")
+    ctl:SetAttribute("tab", self:GetAttribute("tabindex") or 1)
+    ctl:SetAttribute("page", 1)
+    ctl:RunAttribute("apply")
+]]
+local STEP_SNIPPET = [[
+    if not PlayerInCombat() then return end
+    local ctl = self:GetFrameRef("ctl")
+    local ti = ctl:GetAttribute("tab") or 1
+    local pages = ctl:GetAttribute("pages" .. ti) or 1
+    local pi = (ctl:GetAttribute("page") or 1) + (self:GetAttribute("step") or 0)
+    if pi < 1 then pi = 1 elseif pi > pages then pi = pages end
+    ctl:SetAttribute("page", pi)
+    ctl:RunAttribute("apply")
+]]
+local CLOSE_SNIPPET = [[
+    if not PlayerInCombat() then return end
+    local w = self:GetFrameRef("win")
+    if w then w:Hide() end
+]]
+local function buildCombat()
+    ctl = CreateFrame("Frame", "MinimalUISpellbookCtl", win, "SecureHandlerBaseTemplate")
+    for i, c in ipairs(cards) do
+        if SecureHandlerSetFrameRef then SecureHandlerSetFrameRef(ctl, "card" .. i, c) end
+    end
+    ctl:SetAttribute("apply", string.format([[
+        local ti, pi = self:GetAttribute("tab") or 1, self:GetAttribute("page") or 1
+        for ci = 1, %d do
+            local card = self:GetFrameRef("card" .. ci)
+            if card then
+                local v = self:GetAttribute("s" .. ti .. "_" .. pi .. "_" .. ci)
+                if v == nil then
+                    card:Hide()
+                else
+                    card:Show()
+                    if v == 0 then
+                        card:SetAttribute("type1", nil)
+                        card:SetAttribute("spell", nil)
+                    else
+                        card:SetAttribute("type1", "spell")
+                        card:SetAttribute("spell", v)
+                    end
+                end
+            end
+        end
+    ]], PER_PAGE))
+    local prev = secureOver(win.prev, STEP_SNIPPET, function() S.page = (S.page or 1) - 1; S:Refresh() end)
+    prev:SetAttribute("step", -1)
+    local nxt = secureOver(win.next, STEP_SNIPPET, function() S.page = (S.page or 1) + 1; S:Refresh() end)
+    nxt:SetAttribute("step", 1)
+    -- The close button: the shell's own sits at the window's top right.
+    local x = CreateFrame("Frame", nil, win)
+    x:SetSize(22, 22)
+    x:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -12)
+    x:SetFrameLevel(win:GetFrameLevel() + 60) -- (above the header band and what is lifted onto it)
+    secureOver(x, CLOSE_SNIPPET, function() S:Close() end)
+end
+
 -- ── Paging / tabs ─────────────────────────────────────────────────────────
 -- force: fill it in even while it is hidden (done as a fight starts, so
 -- that the book is up to date if it is opened mid-fight).
@@ -264,7 +434,7 @@ function S:Refresh(force)
     sig = table.concat(sig, "|")
     if sig ~= self.tabSig then
         self.tabSig = sig
-        for _, b in ipairs(tabButtons) do b:Hide() end
+        for _, b in ipairs(tabButtons) do b:Hide(); if b.over then b.over:Hide() end end
         local x = 20
         for i, t in ipairs(tabs) do
             local b = tabButtons[i]
@@ -278,6 +448,14 @@ function S:Refresh(force)
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", win, "TOPLEFT", x, -TABS_Y)
             b:Show()
+            if ctl then
+                if not b.over then
+                    local pillB = b
+                    b.over = secureOver(b, TAB_SNIPPET, function() S.tab = pillB.key; S.page = 1; S:Refresh() end)
+                end
+                b.over:SetAttribute("tabindex", i)
+                b.over:Show()
+            end
             x = x + b:GetWidth() + 6
         end
     end
@@ -425,6 +603,8 @@ local function build()
     win.pageText:SetPoint("BOTTOM", win, "BOTTOM", 0, 20)
     win.prev:SetPoint("RIGHT", win.pageText, "LEFT", -14, 0)
     win.next:SetPoint("LEFT", win.pageText, "RIGHT", 14, 0)
+    local okC, errC = pcall(buildCombat)
+    if not okC then ctl = nil; if MinimalUIDB then MinimalUIDB.spellbookErr = tostring(errC) end end
 
     win:SetScript("OnShow", function()
         call(PlaySound, SOUNDKIT and SOUNDKIT.IG_SPELLBOOK_OPEN)
@@ -566,6 +746,7 @@ local function buildToggle()
             -- A fight is starting (the lockdown has not begun yet): bring
             -- the hidden book up to date, for the last time until it ends.
             if win and not win:IsShown() and not InCombatLockdown() then pcall(S.Refresh, S, true) end
+            if win and S.Snapshot then pcall(S.Snapshot) end
             return
         end
         if e == "PLAYER_REGEN_ENABLED" then
