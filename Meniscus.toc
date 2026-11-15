@@ -2,7 +2,7 @@
 ## Title: Meniscus
 ## Notes: Clean, minimal, modern UI overhaul for WoW Forever.
 ## Author: Andrew
-## Version: 0.1.352
+## Version: 0.1.353
 ## SavedVariables: MinimalUIDB
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## AddonCompartmentFunc: MinimalUI_OnAddonCompartmentClick
