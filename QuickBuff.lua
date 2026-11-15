@@ -44,6 +44,10 @@ local CLASS_BUFFS = {
     },
     SHAMAN = {
         { name = "Water Shield", self = true, any = { "Water Shield", "Lightning Shield" } },
+        -- The weapon enchant: not a buff on you but on what you hold (see
+        -- imbued). Whichever of them you cast last is the one offered.
+        { name = "Weapon imbue", self = true, imbue = true,
+          any = { "Windfury Weapon", "Flametongue Weapon", "Rockbiter Weapon", "Frostbrand Weapon" } },
     },
     WARLOCK = {
         { name = "Demon Armor", self = true, any = { "Demon Armor", "Demon Skin" } },
@@ -149,7 +153,19 @@ local function namesOf(buff)
 end
 
 -- Covered if any alternative (or the group version) is fine.
+-- Is your weapon enchanted, with more left on it than the rebuff time?
+-- (Yes also when it can't be told, or when you hold no weapon to enchant.)
+local function imbued()
+    if not GetInventoryItemLink("player", 16) then return true end
+    if type(GetWeaponEnchantInfo) ~= "function" then return true end
+    local ok, has, ms = pcall(GetWeaponEnchantInfo)
+    if not ok or secret(has) then return true end
+    if not has then return false end
+    local left = (type(ms) == "number" and not secret(ms)) and ms / 1000 or 99999
+    return left > ((QB.db and QB.db.refresh) or 2) * 60
+end
 local function covered(u, buff)
+    if buff.imbue then return imbued() end
     for _, n in ipairs(namesOf(buff)) do
         if auraState(u, n) == "ok" then return true end
     end
@@ -157,6 +173,11 @@ local function covered(u, buff)
 end
 
 local function bestSpell(buff)
+    -- A weapon imbue: the one you chose last time, if you still know it.
+    if buff.imbue and QB.db and QB.db.imbue then
+        local info = known(QB.db.imbue)
+        if info then return QB.db.imbue, info end
+    end
     for _, n in ipairs(namesOf(buff)) do
         local info = known(n)
         if info then return n, info end
@@ -1008,6 +1029,25 @@ function QB:OnInit(db)
         pcall(ev.RegisterEvent, ev, e)
     end
     local dirty = true
+    -- Which weapon imbue you cast is remembered (it is the one offered
+    -- next time), and an enchant going on or wearing off is looked at.
+    local imb = CreateFrame("Frame")
+    pcall(imb.RegisterUnitEvent, imb, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    pcall(imb.RegisterUnitEvent, imb, "UNIT_INVENTORY_CHANGED", "player")
+    imb:SetScript("OnEvent", function(_, e, _, _, spellID)
+        dirty = true
+        if e ~= "UNIT_SPELLCAST_SUCCEEDED" or secret(spellID) or type(spellID) ~= "number" then return end
+        local ok, name = pcall(C_Spell.GetSpellName, spellID)
+        if not ok or type(name) ~= "string" or secret(name) then return end
+        local _, cls = UnitClass("player")
+        for _, buff in ipairs(CLASS_BUFFS[cls or ""] or {}) do
+            if buff.imbue then
+                for _, n in ipairs(buff.any) do
+                    if n == name and QB.db then QB.db.imbue = name end
+                end
+            end
+        end
+    end)
     ev:SetScript("OnEvent", function(_, e, unit)
         if e == "UNIT_AURA" then
             if unit and (unit == "player" or unit:find("^party") or unit:find("^raid")) then dirty = true end
