@@ -449,8 +449,11 @@ local STAT_MARK = {
 function ns.StatMark(key, size)
     local m = STAT_MARK[key]
     if not m then return nil end
-    size = size or 13
-    return string.format("|TInterface/AddOns/Meniscus/Media/micro_%s.tga:%d:%d:0:0:32:32:0:32:0:32:%d:%d:%d|t",
+    size = size or 16
+    -- (Drawn larger than the text and dropped a little: the emblem only
+    -- fills the middle two thirds of its square, so at the text's own size
+    -- it looked small and sat high on the line.)
+    return string.format("|TInterface/AddOns/Meniscus/Media/micro_%s.tga:%d:%d:0:-2:32:32:0:32:0:32:%d:%d:%d|t",
         m[1], size, size, math.floor(m[2] * 255), math.floor(m[3] * 255), math.floor(m[4] * 255))
 end
 -- A coin, as text markup: a small flat disc in gold, silver or copper.
@@ -500,7 +503,7 @@ function ns.CompareLine(link)
         local a = math.abs(d)
         local label = statLabel(diffs[i][1])
         label = SHORT[label] or label
-        local mark = ns.StatMark(diffs[i][1], 12)
+        local mark = ns.StatMark(diffs[i][1], 16)
         out = out .. (i > 1 and "   " or "") .. (mark and (mark .. " ") or "") .. (d > 0 and "|cff73d980+" or "|cffe57373-")
             .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
             .. (mark and "" or (" " .. label)) .. "|r"
@@ -544,7 +547,7 @@ function ns.CompareRows(link, max)
         local d = diffs[i][2]
         local a = math.abs(d)
         -- (The emblem stands for the word where there is one.)
-        local mark = ns.StatMark(diffs[i][1], 13)
+        local mark = ns.StatMark(diffs[i][1], 17)
         rows[i] = (mark and (mark .. " ") or "") .. (d > 0 and "|cff73d980+" or "|cffe57373-")
             .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
             .. (mark and "" or (" " .. statLabel(diffs[i][1]))) .. "|r"
@@ -757,7 +760,7 @@ function ns.AddCompare(tip, link)
                     return (d > 0 and "+" or "-") .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
                 end
                 -- (In a tooltip there is room for the word too: emblem, number, name.)
-                local function row(e) return (ns.StatMark(e[1], 13) or "") .. " " .. fmt(e[2]) .. " " .. statLabel(e[1]) end
+                local function row(e) return (ns.StatMark(e[1], 16) or "") .. " " .. fmt(e[2]) .. " " .. statLabel(e[1]) end
                 for _, e in ipairs(gains) do tip:AddLine(row(e), 0.45, 0.85, 0.50) end
                 for _, e in ipairs(losses) do tip:AddLine(row(e), 0.90, 0.45, 0.45) end
                 if #gains == 0 and #losses == 0 then tip:AddLine("Same stats", 0.85, 0.85, 0.88) end

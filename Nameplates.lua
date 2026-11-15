@@ -541,7 +541,11 @@ local function buildNumbers()
         for i = 1, #items do
             local f = items[i]
             if f.live and f.unit == unit then
-                if home and f.onTarget then
+                -- (Whether or not it still counted as your target when the
+                -- number was made: by the killing blow the target has often
+                -- been dropped already, and those were being thrown away
+                -- a moment after they appeared.)
+                if home then
                     f.rel, f.unit = home, nil
                     moved = moved + 1
                 else
