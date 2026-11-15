@@ -917,7 +917,10 @@ local function build()
     line:SetPoint("BOTTOMRIGHT", -PAD, FOOTER - 8)
     win.bagTiles = {}
     local x = PAD
-    for i = 1, (_G.NUM_BAG_SLOTS or 4) do
+    -- (The extra slot too, where the client has one: a herb pouch or other
+    -- profession bag goes there, and had no tile.)
+    local extraSlot = (_G.NUM_REAGENTBAG_SLOTS and _G.NUM_REAGENTBAG_SLOTS > 0) and 1 or 0
+    for i = 1, (_G.NUM_BAG_SLOTS or 4) + extraSlot do
         local t = makeBagTile(win, i)
         if t then
             t:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", x, 10)
@@ -929,8 +932,11 @@ local function build()
     win.money:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -PAD, 16)
 
     if B.db.mode == "separate" then
-        for _, bag in ipairs(bagList()) do cards[bag] = newCard() end
-        if numSlots(KEYRING) > 0 then cards[KEYRING] = newCard() end
+        -- A card for every slot a bag can go in, used or not: cards are
+        -- only made here, so a bag equipped later (a first herb pouch) had
+        -- none and never showed until the next reload.
+        for bag = 0, (_G.NUM_BAG_SLOTS or 4) + extraSlot do cards[bag] = newCard() end
+        cards[KEYRING] = newCard()
         for _, card in pairs(cards) do
             card.title = text(card, 11, true, T.textDim)
             card.title:SetPoint("TOPLEFT", PAD + 2, -11)
