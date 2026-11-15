@@ -609,6 +609,47 @@ function Bars:Arrange()
     -- (Inside login, not a frame later: after a reload mid-fight the combat
     -- lock is down by then, and the console waited for the fight's end.)
     ns.AfterInit(function() Bars:ApplyPlate() end)
+    -- The console has places for action bars 2 and 3 (the blocks either
+    -- side), and on a new character the game has them switched off: they
+    -- are switched on, once per character, a moment after its first login.
+    -- Once only, so turning them off again yourself sticks. (Through the
+    -- game's own settings where it has them, so its options window agrees;
+    -- what was done is kept in MinimalUIDB.bars23.)
+    if self.db.autoBars ~= false then
+        C_Timer.After(2, function()
+            if InCombatLockdown() or not MinimalUIDB then return end
+            local who = (UnitName("player") or "?") .. "-" .. (GetRealmName and GetRealmName() or "?")
+            MinimalUIDB.barsOn = MinimalUIDB.barsOn or {}
+            if MinimalUIDB.barsOn[who] then return end
+            local note = {}
+            local done = false
+            if Settings and Settings.GetValue and Settings.SetValue then
+                local all = true
+                for _, key in ipairs({ "PROXY_SHOW_ACTIONBAR_2", "PROXY_SHOW_ACTIONBAR_3" }) do
+                    local okG, on = pcall(Settings.GetValue, key)
+                    local okS = true
+                    if okG and on == false then okS = pcall(Settings.SetValue, key, true) end
+                    note[#note + 1] = key .. " was " .. tostring(okG and on) .. " set " .. tostring(okS)
+                    if not (okG and okS) or on == nil then all = false end
+                end
+                done = all
+            end
+            if not done and type(GetActionBarToggles) == "function" and type(SetActionBarToggles) == "function" then
+                local okT, b2, b3, b4, b5, b6, b7, b8 = pcall(GetActionBarToggles)
+                if okT then
+                    local okS = pcall(SetActionBarToggles, true, true, b4, b5, b6, b7, b8)
+                    if okS and type(MultiActionBar_Update) == "function" then pcall(MultiActionBar_Update) end
+                    note[#note + 1] = "toggles were " .. tostring(b2) .. "," .. tostring(b3) .. " set " .. tostring(okS)
+                    done = okS
+                end
+            end
+            MinimalUIDB.bars23 = note
+            if done then
+                MinimalUIDB.barsOn[who] = true
+                C_Timer.After(0.5, function() if not InCombatLockdown() then pcall(Bars.Arrange, Bars) end end)
+            end
+        end)
+    end
     -- (And a frame later as before, when everything has a measured place;
     -- in a fight that one waits for the end and the first has to do.)
     C_Timer.After(0, function() Bars:ApplyPlate() end)
