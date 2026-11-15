@@ -379,18 +379,30 @@ local function buildNumbers()
         if okT and not secret(isTarget) and isTarget == true and take(hits, now) then return true end
         local list = plate and dots[plate]
         if list and #list > 0 then
+            -- (Whether the unit still carries your effect was asked of the
+            -- game here, and the answer could not be relied on: it is only
+            -- noted now, and the timing alone decides.)
             local okA, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, 1, "HARMFUL|PLAYER")
-            if okA and a then
-                for i = #list, 1, -1 do
-                    local age = now - list[i]
-                    if age > 31 then
-                        table.remove(list, i)
-                    elseif age > 1 then
-                        local ph = age % 3
-                        if ph < 0.5 or ph > 2.5 then return true end
+            local hit = false
+            for i = #list, 1, -1 do
+                local age = now - list[i]
+                if age > 31 then
+                    table.remove(list, i)
+                elseif age > 1 then
+                    local ph = age % 3
+                    if ph < 0.6 or ph > 2.4 then hit = true end
+                    -- What was seen, for tuning (MinimalUIDB.dotdiag, the last 16).
+                    if MinimalUIDB then
+                        local d = MinimalUIDB.dotdiag
+                        if type(d) ~= "table" then d = {}; MinimalUIDB.dotdiag = d end
+                        d[#d + 1] = string.format("%s age %.2f beat %.2f aura %s/%s %s", action, age, ph, tostring(okA), tostring(a ~= nil), hit and "shown" or "dropped")
+                        if #d > 16 then table.remove(d, 1) end
                     end
                 end
             end
+            if hit then return true end
+        elseif MinimalUIDB and action == "WOUND" then
+            MinimalUIDB.dotnote = "a hit with no cast of yours on record for that nameplate (plate " .. tostring(plate ~= nil) .. ")"
         end
         return false
     end
