@@ -178,6 +178,15 @@ local function gather()
                         end
                     end
                 end
+                -- Done, by the game's word or by every objective being
+                -- finished (the game's word alone was not always there).
+                if not e.complete and e.objs and #e.objs > 0 then
+                    local all = true
+                    for _, o in ipairs(e.objs) do
+                        if type(o) ~= "table" or not o.finished then all = false break end
+                    end
+                    if all then e.complete = true end
+                end
                 local was = progress[id]
                 if was ~= nil and sum > was then hotUntil[id] = now + HOT_SECONDS end
                 progress[id] = sum
@@ -475,21 +484,33 @@ function TR:Console(x, y, w, h)
                 local fs = P.take(11, true)
                 local lvl = (type(e.level) == "number" and not secretv(e.level) and e.level > 0) and ("[" .. e.level .. "] ") or ""
                 fs:SetText(lvl .. tostring(e.title))
-                if e.complete then fs:SetTextColor(GREEN[1], GREEN[2], GREEN[3])
+                -- A finished quest: a green mark before its name, the name
+                -- in a brighter green than an easy quest's, and one line
+                -- under it in place of the objectives. (The name alone in
+                -- green looked like any low-level quest.)
+                if e.complete then fs:SetTextColor(0.50, 0.96, 0.60)
                 else fs:SetTextColor(diffColor(e.level)) end
                 fs:SetAlpha(1)
                 local top = yy
                 local focused = ns.QuestFocus ~= nil and ns.QuestFocus.Get() == e.id
-                put(fs, focused and 11 or 0, 1)
+                put(fs, (focused or e.complete) and 11 or 0, 1)
                 local b = P.takeBtn()
-                b.dot:SetShown(focused)
+                b.dot:SetShown(focused or e.complete)
+                if e.complete then b.dot:SetVertexColor(0.42, 0.92, 0.50, 1)
+                else b.dot:SetVertexColor(0.86, 0.89, 0.94, 1) end
                 b.questID, b.fs = e.id, fs
                 b:ClearAllPoints()
                 b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
                 b:SetSize(width + 10, yy - top)
                 local objs = e.objs
                 local any = false
-                if type(objs) == "table" then
+                if e.complete then
+                    local os = P.take(10, true)
+                    os:SetText("Complete  9483  ready to turn in")
+                    os:SetTextColor(0.42, 0.92, 0.50)
+                    put(os, 10, 1)
+                    any = true
+                elseif type(objs) == "table" then
                     for k, o in ipairs(objs) do
                         if type(o) == "table" and type(o.text) == "string" and o.text ~= "" then
                             any = true
