@@ -2424,13 +2424,30 @@ local function buildTalentMark()
         return t
     end
     local dWarm, dCool, dWhite = disc(22, 1), disc(22, 1), disc(22, 2)
-    local FLASH, SPREAD = 0.9, 9
+    -- Meant to be seen from the other side of the screen: three beats, one
+    -- after another, each with the split thrown wide, a burst of light well
+    -- past the disc, and a ring of light running outward from it. (The one
+    -- place the "no halos" rule is set aside, by request.)
+    local FLASH, SPREAD, BEATS = 0.6, 26, 3
+    local burst = fx:CreateTexture(nil, "BACKGROUND")
+    burst:SetTexture(MEDIA .. "spot.tga")
+    burst:SetBlendMode("ADD")
+    burst:SetSize(240, 240)
+    burst:SetPoint("CENTER")
+    burst:SetVertexColor(1.00, 0.86, 0.50, 0)
+    local wave = fx:CreateTexture(nil, "BACKGROUND", nil, 1)
+    wave:SetTexture(MEDIA .. "circle.tga")
+    wave:SetBlendMode("ADD")
+    wave:SetPoint("CENTER")
+    wave:SetVertexColor(1.00, 0.90, 0.62, 0)
     local age = FLASH
     fx:Hide()
     fx:SetScript("OnUpdate", function(self, dt)
         age = age + dt
         local p = age / FLASH
+        if p < BEATS then p = p - math.floor(p) else p = 1 end
         if p >= 1 then
+            burst:SetVertexColor(1.00, 0.86, 0.50, 0); wave:SetVertexColor(1.00, 0.90, 0.62, 0)
             warm:SetVertexColor(1.00, 0.30, 0.42, 0); cool:SetVertexColor(0.30, 0.62, 1.00, 0); white:SetVertexColor(1, 1, 1, 0)
             dWarm:SetVertexColor(1.00, 0.30, 0.42, 0); dCool:SetVertexColor(0.30, 0.62, 1.00, 0); dWhite:SetVertexColor(1, 1, 1, 0)
             self:Hide()
@@ -2438,7 +2455,7 @@ local function buildTalentMark()
         end
         -- Out fast, back slowly; the light dies as they come home.
         local out = p < 0.18 and (p / 0.18) or (1 - (p - 0.18) / 0.82) ^ 2
-        local a = (p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88) * 0.85
+        local a = (p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88) * 1.0
         warm:SetPoint("CENTER", -SPREAD * out, 0)
         cool:SetPoint("CENTER", SPREAD * out, 0)
         warm:SetVertexColor(1.00, 0.30, 0.42, a)
@@ -2450,13 +2467,19 @@ local function buildTalentMark()
         dCool:SetVertexColor(0.30, 0.62, 1.00, a * 0.55)
         -- (The white: hard at the start, gone by a third of the way.)
         dWhite:SetVertexColor(1, 1, 1, p < 0.08 and (p / 0.08) * 0.9 or math.max(0, 0.9 * (1 - (p - 0.08) / 0.28)))
+        -- The burst: full at once, gone by two thirds of the beat.
+        burst:SetVertexColor(1.00, 0.86, 0.50, p < 0.06 and (p / 0.06) * 0.85 or math.max(0, 0.85 * (1 - (p - 0.06) / 0.6)))
+        -- The ring of light: out from the disc to seven times its width.
+        local ws = 22 + 140 * (1 - (1 - p) ^ 2)
+        wave:SetSize(ws, ws)
+        wave:SetVertexColor(1.00, 0.90, 0.62, 0.32 * (1 - p) ^ 1.5)
     end)
     local function flash()
         if not chip.on then return end
         age = 0
         fx:Show()
     end
-    C_Timer.NewTicker(90, flash)
+    C_Timer.NewTicker(45, flash)
     local function update(fresh)
         local n, how = unspentTalents()
         if MinimalUIDB then MinimalUIDB.talentdiag = "unspent " .. tostring(n) .. " via " .. tostring(how) end
