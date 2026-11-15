@@ -830,14 +830,54 @@ function Bars:ApplyPetWell()
             fs:SetShadowOffset(1, -1)
             fs:SetShadowColor(0, 0, 0, 0.8)
         end
+        local secret = issecretvalue or function() return false end
+        -- The pet's experience (a hunter's pet levels up as you do): a thin
+        -- line along the inside of the pill's bottom edge, in the
+        -- experience bar's violet. The amounts may be hidden values: they
+        -- go straight to the bar. No such thing for this pet (a warlock's
+        -- demon, or one at your level): no line. What the client said is
+        -- kept in MinimalUIDB.petxpdiag.
+        local xp = CreateFrame("StatusBar", nil, pill)
+        xp:SetPoint("BOTTOMLEFT", pill, "BOTTOMLEFT", 9, 2)
+        xp:SetPoint("BOTTOMRIGHT", pill, "BOTTOMRIGHT", -9, 2)
+        xp:SetHeight(2)
+        xp:SetStatusBarTexture("Interface/Buttons/WHITE8x8")
+        xp:SetStatusBarColor(0.72, 0.62, 1.00, 0.95)
+        local xpBack = xp:CreateTexture(nil, "BACKGROUND")
+        xpBack:SetAllPoints()
+        xpBack:SetColorTexture(1, 1, 1, 0.08)
+        xp:Hide()
+        local xpCur, xpMax
+        function w.xp()
+            xpCur, xpMax = nil, nil
+            local f = _G.GetPetExperience
+            if type(f) ~= "function" then
+                if MinimalUIDB then MinimalUIDB.petxpdiag = "no GetPetExperience on this client" end
+                return xp:Hide()
+            end
+            local ok, cur, max = pcall(f)
+            if MinimalUIDB then
+                MinimalUIDB.petxpdiag = "GetPetExperience ok=" .. tostring(ok) .. " cur=" .. (secret(cur) and "<hidden>" or tostring(cur))
+                    .. " max=" .. (secret(max) and "<hidden>" or tostring(max))
+            end
+            if not ok or cur == nil or max == nil then return xp:Hide() end
+            if not secret(max) and (type(max) ~= "number" or max <= 0) then return xp:Hide() end
+            if not (pcall(xp.SetMinMaxValues, xp, 0, max) and pcall(xp.SetValue, xp, cur)) then return xp:Hide() end
+            if not secret(cur) and not secret(max) then xpCur, xpMax = cur, max end
+            xp:Show()
+        end
         pill:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            if pcall(GameTooltip.SetUnit, GameTooltip, "pet") then GameTooltip:Show() end
+            if pcall(GameTooltip.SetUnit, GameTooltip, "pet") then
+                if xpCur and xpMax then
+                    GameTooltip:AddLine(string.format("Experience %d / %d (%d%%)", xpCur, xpMax, math.floor(xpCur / xpMax * 100 + 0.5)), 0.72, 0.62, 1.00)
+                end
+                GameTooltip:Show()
+            end
         end)
         pill:SetScript("OnLeave", function() GameTooltip:Hide() end)
         w.pill = pill
 
-        local secret = issecretvalue or function() return false end
         function w.refresh()
             local has = UnitExists("pet")
             if secret(has) then has = true end
@@ -854,6 +894,7 @@ function Bars:ApplyPetWell()
             w.baseRing = w.baseRing or {}
             w.baseRing[1], w.baseRing[2], w.baseRing[3] = r, g, bl
             w.mood()
+            pcall(w.xp)
         end
 
         local curves
@@ -913,6 +954,7 @@ function Bars:ApplyPetWell()
         for _, e in ipairs({ "UNIT_LEVEL", "UNIT_NAME_UPDATE", "UNIT_HAPPINESS" }) do pcall(ev.RegisterUnitEvent, ev, e, "pet") end
         pcall(ev.RegisterUnitEvent, ev, "UNIT_POWER_UPDATE", "pet")
         pcall(ev.RegisterUnitEvent, ev, "UNIT_MAXPOWER", "pet")
+        pcall(ev.RegisterEvent, ev, "UNIT_PET_EXPERIENCE")
         ev:SetScript("OnEvent", function(_, e, _, token)
             if e == "UNIT_POWER_UPDATE" or e == "UNIT_MAXPOWER" then
                 -- Only the mood (the pet's energy / focus ticks constantly).
