@@ -194,6 +194,12 @@ local function makeRow(card, item, y, last)
         row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -6)
         row.note = text(row, 10, false, T.textDim)
         row.note:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -2)
+        -- One line, ending before the control at the row's right end (a
+        -- long note used to run on underneath the switch).
+        local ctrl = (item.kind == "dropdown" and CTRL_W + 28) or (item.kind == "action" and 110) or 76
+        row.note:SetWidth(CONTENT_W - 14 - ctrl)
+        row.note:SetJustifyH("LEFT")
+        row.note:SetWordWrap(false)
         row.note:SetText(item.note or "Applies after a reload")
     else
         row.label:SetPoint("LEFT", row, "LEFT", 14, 0)
@@ -463,38 +469,6 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
         } },
         { title = "Action bars", items = {
-            { "Food and drink flyout on the minimap", kind = "switch", reload = true,
-              note = "A second disc beside the flask, with the food and drink in your bags; bind a key under Key Bindings, AddOns",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.food ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.food = d.food == false end end },
-            { "Potion flyout on the minimap", kind = "switch", reload = true,
-              note = "A flask on the map's rim that opens a row of the potions, elixirs and flasks in your bags; bind a key under Key Bindings, AddOns",
-              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.potions ~= false end,
-              set = function() local d = ns.modules.Extras.db; if d then d.potions = d.potions == false end end },
-            { "Hide other people's crafting in chat", kind = "switch", reload = true,
-              note = "\"So-and-so creates X\" lines from players near you; your own stay",
-              get = function() return ns.modules.Chat.db.hideCrafting ~= false end,
-              set = function() local d = ns.modules.Chat.db; d.hideCrafting = d.hideCrafting == false end },
-            { "Quieter group loot in chat", kind = "switch", reload = true,
-              note = "Hides roll choices and other members' grey and white loot; winners and green or better stay",
-              get = function() return ns.modules.Chat.db.quietLoot ~= false end,
-              set = function() local d = ns.modules.Chat.db; d.quietLoot = d.quietLoot == false end },
-            { "Meniscus combat numbers", kind = "switch", reload = true,
-              note = "Our own damage and healing numbers over nameplates and your character; turns the game's own floating text down (and back when switched off)",
-              get = function() return ns.modules.Nameplates.db.numbers ~= false end,
-              set = function()
-                  local N = ns.modules.Nameplates
-                  N.db.numbers = N.db.numbers == false
-                  if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
-              end },
-            { "Quick Cure chips", kind = "switch", reload = true,
-              note = "A chip beside a group member's health (yours is on the map's rim) lights up when your class can cure what they have; click it to cast. Out of combat, a pill with a key does them in turn",
-              get = function() return ns.modules.UnitFrames.db.cure ~= false end,
-              set = function() local d = ns.modules.UnitFrames.db; d.cure = d.cure == false end },
-            { "Healer notes on group frames", kind = "switch", reload = true,
-              note = "A chip on a member's health pill: how long until they can be shielded again, and a resurrection on its way",
-              get = function() return ns.modules.UnitFrames.db.notes ~= false end,
-              set = function() local d = ns.modules.UnitFrames.db; d.notes = d.notes == false end },
             { "Reactive spells above the dome", kind = "switch", reload = true,
               note = "Overpower, Execute, Riposte and the like appear only while they can be used",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.reactive ~= false end,
@@ -504,6 +478,36 @@ local PAGES = {
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.usage ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.usage = d.usage == false end end },
             { "Unused buttons", kind = "action", action = "Show", run = function() cmd("tidy", "") end },
+        } },
+        { title = "Potions and food", items = {
+            { "Potion flyout on the minimap", kind = "switch", reload = true,
+              note = "A flask on the map's rim that opens your potions and elixirs",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.potions ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.potions = d.potions == false end end },
+            { "Food and drink flyout on the minimap", kind = "switch", reload = true,
+              note = "A disc beside the flask that opens your food and drink",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.food ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.food = d.food == false end end },
+        } },
+        { title = "Group and healing", items = {
+            { "Quick Cure chips", kind = "switch", reload = true,
+              note = "Lights up beside someone you can cure; click to cast",
+              get = function() return ns.modules.UnitFrames.db.cure ~= false end,
+              set = function() local d = ns.modules.UnitFrames.db; d.cure = d.cure == false end },
+            { "Healer notes on group frames", kind = "switch", reload = true,
+              note = "Time until they can be shielded again; a resurrection on its way",
+              get = function() return ns.modules.UnitFrames.db.notes ~= false end,
+              set = function() local d = ns.modules.UnitFrames.db; d.notes = d.notes == false end },
+        } },
+        { title = "Chat", items = {
+            { "Hide other people's crafting in chat", kind = "switch", reload = true,
+              note = "\"So-and-so creates X\" from players near you; yours stay",
+              get = function() return ns.modules.Chat.db.hideCrafting ~= false end,
+              set = function() local d = ns.modules.Chat.db; d.hideCrafting = d.hideCrafting == false end },
+            { "Quieter group loot in chat", kind = "switch", reload = true,
+              note = "Hides roll choices and others' grey and white loot",
+              get = function() return ns.modules.Chat.db.quietLoot ~= false end,
+              set = function() local d = ns.modules.Chat.db; d.quietLoot = d.quietLoot == false end },
         } },
         { title = "Travel and the world", items = {
             { "Flight timer", kind = "switch", reload = true,
@@ -527,7 +531,7 @@ local PAGES = {
         } },
         { title = "Gear and bags", items = {
             { "Cheapest to throw away, when bags are full", kind = "switch",
-              note = "A red mark on the three stacks worth least; when the game says full, a pill names the cheapest and another destroys it",
+              note = "Red marks on the three cheapest stacks; a pill to destroy the cheapest",
               get = function() return ns.modules.Bags.db.cheapest ~= false end,
               set = function() local d = ns.modules.Bags.db; d.cheapest = d.cheapest == false; pcall(ns.modules.Bags.Refresh, ns.modules.Bags) end },
             { "Durability warning", kind = "switch", reload = true,
@@ -549,6 +553,14 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.whisper = d.whisper == false end end },
         } },
         { title = "Combat", items = {
+            { "Meniscus combat numbers", kind = "switch", reload = true,
+              note = "Our damage and healing numbers; the game's own are turned down",
+              get = function() return ns.modules.Nameplates.db.numbers ~= false end,
+              set = function()
+                  local N = ns.modules.Nameplates
+                  N.db.numbers = N.db.numbers == false
+                  if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
+              end },
             { "Damage and avoidance on the health orb", kind = "switch", reload = true,
               note = "Hits, heals, dodges, parries and blocks rise out of the orb",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.orbText ~= false end,

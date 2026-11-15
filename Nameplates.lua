@@ -300,6 +300,11 @@ local function buildNumbers()
         local mine = unit == "player"
         local x, y
         if mine then
+            -- What you take already rises out of the health orb, when that
+            -- is on (Extras: orbText): not shown a second time here.
+            local EX = ns.modules.Extras
+            local OR = ns.modules.Orbs
+            if EX and EX.db and EX.db.orbText ~= false and OR and OR.health and OR.health:IsShown() then return end
             local w, h = UIParent:GetWidth(), UIParent:GetHeight()
             x, y = w / 2 + (action == "HEAL" and 80 or -80), h * 0.46
         elseif unit:find("^nameplate") then
