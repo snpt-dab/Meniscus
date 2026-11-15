@@ -525,6 +525,12 @@ local PAGES = {
                   N.db.numbers = N.db.numbers == false
                   if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
               end },
+            { "Where your hits show", kind = "dropdown",
+              note = "A killing blow, or a target too far for a nameplate, uses the rail either way",
+              options = function() return { { key = "plate", label = "Over the enemy" },
+                                            { key = "rail", label = "Beside your character" } } end,
+              get = function() return ns.modules.Nameplates.db.numbersWhere or "plate" end,
+              set = function(k) ns.modules.Nameplates.db.numbersWhere = k end },
             { "Damage type beside the number", kind = "switch",
               note = "A small emblem for fire, frost, shadow and the rest (a blade for physical)",
               get = function() return ns.modules.Nameplates.db.numbersKind ~= false end,
@@ -815,6 +821,7 @@ local KEYS = {
     ["Tracking spells in the professions quickslot"] = "find herbs minerals ore track",
     ["Meniscus combat numbers"] = "floating combat text fct sct damage healing scrolling",
     ["Only my own hits and heals"] = "mine party others filter damage numbers",
+    ["Where your hits show"] = "floating combat text position rail nameplate scrolling fct place character",
     ["Damage type beside the number"] = "school fire frost shadow nature arcane holy physical icon floating combat text",
     ["Damage and avoidance on the health orb"] = "incoming hits dodge parry block floating text",
     ["Aggro ring on the health orb"] = "threat pull tank warning",

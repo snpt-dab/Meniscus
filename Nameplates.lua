@@ -409,6 +409,12 @@ local function buildNumbers()
     --   * a heal: you have just cast a helping spell.
     -- It misses melee swings (they announce nothing), and lets through
     -- someone else's hit that lands in the same instant as yours.
+    local RAILKEY = {} -- stands for "your target, with no nameplate" where a nameplate would be the key
+    -- The rail: to the right of your character, below the loot and
+    -- experience pills (which start higher and climb).
+    local function railSpot()
+        return UIParent:GetWidth() / 2 + 112, UIParent:GetHeight() * 0.44
+    end
     local guess = NP.db.numbersMine ~= false
     local hits, heals, dots = {}, {}, {}   -- when each allowance runs out; plate -> when your effect went on
     local function helpful(spellID)
@@ -508,12 +514,7 @@ local function buildNumbers()
                 auto = okN and not secret(n) and (n == "Shoot" or n == "Auto Shot")
             end
             local plate = not auto and plateOf("target")
-            if not auto and not plate then
-                -- (No nameplate at this range: the target frame stands in.)
-                local UFm = ns.modules.UnitFrames
-                local tf = UFm and UFm.target
-                plate = tf and (tf.healthPill or tf) or nil
-            end
+            if not auto and not plate then plate = RAILKEY end -- (no nameplate at this range)
             if plate then
                 local list = dots[plate]
                 if not list then list = {}; dots[plate] = list end
@@ -534,64 +535,23 @@ local function buildNumbers()
     pcall(gone.RegisterEvent, gone, "NAME_PLATE_UNIT_REMOVED")
     gone:SetScript("OnEvent", function(_, _, unit)
         if type(unit) ~= "string" or secret(unit) then return end
-        local UFm = ns.modules.UnitFrames
-        local tf = UFm and UFm.target
-        local home = tf and (tf.healthPill or tf) or nil
-        local moved, dropped = 0, 0
-        for i = 1, #items do
-            local f = items[i]
-            if f.live and f.unit == unit then
-                -- (Whether or not it still counted as your target when the
-                -- number was made: by the killing blow the target has often
-                -- been dropped already, and those were being thrown away
-                -- a moment after they appeared.)
-                if home then
-                    f.rel, f.unit = home, nil
-                    moved = moved + 1
-                else
-                    f.live = false
-                    f:Hide()
-                    dropped = dropped + 1
-                end
-            end
-        end
-        if MinimalUIDB and (moved + dropped) > 0 then
-            local d = MinimalUIDB.ctlog
-            if type(d) == "table" then
-                d[#d + 1] = string.format("%.2f PLATE GONE %s: %d moved to the target frame, %d dropped", GetTime() % 1000, unit, moved, dropped)
-            end
-        end
-    end)
-    -- The same, found another way: your target is dead. (Its nameplate can
-    -- stop being drawn at death without being reported as removed; a number
-    -- hung on it went with it.) Looked for ten times a second while any
-    -- number is up.
-    local watch = CreateFrame("Frame")
-    local wacc = 0
-    watch:SetScript("OnUpdate", function(_, dt)
-        wacc = wacc + dt
-        if wacc < 0.1 then return end
-        wacc = 0
-        local any = false
-        for i = 1, #items do if items[i].live and items[i].onTarget and items[i].unit then any = true break end end
-        if not any then return end
-        local okD, dead = pcall(UnitIsDeadOrGhost, "target")
-        if not okD or secret(dead) or not dead then return end
-        local UFm = ns.modules.UnitFrames
-        local tf = UFm and UFm.target
-        local home = tf and (tf.healthPill or tf) or nil
-        if not home then return end
+        local rx, ry = railSpot()
         local moved = 0
         for i = 1, #items do
             local f = items[i]
-            if f.live and f.onTarget and f.unit then
-                f.rel, f.unit = home, nil
+            if f.live and f.unit == unit and f.rel then
+                -- (It keeps its lane, and goes on rising from where the
+                -- rail starts.)
+                f.rel, f.unit = nil, nil
+                f.x, f.y = rx + (f.x or 0), ry
                 moved = moved + 1
             end
         end
-        if MinimalUIDB and moved > 0 and type(MinimalUIDB.ctlog) == "table" then
+        if MinimalUIDB and moved > 0 then
             local d = MinimalUIDB.ctlog
-            d[#d + 1] = string.format("%.2f TARGET DEAD: %d moved to the target frame", GetTime() % 1000, moved)
+            if type(d) == "table" then
+                d[#d + 1] = string.format("%.2f PLATE GONE %s: %d moved to the rail", GetTime() % 1000, unit, moved)
+            end
         end
     end)
 
@@ -602,6 +562,7 @@ local function buildNumbers()
         showUnit = unit
         local mine = unit == "player"
         local x, y, rel
+        local onRail, key = false, nil
         if mine then
             -- What you take already rises out of the health orb, when that
             -- is on (Extras: orbText): not shown a second time here.
@@ -611,34 +572,37 @@ local function buildNumbers()
             local w, h = UIParent:GetWidth(), UIParent:GetHeight()
             x, y = w / 2 + (action == "HEAL" and 80 or -80), h * 0.46
         elseif unit:find("^nameplate") or unit == "target" then
+            -- Over the enemy's nameplate, or on the rail beside your
+            -- character: a fixed place on the screen that is ours, used
+            --   * for everything, if that is what the setting says;
+            --   * when the target is too far off to have a nameplate;
+            --   * for the blow that kills (the nameplate is already on its
+            --     way out, and a number hung on it went with it).
+            -- (The target frame was tried as that second place: the client
+            -- drops your target at death, the frame hides, and the number
+            -- was never seen there.)
             if unit == "target" then
-                -- Your target is too far off to have a nameplate (they only
-                -- reach so far): its numbers rise from the target frame
-                -- instead. With a nameplate up, the nameplate's own report
-                -- of the same hit is the one shown.
-                if not plateOf("target") then
-                    local UFm = ns.modules.UnitFrames
-                    local tf = UFm and UFm.target
-                    rel = tf and tf:IsShown() and (tf.healthPill or tf) or nil
-                end
+                -- With a nameplate up, the nameplate's own report of the
+                -- same hit is the one shown.
+                if not plateOf("target") then onRail, key = true, RAILKEY end
             else
                 rel = plateOf(unit)
-                -- The blow that kills: the nameplate is on its way out (it
-                -- goes with the mob), and a number hung on it went with it.
-                -- If it is your target, the number goes on the target frame.
-                local okD, dead = pcall(UnitIsDeadOrGhost, unit)
-                if rel and okD and not secret(dead) and dead then
-                    local okT, isT = pcall(UnitIsUnit, unit, "target")
-                    local UFm = ns.modules.UnitFrames
-                    local tf = UFm and UFm.target
-                    if okT and not secret(isT) and isT and tf then rel = tf.healthPill or tf end
+                key = rel
+                if rel then
+                    local okD, dead = pcall(UnitIsDeadOrGhost, unit)
+                    if (okD and not secret(dead) and dead) or NP.db.numbersWhere == "rail" then onRail = true end
                 end
             end
-            if rel then x, y = 0, 4 end
+            if onRail then
+                rel = nil
+                x, y = railSpot()
+            elseif rel then
+                x, y = 0, 4
+            end
             -- A hit for nothing at all isn't worth a number (when the
             -- amount can be read; in a fight it usually can't).
             if action == "WOUND" and not secret(amount) and amount == 0 then return end
-            local mineHit = not (rel and guess) or yours(unit, rel, action, GetTime())
+            local mineHit = not (key and guess) or yours(unit, key, action, GetTime())
             -- What arrives for nameplates, and what was done with it (the
             -- last 24, MinimalUIDB.ctlog): to find out why misses and dodges
             -- on a mob were not showing.
@@ -646,7 +610,7 @@ local function buildNumbers()
                 local d = MinimalUIDB.ctlog
                 if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
                 d[#d + 1] = string.format("%.2f %s %s / %s  amount %s  school %s  %s%s", GetTime() % 1000,
-                    unit == "target" and (rel and "target(frame)" or "target(skipped: has a plate)") or "plate", action,
+                    unit == "target" and (onRail and "target(rail)" or "target(skipped: has a plate)") or (onRail and "plate(rail)" or "plate"), action,
                     tostring(not secret(indicator) and indicator or "?"),
                     secret(amount) and "hidden" or tostring(amount),
                     secret(school) and "hidden" or tostring(school),
