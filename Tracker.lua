@@ -506,7 +506,7 @@ function TR:Console(x, y, w, h)
                 local any = false
                 if e.complete then
                     local os = P.take(10, true)
-                    os:SetText("Complete  9483  ready to turn in")
+                    os:SetText("Complete  \194\183  ready to turn in")
                     os:SetTextColor(0.42, 0.92, 0.50)
                     put(os, 10, 1)
                     any = true
