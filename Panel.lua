@@ -554,6 +554,14 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.orbText = d.orbText == false end end },
         } },
         { title = "Warnings", items = {
+            { "In combat: the console's top edge turns red", kind = "switch",
+              note = "Fades back when you are out of combat",
+              get = function() return ns.modules.Bars.db.combatEdge ~= false end,
+              set = function()
+                  local B = ns.modules.Bars
+                  B.db.combatEdge = B.db.combatEdge == false
+                  if B.CombatEdge then B.CombatEdge() end
+              end },
             { "Aggro ring on the health orb", kind = "switch", reload = true,
               note = "In a group: amber when close to pulling, red once it is on you",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.aggro ~= false end,
@@ -833,6 +841,7 @@ local KEYS = {
     ["Where your hits show"] = "floating combat text position rail nameplate scrolling fct place character",
     ["My pet's hits"] = "pet minion demon hunter warlock floating combat text damage paw",
     ["Turn on action bars 2 and 3 for a new character"] = "action bar two three extra bars enable show bottom left right multibar",
+    ["In combat: the console's top edge turns red"] = "combat indicator in combat fighting status swords out of combat edge line",
     ["Damage type beside the number"] = "school fire frost shadow nature arcane holy physical icon floating combat text",
     ["What you take, on the health orb"] = "incoming hits dodge parry block floating text",
     ["Aggro ring on the health orb"] = "threat pull tank warning",
