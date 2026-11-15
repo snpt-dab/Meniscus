@@ -1114,8 +1114,10 @@ local function buildToggle()
     toggle:HookScript("OnClick", function()
         if S.bypass or binding() then return blizzToggle() end
         if InCombatLockdown() then
-            -- Ours was never built (a fight right at login): the game's book.
-            if not win then blizzToggle() end
+            -- Ours was never built (a fight right at login). The game's own
+            -- book can't stand in: opened from here mid-fight it is blocked
+            -- at every step.
+            if not win and ns.Print then ns:Print("The spellbook opens once this fight is over.") end
             return
         end
         local f = _G.PlayerSpellsFrame
@@ -1157,7 +1159,13 @@ local function buildToggle()
         end
         bindKeys()
     end)
-    -- Build the window ahead of need.
+    -- Build the window ahead of need: a little after login, or right now
+    -- when login lands in a fight (a reload mid-combat), while it still can
+    -- be built.
+    if not win and not InCombatLockdown() and UnitAffectingCombat and UnitAffectingCombat("player") then
+        pcall(build)
+        if win then win:Hide() end
+    end
     C_Timer.After(4, function()
         if win or InCombatLockdown() then return end
         pcall(build)
