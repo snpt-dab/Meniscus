@@ -590,8 +590,10 @@ local function floatSkill(msg)
     local r, g, b = T.accent[1], T.accent[2], T.accent[3]
     if gold then r, g, b = 0.95, 0.78, 0.32 end
     floatRail = "right"
-    local ok, f = pcall(floatPill, icon or (MEDIA .. "micro_up.tga"), name, 1, 1, 1, level and tostring(level) or nil,
-        r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
+    -- (A weapon or defence skill at its ceiling for your level: the arrow
+    -- up against a line, not the plain arrow.)
+    local ok, f = pcall(floatPill, icon or (MEDIA .. (gold and "micro_cap.tga" or "micro_up.tga")), name, 1, 1, 1,
+        level and tostring(level) or nil, r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
     if not (ok and f) then return end
     if not icon then
         f.icon:SetTexCoord(0, 1, 0, 1)

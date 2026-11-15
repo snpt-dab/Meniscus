@@ -137,6 +137,9 @@ def icons():
     # ── marks used outside the micro menu (heavier: drawn at 10-12 px) ──
     # up arrow: "better than what you wear"
     I['up'] = Icon().line([(5.5, 12.5), (12, 6), (18.5, 12.5)], w=3.6).line([(12, 7), (12, 19)], w=3.6)
+    # as far as it goes for now: the same arrow, up against a ceiling
+    I['cap'] = (Icon().line([(5, 4.6), (19, 4.6)], w=3.0)
+                .line([(6.2, 15.2), (12, 9.4), (17.8, 15.2)], w=3.4).line([(12, 10.4), (12, 20)], w=3.4))
     # wrench: gear needs repair
     I['repair'] = Icon().arc(8.6, 8.6, 4.0, 180, 450, w=3.0).line([(11.4, 11.4), (18.6, 18.6)], w=3.4)
     # envelope: mail waiting
