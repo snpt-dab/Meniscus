@@ -436,7 +436,7 @@ local function buildNumbers()
             local okT, top = pcall(at.GetTop, at)
             if okC and okT and type(cx) == "number" and type(top) == "number" and not secret(cx) and not secret(top) then
                 local k = at:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                frameX, frameY = cx * k, top * k + 6
+                frameX, frameY = cx * k, top * k + 48 -- (clear of the frame, not starting on it)
             end
         end
         return frameX, frameY
