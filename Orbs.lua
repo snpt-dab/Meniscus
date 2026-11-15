@@ -73,7 +73,20 @@ local function createOrb(name, size)
     f:SetAttribute("unit", "player")
     f:SetAttribute("*type1", "target") -- any modifiers (see UnitFrames.lua)
     f:SetAttribute("*type2", "togglemenu")
-    f:RegisterForClicks("AnyDown", "AnyUp") -- secure buttons act on the press
+    -- One click edge, the one the client acts on (as on the unit frames:
+    -- with both, a Click Casting spell fired on the press and the release).
+    local onPress = true
+    if GetCVarBool then
+        local ok, v = pcall(GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and v == false then onPress = false end
+    end
+    f:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
+    -- Pings: an orb is your own unit frame, and takes a ping as one.
+    f.unit = f.unit or "player"
+    if _G.PingableType_UnitFrameMixin and Mixin then
+        pcall(Mixin, f, _G.PingableType_UnitFrameMixin)
+        f:SetAttribute("ping-receiver", true)
+    end
     -- Clickable area = the square inscribed in the circle, so the orb's empty
     -- corners never steal clicks from neighbouring buttons.
     local hit = size * (1 - 0.7071) / 2
