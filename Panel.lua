@@ -622,6 +622,10 @@ local PAGES = {
               set = function() local d = ns.modules.Chat.db; d.quietLoot = d.quietLoot == false end },
         } },
         { title = "Marks above the console", items = {
+            { "Talent points to spend", kind = "switch", reload = true,
+              note = "A quiet mark while you have points waiting; click it for your talents",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.talentMark ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.talentMark = d.talentMark == false end end },
             { "Mail waiting", kind = "switch", reload = true,
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.mail ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.mail = d.mail == false end end },
@@ -806,6 +810,7 @@ local KEYS = {
     ["Hide other people's crafting in chat"] = "spam creates filter tradeskill",
     ["Quieter group loot in chat"] = "spam rolls need greed filter",
     ["Mail waiting"] = "letter mailbox icon notice",
+    ["Talent points to spend"] = "unspent talents reminder level up notice tree",
     ["Unanswered whispers"] = "tell dm message reply notice",
     ["Durability warning"] = "repair broken armor gear wrench",
     ["Character window"] = "paper doll gear equipment stats",
