@@ -478,6 +478,12 @@ local function buildNumbers()
                 auto = okN and not secret(n) and (n == "Shoot" or n == "Auto Shot")
             end
             local plate = not auto and plateOf("target")
+            if not auto and not plate then
+                -- (No nameplate at this range: the target frame stands in.)
+                local UFm = ns.modules.UnitFrames
+                local tf = UFm and UFm.target
+                plate = tf and (tf.healthPill or tf) or nil
+            end
             if plate then
                 local list = dots[plate]
                 if not list then list = {}; dots[plate] = list end
@@ -501,8 +507,20 @@ local function buildNumbers()
             if EX and EX.db and EX.db.orbText ~= false and OR and OR.health and OR.health:IsShown() then return end
             local w, h = UIParent:GetWidth(), UIParent:GetHeight()
             x, y = w / 2 + (action == "HEAL" and 80 or -80), h * 0.46
-        elseif unit:find("^nameplate") then
-            rel = plateOf(unit)
+        elseif unit:find("^nameplate") or unit == "target" then
+            if unit == "target" then
+                -- Your target is too far off to have a nameplate (they only
+                -- reach so far): its numbers rise from the target frame
+                -- instead. With a nameplate up, the nameplate's own report
+                -- of the same hit is the one shown.
+                if not plateOf("target") then
+                    local UFm = ns.modules.UnitFrames
+                    local tf = UFm and UFm.target
+                    rel = tf and tf:IsShown() and (tf.healthPill or tf) or nil
+                end
+            else
+                rel = plateOf(unit)
+            end
             if rel then x, y = 0, 4 end
             -- A hit for nothing at all isn't worth a number (when the
             -- amount can be read; in a fight it usually can't).
