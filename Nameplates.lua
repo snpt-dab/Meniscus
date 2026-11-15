@@ -722,12 +722,33 @@ local function buildNumbers()
     --     out of combat;
     --   * its filter has to be "My actions". On any other, and whenever the
     --     lines aren't coming, the guess is used as before.
-    -- A line is good for one hit and for a third of a second. A hit that
-    -- comes ahead of its line waits a quarter of a second for it.
+    -- A line is good for one hit, for 0.8 s: both lines of a swing (the
+    -- blow, and a seal's or a weapon's own extra) are printed together at
+    -- the swing, while the second hit is only reported some half a second
+    -- later (measured; at a third of a second the second hit of every
+    -- swing was being thrown away). A hit that comes ahead of its line
+    -- waits a quarter of a second for it.
+    --
+    -- The blow that kills. When it is that later, second hit that kills,
+    -- the game never reports the hit at all (the enemy is gone before it
+    -- would have): there is its log line, the log's white "You killed"
+    -- notice, and nothing else, and the amount is inside the sealed line.
+    -- So that case shows the words "Killing blow" where the number would
+    -- have been: a line that came with the kill notice and that no hit
+    -- claimed within the second.
     local CL = C_CombatLog
     local logLines, held = {}, {}
     local logHeard = false
     local lastLine, lineCount = -99, 0
+    local killCredit
+    -- One line taken for a hit: the oldest still good.
+    local function takeLine(now)
+        while logLines[1] and logLines[1] < now do table.remove(logLines, 1) end
+        local got = table.remove(logLines, 1)
+        if not got then return false end
+        if got == killCredit then killCredit = nil end
+        return true
+    end
     local MY_ACTIONS = _G.QUICKBUTTON_NAME_MY_ACTIONS or "My actions"
     local function logOn()
         if not logHeard or NP.db.numbersLog == false then return false end
@@ -758,7 +779,23 @@ local function buildNumbers()
             lf:SetScript("OnEvent", function(_, _, _, r, g, b)
                 -- (White lines are the log's notices, "You killed ..." and
                 -- the like: not a hit.)
-                if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then return end
+                if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then
+                    local now = GetTime()
+                    local last = logLines[#logLines]
+                    -- (A line printed this instant, still unclaimed.)
+                    if last and last - 0.8 > now - 0.15 and last > now then
+                        killCredit = last
+                        C_Timer.After(0.9, function()
+                            if killCredit ~= last then return end
+                            killCredit = nil
+                            note("  the kill's line was never claimed by a hit: \"Killing blow\" shown")
+                            local kx, ky = railSpot(nil, true)
+                            showUnit = nil
+                            show(nil, kx, ky, "Killing blow", 1.00, 0.86, 0.50, false, false)
+                        end)
+                    end
+                    return
+                end
                 local now = GetTime()
                 lastLine = now
                 lineCount = lineCount + 1
@@ -771,7 +808,11 @@ local function buildNumbers()
                     present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.school, false, h.pet)
                     return
                 end
-                logLines[#logLines + 1] = now + 0.35
+                -- (Never two with the same stamp: the kill's line is known by it.)
+                local stamp = now + 0.8
+                local prev = logLines[#logLines]
+                if prev and stamp <= prev then stamp = prev + 0.0001 end
+                logLines[#logLines + 1] = stamp
                 if #logLines > 12 then table.remove(logLines, 1) end
             end)
             -- Keep the log sending. (Out of combat only: whether the game
@@ -856,7 +897,7 @@ local function buildNumbers()
                 local own = yoursOnly(unit, key, action, now)
                 local pet = (not own) and action ~= "HEAL" and pets(unit, now) or false
                 dropStale(now)
-                if take(logLines, now) then
+                if takeLine(now) then
                     mineHit, byPet = true, pet
                     why = pet and "log line, pet's" or "log line"
                 elseif (own or pet) and now - lastLine > 3 then
