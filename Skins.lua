@@ -198,7 +198,10 @@ local function skinButtonsIn(f, depth)
     for _, c in ipairs({ f:GetChildren() }) do
         -- (Some windows hold parts an addon may not touch at all: the
         -- trade window does. Those are stepped over.)
-        if not (c.IsForbidden and c:IsForbidden()) then
+        -- (__muiNoSkin: a part left as the game drew it. The stock
+        -- spellbook's tabs are pictures, not words: made into our pills
+        -- they came out blank.)
+        if not (c.IsForbidden and c:IsForbidden()) and not c.__muiNoSkin then
             if c:IsObjectType("Button") and (c.Left or c.Middle) and c:GetFontString() then ns.SkinButton(c) end
             skinButtonsIn(c, (depth or 0) + 1)
         end
@@ -1680,6 +1683,7 @@ local function skinOthers()
                 for _, k in ipairs({ "PortraitOverlay", "PortraitContainer", "PortraitFrame", "portrait" }) do
                     if opts.deep and f[k] then fade(f[k]) end
                 end
+                if n == "PlayerSpellsFrame" and f.SpellBookFrame then f.SpellBookFrame.__muiNoSkin = true end
                 ns.SkinWindow(f, opts)
                 if n == "TradeFrame" then
                     -- Its second half (the other player's side) is drawn as

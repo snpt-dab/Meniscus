@@ -699,29 +699,12 @@ local function hookBinding()
     S.hookedBinding = true
     -- Side by side: the binding window goes to the right of the game's
     -- book, level with its top (they were landing one over the other).
-    -- And the book's own tabs (General, your class's schools) get their
-    -- words back: our skin had left them as blank pills, so there was no
-    -- telling them apart to find a spell to bind.
     local function arrange()
         local ps = _G.PlayerSpellsFrame
         if not (binding() and ps and ps:IsShown()) or InCombatLockdown() then return end
         pcall(function()
             f:ClearAllPoints()
             f:SetPoint("TOPLEFT", ps, "TOPRIGHT", 12, 0)
-        end)
-        pcall(function()
-            local book = ps.SpellBookFrame
-            local sys = book and (book.CategoryTabSystem or book.TabSystem)
-            local tabs = sys and (sys.tabs or { sys:GetChildren() })
-            for _, tab in ipairs(tabs or {}) do
-                local fs = tab.Text or (tab.GetFontString and tab:GetFontString())
-                if fs then
-                    fs:SetTextColor(T.text[1], T.text[2], T.text[3])
-                    fs:SetAlpha(1)
-                    pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
-                    fs:Show()
-                end
-            end
         end)
     end
     f:HookScript("OnShow", function()
