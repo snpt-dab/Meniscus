@@ -2485,6 +2485,20 @@ end
 local function updateHealth(f)
     local cur, max = UnitHealth("player"), UnitHealthMax("player")
     f.bar:SetMinMaxValues(0, max)
+    -- Dead, or a ghost running back: the game calls that 1 health, which
+    -- showed as an empty orb, a "1" and the red alarm ring for the whole
+    -- run. Instead the orb fills with a pale spirit colour, says which you
+    -- are, and stays calm.
+    local okD, dead = pcall(UnitIsDeadOrGhost, "player")
+    if okD and not issecretvalue(dead) and dead then
+        setValue(f.bar, max)
+        local okG, ghost = pcall(UnitIsGhost, "player")
+        f.text:SetText((okG and not issecretvalue(ghost) and ghost) and "Ghost" or "Dead")
+        setFill(f, 0.62, 0.70, 0.82)
+        f.chipRing:SetVertexColor(0.50, 0.56, 0.66, 1)
+        f.flashHolder:SetAlpha(0)
+        return
+    end
     setValue(f.bar, cur)
     setText(f.text, cur)
     local c = getCurves()
@@ -3043,7 +3057,7 @@ function Orbs:OnInit(db)
     ev:SetScript("OnEvent", function(_, event)
         if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
             updateHealth(self.health)
-        elseif event == "PLAYER_ENTERING_WORLD" then
+        elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_DEAD" or event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" then
             updateHealth(self.health); updatePower(self.power)
         else
             updatePower(self.power)
@@ -3054,6 +3068,7 @@ function Orbs:OnInit(db)
         ev:RegisterUnitEvent(e, "player")
     end
     ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    for _, e in ipairs({ "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST" }) do pcall(ev.RegisterEvent, ev, e) end
     updateHealth(self.health)
     updatePower(self.power)
 
