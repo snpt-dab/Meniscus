@@ -1693,6 +1693,39 @@ local function skinOthers()
                                          "TradeFrameRecipientPortrait", "TradeRecipientPortrait" }) do
                         fade(_G[k])
                     end
+                    -- What is left of the stock look is recoloured, not
+                    -- removed: the gold line round each item slot and its
+                    -- name box, and round the three money boxes, goes grey.
+                    local function grey(r)
+                        if r and not (r.IsForbidden and r:IsForbidden()) and r.IsObjectType and r:IsObjectType("Texture") then
+                            pcall(r.SetDesaturated, r, true)
+                            pcall(r.SetVertexColor, r, 0.55, 0.55, 0.60)
+                        end
+                    end
+                    for _, side in ipairs({ "Player", "Recipient" }) do
+                        for i = 1, 7 do
+                            local slot = _G["Trade" .. side .. "Item" .. i]
+                            if slot and not (slot.IsForbidden and slot:IsForbidden()) then
+                                for _, r in ipairs({ slot:GetRegions() }) do grey(r) end
+                                local ib = _G["Trade" .. side .. "Item" .. i .. "ItemButton"]
+                                if ib and not (ib.IsForbidden and ib:IsForbidden()) and ib.GetNormalTexture then
+                                    grey(ib:GetNormalTexture())
+                                end
+                            end
+                        end
+                    end
+                    for _, coin in ipairs({ "Gold", "Silver", "Copper" }) do
+                        local nm = "TradePlayerInputMoneyFrame" .. coin
+                        local eb = _G[nm]
+                        if eb and not (eb.IsForbidden and eb:IsForbidden()) then
+                            for _, k in ipairs({ "Left", "Middle", "Right" }) do grey(eb[k] or _G[nm .. k]) end
+                        end
+                    end
+                    -- The two names were cut short (a long one ended in "...").
+                    for _, k in ipairs({ "TradeFramePlayerNameText", "TradeFrameRecipientNameText" }) do
+                        local t = _G[k]
+                        if t and t.SetWidth then pcall(t.SetWidth, t, 250); pcall(t.SetWordWrap, t, false) end
+                    end
                 end
                 skinButtonsIn(f)
                 if opts.deep then
