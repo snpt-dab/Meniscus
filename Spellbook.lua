@@ -250,8 +250,10 @@ local function updateCooldowns()
 end
 
 -- ── Paging / tabs ─────────────────────────────────────────────────────────
-function S:Refresh()
-    if not win or not win:IsShown() then return end
+-- force: fill it in even while it is hidden (done as a fight starts, so
+-- that the book is up to date if it is opened mid-fight).
+function S:Refresh(force)
+    if not win or not (force or win:IsShown()) then return end
     if InCombatLockdown() then pending.refresh = true; updateCooldowns(); return end
     pending.refresh = false
 
@@ -433,6 +435,8 @@ local function build()
         call(PlaySound, SOUNDKIT and SOUNDKIT.IG_SPELLBOOK_CLOSE)
         win.search:ClearFocus()
     end)
+    -- The key's secure toggle (below) is told which window is ours.
+    if S.toggle and SecureHandlerSetFrameRef then pcall(SecureHandlerSetFrameRef, S.toggle, "win", win) end
 end
 
 function S:Open()
@@ -506,11 +510,86 @@ local function hookMicro()
     b:HookScript("OnClick", function() takeover(true) end)
 end
 
+-- The spellbook key, in a fight. Our window holds secure buttons (the spell
+-- cards), and ordinary code may not show or hide such a window in combat:
+-- so the game's own book used to open instead. Now the key (whatever is
+-- bound to "Toggle Spellbook") clicks a secure button of ours, and secure
+-- code is allowed to show and hide the window mid-fight. As with the bags.
+--   * The window is built soon after login, so it exists before a fight.
+--   * What it lists can't be redone in combat: it shows the book as it was
+--     when the fight began, and catches up afterwards.
+--   * Out of combat the key does what it always did.
+local function buildToggle()
+    local toggle = CreateFrame("Button", "MinimalUISpellbookToggle", UIParent, "SecureHandlerClickTemplate")
+    S.toggle = toggle
+    toggle:SetAttribute("_onclick", [[
+        if not PlayerInCombat() then return end
+        local w = self:GetFrameRef("win")
+        if not w then return end
+        if w:IsShown() then w:Hide() else w:Show() end
+    ]])
+    local function blizzToggle()
+        local U = _G.PlayerSpellsUtil
+        if U and U.ToggleSpellBookFrame then pcall(U.ToggleSpellBookFrame)
+        elseif _G.ToggleSpellBook then pcall(_G.ToggleSpellBook, "spell") end
+    end
+    toggle:HookScript("OnClick", function()
+        if S.bypass then return blizzToggle() end
+        if InCombatLockdown() then
+            -- Ours was never built (a fight right at login): the game's book.
+            if not win then blizzToggle() end
+            return
+        end
+        local f = _G.PlayerSpellsFrame
+        if f and f:IsShown() then pcall(HideUIPanel, f) end
+        S:Toggle()
+    end)
+    if win and SecureHandlerSetFrameRef then pcall(SecureHandlerSetFrameRef, toggle, "win", win) end
+    local owner = CreateFrame("Frame")
+    local function bindKeys()
+        if InCombatLockdown() then owner.pending = true; return end
+        owner.pending = false
+        ClearOverrideBindings(owner)
+        for _, action in ipairs({ "TOGGLESPELLBOOK" }) do
+            local keys = { GetBindingKey(action) }
+            for _, key in ipairs(keys) do
+                if key then SetOverrideBindingClick(owner, false, key, "MinimalUISpellbookToggle") end
+            end
+        end
+    end
+    owner:RegisterEvent("PLAYER_ENTERING_WORLD")
+    owner:RegisterEvent("UPDATE_BINDINGS")
+    owner:RegisterEvent("PLAYER_REGEN_ENABLED")
+    owner:RegisterEvent("PLAYER_REGEN_DISABLED")
+    owner:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_REGEN_DISABLED" then
+            -- A fight is starting (the lockdown has not begun yet): bring
+            -- the hidden book up to date, for the last time until it ends.
+            if win and not win:IsShown() and not InCombatLockdown() then pcall(S.Refresh, S, true) end
+            return
+        end
+        if e == "PLAYER_REGEN_ENABLED" then
+            if owner.pending then bindKeys() end
+            -- (And build the window now, if a fight at login put it off.)
+            if not win then pcall(build); if win then win:Hide() end end
+            return
+        end
+        bindKeys()
+    end)
+    -- Build the window ahead of need.
+    C_Timer.After(4, function()
+        if win or InCombatLockdown() then return end
+        pcall(build)
+        if win then win:Hide(); pcall(S.Refresh, S, true) end
+    end)
+end
+
 function S:OnInit(db)
     self.db = db
     hookUtil()
     hookFrame()
     hookMicro()
+    pcall(buildToggle)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "ADDON_LOADED", "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "SPELL_UPDATE_COOLDOWN",
                          "PET_SPELLS_CHANGED", "UNIT_PET", "PLAYER_REGEN_ENABLED", "PLAYER_LEVEL_UP" }) do
