@@ -479,7 +479,11 @@ local PAGES = {
               set = function() local d = ns.modules.Extras.db; if d then d.usage = d.usage == false end end },
             { "Unused buttons", kind = "action", action = "Show", run = function() cmd("tidy", "") end },
         } },
-        { title = "Potions and food", items = {
+        { title = "Flyouts on the minimap", items = {
+            { "Professions flyout on the minimap", kind = "switch", reload = true,
+              note = "A disc on the map's left that opens your professions' spells",
+              get = function() return ns.modules.Extras.db and ns.modules.Extras.db.profFly ~= false end,
+              set = function() local d = ns.modules.Extras.db; if d then d.profFly = d.profFly == false end end },
             { "Potion flyout on the minimap", kind = "switch", reload = true,
               note = "A flask on the map's rim that opens your potions and elixirs",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.potions ~= false end,
