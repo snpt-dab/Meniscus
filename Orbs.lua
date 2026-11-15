@@ -490,6 +490,7 @@ local RAGE_ALPHA = { { 0.00, 0 }, { 0.01, 0.45 }, { 1.00, 1 } } -- secret path o
 local HOT_ALPHA = { { 0.00, 0 }, { 0.30, 0 }, { 1.00, 1 } }   -- fine magma + heat
 local BOIL_ALPHA = { { 0.00, 0 }, { 0.50, 0 }, { 1.00, 1 } }  -- the fast bubbles
 local SPARK_ALPHA = { { 0.00, 0 }, { 0.50, 0 }, { 0.55, 0.3 }, { 1.00, 1 } }
+local HAZE_ALPHA = { { 0.00, 0 }, { 0.20, 0 }, { 1.00, 1 } }  -- the heat haze over the orb
 local IDENT = { { 0.00, 0 }, { 1.00, 1 } }                     -- percent itself (probes)
 local FLARE_AT, FLARE_DUR = { 15, 60, 100 }, 1.0 -- flare when rage climbs past each
 local MAX_BUBBLES, MAX_SPARKS = 36, 14
@@ -656,6 +657,31 @@ local function buildRage(f)
         table.insert(R.sparkPool, { tex = t })
     end
 
+    -- Heat haze: the air over the orb wavering, more as rage climbs (none
+    -- below a fifth, full strength at full). An addon can't bend what is
+    -- drawn behind it, so this is the look of it and not the thing itself:
+    -- three faint layers of pale streaks rising at different speeds and
+    -- swaying sideways out of step, faded to nothing at the edges by a soft
+    -- round mask, so no edge of it is ever seen. Three textures moved on
+    -- the boil's own clock: next to the bubbles it costs almost nothing.
+    R.hazeHolder = CreateFrame("Frame", nil, fl)
+    R.hazeHolder:SetSize(inner * 1.25, inner * 1.05)
+    R.hazeHolder:SetPoint("BOTTOM", f, "TOP", 0, -inner * 0.22)
+    R.hazeHolder:SetAlpha(0)
+    local hmask = R.hazeHolder:CreateMaskTexture()
+    hmask:SetTexture(SPOT, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    hmask:SetAllPoints()
+    R.haze = {}
+    for i = 1, 3 do
+        local t = R.hazeHolder:CreateTexture(nil, "ARTWORK", nil, i)
+        t:SetAllPoints()
+        t:SetTexture(SWIRL, "REPEAT", "REPEAT")
+        t:SetBlendMode("ADD")
+        t:SetVertexColor(1, 0.90 - 0.07 * i, 0.74 - 0.10 * i)
+        t:AddMaskTexture(hmask)
+        R.haze[i] = { tex = t, v = math.random(), sp = 0.07 + 0.06 * i, sc = 0.42 + 0.20 * i, ph = i * 2.1 }
+    end
+
     -- One spark leaving the liquid at x, y0 below the surface (0 = on it).
     function R:Spark(x, y0)
         local s = table.remove(self.sparkPool)
@@ -695,6 +721,16 @@ local function buildRage(f)
         self.magma1:SetAlpha((0.10 + 0.40 * k) * flick)
         self.magma2:SetAlpha((0.03 + 0.37 * eh) * flick)
         self.heat:SetAlpha(0.24 * eh * flick)
+
+        -- The haze over the orb: rising, wavering. (How strong it is comes
+        -- from its holder's opacity, set where the rage is read.)
+        for i = 1, 3 do
+            local h = self.haze[i]
+            h.v = h.v + dt * h.sp * (0.6 + 1.3 * kh)
+            local u = 0.07 * math.sin(t * (1.3 + 0.5 * i) + h.ph)
+            h.tex:SetTexCoord(u, u + h.sc, h.v, h.v + h.sc * 0.8)
+            h.tex:SetAlpha((0.09 + 0.04 * i) * (0.75 + 0.25 * math.sin(t * (2.2 + i) + h.ph)))
+        end
 
         -- Bubbles: more, bigger and faster as rage climbs; pop at the surface.
         self.spawn = self.spawn + dt * (1.5 + 6 * k + 44 * e)
@@ -821,6 +857,7 @@ local function buildRage(f)
         end
         for i = #self.live, 1, -1 do freeBubble(self, i) end
         self.spawn, self.spawnH, self.sparkT = 0, 0, 0
+        self.hazeHolder:SetAlpha(0)
         self.flareT = nil
         for _, tx in ipairs(self.flareTex) do tx:SetAlpha(0) end
     end)
@@ -927,6 +964,7 @@ local function rageFX(f, cur, max, pctFn, curves)
         R.k = pct
         R.surf = -half + f.inner * pct
         R:SetAlpha(1)
+        R.hazeHolder:SetAlpha(math.max(0, (pct - 0.2) / 0.8))
         local p100 = pct * 100 -- percent, so it holds if max rage isn't 100
         for _, at in ipairs(FLARE_AT) do
             if R.prev and R.prev < at and p100 >= at then
@@ -949,6 +987,7 @@ local function rageFX(f, cur, max, pctFn, curves)
         setCurveAlpha(R, R.hotHolder, curves and curves.hot, pctFn, 0)
         setCurveAlpha(R, R.boilHolder, curves and curves.boil, pctFn, 0)
         setCurveAlpha(R, R.sparkHolder, curves and curves.spark, pctFn, 0)
+        setCurveAlpha(R, R.hazeHolder, curves and curves.haze, pctFn, 0)
     end
     R:Show()
 end
@@ -965,7 +1004,7 @@ local function applyRage(f, cur, max, pctFn)
         cv.rage = { rgbCurves(RAGE_STOPS) or false, floatCurve(RAGE_FLASH) or false }
         local fx = {
             alpha = floatCurve(RAGE_ALPHA), hot = floatCurve(HOT_ALPHA), boil = floatCurve(BOIL_ALPHA),
-            spark = floatCurve(SPARK_ALPHA), ident = floatCurve(IDENT),
+            spark = floatCurve(SPARK_ALPHA), ident = floatCurve(IDENT), haze = floatCurve(HAZE_ALPHA),
         }
         for _, at in ipairs(FLARE_AT) do fx["step" .. at] = floatCurve(stepCurve(at)) end
         cv.rageFx = fx
