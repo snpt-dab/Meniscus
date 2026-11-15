@@ -2102,7 +2102,6 @@ local function buildFlyout(spec)
         if fly:IsShown() then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(spec.title, 1, 1, 1)
-        GameTooltip:AddLine("Click to open or close.", 0.7, 0.7, 0.75)
         GameTooltip:Show()
     end)
     anchor:SetScript("OnLeave", function()
