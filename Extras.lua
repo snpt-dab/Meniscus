@@ -2411,6 +2411,19 @@ local function buildTalentMark()
         return t
     end
     local warm, cool, white = ghost(1.00, 0.30, 0.42), ghost(0.30, 0.62, 1.00), ghost(1, 1, 1)
+    -- And the whole disc with it, as the experience bar and the Quick Buff
+    -- pill flash: the disc goes white, and its own two coloured ghosts
+    -- split and come home on the same beat as the emblem's.
+    local function disc(size, sub)
+        local t = fx:CreateTexture(nil, "ARTWORK", nil, sub)
+        t:SetTexture(MEDIA .. "circle.tga")
+        t:SetSize(size, size)
+        t:SetBlendMode("ADD")
+        t:SetVertexColor(1, 1, 1, 0)
+        t:SetPoint("CENTER")
+        return t
+    end
+    local dWarm, dCool, dWhite = disc(22, 1), disc(22, 1), disc(22, 2)
     local FLASH, SPREAD = 0.9, 9
     local age = FLASH
     fx:Hide()
@@ -2419,6 +2432,7 @@ local function buildTalentMark()
         local p = age / FLASH
         if p >= 1 then
             warm:SetVertexColor(1.00, 0.30, 0.42, 0); cool:SetVertexColor(0.30, 0.62, 1.00, 0); white:SetVertexColor(1, 1, 1, 0)
+            dWarm:SetVertexColor(1.00, 0.30, 0.42, 0); dCool:SetVertexColor(0.30, 0.62, 1.00, 0); dWhite:SetVertexColor(1, 1, 1, 0)
             self:Hide()
             return
         end
@@ -2430,6 +2444,12 @@ local function buildTalentMark()
         warm:SetVertexColor(1.00, 0.30, 0.42, a)
         cool:SetVertexColor(0.30, 0.62, 1.00, a)
         white:SetVertexColor(1, 1, 1, a * 0.5)
+        dWarm:SetPoint("CENTER", -SPREAD * out, 0)
+        dCool:SetPoint("CENTER", SPREAD * out, 0)
+        dWarm:SetVertexColor(1.00, 0.30, 0.42, a * 0.55)
+        dCool:SetVertexColor(0.30, 0.62, 1.00, a * 0.55)
+        -- (The white: hard at the start, gone by a third of the way.)
+        dWhite:SetVertexColor(1, 1, 1, p < 0.08 and (p / 0.08) * 0.9 or math.max(0, 0.9 * (1 - (p - 0.08) / 0.28)))
     end)
     local function flash()
         if not chip.on then return end
