@@ -239,6 +239,33 @@ local function skin(b, fontSize, thick)
             ns:SetFont(b.HotKey, fontSize, "OUTLINE")
             b.HotKey:ClearAllPoints()
             b.HotKey:SetPoint("TOPRIGHT", -2, -2)
+            -- The main bar's keys sit in a bubble on the button's corner
+            -- (as the level does on a portrait): a dark disc with the
+            -- hairline ring, wider for a longer key ("S1", "M4"), drawn
+            -- above the icon and its cooldown sweep so the key can always
+            -- be read. The key text itself is the game's (it still turns
+            -- red out of range); it is only moved into the bubble.
+            local bname = b.GetName and b:GetName()
+            if type(bname) == "string" and bname:find("^ActionButton%d+$") then
+                local kb = b.__muiKeyBubble
+                if not kb then
+                    kb = CreateFrame("Frame", nil, b)
+                    kb:SetFrameLevel(b:GetFrameLevel() + 6)
+                    kb:SetSize(15, 15)
+                    kb:SetPoint("CENTER", b, "TOPRIGHT", -5, -5)
+                    ns.RoundedRect(kb, -8, 0, 7.5, T.border[1], T.border[2], T.border[3], 1)
+                    ns.RoundedRect(kb, -7, 1, 6.5, 0.05, 0.05, 0.06, 0.96)
+                    kb:Hide()
+                    b.__muiKeyBubble = kb
+                    pcall(b.HotKey.SetParent, b.HotKey, kb)
+                end
+                ns:SetFont(b.HotKey, math.max(9, fontSize), "")
+                b.HotKey:SetShadowOffset(0, 0)
+                b.HotKey:ClearAllPoints()
+                b.HotKey:SetPoint("CENTER", kb, "CENTER", 0, 0)
+                pcall(b.HotKey.SetWidth, b.HotKey, 0)
+                b.HotKey:SetJustifyH("CENTER")
+            end
             -- A button with no key bound shows the game's range mark in
             -- that corner instead: a "●" character, white in range and
             -- red out of it. Our font has no such character, so it came
@@ -275,6 +302,16 @@ local function skin(b, fontSize, thick)
                     local t = hk:GetText()
                     local isMark = type(t) == "string" and not issecretvalue(t) and mark ~= nil and t == mark
                     hk:SetAlpha(isMark and 0 or 1)
+                    local kb = b.__muiKeyBubble
+                    if kb then
+                        local real = type(t) == "string" and not issecretvalue(t) and t ~= "" and not isMark and hk:IsShown()
+                        if real then
+                            local w = hk:GetStringWidth()
+                            if type(w) ~= "number" or issecretvalue(w) then w = 8 end
+                            kb:SetWidth(math.max(15, math.ceil(w) + 8))
+                        end
+                        kb:SetShown(real and true or false)
+                    end
                     local far = false
                     if hk:IsShown() then
                         local r, g = hk:GetTextColor()
