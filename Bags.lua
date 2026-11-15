@@ -518,6 +518,26 @@ end
 -- red mark, and the tile's tooltip says what the stack is worth. When the
 -- game says "Inventory is full", a pill names the cheapest one.
 local DROP_SKIP_CLASS = { [1] = true, [6] = true, [11] = true, [12] = true, [13] = true }
+-- A profession's tools sell for next to nothing and are exactly what must
+-- not be thrown away (it offered up a Skinning Knife): never counted.
+-- By item number, and any fishing pole by its kind.
+local DROP_TOOLS = {
+    [7005] = true,  -- Skinning Knife
+    [2901] = true,  -- Mining Pick
+    [5956] = true,  -- Blacksmith Hammer
+    [6219] = true,  -- Arclight Spanner
+    [10498] = true, -- Gyromatic Micro-Adjustor
+    [4471] = true,  -- Flint and Tinder
+    [5060] = true,  -- Thieves' Tools
+    [9149] = true,  -- Philosopher's Stone
+    [6218] = true, [6339] = true, [11130] = true, [11145] = true, [16207] = true, -- enchanting rods
+    [22461] = true, [22462] = true, [22463] = true,                              -- enchanting rods (later)
+    [20815] = true, -- Jeweler's Kit
+    [20824] = true, -- Simple Grinder
+    [39505] = true, -- Virtuoso Inking Set
+    [40772] = true, -- Gnomish Army Knife
+    [6256] = true, [6365] = true, [6366] = true, [6367] = true, [12225] = true, [19022] = true, [19970] = true, -- fishing poles
+}
 local priceCache = {}
 local dropSet, dropList = {}, {}
 local dropRank = {} -- which of the marked ones: 1 is the cheapest
@@ -535,9 +555,10 @@ local function stackWorth(info, bag, slot)
     local c = num(id) and priceCache[id]
     if c == nil then
         local f = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
-        local _, _, _, _, _, _, _, _, _, _, price, classID = call(f, link)
+        local _, _, _, _, _, _, _, _, _, _, price, classID, subID = call(f, link)
         if not num(price) then return pass("price not known (" .. type(price) .. ")") end -- not loaded yet: ask again next time
-        c = (price > 0 and not DROP_SKIP_CLASS[classID or -1]) and price or false
+        local tool = (num(id) and DROP_TOOLS[id]) or (classID == 2 and subID == 20) -- (weapon, fishing pole)
+        c = (price > 0 and not tool and not DROP_SKIP_CLASS[classID or -1]) and price or false
         if num(id) then priceCache[id] = c end
     end
     if not c then return pass("kept kind or free") end
