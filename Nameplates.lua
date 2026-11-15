@@ -186,8 +186,7 @@ end
 -- Amounts are hidden values in combat: they are handed straight to the
 -- text and never read, so there is no "+" in front and no adding up.
 local NUM_POOL, NUM_LIFE, NUM_RISE = 40, 1.05, 44
-local SCHOOL_TINT = { [1] = { 0.94, 0.94, 0.96 }, [2] = { 1.00, 0.90, 0.50 }, [4] = { 1.00, 0.56, 0.28 },
-    [8] = { 0.55, 0.90, 0.45 }, [16] = { 0.55, 0.82, 1.00 }, [32] = { 0.74, 0.60, 1.00 }, [64] = { 1.00, 0.62, 0.90 } }
+local SCHOOL_TINT = ns.SCHOOL -- (Theme.lua: one list for the whole addon)
 -- The kind of damage, as the character panel's resistance emblems (and a
 -- blade for physical, a star for holy), drawn just left of the number in
 -- the number's own colour. A pilot: the client names one school per hit,
