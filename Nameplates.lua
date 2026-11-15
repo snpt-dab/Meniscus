@@ -632,6 +632,9 @@ local function buildNumbers()
             local EX = ns.modules.Extras
             local OR = ns.modules.Orbs
             if EX and EX.db and EX.db.orbText ~= false and OR and OR.health and OR.health:IsShown() then return end
+            -- Switched off there: off, not moved here. (Beside your
+            -- character is only for when there is no health orb to use.)
+            if EX and EX.db and EX.db.orbText == false then return end
             local w, h = UIParent:GetWidth(), UIParent:GetHeight()
             x, y = w / 2 + (action == "HEAL" and 80 or -80), h * 0.46
         elseif unit:find("^nameplate") or unit == "target" then
