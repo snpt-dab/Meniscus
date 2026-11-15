@@ -274,7 +274,7 @@ local function buildNumbers()
             local f = items[i]
             if f.live then
                 f.age = f.age + dt
-                local k = f.age / NUM_LIFE
+                local k = f.age / (f.life or NUM_LIFE)
                 if k >= 1 then
                     f.live = false
                     f:Hide()
@@ -300,7 +300,7 @@ local function buildNumbers()
                     f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
                     if f.crit then
                         -- The fringe: apart at first, closing and fading in half a second.
-                        local q = f.age < 0.5 and (1 - f.age / 0.5) or 0
+                        local q = f.age < 0.9 and (1 - f.age / 0.9) or 0
                         f.warm:SetPoint("CENTER", -3.2 * q, 0.6 * q)
                         f.cool:SetPoint("CENTER", 3.2 * q, -0.6 * q)
                         f.warm:SetAlpha(0.75 * q); f.cool:SetAlpha(0.75 * q)
@@ -342,6 +342,9 @@ local function buildNumbers()
         spawned = spawned + 1
         local scale = crit and 1.3 or (small and 0.85 or 1)
         f.crit, f.scale = crit, scale
+        -- A critical stays up most of a second longer than an ordinary
+        -- hit, and its colour fringe takes longer to close.
+        f.life = crit and (NUM_LIFE + 0.9) or NUM_LIFE
         f:SetScale(scale)
         f.rel = rel
         -- Five lanes side by side, so a burst doesn't stack; each drifts a
