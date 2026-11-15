@@ -261,6 +261,11 @@ local function buildNumbers()
         f.fs = line("OVERLAY")
         f.fs:SetShadowOffset(1, -1)
         f.fs:SetShadowColor(0, 0, 0, 0.9)
+        f.burst = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+        f.burst:SetTexture("Interface/AddOns/Meniscus/Media/spot.tga")
+        f.burst:SetBlendMode("ADD")
+        f.burst:SetPoint("CENTER")
+        f.burst:SetAlpha(0)
         f.kind = f:CreateTexture(nil, "OVERLAY")
         f.kind:SetSize(SIZE * 0.78, SIZE * 0.78)
         f.kind:SetPoint("RIGHT", f.fs, "LEFT", -2, 0)
@@ -281,13 +286,21 @@ local function buildNumbers()
                 else
                     any = true
                     -- Up quickly, then easing off; clear until the last third.
-                    local e = 1 - (1 - k) * (1 - k)
+                    -- (A critical first hangs where it landed for a third of
+                    -- a second, at full size, and only then starts to rise.)
+                    local kr = k
+                    if f.crit then
+                        local life = f.life or NUM_LIFE
+                        kr = f.age < 0.34 and 0 or (f.age - 0.34) / (life - 0.34)
+                    end
+                    local e = 1 - (1 - kr) * (1 - kr)
                     -- Opening: small (a critical: large) to its own size.
                     -- (Positions are in the frame's own units, so the scale
                     -- is divided out.)
                     local sc = f.scale
                     if f.crit then
-                        if f.age < 0.18 then sc = f.scale * (1.45 - 0.45 * f.age / 0.18) end
+                        -- Lands at well over its size and snaps down to it.
+                        if f.age < 0.20 then sc = f.scale * (1.7 - 0.7 * (f.age / 0.20) ^ 0.6) end
                     elseif f.age < 0.10 then
                         sc = f.scale * (0.6 + 0.4 * f.age / 0.10)
                     end
@@ -301,9 +314,14 @@ local function buildNumbers()
                     if f.crit then
                         -- The fringe: apart at first, closing and fading in half a second.
                         local q = f.age < 0.9 and (1 - f.age / 0.9) or 0
-                        f.warm:SetPoint("CENTER", -3.2 * q, 0.6 * q)
-                        f.cool:SetPoint("CENTER", 3.2 * q, -0.6 * q)
-                        f.warm:SetAlpha(0.75 * q); f.cool:SetAlpha(0.75 * q)
+                        f.warm:SetPoint("CENTER", -5.5 * q, 1.0 * q)
+                        f.cool:SetPoint("CENTER", 5.5 * q, -1.0 * q)
+                        f.warm:SetAlpha(0.9 * q); f.cool:SetAlpha(0.9 * q)
+                        -- A burst of light behind it as it lands, gone in under half a second.
+                        local bq = f.age < 0.42 and (1 - f.age / 0.42) or 0
+                        f.burst:SetAlpha(0.60 * bq * bq)
+                        local bs = SIZE * (3.2 + 2.2 * (1 - bq))
+                        f.burst:SetSize(bs * 1.5, bs)
                     end
                 end
             end
@@ -345,7 +363,9 @@ local function buildNumbers()
         f.warm:SetAlpha(0); f.cool:SetAlpha(0)
         f.back:SetShown(not small)
         spawned = spawned + 1
-        local scale = crit and 1.3 or (small and 0.85 or 1)
+        local scale = crit and 1.55 or (small and 0.85 or 1)
+        f.burst:SetVertexColor(r, g, b, 1)
+        f.burst:SetAlpha(0)
         f.crit, f.scale = crit, scale
         -- A critical stays up most of a second longer than an ordinary
         -- hit, and its colour fringe takes longer to close.
