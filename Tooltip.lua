@@ -187,9 +187,10 @@ local function ourMarks(unit)
     end
     return race, class, faction
 end
--- The level, as a small orb at the start of the line: a dark disc in a
--- ring of the level's difficulty colour, the number inside. (A frame of
--- ours laid over the line; the line leaves room for it.)
+-- The level, as the same bubble the portraits carry on their lower edge:
+-- a dark grey disc in a hairline ring, the number inside, coloured by how
+-- the level stands against yours. (A frame of ours laid over the line; the
+-- line leaves room for it.)
 local ORB = 19
 local function levelOrb(tip)
     local o = tip.__muiLevel
@@ -204,10 +205,13 @@ local function levelOrb(tip)
     o.fill:SetTexture("Interface/AddOns/Meniscus/Media/circle.tga")
     o.fill:SetPoint("TOPLEFT", 1.5, -1.5)
     o.fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
-    o.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+    o.ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+    o.fill:SetVertexColor(0.17, 0.17, 0.19, 1)
     o.text = o:CreateFontString(nil, "OVERLAY")
-    ns:SetFont(o.text, 10, "", true)
+    ns:SetFont(o.text, 10, "")
     o.text:SetPoint("CENTER", 0, 0)
+    o.text:SetShadowOffset(1, -1)
+    o.text:SetShadowColor(0, 0, 0, 0.9)
     o:Hide()
     tip.__muiLevel = o
     local function away(self) if self.__muiLevel then self.__muiLevel:Hide() end end
@@ -263,7 +267,6 @@ local function compactPlayer(tip, unit)
         if okD and type(c) == "table" and c.r then dc = c end
     end
     local dr, dg, db2 = dc and dc.r or 0.90, dc and dc.g or 0.30, dc and dc.b or 0.28
-    orb.ring:SetVertexColor(dr * 0.8, dg * 0.8, db2 * 0.8, 1)
     orb.text:SetText(wantLevel)
     orb.text:SetTextColor(dr, dg, db2)
     orb:ClearAllPoints()
