@@ -1063,30 +1063,52 @@ end
 -- runs longer than our card, so it reappeared. Now it stays invisible until
 -- the toast manager itself closes (the end of that run of toasts), with a
 -- 30 s limit in case it never does.
-local quietUntil = 0
+-- (And still it showed for half a second, fading out, as our own card
+-- faded: either the manager closes and opens again between toasts, which
+-- used to end the quiet, or its own fade animation drives its opacity
+-- frame by frame, over ours. So now: quiet for at least ten seconds
+-- whatever it does, two seconds more after each time it closes, and while
+-- quiet it is also shrunk to nothing, which no fade animation undoes.)
+local quietUntil, quietAtLeast = 0, 0
 local TOASTS = { "EventToastManagerFrame", "LevelUpDisplay" }
 local function setToastAlpha(a)
     for i = 1, #TOASTS do
         local b = _G[TOASTS[i]]
-        if b and not (b.IsForbidden and b:IsForbidden()) then b:SetAlpha(a) end
+        if b and not (b.IsForbidden and b:IsForbidden()) then
+            b:SetAlpha(a)
+            if a == 0 then
+                if not b.__menScale then b.__menScale = b:GetScale() end
+                pcall(b.SetScale, b, 0.001)
+            elseif b.__menScale then
+                pcall(b.SetScale, b, b.__menScale)
+                b.__menScale = nil
+            end
+        end
     end
 end
 local function quietTick()
     if GetTime() > quietUntil then return setToastAlpha(1) end
     setToastAlpha(0)
-    C_Timer.After(0.1, quietTick)
+    C_Timer.After(0.05, quietTick)
 end
 function XP:QuietToasts()
     local running = GetTime() < quietUntil
     quietUntil = GetTime() + 30
+    quietAtLeast = GetTime() + 10
     for i = 1, #TOASTS do
         local b = _G[TOASTS[i]]
         if b and not b.__menQuietHook and b.HookScript then
             b.__menQuietHook = true
-            b:HookScript("OnHide", function(self)
-                -- Done: give it back its alpha for the next toast.
-                quietUntil = 0
-                self:SetAlpha(1)
+            b:HookScript("OnHide", function()
+                -- Closed: not trusted to be the end until it has stayed
+                -- closed a couple of seconds (and never before the least).
+                if GetTime() < quietUntil then
+                    quietUntil = math.max(quietAtLeast, GetTime() + 2)
+                end
+            end)
+            b:HookScript("OnShow", function()
+                -- Open again inside the quiet: keep going while it is up.
+                if GetTime() < quietUntil then quietUntil = math.max(quietUntil, GetTime() + 30) end
             end)
         end
     end
