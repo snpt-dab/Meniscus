@@ -478,6 +478,7 @@ local function buildNumbers()
     -- it is taken as yours each time a swing's worth of time has passed.
     -- (In a group someone else's blow can take that place; it evens out.)
     local lastSwing, why = 0, ""
+    local swingSchools, swingExtra, hitSchool = {}, 0, nil
     local function swinging(now)
         local f = (C_Spell and C_Spell.IsCurrentSpell) or _G.IsCurrentSpell
         local okA, auto = pcall(f, 6603)
@@ -487,7 +488,26 @@ local function buildNumbers()
         end
         local okS, speed = pcall(UnitAttackSpeed, "player")
         if not okS or secret(speed) or type(speed) ~= "number" or speed <= 0 then speed = 2 end
-        if now - lastSwing >= speed * 0.8 then lastSwing = now; return true end
+        local sch = hitSchool
+        if secret(sch) or type(sch) ~= "number" then sch = 0 end
+        if now - lastSwing >= speed * 0.8 then
+            lastSwing = now
+            wipe(swingSchools)
+            swingSchools[sch] = true
+            swingExtra = 0
+            return true
+        end
+        -- One swing can land as two hits a moment apart: the blow and what
+        -- rides on it (a paladin's seal struck holy first, and the weapon's
+        -- own hit, half a second later, was thrown away). So for a second
+        -- after a counted swing, up to two more hits of a kind not yet seen
+        -- in it are taken as part of the same swing.
+        if now - lastSwing <= 1.0 and swingExtra < 2 and not swingSchools[sch] then
+            swingSchools[sch] = true
+            swingExtra = swingExtra + 1
+            why = "with the swing"
+            return true
+        end
         why = string.format("%.1f s after a swing", now - lastSwing)
         return false
     end
@@ -522,7 +542,7 @@ local function buildNumbers()
         local okT, isTarget = pcall(UnitIsUnit, unit, "target")
         isTarget = okT and not secret(isTarget) and isTarget == true
         if isTarget and take(hits, now) then why = "cast"; return true end
-        if isTarget and swinging(now) then why = "swing"; return true end
+        if isTarget and swinging(now) then if why == "" then why = "swing" end; return true end
         local list = plate and dots[plate]
         -- Your target's effects are also kept under the target itself: its
         -- nameplate goes when it leaves the screen (the camera turned away,
@@ -706,6 +726,7 @@ local function buildNumbers()
             -- A hit for nothing at all isn't worth a number (when the
             -- amount can be read; in a fight it usually can't).
             if action == "WOUND" and not secret(amount) and amount == 0 then return end
+            hitSchool = school
             local mineHit = not (key and guess) or yours(unit, key, action, GetTime())
             -- What arrives for nameplates, and what was done with it (the
             -- last 24, MinimalUIDB.ctlog): to find out why misses and dodges
