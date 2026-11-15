@@ -524,15 +524,19 @@ local function buildNumbers()
     end
 
     -- A nameplate going away with numbers still rising from it (the mob
-    -- died a moment after the hit was shown): they move to the target
-    -- frame and finish there, instead of vanishing with the plate.
+    -- died a moment after the hit was shown): they move to where the target
+    -- frame sits and finish there, instead of vanishing with the plate.
+    -- (Shown or not: this client drops your target the moment it dies, so
+    -- the frame has usually just gone too, which is why asking for it to be
+    -- showing lost the killing blow every time. A hidden frame still has
+    -- its place.)
     local gone = CreateFrame("Frame")
     pcall(gone.RegisterEvent, gone, "NAME_PLATE_UNIT_REMOVED")
     gone:SetScript("OnEvent", function(_, _, unit)
         if type(unit) ~= "string" or secret(unit) then return end
         local UFm = ns.modules.UnitFrames
         local tf = UFm and UFm.target
-        local home = tf and tf:IsShown() and (tf.healthPill or tf) or nil
+        local home = tf and (tf.healthPill or tf) or nil
         local moved, dropped = 0, 0
         for i = 1, #items do
             local f = items[i]
@@ -571,7 +575,7 @@ local function buildNumbers()
         if not okD or secret(dead) or not dead then return end
         local UFm = ns.modules.UnitFrames
         local tf = UFm and UFm.target
-        local home = tf and tf:IsShown() and (tf.healthPill or tf) or nil
+        local home = tf and (tf.healthPill or tf) or nil
         if not home then return end
         local moved = 0
         for i = 1, #items do
@@ -623,7 +627,7 @@ local function buildNumbers()
                     local okT, isT = pcall(UnitIsUnit, unit, "target")
                     local UFm = ns.modules.UnitFrames
                     local tf = UFm and UFm.target
-                    if okT and not secret(isT) and isT and tf and tf:IsShown() then rel = tf.healthPill or tf end
+                    if okT and not secret(isT) and isT and tf then rel = tf.healthPill or tf end
                 end
             end
             if rel then x, y = 0, 4 end
