@@ -1232,8 +1232,8 @@ local function buildEnergy(f)
 
         -- Storm: now and then a soft glow blinks somewhere in the liquid,
         -- two or three quick pulses, sometimes answered by a second one
-        -- nearby. y is measured from the surface (the fill's top edge), so
-        -- they stay in the liquid (deeper ones are clipped at the bottom).
+        -- nearby. Each stays where it struck on the glass (y is measured
+        -- from the top of the orb); what falls above the surface is cut away.
         self.spawn = self.spawn + dt * (0.35 + 0.65 * k) -- ~1 every 3s low, ~1/s full
         while self.spawn >= 1 do
             self.spawn = self.spawn - 1
@@ -1244,22 +1244,25 @@ local function buildEnergy(f)
                 b.y = math.min(-6, self.lastY + (math.random() * 2 - 1) * 12)
             else
                 b.x = (math.random() * 2 - 1) * half * 0.6
-                b.y = -inner * (0.08 + 0.7 * math.random())
+                -- (Measured down from the top of the glass, and more often
+                -- low than high: a flash above the surface is cut away, and
+                -- the liquid is at the bottom whatever its level.)
+                b.y = -inner * (0.15 + 0.78 * math.sqrt(math.random()))
             end
             self.lastX, self.lastY = b.x, b.y
             b.s = inner * (0.30 + 0.20 * math.random()) -- core: a larger spread
             b.age, b.life = 0, 0.35 + math.random() * 0.3 -- slower, softer blinks
             b.pulses = 1 + math.floor(math.random() * 2.2)
-            b.a = 0.12 + 0.14 * math.random() -- faint: a glow, not a strobe
+            b.a = 0.19 + 0.20 * math.random() -- a glow, not a strobe (was 0.12 to 0.26: too faint)
             b.tex:SetSize(b.s, b.s * (0.7 + 0.3 * math.random()))
             b.tex:ClearAllPoints()
-            b.tex:SetPoint("CENTER", fill, "TOP", b.x, b.y)
+            b.tex:SetPoint("CENTER", f.bar, "TOP", b.x, b.y)
             b.tex:SetAlpha(0)
             b.tex:Show()
             local ws = inner * (1.5 + 0.4 * math.random()) -- reaches across the orb
             b.wide:SetSize(ws, ws)
             b.wide:ClearAllPoints()
-            b.wide:SetPoint("CENTER", fill, "TOP", b.x * 0.6, b.y * 0.8)
+            b.wide:SetPoint("CENTER", f.bar, "TOP", b.x * 0.6, b.y * 0.9)
             b.wide:SetAlpha(0)
             b.wide:Show()
             table.insert(self.live, b)
@@ -1280,7 +1283,7 @@ local function buildEnergy(f)
                 local flick = math.abs(math.sin(p * math.pi * b.pulses))
                 local a = b.a * flick * (1 - p * 0.6)
                 b.tex:SetAlpha(a)
-                b.wide:SetAlpha(a * 0.45)
+                b.wide:SetAlpha(a * 0.5)
                 i = i + 1
             end
         end

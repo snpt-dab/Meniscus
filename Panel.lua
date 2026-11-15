@@ -541,7 +541,7 @@ local PAGES = {
               get = function() return ns.modules.Nameplates.db.numbersMine ~= false end,
               set = function() local d = ns.modules.Nameplates.db; d.numbersMine = d.numbersMine == false end },
             { "What you take, on the health orb", kind = "switch", reload = true,
-              note = "Hits, heals, dodges, parries and blocks on you; off shows none",
+              note = "Hits, dodges, parries and blocks on you; off keeps only heals",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.orbText ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.orbText = d.orbText == false end end },
         } },
