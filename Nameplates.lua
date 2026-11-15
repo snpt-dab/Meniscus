@@ -187,6 +187,7 @@ end
 -- text and never read, so there is no "+" in front and no adding up.
 local NUM_POOL, NUM_LIFE, NUM_RISE = 40, 1.05, 44
 local SCHOOL_TINT = ns.SCHOOL -- (Theme.lua: one list for the whole addon)
+local PET_TINT = { 0.86, 0.74, 0.54 }
 -- The kind of damage, as the character panel's resistance emblems (and a
 -- blade for physical, a star for holy), drawn just left of the number in
 -- the number's own colour. A pilot: the client names one school per hit,
@@ -490,7 +491,32 @@ local function buildNumbers()
         why = string.format("%.1f s after a swing", now - lastSwing)
         return false
     end
+    -- Your pet's hits, by the same kind of guess (db.numbersPet): the unit
+    -- is what your pet is attacking, and either the pet has just used an
+    -- ability (one hit each) or a swing's worth of its time has passed.
+    -- Asked only after your own rules have passed a hit up, so with both of
+    -- you on one enemy a blow can now and then be given to the wrong one.
+    local petHits, lastPetSwing, byPet = {}, 0, false
+    local function pets(unit, now)
+        if NP.db.numbersPet == false then return false end
+        local okE, has = pcall(UnitExists, "pet")
+        if not okE or secret(has) or not has then return false end
+        local okT, on = pcall(UnitIsUnit, unit, "pettarget")
+        if not okT or secret(on) or not on then return false end
+        if take(petHits, now) then why = "pet cast"; return true end
+        local okS, speed = pcall(UnitAttackSpeed, "pet")
+        if not okS or secret(speed) or type(speed) ~= "number" or speed <= 0 then speed = 2 end
+        if now - lastPetSwing >= speed * 0.8 then lastPetSwing = now; why = "pet swing"; return true end
+        return false
+    end
+    local yoursOnly
     local function yours(unit, plate, action, now)
+        byPet = false
+        if yoursOnly(unit, plate, action, now) then return true end
+        if action ~= "HEAL" and pets(unit, now) then byPet = true; return true end
+        return false
+    end
+    yoursOnly = function(unit, plate, action, now)
         why = ""
         if action == "HEAL" then why = "heal"; return take(heals, now) end
         local okT, isTarget = pcall(UnitIsUnit, unit, "target")
@@ -533,6 +559,13 @@ local function buildNumbers()
         return false
     end
     if guess then
+        local pcast = CreateFrame("Frame")
+        pcall(pcast.RegisterUnitEvent, pcast, "UNIT_SPELLCAST_SUCCEEDED", "pet")
+        pcast:SetScript("OnEvent", function(_, _, _, _, spellID)
+            if secret(spellID) or type(spellID) ~= "number" or helpful(spellID) then return end
+            petHits[#petHits + 1] = GetTime() + 1.6
+            if #petHits > 4 then table.remove(petHits, 1) end
+        end)
         local cast = CreateFrame("Frame")
         pcall(cast.RegisterUnitEvent, cast, "UNIT_SPELLCAST_SUCCEEDED", "player")
         cast:SetScript("OnEvent", function(_, _, _, _, spellID)
@@ -625,6 +658,7 @@ local function buildNumbers()
         local mine = unit == "player"
         local x, y, rel
         local onRail, key = false, nil
+        local petShown = false
         if mine then
             -- What you take already rises out of the health orb, when that
             -- is on (Extras: orbText): not shown a second time here.
@@ -688,6 +722,7 @@ local function buildNumbers()
                 if #d > 40 then table.remove(d, 1) end
             end
             if not mineHit then return end
+            petShown = byPet
         end
         if not x then return end
         local crit = not secret(indicator) and indicator == "CRITICAL"
@@ -697,6 +732,11 @@ local function buildNumbers()
         elseif action == "WOUND" then
             if mine then
                 show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind)
+            elseif petShown then
+                -- Your pet's: its own kind, whatever the school. A paw, a
+                -- sandy colour, and a size down so your own hits lead.
+                show(rel, x, y, amount, PET_TINT[1], PET_TINT[2], PET_TINT[3], crit, not crit,
+                     NP.db.numbersKind ~= false and "micro_class_druid.tga" or nil)
             else
                 local c = (not secret(school) and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
                 show(rel, x, y, amount, c[1], c[2], c[3], crit, nil, kind)
