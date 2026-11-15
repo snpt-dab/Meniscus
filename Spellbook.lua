@@ -179,8 +179,15 @@ local function newCard(i)
     c.name:SetWordWrap(false)
     c.sub = text(c, 10, false, T.textDim)
     c.sub:SetPoint("BOTTOMLEFT", ring, "BOTTOMRIGHT", 10, 5)
+    -- What it is bound to for click casting, if anything ("Shift + Right click").
+    c.bind = text(c, 9, false, T.accent)
+    c.bind:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -8, 6)
 
     c:HookScript("OnClick", function(self, button, down)
+        if S.bindMode then
+            if not down and button == "LeftButton" and self.entry then S.PickBindSpell(self.entry) end
+            return
+        end
         if down or button ~= "LeftButton" or not IsShiftKeyDown() or not self.entry then return end
         local link = call(SB.GetSpellBookItemLink, self.entry.index, self.entry.bank)
         if link and not secret(link) then
@@ -204,6 +211,53 @@ local function newCard(i)
     return c
 end
 
+-- ── Click casting: what is bound ──────────────────────────────────────────
+-- "Click casting" is the game's own feature: a spell cast on someone by
+-- clicking their frame, with no targeting first. Its bindings live in the
+-- game (C_ClickBindings), one list per character: this only reads and
+-- rewrites that list, so bindings made here and in the game's own window
+-- are the same bindings.
+local CBn = C_ClickBindings
+local BTN_NAME = { BUTTON1 = "Left", BUTTON2 = "Right", BUTTON3 = "Middle", BUTTON4 = "Button 4", BUTTON5 = "Button 5" }
+local MOUSE_TO = { LeftButton = "BUTTON1", RightButton = "BUTTON2", MiddleButton = "BUTTON3", Button4 = "BUTTON4", Button5 = "BUTTON5" }
+local SPELL_TYPE = (Enum and Enum.ClickBindingType and Enum.ClickBindingType.Spell) or 1
+local function ccAvailable() return CBn ~= nil and CBn.GetProfileInfo ~= nil and CBn.SetProfileByInfo ~= nil end
+local function ccProfile()
+    if not ccAvailable() then return {} end
+    local ok, list = pcall(CBn.GetProfileInfo)
+    return ok and type(list) == "table" and list or {}
+end
+-- "Shift + Right click"
+local function ccLabel(info)
+    local parts = {}
+    local mods = info.modifiers
+    if type(mods) == "number" and mods ~= 0 and CBn.GetStringFromModifiers then
+        local ok, s = pcall(CBn.GetStringFromModifiers, mods)
+        if ok and type(s) == "string" then
+            for part in s:gmatch("[^%-]+") do parts[#parts + 1] = part:sub(1, 1):upper() .. part:sub(2):lower() end
+        end
+    end
+    local b = tostring(info.button or "")
+    parts[#parts + 1] = (BTN_NAME[b:upper()] or BTN_NAME[MOUSE_TO[b] or ""] or b) .. " click"
+    return table.concat(parts, " + ")
+end
+-- spell id (and spell name, so a newer rank still shows it) -> its label
+local ccCache
+local function ccMap()
+    if ccCache then return ccCache end
+    ccCache = {}
+    for _, info in ipairs(ccProfile()) do
+        if type(info) == "table" and info.type == SPELL_TYPE and info.actionID then
+            local label = ccLabel(info)
+            ccCache[info.actionID] = label
+            local ok, n = pcall(C_Spell.GetSpellName, info.actionID)
+            if ok and type(n) == "string" and not secret(n) then ccCache[n] = label end
+        end
+    end
+    return ccCache
+end
+local ccPick -- the spell chosen in the book, waiting for its button
+
 -- A card's looks (picture, name, the line under it): nothing here is
 -- protected, so it may be done in a fight.
 local function paintCard(c, e)
@@ -223,6 +277,8 @@ local function paintCard(c, e)
     c.icon:SetDesaturated(future)
     c.icon:SetAlpha(future and 0.45 or 1)
     c.name:SetTextColor(unpack(future and T.textDim or T.text))
+    local m = ccMap()
+    c.bind:SetText((e.spellID and m[e.spellID]) or m[e.name] or "")
 end
 
 local function fillCard(c, e)
@@ -249,7 +305,12 @@ local function fillCard(c, e)
     c.icon:SetDesaturated(future)
     c.icon:SetAlpha(future and 0.45 or 1)
     c.name:SetTextColor(unpack(future and T.textDim or T.text))
-    if castable and not e.passive then
+    local m = ccMap()
+    c.bind:SetText((e.spellID and m[e.spellID]) or m[e.name] or "")
+    local picked = S.bindMode and ccPick and ccPick.spellID == e.spellID
+    c.ring(picked and T.accent[1] or T.border[1], picked and T.accent[2] or T.border[2], picked and T.accent[3] or T.border[3], 1)
+    -- (While click casting is being set up, a click picks the spell.)
+    if castable and not e.passive and not S.bindMode then
         c:SetAttribute("type1", "spell")
         c:SetAttribute("spell", e.bank == BANK_PET and e.name or e.spellID)
     else
@@ -268,6 +329,223 @@ local function updateCooldowns()
             c.cd:Clear()
         end
     end
+end
+
+-- ── Click casting: setting it up ──────────────────────────────────────────
+-- Done in our own book, in two steps a newcomer can follow: turn on "Click
+-- casting" (the pill at the right of the tabs), click a spell, then press
+-- the mouse button you want for it over the box in the side panel. While
+-- it is on, clicking a spell picks it; nothing is cast.
+--   * Plain left and plain right clicks are kept as they are (target, and
+--     the menu): binding over them is how people lock themselves out of
+--     targeting. Any other button, or any button with Shift, Ctrl or Alt.
+--   * Binding a combination that another spell has takes it over, and says so.
+--   * The panel lists what is bound, each with a cross to unbind it.
+local ccPanel, ccPill
+local function ccSet(entry, mouseButton)
+    local btn = MOUSE_TO[mouseButton]
+    if not btn then return "That button can't be used for this." end
+    local mods = 0
+    if CBn.MakeModifiers then
+        local ok, m = pcall(CBn.MakeModifiers)
+        if ok and type(m) == "number" then mods = m end
+    end
+    if mods == 0 and (btn == "BUTTON1" or btn == "BUTTON2") then
+        return "Plain left and right clicks stay as they are (target, and the menu). Hold Shift, Ctrl or Alt, or use another button."
+    end
+    if CBn.CanSpellBeClickBound then
+        local ok, can = pcall(CBn.CanSpellBeClickBound, entry.spellID)
+        if ok and can == false then return entry.name .. " can't be cast by clicking a frame." end
+    end
+    local list, out = ccProfile(), {}
+    -- (Buttons are written the way the list already writes them.)
+    local want = btn
+    for _, i in ipairs(list) do
+        if type(i) == "table" and type(i.button) == "string" and MOUSE_TO[i.button] then want = mouseButton break end
+    end
+    local took
+    for _, i in ipairs(list) do
+        if type(i) == "table" then
+            local here = (i.button == want or i.button == btn or i.button == mouseButton) and (i.modifiers or 0) == mods
+            local same = i.type == SPELL_TYPE and i.actionID == entry.spellID
+            if here and not same and i.type == SPELL_TYPE then took = i.actionID end
+            if not here and not same then out[#out + 1] = i end
+        end
+    end
+    out[#out + 1] = { type = SPELL_TYPE, actionID = entry.spellID, button = want, modifiers = mods }
+    local ok, err = pcall(CBn.SetProfileByInfo, out)
+    if not ok then return "The game refused that: " .. tostring(err) end
+    ccCache = nil
+    local tookName
+    if took then
+        local okN, n = pcall(C_Spell.GetSpellName, took)
+        tookName = okN and type(n) == "string" and not secret(n) and n or nil
+    end
+    return nil, tookName
+end
+local function ccClear(spellID)
+    local out = {}
+    for _, i in ipairs(ccProfile()) do
+        if type(i) == "table" and not (i.type == SPELL_TYPE and i.actionID == spellID) then out[#out + 1] = i end
+    end
+    pcall(CBn.SetProfileByInfo, out)
+    ccCache = nil
+end
+local function ccPaint(note, bad)
+    if not ccPanel then return end
+    local p = ccPanel
+    if ccPick then
+        p.boxText:SetText("Press a mouse button here\nfor " .. ccPick.name)
+        p.boxRing(T.accent[1], T.accent[2], T.accent[3], 1)
+    else
+        p.boxText:SetText("Click a spell in the book first")
+        p.boxRing(T.border[1], T.border[2], T.border[3], 1)
+    end
+    p.note:SetText(note or "")
+    if bad then p.note:SetTextColor(0.95, 0.55, 0.50) else p.note:SetTextColor(0.50, 0.92, 0.58) end
+    local n = 0
+    for _, info in ipairs(ccProfile()) do
+        if type(info) == "table" and info.type == SPELL_TYPE and info.actionID and n < #p.rows then
+            n = n + 1
+            local r = p.rows[n]
+            local okN, name = pcall(C_Spell.GetSpellName, info.actionID)
+            local okT, tex = pcall(C_Spell.GetSpellTexture, info.actionID)
+            r.icon:SetTexture(okT and tex or 134400)
+            r.name:SetText(okN and type(name) == "string" and not secret(name) and name or ("Spell " .. tostring(info.actionID)))
+            r.label:SetText(ccLabel(info))
+            r.spellID = info.actionID
+            r:Show()
+        end
+    end
+    for i = n + 1, #p.rows do p.rows[i]:Hide() end
+    p.none:SetShown(n == 0)
+end
+local function ccBuild()
+    local p = CreateFrame("Frame", nil, win)
+    local PW, IN = 268, 16
+    p:SetSize(PW, 392)
+    p:SetPoint("TOPLEFT", win, "TOPRIGHT", 10, 0)
+    p:EnableMouse(true)
+    ns.RoundedRect(p, -8, 0, 14, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(p, -7, 1, 13, unpack(FILL))
+    local function line(size, bold, color, yTop, str)
+        local fs = text(p, size, bold, color)
+        fs:SetPoint("TOPLEFT", IN, yTop)
+        fs:SetWidth(PW - IN * 2)
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(true)
+        fs:SetText(str)
+        return fs
+    end
+    local y = -16
+    local t1 = line(14, true, nil, y, "Click casting")
+    y = y - 24
+    local t2 = line(11, false, T.textDim, y, "Cast a spell on someone by clicking their frame. No need to target them first.")
+    y = y - (t2:GetStringHeight() or 28) - 12
+    local t3 = line(11, false, nil, y, "1   Click a spell in the book.")
+    y = y - 18
+    local t4 = line(11, false, nil, y, "2   Point at the box below and press the mouse button you want for it. Hold Shift, Ctrl or Alt to make a combination.")
+    y = y - (t4:GetStringHeight() or 42) - 10
+    -- The box that takes the press.
+    local box = CreateFrame("Button", nil, p)
+    box:SetSize(PW - IN * 2, 54)
+    box:SetPoint("TOPLEFT", IN, y)
+    p.boxRing = ns.RoundedRect(box, -8, 0, 10, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(box, -7, 1.5, 9, 0.09, 0.09, 0.10, 1)
+    p.boxText = text(box, 11, true)
+    p.boxText:SetPoint("CENTER")
+    p.boxText:SetJustifyH("CENTER")
+    box:SetScript("OnMouseDown", function(_, button)
+        if InCombatLockdown() then return ccPaint("Not during a fight.", true) end
+        if not ccPick then return ccPaint("Click a spell in the book first.", true) end
+        local err, took = ccSet(ccPick, button)
+        if err then return ccPaint(err, true) end
+        local done = ccPick.name .. " is bound."
+        if took then done = done .. " (It took that click from " .. took .. ".)" end
+        ccPick = nil
+        ccPaint(done)
+        S:Refresh()
+    end)
+    y = y - 54 - 8
+    p.note = line(10, false, nil, y, "")
+    y = y - 34
+    local hb = line(10, true, T.textDim, y, "YOUR BINDINGS")
+    y = y - 18
+    p.none = line(11, false, T.textDim, y, "None yet.")
+    p.rows = {}
+    for i = 1, 7 do
+        local r = CreateFrame("Frame", nil, p)
+        r:SetSize(PW - IN * 2, 22)
+        r:SetPoint("TOPLEFT", IN, y - (i - 1) * 24)
+        r.icon = r:CreateTexture(nil, "ARTWORK")
+        r.icon:SetSize(18, 18)
+        r.icon:SetPoint("LEFT", 0, 0)
+        r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        r.name = text(r, 11)
+        r.name:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
+        r.name:SetWidth(96)
+        r.name:SetJustifyH("LEFT")
+        r.name:SetWordWrap(false)
+        local x = closeButton(r, function()
+            if InCombatLockdown() then return ccPaint("Not during a fight.", true) end
+            local nm = r.name:GetText() or "That spell"
+            ccClear(r.spellID)
+            ccPaint(nm .. " is unbound.")
+            S:Refresh()
+        end)
+        x:SetScale(0.8)
+        x:SetPoint("RIGHT", 0, 0)
+        r.label = text(r, 10, false, T.textDim)
+        r.label:SetPoint("RIGHT", x, "LEFT", -6, 0)
+        r.label:SetJustifyH("RIGHT")
+        r:Hide()
+        p.rows[i] = r
+    end
+    local foot = text(p, 10, false, T.textDim)
+    foot:SetPoint("BOTTOMLEFT", IN, 46)
+    foot:SetWidth(PW - IN * 2)
+    foot:SetJustifyH("LEFT")
+    foot:SetWordWrap(true)
+    foot:SetText("Plain left and right clicks stay as they are: target, and the menu.")
+    local done = pill(p, "Done", function() S.SetBindMode(false) end)
+    done:SetPoint("BOTTOMRIGHT", -IN, 14)
+    ccPanel = p
+    -- What the client has for this, once, for the record.
+    if MinimalUIDB then
+        local d = { "available " .. tostring(ccAvailable()) }
+        for k in pairs(CBn or {}) do d[#d + 1] = "fn " .. tostring(k) end
+        for i, info in ipairs(ccProfile()) do
+            if i <= 8 and type(info) == "table" then
+                d[#d + 1] = string.format("entry type=%s action=%s button=%s mods=%s", tostring(info.type),
+                    tostring(info.actionID), tostring(info.button), tostring(info.modifiers))
+            end
+        end
+        MinimalUIDB.clickdiag = d
+    end
+end
+function S.SetBindMode(on)
+    if not win then return end
+    if on and InCombatLockdown() then return end
+    if on and not ccAvailable() then
+        ns:Print("Click casting isn't available on this client.")
+        return
+    end
+    S.bindMode = on and true or false
+    ccPick = nil
+    ccCache = nil
+    if on and not ccPanel then ccBuild() end
+    if ccPanel then ccPanel:SetShown(S.bindMode) end
+    if ccPill then ccPill.on = S.bindMode; ccPill:Repaint() end
+    ccPaint()
+    if not InCombatLockdown() then S:Refresh() end
+end
+function S.PickBindSpell(e)
+    if not e or e.passive or e.itemType ~= TYPE_SPELL or e.bank == BANK_PET or not e.spellID then
+        return ccPaint("That one can't be bound: pick a spell you cast.", true)
+    end
+    ccPick = e
+    ccPaint()
+    S:Refresh()
 end
 
 -- ── In a fight ────────────────────────────────────────────────────────────
@@ -587,6 +865,16 @@ local function build()
 
     for i = 1, PER_PAGE do cards[i] = newCard(i) end
 
+    ccPill = pill(win, "Click casting", function() S.SetBindMode(not S.bindMode) end)
+    ccPill:SetPoint("TOPRIGHT", win, "TOPRIGHT", -20, -TABS_Y)
+    ccPill:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Click casting", 1, 1, 1)
+        GameTooltip:AddLine("Set spells to cast when you click someone's frame.", 0.8, 0.8, 0.85, true)
+        GameTooltip:Show()
+    end)
+    ccPill:HookScript("OnLeave", function() GameTooltip:Hide() end)
+
     win.empty = text(win, 11, false, T.textDim)
     win.empty:SetPoint("TOP", win, "TOP", 0, -(CARDS_TOP + 58))
     win.empty:SetText("No spells match.")
@@ -614,6 +902,11 @@ local function build()
     win:SetScript("OnHide", function()
         call(PlaySound, SOUNDKIT and SOUNDKIT.IG_SPELLBOOK_CLOSE)
         win.search:ClearFocus()
+        if S.bindMode then
+            S.bindMode, ccPick = false, nil
+            if ccPanel then ccPanel:Hide() end
+            if ccPill then ccPill.on = false; ccPill:Repaint() end
+        end
     end)
     -- The key's secure toggle (below) is told which window is ours.
     if S.toggle and SecureHandlerSetFrameRef then pcall(SecureHandlerSetFrameRef, S.toggle, "win", win) end
@@ -786,6 +1079,8 @@ local function buildToggle()
     owner:RegisterEvent("PLAYER_REGEN_DISABLED")
     owner:SetScript("OnEvent", function(_, e)
         if e == "PLAYER_REGEN_DISABLED" then
+            -- (Setting up click casting ends, so the cards cast again.)
+            if S.bindMode and not InCombatLockdown() then pcall(S.SetBindMode, false) end
             -- A fight is starting (the lockdown has not begun yet): bring
             -- the hidden book up to date, for the last time until it ends.
             if win and not win:IsShown() and not InCombatLockdown() then pcall(S.Refresh, S, true) end

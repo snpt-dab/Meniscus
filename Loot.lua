@@ -562,10 +562,21 @@ local function floatSkill(msg)
     if not name then return end
     level = tonumber(level)
     if not pcall(floatOrigin) then return end
-    local gold = level and (level % 25 == 0)
+    -- Gold marks a milestone, and what counts as one depends on the skill:
+    --   * a profession: every 25th point (a new batch of recipes);
+    --   * a weapon skill or Defense: only when it is as high as it can go
+    --     at your level (five points a level). Those rise all the time, and
+    --     25, 50, 75 mean nothing for them.
+    local icon = skillIcon(name)
+    local gold
+    if icon then
+        gold = level and (level % 25 == 0)
+    else
+        local plvl = UnitLevel("player")
+        gold = level and type(plvl) == "number" and not secret(plvl) and plvl > 0 and level >= plvl * 5
+    end
     local r, g, b = T.accent[1], T.accent[2], T.accent[3]
     if gold then r, g, b = 0.95, 0.78, 0.32 end
-    local icon = skillIcon(name)
     floatRail = "right"
     local ok, f = pcall(floatPill, icon or (MEDIA .. "micro_up.tga"), name, 1, 1, 1, level and tostring(level) or nil,
         r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
