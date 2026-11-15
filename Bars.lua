@@ -1452,6 +1452,58 @@ function Bars:ApplyPlate()
         Bars:ApplyPlateAlpha()
         -- (The header bands' noise grain was tried on the plate and dropped.)
         self.plate = p
+        -- In combat: the plate's top edge warms to a soft red, and goes
+        -- back when you are out of it (the moment you can eat, mount or
+        -- hide again). A line laid on the edge, fading to nothing toward
+        -- both ends; it breathes very slightly so it isn't mistaken for
+        -- part of the border. (db.combatEdge.)
+        local ce = CreateFrame("Frame", nil, p)
+        ce:SetFrameLevel(p:GetFrameLevel() + 1)
+        ce:SetPoint("TOPLEFT", p, "TOPLEFT", 22, 0)
+        ce:SetPoint("TOPRIGHT", p, "TOPRIGHT", -22, 0)
+        ce:SetHeight(2)
+        ce:SetAlpha(0)
+        local CR, CG, CB = 0.94, 0.34, 0.28
+        local function seg(a0, a1)
+            local t = ce:CreateTexture(nil, "OVERLAY")
+            t:SetColorTexture(1, 1, 1, 1)
+            if not (CreateColor and pcall(t.SetGradient, t, "HORIZONTAL", CreateColor(CR, CG, CB, a0), CreateColor(CR, CG, CB, a1))) then
+                t:SetColorTexture(CR, CG, CB, math.max(a0, a1))
+            end
+            return t
+        end
+        local l, m, r = seg(0, 1), seg(1, 1), seg(1, 0)
+        l:SetPoint("TOPLEFT"); l:SetPoint("BOTTOMLEFT"); l:SetWidth(160)
+        r:SetPoint("TOPRIGHT"); r:SetPoint("BOTTOMRIGHT"); r:SetWidth(160)
+        m:SetPoint("TOPLEFT", l, "TOPRIGHT"); m:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT")
+        local want, cur, t0 = 0, 0, 0
+        ce:SetScript("OnUpdate", function(self, dt)
+            t0 = t0 + dt
+            -- In over a third of a second, out over a full one.
+            local step = dt / (want > cur and 0.35 or 1.0)
+            if cur < want then cur = math.min(want, cur + step) elseif cur > want then cur = math.max(want, cur - step) end
+            if cur <= 0 and want <= 0 then self:SetAlpha(0); self:Hide(); return end
+            self:SetAlpha(cur * (0.78 + 0.12 * math.sin(t0 * 2.2)))
+        end)
+        ce:Hide()
+        local cev = CreateFrame("Frame")
+        for _, e in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD" }) do cev:RegisterEvent(e) end
+        local function look(event)
+            local on = false
+            if Bars.db and Bars.db.combatEdge ~= false then
+                if event == "PLAYER_REGEN_DISABLED" then on = true
+                elseif event == "PLAYER_REGEN_ENABLED" then on = false
+                else
+                    local okC, c = pcall(UnitAffectingCombat, "player")
+                    on = okC and not (issecretvalue and issecretvalue(c)) and c and true or false
+                end
+            end
+            want = on and 1 or 0
+            if on or cur > 0 then ce:Show() end
+        end
+        cev:SetScript("OnEvent", function(_, e) look(e) end)
+        Bars.CombatEdge = look
+        look()
     end
     local bottom, ptop = 2, top + 12
     local wings = self.db.wings
