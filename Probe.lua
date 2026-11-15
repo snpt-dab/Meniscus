@@ -1794,6 +1794,22 @@ do
             end
         end)
         add("hook on AddMessage: " .. tostring(okH) .. " " .. tostring(errH or ""))
+        -- With the Combat Log tab in front the game sends its lines out (one
+        -- event a line, in step with the hits); with another tab in front it
+        -- doesn't. Can an addon ask for them to be sent regardless? Tried
+        -- once here, six seconds in and out of combat. If the game forbids
+        -- it, it says so with its "blocked from an action" box, and that
+        -- lands in MinimalUIDB.errors.
+        C_Timer.After(6, function()
+            local CL = C_CombatLog
+            if not (CL and CL.SetFilteredEventsEnabled and CL.AreFilteredEventsEnabled) then return add("no switch for sending lines") end
+            if InCombatLockdown() then return add("switch not tried: in combat") end
+            local okB, before = pcall(CL.AreFilteredEventsEnabled)
+            local okS, errS = pcall(CL.SetFilteredEventsEnabled, true)
+            local okA, after = pcall(CL.AreFilteredEventsEnabled)
+            add(string.format("%.2f asked for lines to be sent: was %s, call ok=%s %s, now %s", GetTime() % 1000,
+                tostring(okB and before), tostring(okS), tostring(errS or ""), tostring(okA and after)))
+        end)
         -- A hit as the unit events report it, for the timing against a line.
         local uc = CreateFrame("Frame")
         pcall(uc.RegisterUnitEvent, uc, "UNIT_COMBAT", "target")
