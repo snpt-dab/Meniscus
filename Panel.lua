@@ -545,7 +545,7 @@ local PAGES = {
               get = function() return ns.modules.Nameplates.db.numbersPet ~= false end,
               set = function() local d = ns.modules.Nameplates.db; d.numbersPet = d.numbersPet == false end },
             { "Only my own hits and heals", kind = "switch", reload = true,
-              note = "A best guess (the client doesn't say who dealt a hit); off shows everyone's",
+              note = "By the combat log's \"My actions\" filter; a best guess without it",
               get = function() return ns.modules.Nameplates.db.numbersMine ~= false end,
               set = function() local d = ns.modules.Nameplates.db; d.numbersMine = d.numbersMine == false end },
             { "What you take, on the health orb", kind = "switch", reload = true,

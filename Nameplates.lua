@@ -670,6 +670,107 @@ local function buildNumbers()
         end
     end)
 
+    -- A number onto the screen: what kind it is decides its colour and mark.
+    local function present(unit, rel, x, y, action, indicator, amount, school, mine, petShown)
+        showUnit = unit
+        local crit = not secret(indicator) and indicator == "CRITICAL"
+        local kind = NP.db.numbersKind ~= false and not secret(school) and SCHOOL_ICON[school] or nil
+        if action == "HEAL" then
+            show(rel, x, y, amount, 0.42, 0.92, 0.50, crit)
+        elseif action == "WOUND" then
+            if mine then
+                show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind)
+            elseif petShown then
+                -- Your pet's: its own kind, whatever the school. A paw, a
+                -- sandy colour, and a size down so your own hits lead.
+                show(rel, x, y, amount, PET_TINT[1], PET_TINT[2], PET_TINT[3], crit, not crit,
+                     NP.db.numbersKind ~= false and "micro_class_druid.tga" or nil)
+            else
+                local c = (not secret(school) and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
+                show(rel, x, y, amount, c[1], c[2], c[3], crit, nil, kind)
+            end
+        elseif WORDS[action] then
+            show(rel, x, y, WORDS[action], 0.80, 0.80, 0.86, false, true)
+        end
+    end
+
+    -- ── Whose hit: the combat log's word for it ──────────────────────────
+    -- The client gives addons no combat log to read, and what its own
+    -- Combat Log tab prints reaches us sealed (a ticket the screen can
+    -- redeem and we can't). But it does say WHEN a line is printed: one
+    -- event a line, in step with the hits (measured: the same instant, or
+    -- up to a tenth of a second before, now and then a frame after). And
+    -- the log's usual filter, "My actions", prints only what you and your
+    -- pet do. So: a line arriving with a hit means the hit is yours. That
+    -- replaces the guessing above whenever it can be used:
+    --   * the log has to be sending its lines out. It does that by itself
+    --     only while its tab is in front; asking it to keep on is allowed
+    --     (tried: no objection), and is asked again whenever it has stopped,
+    --     out of combat;
+    --   * its filter has to be "My actions". On any other, and whenever the
+    --     lines aren't coming, the guess is used as before.
+    -- A line is good for one hit and for a third of a second. A hit that
+    -- comes ahead of its line waits a quarter of a second for it.
+    local CL = C_CombatLog
+    local logLines, held = {}, {}
+    local logHeard = false
+    local MY_ACTIONS = _G.QUICKBUTTON_NAME_MY_ACTIONS or "My actions"
+    local function logOn()
+        if not logHeard or NP.db.numbersLog == false then return false end
+        if not (CL and CL.AreFilteredEventsEnabled) then return false end
+        local okE, on = pcall(CL.AreFilteredEventsEnabled)
+        if not okE or secret(on) or not on then return false end
+        local cur = _G.Blizzard_CombatLog_CurrentSettings
+        local name = type(cur) == "table" and cur.name
+        return type(name) == "string" and not secret(name) and (name == MY_ACTIONS or name == "My actions")
+    end
+    local function note(text)
+        if not MinimalUIDB then return end
+        local d = MinimalUIDB.ctlog
+        if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
+        d[#d + 1] = string.format("%.2f %s", GetTime() % 1000, text)
+        if #d > 40 then table.remove(d, 1) end
+    end
+    local function dropStale(now)
+        while held[1] and now - held[1].t > 0.25 do
+            table.remove(held, 1)
+            note("  a held hit got no log line: not yours, dropped")
+        end
+    end
+    if guess and CL and CL.SetFilteredEventsEnabled and CL.AreFilteredEventsEnabled then
+        local lf = CreateFrame("Frame")
+        if pcall(lf.RegisterEvent, lf, "COMBAT_LOG_MESSAGE") then
+            logHeard = true
+            lf:SetScript("OnEvent", function(_, _, _, r, g, b)
+                -- (White lines are the log's notices, "You killed ..." and
+                -- the like: not a hit.)
+                if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then return end
+                local now = GetTime()
+                dropStale(now)
+                local h = table.remove(held, 1)
+                if h then
+                    note("  its log line came: shown")
+                    present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.school, false, h.pet)
+                    return
+                end
+                logLines[#logLines + 1] = now + 0.35
+                if #logLines > 12 then table.remove(logLines, 1) end
+            end)
+            -- Keep the log sending. (Out of combat only: whether the game
+            -- would mind mid-fight hasn't been tried.)
+            local function keep()
+                if InCombatLockdown() or NP.db.numbersLog == false then return end
+                local okE, on = pcall(CL.AreFilteredEventsEnabled)
+                if okE and not secret(on) and not on then pcall(CL.SetFilteredEventsEnabled, true) end
+            end
+            local kf = CreateFrame("Frame")
+            kf:RegisterEvent("PLAYER_REGEN_ENABLED")
+            kf:RegisterEvent("PLAYER_ENTERING_WORLD")
+            kf:SetScript("OnEvent", function() C_Timer.After(1, keep) end)
+            C_Timer.NewTicker(3, keep)
+        end
+    end
+
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("UNIT_COMBAT")
     ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
@@ -727,7 +828,31 @@ local function buildNumbers()
             -- amount can be read; in a fight it usually can't).
             if action == "WOUND" and not secret(amount) and amount == 0 then return end
             hitSchool = school
-            local mineHit = not (key and guess) or yours(unit, key, action, GetTime())
+            local now = GetTime()
+            local mineHit
+            if not (key and guess) then
+                mineHit, byPet, why = true, false, ""
+            elseif logOn() then
+                -- Yours or your pet's, for how it is drawn: the old signs
+                -- are still good for telling those two apart.
+                local own = yoursOnly(unit, key, action, now)
+                local pet = (not own) and action ~= "HEAL" and pets(unit, now) or false
+                dropStale(now)
+                if take(logLines, now) then
+                    mineHit, byPet = true, pet
+                    why = pet and "log line, pet's" or "log line"
+                else
+                    -- No line yet: it may be a frame behind. Kept a moment.
+                    local h = { t = now, unit = unit, rel = rel, x = x, y = y, action = action, indicator = indicator,
+                                amount = amount, school = school, pet = pet }
+                    held[#held + 1] = h
+                    if #held > 8 then table.remove(held, 1) end
+                    mineHit = false
+                    why = "no log line yet: held"
+                end
+            else
+                mineHit = yours(unit, key, action, now)
+            end
             -- What arrives for nameplates, and what was done with it (the
             -- last 24, MinimalUIDB.ctlog): to find out why misses and dodges
             -- on a mob were not showing.
@@ -746,25 +871,7 @@ local function buildNumbers()
             petShown = byPet
         end
         if not x then return end
-        local crit = not secret(indicator) and indicator == "CRITICAL"
-        local kind = NP.db.numbersKind ~= false and not secret(school) and SCHOOL_ICON[school] or nil
-        if action == "HEAL" then
-            show(rel, x, y, amount, 0.42, 0.92, 0.50, crit)
-        elseif action == "WOUND" then
-            if mine then
-                show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind)
-            elseif petShown then
-                -- Your pet's: its own kind, whatever the school. A paw, a
-                -- sandy colour, and a size down so your own hits lead.
-                show(rel, x, y, amount, PET_TINT[1], PET_TINT[2], PET_TINT[3], crit, not crit,
-                     NP.db.numbersKind ~= false and "micro_class_druid.tga" or nil)
-            else
-                local c = (not secret(school) and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
-                show(rel, x, y, amount, c[1], c[2], c[3], crit, nil, kind)
-            end
-        elseif WORDS[action] then
-            show(rel, x, y, WORDS[action], 0.80, 0.80, 0.86, false, true)
-        end
+        present(unit, rel, x, y, action, indicator, amount, school, mine, petShown)
     end)
 end
 
