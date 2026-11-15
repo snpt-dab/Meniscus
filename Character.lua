@@ -821,9 +821,10 @@ local function statsData(unit)
 end
 
 local RESISTS = {
-    { 2, "Fire", { 1.00, 0.50, 0.25 }, "micro_stat_fire.tga" }, { 3, "Nature", { 0.45, 0.85, 0.35 }, "micro_stat_nature.tga" },
-    { 4, "Frost", { 0.45, 0.75, 1.00 }, "micro_stat_frost.tga" }, { 5, "Shadow", { 0.68, 0.48, 0.95 }, "micro_stat_shadow.tga" },
-    { 6, "Arcane", { 1.00, 0.62, 0.90 }, "micro_stat_arcane.tga" },
+    -- (Colours from the addon's one list, Theme.lua.)
+    { 2, "Fire", ns.SCHOOL[4], "micro_stat_fire.tga" }, { 3, "Nature", ns.SCHOOL[8], "micro_stat_nature.tga" },
+    { 4, "Frost", ns.SCHOOL[16], "micro_stat_frost.tga" }, { 5, "Shadow", ns.SCHOOL[32], "micro_stat_shadow.tga" },
+    { 6, "Arcane", ns.SCHOOL[64], "micro_stat_arcane.tga" },
 }
 
 -- The five primary attributes, as a row of tiles across the top of the stats

@@ -792,8 +792,7 @@ end
 -- straight into the text, unformatted when they are.
 local ORB_WORDS = { DODGE = "Dodge", PARRY = "Parry", BLOCK = "Block", MISS = "Miss", RESIST = "Resist",
                     ABSORB = "Absorb", IMMUNE = "Immune", EVADE = "Evade", DEFLECT = "Deflect", REFLECT = "Reflect" }
-local SCHOOL_TINT = { [2] = { 1.00, 0.90, 0.50 }, [4] = { 1.00, 0.55, 0.25 }, [8] = { 0.55, 0.90, 0.40 },
-                      [16] = { 0.55, 0.80, 1.00 }, [32] = { 0.72, 0.55, 1.00 }, [64] = { 1.00, 0.62, 0.90 } }
+local SCHOOL_TINT = ns.SCHOOL -- (Theme.lua: one list for the whole addon)
 local function buildOrbText()
     local O = ns.modules.Orbs
     local orb = O and O.health
@@ -869,7 +868,7 @@ local function buildOrbText()
                 if w then pop(function(fs) fs:SetText(w) end, 0.80, 0.90, 1.00, false) end
                 return
             end
-            local c = num(school) and SCHOOL_TINT[school]
+            local c = num(school) and school ~= 1 and SCHOOL_TINT[school]
             local r, g, b = 1.0, 0.36, 0.32
             if c then r, g, b = c[1], c[2], c[3] end
             pop(function(fs)

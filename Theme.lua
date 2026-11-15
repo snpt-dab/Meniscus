@@ -431,6 +431,19 @@ end
 -- A stat's emblem, as text markup: the character panel's own icons (heart
 -- for Stamina, bulb for Intellect...), each in its own colour, so that a
 -- comparison reads as pictures and numbers. nil for a stat with no emblem.
+-- The colour of each kind of damage, by the game's school number: one list
+-- for the whole addon (combat numbers, the health orb, the character
+-- window's resistances, item comparisons), so fire is the same orange
+-- wherever it shows.
+ns.SCHOOL = { [1] = { 0.94, 0.94, 0.96 }, -- physical
+              [2] = { 1.00, 0.90, 0.50 }, -- holy
+              [4] = { 1.00, 0.56, 0.28 }, -- fire
+              [8] = { 0.55, 0.90, 0.45 }, -- nature
+              [16] = { 0.55, 0.82, 1.00 }, -- frost
+              [32] = { 0.74, 0.60, 1.00 }, -- shadow
+              [64] = { 1.00, 0.62, 0.90 } } -- arcane
+local SC = ns.SCHOOL
+
 local STAT_MARK = {
     ITEM_MOD_STRENGTH_SHORT = { "stat_str", 0.92, 0.48, 0.38 },
     ITEM_MOD_AGILITY_SHORT = { "stat_agi", 0.55, 0.85, 0.40 },
@@ -440,11 +453,11 @@ local STAT_MARK = {
     RESISTANCE0_NAME = { "stat_defense", 0.78, 0.80, 0.86 },
     ITEM_MOD_DAMAGE_PER_SECOND_SHORT = { "stat_melee", 0.86, 0.86, 0.90 },
     ITEM_MOD_SPELL_POWER_SHORT = { "stat_spell", 0.70, 0.80, 1.00 },
-    RESISTANCE2_NAME = { "stat_fire", 1.00, 0.56, 0.28 },
-    RESISTANCE3_NAME = { "stat_nature", 0.55, 0.90, 0.45 },
-    RESISTANCE4_NAME = { "stat_frost", 0.55, 0.82, 1.00 },
-    RESISTANCE5_NAME = { "stat_shadow", 0.74, 0.60, 1.00 },
-    RESISTANCE6_NAME = { "stat_arcane", 1.00, 0.62, 0.90 },
+    RESISTANCE2_NAME = { "stat_fire", SC[4][1], SC[4][2], SC[4][3] },
+    RESISTANCE3_NAME = { "stat_nature", SC[8][1], SC[8][2], SC[8][3] },
+    RESISTANCE4_NAME = { "stat_frost", SC[16][1], SC[16][2], SC[16][3] },
+    RESISTANCE5_NAME = { "stat_shadow", SC[32][1], SC[32][2], SC[32][3] },
+    RESISTANCE6_NAME = { "stat_arcane", SC[64][1], SC[64][2], SC[64][3] },
 }
 function ns.StatMark(key, size)
     local m = STAT_MARK[key]
