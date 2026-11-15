@@ -330,6 +330,19 @@ end
 local function scroll(delta)
     offset = math.max(0, math.min(offset - delta * 3, math.max(0, #data - ROWS)))
     for i, r in ipairs(rows) do fillRow(r, data[i + offset]) end
+    -- The rows have new contents under a mouse that hasn't moved (you just
+    -- learned the one it was on, or turned the wheel): show the tooltip of
+    -- what is under it now, or none.
+    for _, r in ipairs(rows) do
+        if r:IsShown() and r:IsMouseOver() then
+            local enter = r:GetScript("OnEnter")
+            if enter then pcall(enter, r) end
+            return
+        end
+    end
+    for _, r in ipairs(rows) do
+        if GameTooltip:IsOwned(r) then GameTooltip:Hide() end
+    end
 end
 
 function TR:Refresh()
