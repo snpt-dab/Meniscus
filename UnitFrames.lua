@@ -1563,12 +1563,16 @@ function UF:BuildCure()
         local ok, n = pcall(UnitName, unit)
         pText:SetText(spell .. "  >  " .. ((ok and type(n) == "string" and not issecretvalue(n)) and n or unit))
         pill:SetWidth(math.max(90, 3 + (PH - 6) + 6 + (pText:GetStringWidth() or 60) + PH / 2))
-        -- Just above the Quick Buff pill (or where it would be).
+        -- Over the top of the map, in the middle of the console (above the
+        -- character panel it lay across the party's frames). Without the
+        -- map there: just above the Quick Buff pill, or where it would be.
         pill:ClearAllPoints()
         local QBm = ns.modules.QuickBuff
         local qb = _G.MinimalUIQuickBuff
-        if qb and QBm and QBm.Place then pcall(QBm.Place) end
-        if qb and qb:GetPoint(1) then
+        local dome = _G.MinimalUI_MinimapDome
+        if dome and dome:IsShown() then
+            pill:SetPoint("BOTTOM", dome, "TOP", 0, 8)
+        elseif qb and QBm and QBm.Place and pcall(QBm.Place) and qb:GetPoint(1) then
             pill:SetPoint("BOTTOM", qb, "TOP", 0, 6)
         else
             pill:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 150)
