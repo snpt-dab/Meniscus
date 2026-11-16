@@ -781,7 +781,7 @@ local function create(unit, label, cfg)
     -- Pings: the game only pings a unit frame that says it can take one
     -- (as its own frames do): the ping mixin, which answers "whose frame
     -- is this" from f.unit, and the receiver attribute.
-    ns.MakePingable(f, unit)
+    ns.MakePingable(f, unit, function() return f.avatar and f.avatar.IsMouseOver and f.avatar:IsMouseOver() end)
     -- One edge only, the one the client acts on (the ActionButtonUseKeyDown
     -- setting: the press, by default). With both registered, targeting and
     -- the menu still fired once, but a Click Casting spell fired on the
