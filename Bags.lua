@@ -269,6 +269,20 @@ local function newButton(bag, slot)
             end
             return
         end
+        if button == "RightButton" and InCombatLockdown() and not B.interact then
+            -- In a fight the secure use above is what equips a weapon, and
+            -- it was reported not to (an axe could not be put on from the
+            -- bags mid-fight). So if the piece is still lying there unlocked
+            -- after it has had its turn, it is picked up and equipped the
+            -- plain way, which the game allows for weapons in a fight.
+            local info = itemInfo(self.bag, self.slot)
+            if info and not info.isLocked and not CursorHasItem() and equipsDirectly(self.bag, self.slot) then
+                pickup(self.bag, self.slot)
+                if CursorHasItem() then call(_G.AutoEquipCursorItem) end
+                if CursorHasItem() then ClearCursor() end
+            end
+            return
+        end
         if button == "RightButton" then
             if B.interact == "mail" then
                 local ML = ns.modules.Mail
