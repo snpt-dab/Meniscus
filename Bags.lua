@@ -1230,8 +1230,11 @@ do
     f:SetScript("OnEvent", function(_, _, _, msg)
         if not (B.db and B.db.cheapest ~= false) then return end
         if type(msg) ~= "string" or secret(msg) or msg ~= _G.ERR_INV_FULL then return end
+        -- (Not twice for one click: the game can say "full" more than once
+        -- for it. It was eight seconds, which also swallowed the next thing
+        -- you tried to pick up from the same corpse after making room.)
         local now = GetTime()
-        if now - last < 8 then return end
+        if now - last < 1.2 then return end
         last = now
         local ok, list = pcall(findCheapest, 3)
         local e = ok and list[1]
