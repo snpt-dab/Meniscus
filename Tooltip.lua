@@ -331,7 +331,7 @@ end
 -- equipped:"). Only the text of lines it has already written is changed.
 -- Returns true if anything was.
 local function markStats(tip)
-    if TT.db and TT.db.statMarks == false then return false end
+    if not (TT.db and TT.db.statMarks == true) then return false end -- (off unless asked for: words by default)
     local name = tip.GetName and tip:GetName()
     if not name or not ns.StatMarkByName then return false end
     local changed = false
