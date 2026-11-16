@@ -999,9 +999,155 @@ function QB:IsRebuffable(name)
     return false
 end
 
+-- ── Recast ring ───────────────────────────────────────────────────────────
+-- The short things you keep up yourself and recast all fight long (a
+-- paladin's seal, a warrior's shout): a small disc where the Quick Buff
+-- pill sits (beside it, when the pill is up), the spell's picture in a thin
+-- gold ring that drains as the spell runs out. Near the end it turns red
+-- and breathes; once it has run out it stays a few seconds, grey with a red
+-- ring, then goes.
+--
+-- Your buffs can't be read in a fight, so it runs off your own casts: the
+-- cast starts the ring, for the time the spell is known to last (read from
+-- the buff itself when that can be had, a moment after the cast). A seal
+-- is spent by Judgement: casting that ends the ring. It is only a picture:
+-- it can't be clicked (a button that casts can't be retargeted in a fight).
+local RECAST = {
+    ["Seal of Righteousness"] = 30, ["Seal of the Crusader"] = 30, ["Seal of Command"] = 30,
+    ["Seal of Justice"] = 30, ["Seal of Light"] = 30, ["Seal of Wisdom"] = 30,
+    ["Battle Shout"] = 120,
+    ["Slice and Dice"] = 9,
+    ["Mana Shield"] = 60, ["Ice Barrier"] = 60,
+}
+local RECAST_ENDS = { ["Judgement"] = "Seal" } -- casting this ends any running spell whose name starts so
+local function buildRecast()
+    local D = 26
+    local f = CreateFrame("Frame", "MeniscusRecast", UIParent)
+    f:SetSize(D, D)
+    f:SetFrameStrata("LOW")
+    f:SetFrameLevel(40)
+    f:Hide()
+    local function disc(parent, size, r, g, b, a, sub)
+        local t = parent:CreateTexture(nil, "ARTWORK", nil, sub or 0)
+        t:SetTexture(MEDIA .. "circle.tga")
+        t:SetSize(size, size)
+        t:SetPoint("CENTER")
+        t:SetVertexColor(r, g, b, a)
+        return t
+    end
+    disc(f, D, 0.04, 0.04, 0.05, 1, 0)                 -- the rim
+    local ring = disc(f, D - 2, 0.95, 0.78, 0.36, 1, 1) -- what is left, in gold
+    local cd = CreateFrame("Cooldown", nil, f, "CooldownFrameTemplate")
+    cd:SetPoint("CENTER")
+    cd:SetSize(D - 2, D - 2)
+    pcall(cd.SetSwipeTexture, cd, MEDIA .. "circle.tga")
+    cd:SetSwipeColor(0.10, 0.10, 0.12, 1)
+    cd:SetReverse(true) -- the dark covers what has gone, so the gold is what remains
+    if cd.SetDrawEdge then cd:SetDrawEdge(false) end
+    if cd.SetDrawBling then cd:SetDrawBling(false) end
+    if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+    local top = CreateFrame("Frame", nil, f)
+    top:SetAllPoints()
+    top:SetFrameLevel(cd:GetFrameLevel() + 2)
+    disc(top, D - 6, 0.05, 0.05, 0.06, 1, 0)
+    local mask = top:CreateMaskTexture()
+    mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetSize(D - 8, D - 8)
+    mask:SetPoint("CENTER")
+    local icon = top:CreateTexture(nil, "ARTWORK", nil, 2)
+    icon:SetAllPoints(mask)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    icon:AddMaskTexture(mask)
+    local secs = ns:CreateText(top, 10)
+    secs:SetPoint("TOP", f, "BOTTOM", 0, -1)
+    secs:SetShadowOffset(1, -1)
+    secs:SetShadowColor(0, 0, 0, 0.9)
+
+    local cur -- { name, start, dur }
+    local function seat()
+        f:ClearAllPoints()
+        if btn and btn:IsShown() then
+            f:SetPoint("RIGHT", btn, "LEFT", -6, 0)
+        elseif btn and btn:GetNumPoints() > 0 then
+            f:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        else
+            f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 190)
+        end
+    end
+    local acc = 0
+    f:SetScript("OnUpdate", function(self, dt)
+        acc = acc + dt
+        if acc < 0.1 then return end
+        acc = 0
+        if not cur then return self:Hide() end
+        local left = cur.start + cur.dur - GetTime()
+        seat()
+        if left <= -6 then cur = nil; return self:Hide() end
+        if left <= 0 then
+            -- Run out: grey picture, red ring, a slow breath.
+            icon:SetDesaturated(true)
+            ring:SetVertexColor(0.92, 0.30, 0.26, 1)
+            secs:SetText("")
+            self:SetAlpha(0.55 + 0.35 * math.abs(math.sin(GetTime() * 3)))
+            return
+        end
+        icon:SetDesaturated(false)
+        local low = left <= math.max(4, cur.dur * 0.15)
+        if low then
+            ring:SetVertexColor(0.95, 0.40, 0.32, 1)
+            self:SetAlpha(0.65 + 0.35 * math.abs(math.sin(GetTime() * 4)))
+            secs:SetText(math.ceil(left))
+            secs:SetTextColor(0.95, 0.45, 0.38)
+        else
+            ring:SetVertexColor(0.95, 0.78, 0.36, 1)
+            self:SetAlpha(1)
+            secs:SetText("")
+        end
+    end)
+    local function start(name, spellID, dur)
+        cur = { name = name, start = GetTime(), dur = dur }
+        local okT, tex = false, nil
+        if C_Spell and C_Spell.GetSpellTexture then okT, tex = pcall(C_Spell.GetSpellTexture, spellID) end
+        icon:SetTexture((okT and tex and not secret(tex)) and tex or 134400)
+        pcall(cd.SetCooldown, cd, cur.start, dur)
+        seat()
+        f:SetAlpha(1)
+        f:Show()
+        -- The buff's own word for how long, when it will say.
+        C_Timer.After(0.4, function()
+            if not cur or cur.name ~= name then return end
+            local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
+            if not (ok and a) then return end
+            local e, d = a.expirationTime, a.duration
+            if secret(e) or secret(d) or type(e) ~= "number" or type(d) ~= "number" or d <= 0 then return end
+            cur.start, cur.dur = e - d, d
+            pcall(cd.SetCooldown, cd, cur.start, d)
+        end)
+    end
+    local ev = CreateFrame("Frame")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    ev:RegisterEvent("PLAYER_DEAD")
+    ev:SetScript("OnEvent", function(_, e, _, _, spellID)
+        if e == "PLAYER_DEAD" then cur = nil; f:Hide() return end
+        if QB.db.recast == false then return end
+        if secret(spellID) or type(spellID) ~= "number" then return end
+        local ok, name = pcall(C_Spell.GetSpellName, spellID)
+        if not ok or type(name) ~= "string" or secret(name) then return end
+        local dur = RECAST[name]
+        if dur then return start(name, spellID, dur) end
+        local ends = RECAST_ENDS[name]
+        if ends and cur and cur.name:sub(1, #ends) == ends then
+            -- Spent: straight to "run out", so the recast is asked for.
+            cur.start = GetTime() - cur.dur
+            pcall(cd.SetCooldown, cd, 0, 0)
+        end
+    end)
+end
+
 function QB:OnInit(db)
     self.db = db
     buildButton()
+    pcall(buildRecast)
 
     -- Remember each click's aim; react to "out of range" / "more powerful spell".
     local lastAim, lastSpell, lastAt
