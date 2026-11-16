@@ -236,11 +236,11 @@ end
 
 local EMPTY_PRIMARY = "Visit a profession trainer in a major city to learn a profession. You can have two, in any mix of gathering and crafting."
 local SECONDARY = {
-    { key = "cook", name = PROFESSIONS_COOKING or "Cooking", icon = "Interface/Icons/INV_Misc_Food_15",
+    { key = "cook", line = 185, name = PROFESSIONS_COOKING or "Cooking", icon = "Interface/Icons/INV_Misc_Food_15",
       hint = "Visit a trainer to learn cooking: turn meat and fish into food that restores health and gives buffs." },
-    { key = "fish", name = PROFESSIONS_FISHING or "Fishing", icon = "Interface/Icons/Trade_Fishing",
+    { key = "fish", line = 356, name = PROFESSIONS_FISHING or "Fishing", icon = "Interface/Icons/Trade_Fishing",
       hint = "Visit a trainer to learn fishing: catch fish and other strange things from water." },
-    { key = "aid", name = PROFESSIONS_FIRST_AID or "First Aid", icon = "Interface/Icons/Spell_Holy_SealOfSacrifice",
+    { key = "aid", line = 129, name = PROFESSIONS_FIRST_AID or "First Aid", icon = "Interface/Icons/Spell_Holy_SealOfSacrifice",
       hint = "Visit a trainer to learn first aid: turn cloth into bandages for healing yourself and others." },
 }
 
@@ -348,7 +348,34 @@ function PB:Refresh()
     if not prim[1] and prim[2] then prim[1], prim[2] = prim[2], nil end
     fillPrimary(win.prim[1], prim[1])
     fillPrimary(win.prim[2], prim[2])
-    local sec = { cook = profData(cook), fish = profData(fish), aid = profData(aid) }
+    -- The secondary skills by what they are, not by where the game lists
+    -- them: a learned First Aid read "Not learned" when it didn't come back
+    -- in the sixth place. By skill line, then by name, among everything
+    -- after the two primaries; the usual places only as the last resort.
+    local sec = {}
+    local rest = { arch, fish, cook, aid, select(7, call(GetProfessions)) }
+    for k = 1, 8 do
+        local d = rest[k] and profData(rest[k])
+        if d then
+            for _, def in ipairs(SECONDARY) do
+                if not sec[def.key] and ((num(d.skillLine) and d.skillLine == def.line)
+                    or (str(d.name) and d.name:lower() == def.name:lower())) then
+                    sec[def.key] = d
+                end
+            end
+        end
+    end
+    sec.cook = sec.cook or profData(cook)
+    sec.fish = sec.fish or profData(fish)
+    sec.aid = sec.aid or profData(aid)
+    if MinimalUIDB then
+        local out = {}
+        for k = 1, 8 do
+            local n, _, _, _, _, _, line = call(GetProfessionInfo, rest[k] or -1)
+            out[k] = rest[k] and (tostring(rest[k]) .. "=" .. tostring(n) .. "/" .. tostring(line)) or "-"
+        end
+        MinimalUIDB.secdiag = table.concat(out, "  ")
+    end
     for i, def in ipairs(SECONDARY) do fillSecondary(win.sec[i], sec[def.key], def) end
     local sh = win.shell
     sh:SetChip(learned .. " of 2 professions", learned == 2 and { 0.45, 0.85, 0.50 } or T.accent)
