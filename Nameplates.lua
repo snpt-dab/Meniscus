@@ -1059,6 +1059,16 @@ local function buildNumbers()
                 if grouped and not (own or pet) then
                     mineHit = false
                     why = "in a group, and no sign it was yours"
+                elseif action ~= "WOUND" and action ~= "HEAL" then
+                    -- A miss, dodge, parry or block: the log prints no line
+                    -- for these under "My actions" (seen: none within
+                    -- seconds of any of them), so waiting for one threw away
+                    -- every miss that came within three seconds of a hit,
+                    -- which in a steady fight is nearly all of them. They go
+                    -- by the old signs alone (your swing, your cast, your
+                    -- pet's), and use up no line.
+                    mineHit, byPet = (own or pet) and true or false, pet
+                    why = mineHit and ("no line is written for a miss: by the old signs" .. (pet and ", pet's" or "")) or "a miss, and no sign it was yours"
                 elseif twinKey == key and twinAt == now then
                     -- The same enemy, the same instant as a hit just shown:
                     -- one blow reported as two (Heroic Strike and its empty
