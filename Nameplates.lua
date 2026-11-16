@@ -777,7 +777,36 @@ local function buildNumbers()
         local lf = CreateFrame("Frame")
         if pcall(lf.RegisterEvent, lf, "COMBAT_LOG_MESSAGE") then
             logHeard = true
+            -- The log refilling. At every login and reload (and whenever its
+            -- filter is changed) the log prints its old lines again, a
+            -- hundred or two of them a hundredth of a second apart. Those
+            -- are not hits: taken as such they filled this record (a whole
+            -- session's worth was written over by them) and set off the
+            -- kill reckoning for every old kill. A run of more than six
+            -- lines inside a quarter of a second, out of combat, is a
+            -- refill: ignored until the lines have been quiet for half a
+            -- second. (In combat a burst that size is an area spell.)
+            local recent, refilling, lastAny = {}, false, 0
+            local function isRefill(now)
+                if refilling and now - lastAny > 0.5 then refilling = false; wipe(recent) end
+                lastAny = now
+                if refilling then return true end
+                recent[#recent + 1] = now
+                while recent[1] and now - recent[1] > 0.25 do table.remove(recent, 1) end
+                if #recent > 6 then
+                    local okC, fighting = pcall(UnitAffectingCombat, "player")
+                    if okC and not secret(fighting) and not fighting then
+                        refilling = true
+                        wipe(logLines); wipe(lineTimes); wipe(held)
+                        lastLine = -99
+                        note("(the log is refilling with old lines: ignored)")
+                        return true
+                    end
+                end
+                return false
+            end
             lf:SetScript("OnEvent", function(_, _, _, r, g, b)
+                if isRefill(GetTime()) then return end
                 -- (White lines are the log's notices, "You killed ..." and
                 -- the like: not a hit.)
                 if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then
