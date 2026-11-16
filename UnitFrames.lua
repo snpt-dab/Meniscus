@@ -760,6 +760,18 @@ local function create(unit, label, cfg)
     f.unit, f.realUnit, f.key = unit, unit, label:lower()
     f:SetSize(s.W, s.H + s.GAP + s.PH)
     f:SetAttribute("unit", unit)
+    -- Party frames: the member's tooltip under the pointer, the same one
+    -- (and in the same place) as pointing at them in the world.
+    if cfg.size == "party" then
+        f:HookScript("OnEnter", function(self)
+            if UF.db and UF.db.partyTip == false then return end
+            if not UnitExists(self.unit) then return end
+            if GameTooltip_SetDefaultAnchor then GameTooltip_SetDefaultAnchor(GameTooltip, self)
+            else GameTooltip:SetOwner(self, "ANCHOR_RIGHT") end
+            if pcall(GameTooltip.SetUnit, GameTooltip, self.unit) then GameTooltip:Show() end
+        end)
+        f:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    end
     -- "*" = any modifier combination. Plain "type1" only matches with no
     -- modifiers held, so Click Casting's remapped target click (e.g.
     -- shift-ctrl-left) found no action.
