@@ -325,12 +325,53 @@ local function onUnit(tip)
     end
 end
 
+-- The game's own stat lines get our emblems in front, as our comparisons
+-- have: "+1 Stamina", "65 Armor", and the gains and losses the game lists
+-- under "If you replace this item..." (which is shortened to "If
+-- equipped:"). Only the text of lines it has already written is changed.
+-- Returns true if anything was.
+local function markStats(tip)
+    if TT.db and TT.db.statMarks == false then return false end
+    local name = tip.GetName and tip:GetName()
+    if not name or not ns.StatMarkByName then return false end
+    local changed = false
+    local n = tip:NumLines() or 0
+    for i = 2, n do
+        local fs = _G[name .. "TextLeft" .. i]
+        local text = fs and fs:GetText()
+        if type(text) == "string" and not issecretvalue(text) and text ~= "" and not text:find("|T", 1, true) then
+            if _G.ITEM_DELTA_DESCRIPTION and text == _G.ITEM_DELTA_DESCRIPTION then
+                fs:SetText("If equipped:")
+                changed = true
+            else
+                -- "+47 Armor", "-2 Stamina", "65 Armor" (colour codes kept).
+                local plain = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                local stat = plain:match("^[+-]?[%d,%.]+%s+(.+)$")
+                local mark = stat and ns.StatMarkByName(stat, 14)
+                if mark then
+                    fs:SetText(mark .. " " .. text)
+                    changed = true
+                end
+            end
+        end
+    end
+    return changed
+end
+
 local function onItem(tip)
     local ok, _, link = pcall(tip.GetItem, tip)
     if not ok or not link or issecretvalue(link) then return end
     local q = C_Item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(link)
     local c = q and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
     if c and q > 1 then setBorder(tip, c.r, c.g, c.b) end
+    pcall(markStats, tip)
+    -- (The comparison's gains and losses are written after this: once more
+    -- on the next frame, and the tooltip laid out again if that changed it.)
+    C_Timer.After(0, function()
+        if not tip:IsShown() then return end
+        local okM, did = pcall(markStats, tip)
+        if okM and did then pcall(tip.Show, tip) end
+    end)
 end
 
 -- Default tooltip position: with the console's wings up, tucked into the
