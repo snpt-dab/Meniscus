@@ -950,9 +950,16 @@ local function build()
         S.page = (S.page or 1) + 1; S:Refresh()
     end)
     win.pageText = text(win, 11, true, T.textDim)
-    win.pageText:SetPoint("BOTTOM", win, "BOTTOM", 0, 20)
-    win.prev:SetPoint("RIGHT", win.pageText, "LEFT", -14, 0)
-    win.next:SetPoint("LEFT", win.pageText, "RIGHT", 14, 0)
+    -- The pills hang off a frame, not off the text: the in-combat buttons
+    -- laid over them are protected, and the game refuses to place one of
+    -- those (through any chain) against a piece of text. That refusal
+    -- stopped the whole in-combat book from being built.
+    local pageBox = CreateFrame("Frame", nil, win)
+    pageBox:SetSize(84, 22)
+    pageBox:SetPoint("BOTTOM", win, "BOTTOM", 0, 15)
+    win.pageText:SetPoint("CENTER", pageBox, "CENTER", 0, 0)
+    win.prev:SetPoint("RIGHT", pageBox, "LEFT", -6, 0)
+    win.next:SetPoint("LEFT", pageBox, "RIGHT", 6, 0)
     local okC, errC = pcall(buildCombat)
     if not okC then ctl = nil; if MinimalUIDB then MinimalUIDB.spellbookErr = tostring(errC) end end
 
