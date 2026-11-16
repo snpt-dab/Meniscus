@@ -1522,6 +1522,7 @@ function Bars:ApplyPlate()
             cool:SetAlpha(ga > 1 and 1 or ga)
         end)
         ce.Burst = function() burst = 1 end
+        p.combatEdge = ce
         ce:Hide()
         local cev = CreateFrame("Frame")
         for _, e in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD" }) do cev:RegisterEvent(e) end
@@ -1569,6 +1570,15 @@ function Bars:ApplyPlate()
     ns.consoleMenus = (chatOK or meterOK) and true or false -- Declutter.lua stops fading them
     if p.chatWell then p.chatWell:SetShown(chatOK and true or false) end
     if p.meterWell then p.meterWell:SetShown(meterOK and true or false) end
+    -- The in-combat line keeps to the open stretch between the wing panels:
+    -- it has faded to nothing a little short of each one.
+    if p.combatEdge then
+        local from = (chatOK and lx1 or pl) + (chatOK and 10 or 22)
+        local to = (meterOK and rx0 or pr) - (meterOK and 10 or 22)
+        p.combatEdge:ClearAllPoints()
+        p.combatEdge:SetPoint("TOPLEFT", p, "TOPLEFT", from - pl, 0)
+        p.combatEdge:SetPoint("TOPRIGHT", p, "TOPRIGHT", -(pr - to), 0)
+    end
 
     local function pillOn(wl, key)
         local pill = wl[key]
