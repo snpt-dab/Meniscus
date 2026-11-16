@@ -1899,3 +1899,71 @@ do
         end)
     end)
 end
+
+-- ── Ping probe, second round ──────────────────────────────────────────────
+-- The player's own ping kind failed on our frames: it reaches for a piece
+-- of the stock player frame that ours don't have. Which piece: the mixin is
+-- put on a stand-in that writes down everything asked of it, and the stock
+-- frame is asked the same questions for comparison (MinimalUIDB.pingprobe2,
+-- five seconds after login).
+do
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_LOGIN")
+    ev:SetScript("OnEvent", function()
+        C_Timer.After(5, function()
+            if not MinimalUIDB then return end
+            local out = {}
+            MinimalUIDB.pingprobe2 = out
+            local function add(t) if #out < 120 then out[#out + 1] = t end end
+            local function dump(v)
+                if type(v) ~= "table" then return tostring(v) end
+                local parts = {}
+                for k, x in pairs(v) do parts[#parts + 1] = tostring(k) .. "=" .. tostring(x) end
+                return "{" .. table.concat(parts, ", ") .. "}"
+            end
+            local function proxy(path)
+                return setmetatable({}, {
+                    __index = function(_, k) local q = path .. "." .. tostring(k); add("  asked: " .. q); return proxy(q) end,
+                    __call = function(_, ...)
+                        local args = {}
+                        for i = 2, select("#", ...) do args[#args + 1] = tostring((select(i, ...))) end
+                        add("  called: " .. path .. "(" .. table.concat(args, ", ") .. ")")
+                        return proxy(path .. "()")
+                    end,
+                })
+            end
+            for _, mixName in ipairs({ "PingableType_PlayerUnitFrameMixin", "PingableType_UnitFrameMixin" }) do
+                local mix = _G[mixName]
+                if mix then
+                    for _, fn in ipairs({ "GetTargetInfo", "GetIsPingable", "GetAllowRadialWheel", "UpdatePingAttributes" }) do
+                        if type(mix[fn]) == "function" then
+                            add(mixName .. "." .. fn .. " on a stand-in:")
+                            local stand = setmetatable({ unit = "player" }, {
+                                __index = function(_, k) add("  asked: self." .. tostring(k)); return proxy("self." .. tostring(k)) end })
+                            local ok, a, b, c = pcall(mix[fn], stand)
+                            add("  -> ok=" .. tostring(ok) .. " " .. dump(a) .. " " .. dump(b) .. " " .. dump(c))
+                        end
+                    end
+                end
+            end
+            local pf = _G.PlayerFrame
+            if pf then
+                for _, fn in ipairs({ "GetTargetInfo", "GetIsPingable", "GetAllowRadialWheel" }) do
+                    if type(pf[fn]) == "function" then
+                        local ok, a, b, c = pcall(pf[fn], pf)
+                        add("PlayerFrame:" .. fn .. " -> ok=" .. tostring(ok) .. " " .. dump(a) .. " " .. dump(b) .. " " .. dump(c))
+                    end
+                end
+                local okA, recv = pcall(pf.GetAttribute, pf, "ping-receiver")
+                add("PlayerFrame ping-receiver=" .. tostring(okA and recv) .. " shown=" .. tostring(pf:IsShown())
+                    .. " alpha=" .. tostring(pf:GetAlpha()) .. " mouse=" .. tostring(pf:IsMouseEnabled()))
+            end
+            if C_Ping and C_Ping.GetDefaultPingOptions then
+                local ok, opts = pcall(C_Ping.GetDefaultPingOptions)
+                if ok and type(opts) == "table" then
+                    for i, o in ipairs(opts) do add("ping option " .. i .. ": " .. dump(o)) end
+                end
+            end
+        end)
+    end)
+end
