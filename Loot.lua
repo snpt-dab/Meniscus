@@ -726,8 +726,24 @@ local function floatSlot(slot)
     local tr, tg, tb = T.text[1], T.text[2], T.text[3]
     local rr, rg, rb = T.border[1], T.border[2], T.border[3]
     if fine then tr, tg, tb, rr, rg, rb = cr, cg, cb, cr * 0.75, cg * 0.75, cb * 0.75 end
+    -- What a plain thing (grey or white) sells for, the whole stack, after
+    -- its count: so you learn what is worth the bag space. (db.lootWorth.)
+    local note = many and ("\195\151" .. qty) or nil
+    if not e.money and not fine and L.db.lootWorth ~= false and type(e.link) == "string" and not secret(e.link) then
+        local gi = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+        local price = gi and select(11, call(gi, e.link))
+        if type(price) == "number" and not secret(price) and price > 0 then
+            local v = price * (many and qty or 1)
+            local g, sv, c = math.floor(v / 10000), math.floor(v / 100) % 100, v % 100
+            local out = ""
+            if g > 0 then out = out .. g .. COIN.g end
+            if sv > 0 then out = out .. (out ~= "" and " " or "") .. sv .. COIN.s end
+            if c > 0 and g == 0 then out = out .. (out ~= "" and " " or "") .. c .. COIN.c end
+            if out ~= "" then note = (note and (note .. "   ") or "") .. out end
+        end
+    end
     floatRail = "left"
-    local f = floatPill(tex, name, tr, tg, tb, many and ("\195\151" .. qty) or nil, rr, rg, rb)
+    local f = floatPill(tex, name, tr, tg, tb, note, rr, rg, rb)
     markUpgrade(f, name, e.link)
 end
 
