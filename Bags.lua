@@ -790,9 +790,16 @@ local function updateFooter()
         local f = call(CC.GetContainerNumFreeSlots or _G.GetContainerNumFreeSlots, bag)
         if num(f) then free = free + f end
     end
-    win.shell:SetSubtitle(string.format("%d of %d slots free", free, total))
+    -- Full, or nearly: the count itself goes red and says so. (It was a
+    -- red "Full" chip under the count, which is where the search box is:
+    -- all that showed was a red smudge at the box's edge.)
     local room = freeSlots() -- (ordinary bags only)
-    win.shell:SetChip(room <= 2 and (room == 0 and "Full" or "Almost full") or nil, { 0.95, 0.45, 0.40 })
+    local count = string.format("%d of %d slots free", free, total)
+    if room <= 2 then
+        count = "|cfff27366" .. (room == 0 and "Full" or "Almost full") .. ":  " .. count .. "|r"
+    end
+    win.shell:SetSubtitle(count)
+    win.shell:SetChip(nil)
     win.money:SetText(moneyText(GetMoney()))
     for _, t in ipairs(win.bagTiles) do
         local tex = GetInventoryItemTexture("player", t.inv)
