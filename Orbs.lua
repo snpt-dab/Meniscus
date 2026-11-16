@@ -102,7 +102,8 @@ local function createOrb(name, size)
     end
     f:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
     -- Pings: an orb is your own unit frame, and takes a ping as one.
-    f.unit = f.unit or "player"
+    -- (The pet's orbs are the pet's: a ping on one points at the pet.)
+    f.unit = f.unit or ((type(name) == "string" and name:find("Pet")) and "pet" or "player")
     ns.MakePingable(f, f.unit)
     -- Clickable area = the square inscribed in the circle, so the orb's empty
     -- corners never steal clicks from neighbouring buttons.

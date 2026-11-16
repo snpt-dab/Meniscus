@@ -497,8 +497,18 @@ end
 -- health and mana in chat, and the plain unit kind only pointed at you.
 -- What each frame was given, and what it answers, is kept in
 -- MinimalUIDB.pingdiag.
-function ns.MakePingable(f, unit)
+function ns.MakePingable(f, unit, portrait)
     if not Mixin then return end
+    -- The player's kind asks one thing of its frame: is the pointer over
+    -- the portrait (self.PlayerFrameContainer.PlayerPortrait)? Over it, the
+    -- ping is the ordinary one at you; anywhere else on the frame it is the
+    -- "my health and mana" one. Ours had no such piece and the game's code
+    -- stopped on that. An orb has no portrait: all of it is the resource.
+    -- (portrait: a function saying whether the pointer is over one.)
+    if unit == "player" and f.PlayerFrameContainer == nil then
+        f.PlayerFrameContainer = { PlayerPortrait = {
+            IsMouseOver = function() return portrait and portrait() and true or false end } }
+    end
     local own = unit == "player" and _G.PingableType_PlayerUnitFrameMixin
     local mix = own or _G.PingableType_UnitFrameMixin
     if not mix then return end
