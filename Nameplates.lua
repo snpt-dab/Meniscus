@@ -245,6 +245,39 @@ local function buildNumbers()
         if #items >= NUM_POOL then return nil end
         local f = CreateFrame("Frame", nil, host)
         f:SetSize(10, 10)
+        -- A hit for nothing hides itself, by a window that is only open
+        -- when the amount is 1 or more. The amount is a hidden value in a
+        -- fight: it can't be compared, and the game refused to run it
+        -- through a curve. A bar will take it, though: this one runs from 0
+        -- to 1, so an amount of 0 leaves its fill with no width and
+        -- anything more fills it. The number, its patch, its emblem and its
+        -- flash are all drawn inside a clipping frame laid over that fill:
+        -- no fill, nothing seen. (This is how the "0" beside every Heroic
+        -- Strike goes: the game reports that as two hits, the strike and an
+        -- empty swing.)
+        f.bar = CreateFrame("StatusBar", nil, f)
+        f.bar:SetSize(300, 170)
+        f.bar:SetPoint("CENTER")
+        f.bar:SetStatusBarTexture("Interface/Buttons/WHITE8x8")
+        f.bar:SetStatusBarColor(0, 0, 0, 0)
+        f.bar:SetMinMaxValues(0, 1)
+        f.bar:SetValue(1)
+        f.clip = CreateFrame("Frame", nil, f)
+        f.clip:SetClipsChildren(true)
+        local fill = f.bar:GetStatusBarTexture()
+        local okClip = fill and pcall(function()
+            f.clip:SetPoint("TOPLEFT", fill, "TOPLEFT")
+            f.clip:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT")
+        end)
+        if not okClip then f.clip:ClearAllPoints(); f.clip:SetAllPoints(f.bar); f.bar = nil end
+        if MinimalUIDB then MinimalUIDB.zeroclip = okClip and "window laid over the bar's fill" or "could not lay the window over the fill" end
+        -- (What is clipped has to be a child frame of the clip, not a
+        -- texture on the clip itself.)
+        local outer = f
+        f = CreateFrame("Frame", nil, outer.clip)
+        f:SetSize(10, 10)
+        f:SetPoint("CENTER", outer, "CENTER")
+        outer.body = f
         f.back = f:CreateTexture(nil, "BACKGROUND")
         f.back:SetTexture("Interface/AddOns/Meniscus/Media/spot.tga")
         f.back:SetVertexColor(0, 0, 0, 0.42)
@@ -271,6 +304,8 @@ local function buildNumbers()
         f.kind:SetSize(SIZE * 0.78, SIZE * 0.78)
         f.kind:SetPoint("RIGHT", f.fs, "LEFT", -2, 0)
         f.kind:Hide()
+        outer.back, outer.warm, outer.cool, outer.fs, outer.burst, outer.kind = f.back, f.warm, f.cool, f.fs, f.burst, f.kind
+        f = outer
         items[#items + 1] = f
         return f
     end
@@ -409,6 +444,10 @@ local function buildNumbers()
             f.back:SetVertexColor(0, 0, 0, 0.42)
         end
         f.zeroSeen = seen
+        if f.bar and not pcall(f.bar.SetValue, f.bar, secret(value) and value or 1) then
+            f.bar:SetValue(1)
+            if MinimalUIDB then MinimalUIDB.zeroclip = "the bar would not take the amount" end
+        end
         -- (A hidden amount goes straight in; nothing is done with it here.)
         local ok = pcall(f.fs.SetText, f.fs, value)
         if MinimalUIDB and not MinimalUIDB.ctdiag then
