@@ -71,6 +71,27 @@ local function merchantItem(i)
     return name, tex, price, qty, avail, usable, ext
 end
 
+-- How many things there are to buy back, by whichever way this client has.
+local function buybackCount()
+    local n = call(_G.GetNumBuybackItems)
+    if not num(n) then
+        local MF = C_MerchantFrame
+        n = MF and MF.GetNumBuybackItems and call(MF.GetNumBuybackItems)
+    end
+    return num(n) and n or 0
+end
+local function buybackItem(i)
+    local name, tex, price, qty, avail, usable = call(_G.GetBuybackItemInfo, i)
+    if name == nil then
+        local MF = C_MerchantFrame
+        local info = MF and MF.GetBuybackItemInfo and call(MF.GetBuybackItemInfo, i)
+        if type(info) == "table" then
+            return info.name, info.texture, info.price, info.stackCount, info.numAvailable, info.isUsable
+        end
+    end
+    return name, tex, price, qty, avail, usable
+end
+
 local function costText(i)
     local n = call(_G.GetMerchantItemCostInfo, i) or 0
     local parts = {}
@@ -239,7 +260,13 @@ function M:Refresh()
     if not win or not win:IsShown() then return end
     for _, b in ipairs(tabBtns) do b.on = (b.key == self.tab); b:Repaint() end
     local myMoney = GetMoney()
-    local total = self.tab == "buyback" and (call(_G.GetNumBuybackItems) or 0) or (call(_G.GetMerchantNumItems) or 0)
+    local total = self.tab == "buyback" and buybackCount() or (call(_G.GetMerchantNumItems) or 0)
+    if self.tab == "buyback" and MinimalUIDB then
+        MinimalUIDB.buybackdiag = date("%H:%M:%S") .. " count " .. tostring(total) .. " (global fn "
+            .. tostring(_G.GetNumBuybackItems ~= nil) .. ", C_MerchantFrame fn "
+            .. tostring(C_MerchantFrame and C_MerchantFrame.GetNumBuybackItems ~= nil) .. ") first: "
+            .. tostring((buybackItem(1)))
+    end
     local pages = math.max(1, math.ceil(total / PER))
     self.page = math.max(1, math.min(self.page or 1, pages))
     pcall(collectWanted)
@@ -251,7 +278,7 @@ function M:Refresh()
         else
             local name, tex, price, qty, avail, usable, ext, link
             if self.tab == "buyback" then
-                name, tex, price, qty, avail, usable = call(_G.GetBuybackItemInfo, i)
+                name, tex, price, qty, avail, usable = buybackItem(i)
                 link = call(_G.GetBuybackItemLink, i)
             else
                 name, tex, price, qty, avail, usable, ext = merchantItem(i)
@@ -461,7 +488,23 @@ function M:OnInit(db)
         elseif e == "MERCHANT_CLOSED" then close()
         elseif win and win:IsShown() then dirty = true end
     end)
+    -- The buy-back page is also looked at twice a second while it is up:
+    -- what you just sold can reach that list a moment after the last event
+    -- about the sale, and the page stayed empty until you came back to it.
+    local seenN, seenFirst, look = -1, nil, 0
     ev:SetScript("OnUpdate", function(_, dt)
+        if win and win:IsShown() and M.tab == "buyback" then
+            look = look + dt
+            if look >= 0.5 then
+                look = 0
+                local n, first = buybackCount(), (buybackItem(1))
+                if secret(first) then first = nil end
+                if n ~= seenN or first ~= seenFirst then
+                    seenN, seenFirst = n, first
+                    dirty = true
+                end
+            end
+        end
         if not dirty then return end
         acc = acc + dt
         if acc < 0.1 then return end
