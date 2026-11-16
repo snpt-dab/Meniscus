@@ -334,8 +334,10 @@ local function buildNumbers()
                         local fa = 0.60 + 0.30 * q
                         f.warm:SetAlpha(fa); f.cool:SetAlpha(fa)
                         -- A burst of light behind it as it lands, gone in under half a second.
-                        local bq = f.age < 0.42 and (1 - f.age / 0.42) or 0
-                        f.burst:SetAlpha(0.60 * bq * bq)
+                        -- (Brighter than it was: full strength at the landing,
+                        -- and paler, nearer white, than the number's colour.)
+                        local bq = f.age < 0.48 and (1 - f.age / 0.48) or 0
+                        f.burst:SetAlpha(bq * bq)
                         local bs = SIZE * (3.2 + 2.2 * (1 - bq))
                         f.burst:SetSize(bs * 1.5, bs)
                     end
@@ -423,7 +425,7 @@ local function buildNumbers()
         f.back:SetShown(not small)
         spawned = spawned + 1
         local scale = crit and 1.55 or (small and 0.85 or 1)
-        f.burst:SetVertexColor(r, g, b, 1)
+        f.burst:SetVertexColor(r + (1 - r) * 0.45, g + (1 - g) * 0.45, b + (1 - b) * 0.45, 1)
         f.burst:SetAlpha(0)
         f.crit, f.scale = crit, scale
         -- A critical stays up most of a second longer than an ordinary
