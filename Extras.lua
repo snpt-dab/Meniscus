@@ -2826,8 +2826,91 @@ local function buildPole()
     end)
 end
 
+-- ── Tracking back on after you die ────────────────────────────────────────
+-- Dying drops your minimap tracking (Find Herbs, Find Minerals and the
+-- like). What you had on is remembered while you are alive, and switched
+-- back on a moment after you are (through the minimap's own tracking list,
+-- as its menu does). Only what a spell of yours tracks: the map's other
+-- filters aren't touched by dying. What was done is kept in
+-- MinimalUIDB.trackdiag.
+local function buildRetrack()
+    local M = C_Minimap
+    if not (M and M.GetNumTrackingTypes and M.GetTrackingInfo and M.SetTracking) then
+        if MinimalUIDB then MinimalUIDB.trackdiag = "this client has no tracking list for addons" end
+        return
+    end
+    local function info(i)
+        local ok, a, b, c, d = pcall(M.GetTrackingInfo, i)
+        if not ok then return nil end
+        if type(a) == "table" then return a.name, a.active, a.type end -- (newer clients: one table)
+        return a, c, d                                                  -- (older: name, texture, active, type)
+    end
+    local had = {} -- names of spell tracking that was on, last time you were seen alive
+    local function alive()
+        local ok, dead = pcall(UnitIsDeadOrGhost, "player")
+        return ok and not secret(dead) and not dead
+    end
+    local function note()
+        if not alive() then return end
+        local n = call(M.GetNumTrackingTypes)
+        if not num(n) then return end
+        wipe(had)
+        for i = 1, n do
+            local name, active, kind = info(i)
+            if type(name) == "string" and not secret(name) and not secret(active) and active and kind == "spell" then
+                had[#had + 1] = name
+            end
+        end
+    end
+    local function restore()
+        if EX.db.retrack == false or #had == 0 or not alive() then return end
+        local n = call(M.GetNumTrackingTypes)
+        if not num(n) then return end
+        local done = {}
+        for i = 1, n do
+            local name, active, kind = info(i)
+            if type(name) == "string" and not secret(name) and kind == "spell" and not secret(active) and not active then
+                for _, want in ipairs(had) do
+                    if want == name then
+                        local okS = pcall(M.SetTracking, i, true)
+                        done[#done + 1] = name .. (okS and "" or " (refused)")
+                    end
+                end
+            end
+        end
+        if MinimalUIDB then
+            MinimalUIDB.trackdiag = date("%H:%M:%S") .. " had " .. table.concat(had, ", ") .. "; switched on: "
+                .. (#done > 0 and table.concat(done, ", ") or "nothing needed")
+        end
+        if #done > 0 then ns:Print("Tracking back on: " .. table.concat(done, ", ") .. ".") end
+    end
+    local waiting = false
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "MINIMAP_UPDATE_TRACKING", "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_DEAD" then waiting = true return end
+        if e == "PLAYER_ALIVE" or e == "PLAYER_UNGHOST" then
+            if not waiting then return end
+            -- (PLAYER_ALIVE also comes when you release to a ghost: only once
+            -- you are really alive.)
+            C_Timer.After(1.5, function()
+                if not alive() then return end
+                waiting = false
+                pcall(restore)
+            end)
+            return
+        end
+        -- Tracking changed, or you logged in: what is on now, if you are
+        -- alive and not about to have it put back.
+        if not waiting then C_Timer.After(0.2, function() if not waiting then pcall(note) end end) end
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    pcall(buildRetrack)
     pcall(buildPole)
     if db.mirror ~= false then pcall(buildMirror) end
     if db.talentMark ~= false then pcall(buildTalentMark) end
