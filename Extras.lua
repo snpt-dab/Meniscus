@@ -2763,14 +2763,32 @@ local function buildPole()
         return fishName
     end
     local was, lastFish = nil, 0 -- { mh = link, oh = link } while the pole is ours
-    local function restore(why)
+    -- fight: a fight has just begun. The game lets weapons be changed in a
+    -- fight, so it is tried there and then. (It used to be skipped whenever
+    -- the game said "in combat", which it already does at that moment: you
+    -- were left fighting with the pole.) If the pole is still in hand a
+    -- second and a half later, the change was refused: what you held is
+    -- remembered again, and goes back the moment the fight is over.
+    local function restore(why, fight)
         if not was then return end
-        if InCombatLockdown() then return end
+        if InCombatLockdown() and not fight then return end
         local w = was
         was = nil
         if not isPole(inHand(MH)) then return end -- you changed it yourself
         if w.mh and equip then pcall(equip, w.mh, MH) end
-        if w.oh and equip then C_Timer.After(0.6, function() if not InCombatLockdown() then pcall(equip, w.oh, OH) end end) end
+        if w.oh and equip then C_Timer.After(0.6, function() if fight or not InCombatLockdown() then pcall(equip, w.oh, OH) end end) end
+        if fight then
+            C_Timer.After(1.5, function()
+                if isPole(inHand(MH)) then
+                    was = was or w
+                    was.fought = true
+                    if MinimalUIDB then MinimalUIDB.polediag = date("%H:%M:%S") .. " the weapon would not go on as the fight began; waiting for its end" end
+                else
+                    ns:Print("Fishing pole put away (a fight).")
+                end
+            end)
+            return
+        end
         ns:Print("Fishing pole put away" .. (why and (" (" .. why .. ")") or "") .. ".")
     end
     local function take(early)
@@ -2814,13 +2832,19 @@ local function buildPole()
     end
     local poleWord
     local ev = CreateFrame("Frame")
-    for _, e in ipairs({ "UI_ERROR_MESSAGE", "PLAYER_REGEN_DISABLED", "LOOT_OPENED" }) do pcall(ev.RegisterEvent, ev, e) end
+    for _, e in ipairs({ "UI_ERROR_MESSAGE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "LOOT_OPENED" }) do pcall(ev.RegisterEvent, ev, e) end
     for _, e in ipairs({ "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED" }) do
         pcall(ev.RegisterUnitEvent, ev, e, "player")
     end
     local lastTry = 0
     ev:SetScript("OnEvent", function(_, e, a1, a2, a3)
-        if e == "PLAYER_REGEN_DISABLED" then return restore("a fight") end
+        if e == "PLAYER_REGEN_DISABLED" then return restore("a fight", true) end
+        if e == "PLAYER_REGEN_ENABLED" then
+            -- (Only what a fight left undone: fishing on between fights is
+            -- not interrupted, since nothing is remembered then but the pole.)
+            if was and was.fought then restore("the fight is over") end
+            return
+        end
         if e == "LOOT_OPENED" then if was then lastFish = GetTime() end return end
         if e == "UI_ERROR_MESSAGE" then
             -- "Requires Fishing Pole", by the game's own word for the pole.
