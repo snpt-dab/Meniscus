@@ -429,9 +429,9 @@ function BK:Refresh()
     if BK.buySkin then
         local label = "Purchase"
         if num(tabCost) and tabCost > 0 then
-            local whole = tabCost
-            if whole % 10000 == 0 then label = label .. "  9483  " .. (money(whole):match("^(.-|t)") or money(whole))
-            else label = label .. "  9483  " .. money(whole) end
+            local cost = money(tabCost)
+            if tabCost % 10000 == 0 then cost = cost:match("^(.-|t)") or cost end
+            label = label .. "  \194\183  " .. cost
         end
         BK.buySkin.fs:SetText(label)
     end
