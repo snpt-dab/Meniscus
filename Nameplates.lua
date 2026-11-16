@@ -237,7 +237,8 @@ local function buildNumbers()
     --     drifts up and a little outward, like a spark leaving a fire;
     --   * a critical is larger, lands with a pop, and for a moment shows
     --     the lens fringe the Quick Buff pill has: a faint warm copy to one
-    --     side and a cool one to the other, closing in.
+    --     side and a cool one to the other, closing in to a narrow one
+    --     that stays, and shifts a little, while the number rises and fades.
     local SIZE = 20
     local function item()
         for i = 1, #items do if not items[i].live then return items[i] end end
@@ -312,11 +313,26 @@ local function buildNumbers()
                     end
                     f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
                     if f.crit then
-                        -- The fringe: apart at first, closing and fading in half a second.
+                        -- The fringe: wide apart as it lands, closing in under a
+                        -- second to a narrow one that it keeps for the rest of
+                        -- its life (it used to close fully and leave a plain
+                        -- number). At rest the split breathes a little, its
+                        -- lean turns slowly, and the two tints wander (red
+                        -- through amber and rose, blue through cyan and
+                        -- violet), as light does through a turning glass. It
+                        -- fades with the number.
                         local q = f.age < 0.9 and (1 - f.age / 0.9) or 0
-                        f.warm:SetPoint("CENTER", -5.5 * q, 1.0 * q)
-                        f.cool:SetPoint("CENTER", 5.5 * q, -1.0 * q)
-                        f.warm:SetAlpha(0.9 * q); f.cool:SetAlpha(0.9 * q)
+                        local a = f.age
+                        local pull = 5.5 * (0.36 + 0.64 * q) * (1 + 0.16 * (1 - q) * math.sin(a * 4.6))
+                        local lean = 0.18 + 0.42 * (1 - q) * math.sin(a * 1.9)
+                        local dx, dy = pull * math.cos(lean), pull * math.sin(lean)
+                        f.warm:SetPoint("CENTER", -dx, dy)
+                        f.cool:SetPoint("CENTER", dx, -dy)
+                        local w = (1 - q) * math.sin(a * 2.7)
+                        f.warm:SetTextColor(1.00, 0.45 + 0.22 * w, 0.40 - 0.18 * w)
+                        f.cool:SetTextColor(0.45 - 0.16 * w, 0.62 + 0.20 * w, 1.00)
+                        local fa = 0.60 + 0.30 * q
+                        f.warm:SetAlpha(fa); f.cool:SetAlpha(fa)
                         -- A burst of light behind it as it lands, gone in under half a second.
                         local bq = f.age < 0.42 and (1 - f.age / 0.42) or 0
                         f.burst:SetAlpha(0.60 * bq * bq)
