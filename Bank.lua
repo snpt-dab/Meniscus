@@ -422,10 +422,18 @@ function BK:Refresh()
     end
     if BK.PaintSlots then BK:PaintSlots() end
     win.bagLabel:SetShown(lastSlot ~= nil or (BK.adopted and BK.adopted > 0) or false)
-    win.buyCost:SetText((BK.buyX and num(tabCost)) and money(tabCost) or "")
-    if BK.buyX then
-        win.buyCost:ClearAllPoints()
-        win.buyCost:SetPoint("LEFT", win, "BOTTOMLEFT", BK.buyX, 18)
+    -- The price is said on the Purchase pill itself, round amounts without
+    -- their zeros. (It stood loose after the pill, and ran straight into
+    -- your own money beside it: two amounts read as one.)
+    win.buyCost:SetText("")
+    if BK.buySkin then
+        local label = "Purchase"
+        if num(tabCost) and tabCost > 0 then
+            local whole = tabCost
+            if whole % 10000 == 0 then label = label .. "  9483  " .. (money(whole):match("^(.-|t)") or money(whole))
+            else label = label .. "  9483  " .. money(whole) end
+        end
+        BK.buySkin.fs:SetText(label)
     end
     if slotCost then
         win.buySlot:SetLabel(num(slotCost) and ("Buy bag slot  ·  " .. money(slotCost)) or "Buy bag slot")
