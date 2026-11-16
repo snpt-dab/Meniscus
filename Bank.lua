@@ -463,6 +463,87 @@ function BK:Refresh()
     sh:SetSubtitle(role and (role .. "   ·   " .. slots) or slots)
 end
 
+-- ── Deposit what the bank already holds ───────────────────────────────────
+-- Every stack in your bags of an item the bank has some of goes in: onto a
+-- stack there with room for all of it, else into a free slot. One stack at a
+-- time, a moment apart (the game refuses a second move while the first is
+-- still locked). Which items count is settled when you click: what goes in
+-- doesn't pull more after it. Stops when the bank is full or closed.
+local depositing
+local function depositStep(want, tried, state)
+    if not win or not win:IsShown() or CursorHasItem() then return false end
+    local bankBags = BK:BankBags()
+    for bag = 0, (_G.NUM_BAG_SLOTS or 4) do
+        for slot = 1, numSlots(bag) do
+            local key = bag * 1000 + slot
+            local info = not tried[key] and itemInfo(bag, slot)
+            local id = info and info.itemID
+            if num(id) and want[id] then
+                if info.isLocked then return true end -- (still moving: next time)
+                tried[key] = true
+                local count = num(info.stackCount) and info.stackCount or 1
+                local max = C_Item and C_Item.GetItemMaxStackSizeByID and call(C_Item.GetItemMaxStackSizeByID, id)
+                local tb, ts
+                if num(max) and max > 1 then
+                    for _, bb in ipairs(bankBags) do
+                        for bs = 1, numSlots(bb) do
+                            local there = itemInfo(bb, bs)
+                            if there and there.itemID == id and not there.isLocked
+                                and num(there.stackCount) and there.stackCount + count <= max then
+                                tb, ts = bb, bs
+                                break
+                            end
+                        end
+                        if tb then break end
+                    end
+                end
+                if not tb then tb, ts = freeSlotIn(bankBags, true) end
+                if not tb then state.full = true return false end
+                call(CC.PickupContainerItem, bag, slot)
+                call(CC.PickupContainerItem, tb, ts)
+                if CursorHasItem() then ClearCursor() return false end -- (refused: leave it be)
+                state.moved = state.moved + 1
+                return true
+            end
+        end
+    end
+    return false
+end
+local function deposit()
+    if depositing or not win or not win:IsShown() then return end
+    if CursorHasItem() then ClearCursor() end
+    local want, any = {}, false
+    for _, bb in ipairs(BK:BankBags()) do
+        for bs = 1, numSlots(bb) do
+            local info = itemInfo(bb, bs)
+            if info and num(info.itemID) then want[info.itemID] = true; any = true end
+        end
+    end
+    if not any then ns:Print("Nothing in the bank yet to add to.") return end
+    local tried, state = {}, { moved = 0 }
+    local function finish()
+        depositing = nil
+        if state.moved > 0 then
+            ns:Print("Deposited " .. state.moved .. (state.moved == 1 and " stack" or " stacks")
+                .. (state.full and ", then the bank was full." or "."))
+        elseif state.full then
+            UIErrorsFrame:AddMessage("The bank is full.", 1, 0.1, 0.1)
+        else
+            ns:Print("Nothing in your bags that the bank already holds.")
+        end
+    end
+    if not depositStep(want, tried, state) then finish() return end
+    local steps = 0
+    depositing = C_Timer.NewTicker(0.2, function(self)
+        steps = steps + 1
+        local ok, more = pcall(depositStep, want, tried, state)
+        if not (ok and more) or steps > 400 then
+            self:Cancel()
+            finish()
+        end
+    end)
+end
+
 local function build()
     win = CreateFrame("Frame", "MinimalUIBank", UIParent)
     win:SetFrameStrata("HIGH")
@@ -520,7 +601,16 @@ local function build()
     box:SetScript("OnEditFocusLost", function(self) hint:SetShown((self:GetText() or "") == "") end)
     win.blizz = pill(win, "Blizzard bank", function() BK:ShowBlizzard(not BK.showBlizz) end)
     win.blizz:SetPoint("RIGHT", box, "LEFT", -8, 0)
-    win.shell:Lift(box, sort, win.blizz)
+    win.deposit = pill(win, "Deposit", deposit)
+    win.deposit:SetPoint("RIGHT", win.blizz, "LEFT", -8, 0)
+    win.deposit:HookScript("OnEnter", function(self)
+        ns.TipAnchor(self)
+        GameTooltip:SetText("Deposit", 1, 1, 1)
+        GameTooltip:AddLine("Moves from your bags every item the bank already has some of.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    win.deposit:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    win.shell:Lift(box, sort, win.blizz, win.deposit)
 
     local line = win:CreateTexture(nil, "BORDER")
     line:SetColorTexture(T.border[1], T.border[2], T.border[3], 0.8)
