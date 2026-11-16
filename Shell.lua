@@ -136,6 +136,14 @@ function ns:CreateShell(win, opts)
     local chipText = text(chip, 10, true)
     chipText:SetPoint("CENTER")
     chip:Hide()
+    -- How far above the band's bottom edge the chip's midline is (nil until
+    -- the band has been laid out): for controls on the band that should sit
+    -- level with the chip.
+    function S:ChipMid()
+        local _, cy = chip:GetCenter()
+        local by = band:GetBottom()
+        if cy and by then return cy - by end
+    end
 
     local close = CreateFrame("Button", nil, band)
     close:SetSize(22, 22)

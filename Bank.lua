@@ -460,6 +460,10 @@ function BK:Refresh()
     end
     local slots = string.format("%d of %d slots free", free, total)
     sh:SetSubtitle(role and (role .. "   ·   " .. slots) or slots)
+    if win.levelRow then
+        win.levelRow()
+        C_Timer.After(0, win.levelRow)
+    end
 end
 
 -- ── Deposit what the bank already holds ───────────────────────────────────
@@ -574,12 +578,23 @@ local function build()
     if sortFn then
         sort = pill(win, "Sort", function() call(sortFn) end)
         sort:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", -14, 14)
+        win.sort = sort
     end
     local box = CreateFrame("EditBox", nil, win)
     box:SetAutoFocus(false)
     box:SetSize(130, 22)
     if sort then box:SetPoint("RIGHT", sort, "LEFT", -8, 0)
     else box:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", -14, 14) end
+    -- The row of controls sits level with the chip ("Friendly") on the
+    -- left: its midline is measured once the header is laid out, and the
+    -- row's rightmost control (the others hang off it) moved to match.
+    win.levelRow = function()
+        local mid = win.shell.ChipMid and win.shell:ChipMid()
+        if not mid then return end
+        local lead = sort or box
+        lead:ClearAllPoints()
+        lead:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", -14, mid - 11)
+    end
     box:SetTextInsets(10, 10, 0, 0)
     ns:SetFont(box, 11, "")
     box:SetTextColor(unpack(T.text))
