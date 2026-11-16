@@ -841,6 +841,7 @@ local function buildNumbers()
     local lastLine, lineCount = -99, 0
     local lineTimes, claimTimes = {}, {} -- when lines came, and when a hit took one (the last dozen of each)
     local twinKey, twinAt
+    local threatWorks = false -- the game has answered "is it fighting you?" at least once
     -- One line taken for a hit: the oldest still good.
     local function takeLine(now)
         while logLines[1] and logLines[1] < now do table.remove(logLines, 1) end
@@ -1069,6 +1070,7 @@ local function buildNumbers()
                 if not grouped and action ~= "HEAL" and UnitThreatSituation then
                     local okT, t = pcall(UnitThreatSituation, "player", unit)
                     onMe = okT and t ~= nil and not secret(t)
+                    if onMe then threatWorks = true end
                     if MinimalUIDB and not MinimalUIDB.threatdiag then
                         MinimalUIDB.threatdiag = "first asked: ok=" .. tostring(okT) .. " hidden=" .. tostring(secret(t)) .. " value=" .. (secret(t) and "?" or tostring(t))
                     end
@@ -1076,6 +1078,16 @@ local function buildNumbers()
                 if grouped and not (own or pet) then
                     mineHit = false
                     why = "in a group, and no sign it was yours"
+                elseif threatWorks and not grouped and action ~= "HEAL" and not onMe and not (own or pet) then
+                    -- On your own, an enemy that is not fighting you, and
+                    -- nothing of yours aimed at it: somebody else's fight.
+                    -- (A mage's missiles on a mob nearby were shown: a log
+                    -- line of yours, left over from a hit already shown by
+                    -- another rule, was spent on them.) Your opening blow,
+                    -- before the enemy has turned on you, still passes: it
+                    -- is on your target and follows a cast or swing.
+                    mineHit = false
+                    why = "not fighting you, and no sign it was yours"
                 elseif onMe then
                     if action == "WOUND" and not (twinKey == key and twinAt == now) then
                         takeLine(now)
