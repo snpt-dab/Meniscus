@@ -347,7 +347,8 @@ local function markStats(tip)
                 -- "+47 Armor", "-2 Stamina", "65 Armor" (colour codes kept).
                 local plain = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
                 local stat = plain:match("^[+-]?[%d,%.]+%s+(.+)$")
-                local mark = stat and ns.StatMarkByName(stat, 14)
+                -- (No drop: beside tooltip text the usual two pixels down sat it low.)
+                local mark = stat and ns.StatMarkByName(stat, 14, 0)
                 if mark then
                     -- The emblem stands for the word: "65 Armor" becomes
                     -- the shield and "65". (Cut from the game's own text,
