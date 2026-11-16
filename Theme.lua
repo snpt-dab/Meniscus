@@ -459,20 +459,21 @@ local STAT_MARK = {
     RESISTANCE5_NAME = { "stat_shadow", SC[32][1], SC[32][2], SC[32][3] },
     RESISTANCE6_NAME = { "stat_arcane", SC[64][1], SC[64][2], SC[64][3] },
 }
-function ns.StatMark(key, size)
+function ns.StatMark(key, size, dy)
     local m = STAT_MARK[key]
     if not m then return nil end
     size = size or 16
+    dy = dy or -2
     -- (Drawn larger than the text and dropped a little: the emblem only
     -- fills the middle two thirds of its square, so at the text's own size
     -- it looked small and sat high on the line.)
-    return string.format("|TInterface/AddOns/Meniscus/Media/micro_%s.tga:%d:%d:0:-2:32:32:0:32:0:32:%d:%d:%d|t",
-        m[1], size, size, math.floor(m[2] * 255), math.floor(m[3] * 255), math.floor(m[4] * 255))
+    return string.format("|TInterface/AddOns/Meniscus/Media/micro_%s.tga:%d:%d:0:%d:32:32:0:32:0:32:%d:%d:%d|t",
+        m[1], size, size, dy, math.floor(m[2] * 255), math.floor(m[3] * 255), math.floor(m[4] * 255))
 end
 -- The same emblem, asked for by the stat's name as the game writes it
 -- ("Stamina", "Armor"): for marking up lines the game wrote.
 local markByName
-function ns.StatMarkByName(name, size)
+function ns.StatMarkByName(name, size, dy)
     if not markByName then
         markByName = {}
         for key in pairs(STAT_MARK) do
@@ -487,7 +488,7 @@ function ns.StatMarkByName(name, size)
         end
     end
     local key = type(name) == "string" and markByName[name:lower()]
-    return key and ns.StatMark(key, size) or nil
+    return key and ns.StatMark(key, size, dy) or nil
 end
 -- A coin, as text markup: a small flat disc in gold, silver or copper.
 ns.COIN = {
