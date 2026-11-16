@@ -1828,3 +1828,74 @@ do
         end)
     end)
 end
+
+-- ── Ping probe ────────────────────────────────────────────────────────────
+-- The stock player frame's health and mana bars take a ping and say your
+-- health and mana in chat. Which mixin and attributes make them do that is
+-- not known: this writes down every ping-related global, what C_Ping has,
+-- and every piece of the stock player frame that says it can take a ping
+-- (MinimalUIDB.pingprobe, five seconds after login).
+do
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_LOGIN")
+    ev:SetScript("OnEvent", function()
+        C_Timer.After(5, function()
+            if not MinimalUIDB then return end
+            local out = {}
+            MinimalUIDB.pingprobe = out
+            local function add(t) if #out < 160 then out[#out + 1] = t end end
+            local function keys(t, onlyFn)
+                local ks = {}
+                for k, v in pairs(t) do
+                    if type(k) == "string" and (not onlyFn or type(v) == "function") then
+                        ks[#ks + 1] = k .. (type(v) ~= "function" and ("=" .. tostring(v)) or "")
+                    end
+                end
+                table.sort(ks)
+                return table.concat(ks, ", ")
+            end
+            for k, v in pairs(_G) do
+                if type(k) == "string" and k:find("Ping") and type(v) == "table" and not k:find("^C_") then
+                    local okK, list = pcall(keys, v)
+                    add("GLOBAL " .. k .. ": " .. (okK and list:sub(1, 500) or "?"))
+                end
+            end
+            if C_Ping then add("C_Ping: " .. keys(C_Ping, true)) end
+            if Enum then
+                for k, v in pairs(Enum) do
+                    if type(k) == "string" and k:find("Ping") and type(v) == "table" then add("Enum." .. k .. ": " .. keys(v)) end
+                end
+            end
+            local PING_FN = { "GetTargetPingGUID", "GetContextualPingType", "GetPingableType", "GetIsPingable", "GetPingText",
+                              "GetTargetPingText", "OnPinged", "GetPingMessage" }
+            local function walk(f, path, depth)
+                if depth > 7 or not f or (f.IsForbidden and f:IsForbidden()) then return end
+                local okA, recv = pcall(f.GetAttribute, f, "ping-receiver")
+                local has = {}
+                for _, n in ipairs(PING_FN) do if type(f[n]) == "function" then has[#has + 1] = n end end
+                for k, v in pairs(f) do
+                    if type(k) == "string" and k:lower():find("ping") then has[#has + 1] = k .. ":" .. type(v) end
+                end
+                if (okA and recv) or #has > 0 then
+                    local attrs = {}
+                    for _, a in ipairs({ "ping-receiver", "ping-type", "pingtype", "ping-subject", "unit", "ping-text" }) do
+                        local okB, v = pcall(f.GetAttribute, f, a)
+                        if okB and v ~= nil then attrs[#attrs + 1] = a .. "=" .. tostring(v) end
+                    end
+                    add("FRAME " .. path .. " [" .. tostring(f:GetObjectType()) .. "] attrs{" .. table.concat(attrs, " ")
+                        .. "} has{" .. table.concat(has, ", ") .. "}")
+                end
+                for k, v in pairs(f) do
+                    if type(k) == "string" and type(v) == "table" and v ~= f and rawget(v, 0) and v.GetObjectType
+                        and k ~= "parent" and not k:find("^__") then
+                        local okP, par = pcall(v.GetParent, v)
+                        if okP and par == f then walk(v, path .. "." .. k, depth + 1) end
+                    end
+                end
+            end
+            pcall(walk, _G.PlayerFrame, "PlayerFrame", 0)
+            pcall(walk, _G.PetFrame, "PetFrame", 0)
+            pcall(walk, _G.TargetFrame, "TargetFrame", 0)
+        end)
+    end)
+end

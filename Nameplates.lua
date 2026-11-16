@@ -991,7 +991,18 @@ local function buildNumbers()
                 local own = yoursOnly(unit, key, action, now)
                 local pet = (not own) and action ~= "HEAL" and pets(unit, now) or false
                 dropStale(now)
-                if twinKey == key and twinAt == now then
+                -- In a group a log line alone is not enough. Your heals and
+                -- their ticks write lines too, and each one was spent on the
+                -- next blow anyone landed: a healer saw the whole party's
+                -- numbers without attacking. There, a hit also has to look
+                -- like yours by the old signs (a cast, your swing, your dot,
+                -- your pet's).
+                local grouped = IsInGroup and IsInGroup()
+                if secret(grouped) then grouped = false end
+                if grouped and not (own or pet) then
+                    mineHit = false
+                    why = "in a group, and no sign it was yours"
+                elseif twinKey == key and twinAt == now then
                     -- The same enemy, the same instant as a hit just shown:
                     -- one blow reported as two (Heroic Strike and its empty
                     -- swing), with one log line between them.
