@@ -349,6 +349,11 @@ local function markStats(tip)
                 local stat = plain:match("^[+-]?[%d,%.]+%s+(.+)$")
                 local mark = stat and ns.StatMarkByName(stat, 14)
                 if mark then
+                    -- The emblem stands for the word: "65 Armor" becomes
+                    -- the shield and "65". (Cut from the game's own text,
+                    -- so its colours stay.)
+                    local at = text:find(stat, 1, true)
+                    if at then text = (text:sub(1, at - 1):gsub("%s+$", "")) .. text:sub(at + #stat) end
                     fs:SetText(mark .. " " .. text)
                     changed = true
                 end
@@ -359,11 +364,8 @@ local function markStats(tip)
 end
 
 local function onItem(tip)
-    local ok, _, link = pcall(tip.GetItem, tip)
-    if not ok or not link or issecretvalue(link) then return end
-    local q = C_Item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(link)
-    local c = q and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
-    if c and q > 1 then setBorder(tip, c.r, c.g, c.b) end
+    -- (First, and whatever follows: the "Equipped" comparison tooltips
+    -- can't say which item they hold, and gave up below before this ran.)
     pcall(markStats, tip)
     -- (The comparison's gains and losses are written after this: once more
     -- on the next frame, and the tooltip laid out again if that changed it.)
@@ -372,6 +374,11 @@ local function onItem(tip)
         local okM, did = pcall(markStats, tip)
         if okM and did then pcall(tip.Show, tip) end
     end)
+    local ok, _, link = pcall(tip.GetItem, tip)
+    if not ok or not link or issecretvalue(link) then return end
+    local q = C_Item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(link)
+    local c = q and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+    if c and q > 1 then setBorder(tip, c.r, c.g, c.b) end
 end
 
 -- Default tooltip position: with the console's wings up, tucked into the
@@ -406,7 +413,20 @@ function TT:OnInit(db)
     for _, name in ipairs(TIPS) do
         local tip = _G[name]
         if tip then
-            tip:HookScript("OnShow", function(self) style(self); zero(self.NineSlice) end)
+            tip:HookScript("OnShow", function(self)
+                style(self); zero(self.NineSlice)
+                if name:find("^ShoppingTooltip") and not self.__menMarking then
+                    C_Timer.After(0, function()
+                        if not self:IsShown() then return end
+                        local okM, did = pcall(markStats, self)
+                        if okM and did then
+                            self.__menMarking = true
+                            pcall(self.Show, self)
+                            self.__menMarking = nil
+                        end
+                    end)
+                end
+            end)
             pcall(tip.HookScript, tip, "OnTooltipCleared", function(self)
                 setBorder(self, unpack(T.border))
             end)
