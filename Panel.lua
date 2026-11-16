@@ -448,6 +448,10 @@ local PAGES = {
     } },
     { key = "auras", title = "Buffs", groups = {
         { title = "Your buffs", items = {
+            { "Recast ring for seals and shouts", kind = "switch",
+              note = "A draining ring where Quick Buff sits; red when nearly out",
+              get = function() return ns.modules.QuickBuff.db.recast ~= false end,
+              set = function() local d = ns.modules.QuickBuff.db; d.recast = d.recast == false end },
             { "Pin the game's buff frames into the layout", kind = "switch", note = "Turning it off needs a reload",
               get = function() return ns.modules.Auras.db.attachBlizz end,
               set = function() cmd("buffs", "attach") end },
@@ -847,6 +851,7 @@ local KEYS = {
     ["Turn on action bars 2 and 3 for a new character"] = "action bar two three extra bars enable show bottom left right multibar",
     ["In combat: the console's top edge turns red"] = "combat indicator in combat fighting status swords out of combat edge line",
     ["Sale value on loot pills"] = "vendor price worth coin gold silver copper loot pill junk grey white sell",
+    ["Recast ring for seals and shouts"] = "seal battle shout timer duration recast reapply refresh buff ring slice dice shield",
     ["Damage type beside the number"] = "school fire frost shadow nature arcane holy physical icon floating combat text",
     ["What you take, on the health orb"] = "incoming hits dodge parry block floating text",
     ["Aggro ring on the health orb"] = "threat pull tank warning",
