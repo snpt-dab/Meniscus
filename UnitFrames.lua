@@ -760,9 +760,10 @@ local function create(unit, label, cfg)
     f.unit, f.realUnit, f.key = unit, unit, label:lower()
     f:SetSize(s.W, s.H + s.GAP + s.PH)
     f:SetAttribute("unit", unit)
-    -- Party frames: the member's tooltip under the pointer, the same one
-    -- (and in the same place) as pointing at them in the world.
-    if cfg.size == "party" then
+    -- Target, party and the other frames (not your own): the unit's tooltip
+    -- when you point at the frame, the same one (and in the same place) as
+    -- pointing at them in the world.
+    if unit ~= "player" then
         f:HookScript("OnEnter", function(self)
             if UF.db and UF.db.partyTip == false then return end
             if not UnitExists(self.unit) then return end
