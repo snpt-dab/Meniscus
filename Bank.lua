@@ -119,8 +119,9 @@ local function money(c)
     local g, s, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
     local parts = {}
     if g > 0 then table.insert(parts, g .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t") end
-    if g > 0 or s > 0 then table.insert(parts, s .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:184:188:198|t") end
-    table.insert(parts, cp .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:201:138:82|t")
+    -- (Empty silver and copper are left off: a gold is "1", not "1 0 0".)
+    if s > 0 then table.insert(parts, s .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:184:188:198|t") end
+    if cp > 0 or #parts == 0 then table.insert(parts, cp .. "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:201:138:82|t") end
     return table.concat(parts, " ")
 end
 
@@ -429,9 +430,7 @@ function BK:Refresh()
     if BK.buySkin then
         local label = "Purchase"
         if num(tabCost) and tabCost > 0 then
-            local cost = money(tabCost)
-            if tabCost % 10000 == 0 then cost = cost:match("^(.-|t)") or cost end
-            label = label .. "  \194\183  " .. cost
+            label = label .. "  \194\183  " .. money(tabCost)
         end
         BK.buySkin.fs:SetText(label)
     end
