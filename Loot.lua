@@ -592,8 +592,11 @@ local function floatSkill(msg)
     floatRail = "right"
     -- (A weapon or defence skill at its ceiling for your level: the arrow
     -- up against a line, not the plain arrow.)
+    -- (And says so, after the number: the gold alone doesn't explain itself.)
+    local shown = level and tostring(level) or nil
+    if shown and gold and not icon then shown = shown .. "  \194\183  max for your level" end
     local ok, f = pcall(floatPill, icon or (MEDIA .. (gold and "micro_cap.tga" or "micro_up.tga")), name, 1, 1, 1,
-        level and tostring(level) or nil, r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
+        shown, r, g, b, r * 0.16 + 0.03, g * 0.16 + 0.03, b * 0.16 + 0.03)
     if not (ok and f) then return end
     if not icon then
         f.icon:SetTexCoord(0, 1, 0, 1)
