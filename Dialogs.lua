@@ -492,7 +492,17 @@ local function rewardCards(list)
     end
 
     local cards = {}
+    local lastKind
     for _, it in ipairs(list) do
+        -- Where the ones you pick from end and the ones you get whatever
+        -- you pick begin: a heading of their own. (They were one list under
+        -- "choose one", with nothing to say why only the first few could be
+        -- selected.)
+        if lastKind == "choice" and it.kind == "reward" then
+            y = y - 6
+            section("You also receive")
+        end
+        lastKind = it.kind
         local t = take("rcard2", function()
             local f = CreateFrame("Button", nil, content)
             f.ring = ns.RoundedRect(f, -8, 0, 12, T.border[1], T.border[2], T.border[3], 1)
@@ -941,7 +951,12 @@ local function rewardsSection(includeChoices)
     -- Many rewards, or a page that would outgrow the screen: rewards go in
     -- a column of their own beside the text, so neither has to scroll.
     if #list > 0 and (#list >= 4 or (-y + #list * 66 + 70) > maxBodyH()) then sideBySide() end
-    section(choices > 1 and "Rewards  ·  choose one" or "Rewards")
+    local fixed = #list - choices
+    if choices > 1 and fixed > 0 then
+        section("Choose one of these")
+    else
+        section(choices > 1 and "Rewards  ·  choose one" or "Rewards")
+    end
     if #list > 0 then rewardCards(list) end
     moneyLine(money, xp)
     return choices
