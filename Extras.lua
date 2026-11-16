@@ -2122,13 +2122,31 @@ local function profSpells(out)
         if not index then return end
         local name, _, _, _, numSpells, offset = call(GetProfessionInfo, index)
         if type(name) ~= "string" or not num(numSpells) or not num(offset) then return end
+        -- Camping is left out: the whole profession when that is its name,
+        -- and its buttons (a tent, a camp) wherever the client files them.
+        -- A cook's "Basic Campfire" stays. What each profession listed is
+        -- kept in MinimalUIDB.profdiag, in case one slips through.
+        local diag
+        if MinimalUIDB then
+            MinimalUIDB.profdiag = MinimalUIDB.profdiag or {}
+            diag = {}
+            MinimalUIDB.profdiag[secret(name) and "?" or name] = diag
+        end
+        local camping = not secret(name) and name:lower():find("camp", 1, true) ~= nil
         for i = 1, numSpells do
             local info = call(SBk.GetSpellBookItemInfo, offset + i, bank)
             local id = type(info) == "table" and (info.spellID or info.actionID)
             -- (Find Herbs, Find Minerals...: there unless switched off.)
             local tracking = type(info) == "table" and type(info.name) == "string" and not secret(info.name)
                 and info.name:find("^Find ") ~= nil
-            if num(id) and not info.isPassive and not seen[id] and not (tracking and EX.db and EX.db.profTrack == false) then
+            local sname = type(info) == "table" and type(info.name) == "string" and not secret(info.name) and info.name or nil
+            local camp = camping
+            if sname and not camp then
+                local low = sname:lower()
+                camp = low:find("tent", 1, true) ~= nil or (low:find("camp", 1, true) ~= nil and not low:find("campfire", 1, true))
+            end
+            if diag then diag[#diag + 1] = tostring(sname) .. (camp and "  (left out: camping)" or "") end
+            if num(id) and not info.isPassive and not seen[id] and not camp and not (tracking and EX.db and EX.db.profTrack == false) then
                 seen[id] = true
                 out[#out + 1] = id
             end
