@@ -469,6 +469,26 @@ function ns.StatMark(key, size)
     return string.format("|TInterface/AddOns/Meniscus/Media/micro_%s.tga:%d:%d:0:-2:32:32:0:32:0:32:%d:%d:%d|t",
         m[1], size, size, math.floor(m[2] * 255), math.floor(m[3] * 255), math.floor(m[4] * 255))
 end
+-- The same emblem, asked for by the stat's name as the game writes it
+-- ("Stamina", "Armor"): for marking up lines the game wrote.
+local markByName
+function ns.StatMarkByName(name, size)
+    if not markByName then
+        markByName = {}
+        for key in pairs(STAT_MARK) do
+            local word = _G[key]
+            if type(word) == "string" and word ~= "" then markByName[word:lower()] = key end
+        end
+        -- (Their plain English names too, should a global be missing.)
+        for word, key in pairs({ strength = "ITEM_MOD_STRENGTH_SHORT", agility = "ITEM_MOD_AGILITY_SHORT",
+                                 stamina = "ITEM_MOD_STAMINA_SHORT", intellect = "ITEM_MOD_INTELLECT_SHORT",
+                                 spirit = "ITEM_MOD_SPIRIT_SHORT", armor = "RESISTANCE0_NAME" }) do
+            if not markByName[word] and STAT_MARK[key] then markByName[word] = key end
+        end
+    end
+    local key = type(name) == "string" and markByName[name:lower()]
+    return key and ns.StatMark(key, size) or nil
+end
 -- A coin, as text markup: a small flat disc in gold, silver or copper.
 ns.COIN = {
     g = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t",

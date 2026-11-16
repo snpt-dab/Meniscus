@@ -711,6 +711,10 @@ local PAGES = {
         } },
         { title = "Restyled Blizzard parts", items = {
             moduleSwitch("Tooltips", "Tooltip"),
+            { "Stat emblems in item tooltips", kind = "switch",
+              note = "Our emblems before Armor, Stamina and the rest",
+              get = function() return ns.modules.Tooltip.db.statMarks ~= false end,
+              set = function() local d = ns.modules.Tooltip.db; d.statMarks = d.statMarks == false end },
             { "Icons on player tooltips", kind = "dropdown",
               note = "Level, race, class and faction on one line",
               options = function() return { { key = "ours", label = "Meniscus emblems" },
@@ -852,6 +856,7 @@ local KEYS = {
     ["In combat: the console's top edge turns red"] = "combat indicator in combat fighting status swords out of combat edge line",
     ["Sale value on loot pills"] = "vendor price worth coin gold silver copper loot pill junk grey white sell",
     ["Recast ring for seals and shouts"] = "seal battle shout timer duration recast reapply refresh buff ring slice dice shield",
+    ["Stat emblems in item tooltips"] = "icon stat armor stamina strength agility intellect spirit tooltip compare comparison item",
     ["Damage type beside the number"] = "school fire frost shadow nature arcane holy physical icon floating combat text",
     ["What you take, on the health orb"] = "incoming hits dodge parry block floating text",
     ["Aggro ring on the health orb"] = "threat pull tank warning",
