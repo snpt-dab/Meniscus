@@ -649,6 +649,53 @@ local function buildPetFood()
         show()
         apply()
     end
+    -- The pet is less than happy (Content or Unhappy): a gold wash breathes
+    -- over the button, out of combat, until it is fed. The mood is a hidden
+    -- value: nothing here can read it, so the ring is always there and
+    -- breathing, and its opacity is what the game works out from the mood
+    -- through a curve (1 below "happy", 0 from there up), the way the mood
+    -- word on the pet's name pill is done.
+    local nag = CreateFrame("Frame", nil, btn)
+    nag:SetAllPoints()
+    nag:SetFrameLevel(btn:GetFrameLevel() + 2)
+    local nagPaint = ns.RoundedRect(nag, -6, -2, 10, 0.95, 0.78, 0.36, 0, "OVERLAY")
+    local nagAnim = nag:CreateAnimationGroup()
+    nagAnim:SetLooping("BOUNCE")
+    local na = nagAnim:CreateAnimation("Alpha")
+    na:SetFromAlpha(1); na:SetToAlpha(0.25); na:SetDuration(0.9); na:SetSmoothing("IN_OUT")
+    local needCurve
+    local function nagNow()
+        if InCombatLockdown() or not (ns.PetMoodPct and C_CurveUtil and C_CurveUtil.CreateCurve) then
+            nag:Hide()
+            return
+        end
+        if needCurve == nil then
+            needCurve = false
+            local okC, c = pcall(C_CurveUtil.CreateCurve)
+            if okC and c and pcall(function()
+                -- (0.3, not 1: it is a wash of gold over the button, and
+                -- at full strength would hide the count under it.)
+                c:AddPoint(0, 0.3); c:AddPoint(0.664, 0.3); c:AddPoint(0.666, 0); c:AddPoint(1, 0)
+            end) then needCurve = c end
+        end
+        if not needCurve then return nag:Hide() end
+        local okP, a = pcall(ns.PetMoodPct, needCurve)
+        if okP and a ~= nil and pcall(nagPaint, 0.95, 0.78, 0.36, a) then
+            nag:Show()
+            if not nagAnim:IsPlaying() then nagAnim:Play() end
+        else
+            nag:Hide()
+        end
+    end
+    local nev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD" }) do pcall(nev.RegisterEvent, nev, e) end
+    pcall(nev.RegisterUnitEvent, nev, "UNIT_PET", "player")
+    pcall(nev.RegisterUnitEvent, nev, "UNIT_POWER_UPDATE", "pet")
+    nev:SetScript("OnEvent", function(_, e, _, token)
+        if e == "UNIT_POWER_UPDATE" and type(token) == "string" and token ~= "HAPPINESS" then return end
+        if e == "PLAYER_REGEN_DISABLED" then nag:Hide() return end
+        C_Timer.After(0.2, function() pcall(nagNow) end)
+    end)
     btn:SetScript("PreClick", function() if best then ns.lastFed, ns.lastFedAt = best, GetTime() end end)
     btn:SetScript("OnEnter", function(self)
         ring(unpack(T.accent))

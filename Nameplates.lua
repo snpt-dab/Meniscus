@@ -333,6 +333,7 @@ local function buildNumbers()
     -- ("restricted region"), only anchored to: so the number is hung on it.
     local showUnit -- (the unit the hit being shown is on; set by the event below)
     local WIDE_ORDER = { 0, 2, -2, 1, -1, 3, -3 }
+    local zeroCurve, zeroBack
     local function show(rel, x, y, value, r, g, b, crit, small, kind)
         local f = item()
         if not f then return end
@@ -349,6 +350,47 @@ local function buildNumbers()
         else
             f.kind:Hide()
         end
+        -- A hit for nothing hides itself. In a fight the amounts are hidden
+        -- values: they can be shown but not looked at, so "is it zero?"
+        -- can't be asked here. The game can be asked to run the amount
+        -- through a curve, though (0 gives 0, 1 or more gives 1), and what
+        -- comes back, hidden too, is used as the opacity of the number's
+        -- colour, its dark patch and its emblem. (Colour opacity is the one
+        -- place a hidden opacity is known to be drawn: the pet's mood word
+        -- works that way.) This is how the "0" beside every Heroic Strike
+        -- goes: the game reports that as two hits at once, the strike and
+        -- an empty swing.
+        local seen = nil -- the opacity to draw with, when it could be had
+        if secret(value) then
+            if zeroCurve == nil then
+                zeroCurve, zeroBack = false, false
+                if C_CurveUtil and C_CurveUtil.CreateCurve then
+                    local okC, c = pcall(C_CurveUtil.CreateCurve)
+                    if okC and c and pcall(function() c:AddPoint(0, 0); c:AddPoint(0.5, 0); c:AddPoint(1, 1) end) then zeroCurve = c end
+                    local okB, cb = pcall(C_CurveUtil.CreateCurve)
+                    if okB and cb and pcall(function() cb:AddPoint(0, 0); cb:AddPoint(0.5, 0); cb:AddPoint(1, 0.42) end) then zeroBack = cb end
+                end
+            end
+            local how = "no curve"
+            if zeroCurve then
+                local okE, a = pcall(zeroCurve.Evaluate, zeroCurve, value)
+                if okE and a ~= nil then
+                    seen = a
+                    how = "curve gave an opacity"
+                    local okB, ab = false, nil
+                    if zeroBack then okB, ab = pcall(zeroBack.Evaluate, zeroBack, value) end
+                    if not (okB and ab ~= nil and pcall(f.back.SetVertexColor, f.back, 0, 0, 0, ab)) then f.back:SetVertexColor(0, 0, 0, 0.42) end
+                    if kind and not pcall(f.kind.SetVertexColor, f.kind, r, g, b, a) then f.kind:SetVertexColor(r, g, b, 1) end
+                else
+                    how = "the curve would not take a hidden amount: " .. tostring(a):sub(1, 80)
+                    f.back:SetVertexColor(0, 0, 0, 0.42)
+                end
+            end
+            if MinimalUIDB and MinimalUIDB.zerodiag ~= how then MinimalUIDB.zerodiag = how end
+        else
+            f.back:SetVertexColor(0, 0, 0, 0.42)
+        end
+        f.zeroSeen = seen
         -- (A hidden amount goes straight in; nothing is done with it here.)
         local ok = pcall(f.fs.SetText, f.fs, value)
         if MinimalUIDB and not MinimalUIDB.ctdiag then
@@ -391,7 +433,7 @@ local function buildNumbers()
             f.drift = lane * 9
             f.y = y + ((spawned % 2 == 0) and 0 or 16)
         end
-        f.fs:SetTextColor(r, g, b)
+        if f.zeroSeen == nil or not pcall(f.fs.SetTextColor, f.fs, r, g, b, f.zeroSeen) then f.fs:SetTextColor(r, g, b, 1) end
         f.age, f.live = 0, true
         f:SetAlpha(1)
         f:ClearAllPoints()
@@ -741,6 +783,7 @@ local function buildNumbers()
     local logHeard = false
     local lastLine, lineCount = -99, 0
     local lineTimes, claimTimes = {}, {} -- when lines came, and when a hit took one (the last dozen of each)
+    local twinKey, twinAt
     -- One line taken for a hit: the oldest still good.
     local function takeLine(now)
         while logLines[1] and logLines[1] < now do table.remove(logLines, 1) end
@@ -848,6 +891,15 @@ local function buildNumbers()
                     if #claimTimes > 12 then table.remove(claimTimes, 1) end
                     note("  its log line came: shown")
                     present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.school, false, h.pet)
+                    -- (And its twin, if it had one waiting: see "twin".)
+                    for i = #held, 1, -1 do
+                        local o = held[i]
+                        if o.t == h.t and o.key == h.key then
+                            table.remove(held, i)
+                            note("  and its twin")
+                            present(o.unit, o.rel, o.x, o.y, o.action, o.indicator, o.amount, o.school, false, o.pet)
+                        end
+                    end
                     return
                 end
                 -- (Never two with the same stamp: the kill's line is known by it.)
@@ -939,8 +991,15 @@ local function buildNumbers()
                 local own = yoursOnly(unit, key, action, now)
                 local pet = (not own) and action ~= "HEAL" and pets(unit, now) or false
                 dropStale(now)
-                if takeLine(now) then
+                if twinKey == key and twinAt == now then
+                    -- The same enemy, the same instant as a hit just shown:
+                    -- one blow reported as two (Heroic Strike and its empty
+                    -- swing), with one log line between them.
                     mineHit, byPet = true, pet
+                    why = "twin of the hit before"
+                elseif takeLine(now) then
+                    mineHit, byPet = true, pet
+                    twinKey, twinAt = key, now
                     why = pet and "log line, pet's" or "log line"
                 elseif (own or pet) and now - lastLine > 3 then
                     -- No lines have come for a while (in the first test of
@@ -951,7 +1010,7 @@ local function buildNumbers()
                 else
                     -- No line yet: it may be a frame behind. Kept a moment.
                     local h = { t = now, unit = unit, rel = rel, x = x, y = y, action = action, indicator = indicator,
-                                amount = amount, school = school, pet = pet }
+                                amount = amount, school = school, pet = pet, key = key }
                     held[#held + 1] = h
                     if #held > 8 then table.remove(held, 1) end
                     mineHit = false

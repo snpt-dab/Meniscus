@@ -574,6 +574,10 @@ local PAGES = {
     } },
     { key = "bags", title = "Bags and loot", groups = {
         { title = "Bags", items = {
+            { "Sale value on loot pills", kind = "switch",
+              note = "For grey and white items: what the stack sells for",
+              get = function() return ns.modules.Loot.db.lootWorth ~= false end,
+              set = function() local d = ns.modules.Loot.db; d.lootWorth = d.lootWorth == false end },
             moduleSwitch("Meniscus bags", "Bags"),
             moduleSwitch("Meniscus bank", "Bank"),
             { "Layout", kind = "dropdown", reload = true,
@@ -842,6 +846,7 @@ local KEYS = {
     ["My pet's hits"] = "pet minion demon hunter warlock floating combat text damage paw",
     ["Turn on action bars 2 and 3 for a new character"] = "action bar two three extra bars enable show bottom left right multibar",
     ["In combat: the console's top edge turns red"] = "combat indicator in combat fighting status swords out of combat edge line",
+    ["Sale value on loot pills"] = "vendor price worth coin gold silver copper loot pill junk grey white sell",
     ["Damage type beside the number"] = "school fire frost shadow nature arcane holy physical icon floating combat text",
     ["What you take, on the health orb"] = "incoming hits dodge parry block floating text",
     ["Aggro ring on the health orb"] = "threat pull tank warning",
