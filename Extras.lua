@@ -2112,6 +2112,10 @@ end
 -- campfire...). Your two main professions first, then cooking, first aid
 -- and fishing. A profession with nothing to press (Skinning) isn't there.
 _G["BINDING_NAME_CLICK MeniscusProfs:LeftButton"] = "Professions (open or close)"
+local PROF_KEEP = { smelting = true, disenchant = true, ["basic campfire"] = true, ["cooking fire"] = true,
+                    prospecting = true, milling = true, survey = true, ["pick lock"] = true,
+                    ["mining"] = true, ["herbalism"] = true, ["skinning"] = true, ["fishing"] = true,
+                    ["first aid"] = true, ["cooking"] = true }
 local function profSpells(out)
     local SBk = C_SpellBook
     if not (GetProfessions and GetProfessionInfo and SBk and SBk.GetSpellBookItemInfo) then return end
@@ -2140,10 +2144,16 @@ local function profSpells(out)
             local tracking = type(info) == "table" and type(info.name) == "string" and not secret(info.name)
                 and info.name:find("^Find ") ~= nil
             local sname = type(info) == "table" and type(info.name) == "string" and not secret(info.name) and info.name or nil
+            -- The camp-side crafts this client hangs under the old
+            -- professions (Gardening under Herbalism, Bait and Tackle under
+            -- Fishing, and whatever else of the kind): left out. Kept is
+            -- what the profession has always had: its own button, its
+            -- tracking, and the few named ones below. Anything else under
+            -- a profession is taken for one of the new ones.
             local camp = camping
             if sname and not camp then
                 local low = sname:lower()
-                camp = low:find("tent", 1, true) ~= nil or (low:find("camp", 1, true) ~= nil and not low:find("campfire", 1, true))
+                camp = not (low == name:lower() or tracking or PROF_KEEP[low])
             end
             if diag then diag[#diag + 1] = tostring(sname) .. (camp and "  (left out: camping)" or "") end
             if num(id) and not info.isPassive and not seen[id] and not camp and not (tracking and EX.db and EX.db.profTrack == false) then
