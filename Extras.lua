@@ -2722,7 +2722,7 @@ end
 -- Pole". Here that puts the pole from your bags into your hands (and notes
 -- what was in them), so the next press casts. It can't be one press: a cast
 -- has to come from a key or click of yours, and by the time the pole is on,
--- that press is spent.
+-- that press is spent. (With the mouse it is one click: see "hovered".)
 --
 -- What you were holding goes back when the fishing is over, which the game
 -- never announces, so: when a fight starts (at that very moment, while
@@ -2773,7 +2773,7 @@ local function buildPole()
         if w.oh and equip then C_Timer.After(0.6, function() if not InCombatLockdown() then pcall(equip, w.oh, OH) end end) end
         ns:Print("Fishing pole put away" .. (why and (" (" .. why .. ")") or "") .. ".")
     end
-    local function take()
+    local function take(early)
         if was or InCombatLockdown() or not equip or EX.db.autoPole == false then return end
         if isPole(inHand(MH)) then return end
         local pole = poleInBags()
@@ -2781,7 +2781,36 @@ local function buildPole()
         was = { mh = inHand(MH), oh = inHand(OH) }
         lastFish = GetTime()
         pcall(equip, pole, MH)
-        ns:Print("Fishing pole equipped: cast again.")
+        ns:Print(early and "Fishing pole equipped." or "Fishing pole equipped: cast again.")
+    end
+    -- One click instead of two, where it can be had: the pole goes on while
+    -- the pointer rests on a Fishing button (action bar, spellbook, our
+    -- professions window: anything that shows the spell's tooltip), so it is
+    -- in hand by the time you click. A quarter of a second's rest, so the
+    -- pointer merely passing over the button changes nothing. (A key press
+    -- gives no such warning: there it is still two presses.)
+    local function fishTip(tip)
+        if tip ~= GameTooltip or not tip.GetSpell then return false end
+        local ok, _, id = pcall(tip.GetSpell, tip)
+        if not ok or secret(id) or type(id) ~= "number" then return false end
+        local f = C_Spell and C_Spell.GetSpellName
+        local n = f and call(f, id)
+        return type(n) == "string" and not secret(n) and n == fishing()
+    end
+    local waiting = false
+    local function hovered(tip)
+        if waiting or was or EX.db.autoPole == false or InCombatLockdown() then return end
+        if not fishTip(tip) or isPole(inHand(MH)) then return end
+        waiting = true
+        C_Timer.After(0.25, function()
+            waiting = false
+            if GameTooltip:IsShown() and fishTip(GameTooltip) then take(true) end
+        end)
+    end
+    local TDP = _G.TooltipDataProcessor
+    if not (TDP and TDP.AddTooltipPostCall and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Spell
+            and pcall(TDP.AddTooltipPostCall, Enum.TooltipDataType.Spell, function(tip) pcall(hovered, tip) end)) then
+        GameTooltip:HookScript("OnShow", function(tip) pcall(hovered, tip) end)
     end
     local poleWord
     local ev = CreateFrame("Frame")
