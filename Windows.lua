@@ -248,7 +248,17 @@ local function hook(name, f, building)
         -- are hooked once the build is over (below): a window can also be
         -- shown without any Show call (the bags, by their secure toggle).
         shown = function(self)
-            if self:IsShown() then dropSpecial(name); opened(self) end
+            if not self:IsShown() then return end
+            dropSpecial(name)
+            if real(self) then
+                opened(self)
+            elseif not open[self] then
+                -- Shown still invisible, to fade in (the bank): it isn't
+                -- taken in until it can be seen, but it is put in its dock
+                -- now. It used to fade in wherever it stood, then jump to
+                -- the dock half a second later.
+                place(self, guessSide(self, name))
+            end
         end
         hidden = function(self)
             if not self:IsShown() and (open[self] or pending[self]) then closed(self) end
