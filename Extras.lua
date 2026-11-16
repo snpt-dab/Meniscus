@@ -1442,7 +1442,8 @@ local function buildNodeMap(db)
             sync()
         end, { h = 20, font = 10, pad = 18, ring = true, dimIdle = true })
         pill.__muiSkin = true -- (the map's skin pass leaves it alone)
-        pill:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 10)
+        -- (One row up: the map's coordinates sit in this corner.)
+        pill:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38)
         pill:SetFrameLevel(math.min(9000, canvas:GetFrameLevel() + 2600))
     end
     sync()
@@ -2587,8 +2588,110 @@ local function buildTalentMark()
     end)
 end
 
+-- ── Breath, fatigue and the like ──────────────────────────────────────────
+-- The game's own bar for these (wood and gold, with the word under it) was
+-- left as it came: it isn't a window, and it is only on screen while you
+-- are underwater. Ours instead: a pill bar with the word and the seconds
+-- left on it, blue for breath, amber for fatigue. The game's is put away.
+local function buildMirror()
+    local W, H = 208, 13
+    local COLOR = { BREATH = { 0.36, 0.66, 1.00 }, EXHAUSTION = { 0.95, 0.76, 0.32 },
+                    FEIGNDEATH = { 0.90, 0.62, 0.32 }, DEATH = { 0.92, 0.36, 0.30 } }
+    local holder = CreateFrame("Frame", "MeniscusMirror", UIParent)
+    holder:SetSize(W, 1)
+    holder:SetPoint("TOP", UIParent, "TOP", 0, -150)
+    local bars, order = {}, {}
+    local function layout()
+        local n = 0
+        for _, timer in ipairs(order) do
+            local b = bars[timer]
+            if b:IsShown() then
+                b:ClearAllPoints()
+                b:SetPoint("TOP", holder, "TOP", 0, -n * (H + 20))
+                n = n + 1
+            end
+        end
+    end
+    local function get(timer)
+        local b = bars[timer]
+        if b then return b end
+        b = ns:CreatePillBar(holder, W, H)
+        b.label = ns:CreateText(b, 11, T.text)
+        b.label:SetPoint("BOTTOMLEFT", b, "TOPLEFT", 6, 3)
+        b.left = ns:CreateText(b, 11, T.textDim)
+        b.left:SetPoint("BOTTOMRIGHT", b, "TOPRIGHT", -6, 3)
+        for _, fs in ipairs({ b.label, b.left }) do
+            fs:SetShadowOffset(1, -1)
+            fs:SetShadowColor(0, 0, 0, 0.9)
+        end
+        local acc = 0
+        b:SetScript("OnUpdate", function(self, dt)
+            if self.paused then return end
+            local ok, v = pcall(GetMirrorTimerProgress, timer)
+            if not ok or v == nil then return end
+            pcall(self.bar.SetValue, self.bar, v)
+            acc = acc + dt
+            if acc < 0.2 then return end
+            acc = 0
+            if not secret(v) and type(v) == "number" then
+                local sec = math.max(0, math.ceil(v / 1000))
+                self.left:SetText(sec >= 60 and string.format("%d:%02d", math.floor(sec / 60), sec % 60) or (sec .. " s"))
+            else
+                self.left:SetText("")
+            end
+        end)
+        b:Hide()
+        bars[timer] = b
+        order[#order + 1] = timer
+        return b
+    end
+    local function start(timer, value, max, _, paused, label)
+        if type(timer) ~= "string" or secret(timer) then return end
+        local b = get(timer)
+        local c = COLOR[timer] or T.accent
+        b.bar:SetStatusBarColor(c[1], c[2], c[3])
+        if not pcall(b.bar.SetMinMaxValues, b.bar, 0, max) then b.bar:SetMinMaxValues(0, 1) end
+        pcall(b.bar.SetValue, b.bar, value)
+        b.label:SetText((type(label) == "string" and not secret(label)) and label or "")
+        b.left:SetText("")
+        b.paused = (not secret(paused)) and (paused == true or (type(paused) == "number" and paused > 0)) or false
+        b:Show()
+        layout()
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "MIRROR_TIMER_START", "MIRROR_TIMER_STOP", "MIRROR_TIMER_PAUSE", "PLAYER_ENTERING_WORLD" }) do pcall(ev.RegisterEvent, ev, e) end
+    ev:SetScript("OnEvent", function(_, e, timer, a2, a3, a4, a5, a6)
+        if e == "MIRROR_TIMER_START" then
+            start(timer, a2, a3, a4, a5, a6)
+        elseif e == "MIRROR_TIMER_STOP" then
+            local b = type(timer) == "string" and not secret(timer) and bars[timer]
+            if b then b:Hide(); layout() end
+        elseif e == "MIRROR_TIMER_PAUSE" then
+            local b = type(timer) == "string" and not secret(timer) and bars[timer]
+            if b then b.paused = (not secret(a2)) and (a2 == true or (type(a2) == "number" and a2 > 0)) or false end
+        else
+            -- Already running at login (you came in underwater).
+            if type(GetMirrorTimerInfo) == "function" then
+                for i = 1, 3 do
+                    local ok, t, value, max, scale, paused, label = pcall(GetMirrorTimerInfo, i)
+                    if ok and type(t) == "string" and not secret(t) and t ~= "UNKNOWN" then start(t, value, max, scale, paused, label) end
+                end
+            end
+        end
+    end)
+    -- The game's own: no more events, and out of sight.
+    local function quiet(fr)
+        if not fr or (fr.IsForbidden and fr:IsForbidden()) then return end
+        pcall(fr.UnregisterAllEvents, fr)
+        pcall(fr.Hide, fr)
+    end
+    quiet(_G.MirrorTimerContainer)
+    for i = 1, 3 do quiet(_G["MirrorTimer" .. i]) end
+end
+
 function EX:OnInit(db)
     self.db = db
+    if db.mirror ~= false then pcall(buildMirror) end
     if db.talentMark ~= false then pcall(buildTalentMark) end
     if db.potions ~= false then
         local ok, err = pcall(buildFlyout, { name = "MeniscusPotions", row = "MeniscusPotionRow", btn = "MeniscusPotion",
