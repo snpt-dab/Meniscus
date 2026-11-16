@@ -1463,30 +1463,60 @@ function Bars:ApplyPlate()
         ce:SetFrameLevel(p:GetFrameLevel() + 1)
         ce:SetPoint("TOPLEFT", p, "TOPLEFT", 22, 0)
         ce:SetPoint("TOPRIGHT", p, "TOPRIGHT", -22, 0)
-        ce:SetHeight(2)
+        ce:SetHeight(3)
         ce:SetAlpha(0)
-        local CR, CG, CB = 0.94, 0.34, 0.28
-        local function seg(a0, a1)
-            local t = ce:CreateTexture(nil, "OVERLAY")
-            t:SetColorTexture(1, 1, 1, 1)
-            if not (CreateColor and pcall(t.SetGradient, t, "HORIZONTAL", CreateColor(CR, CG, CB, a0), CreateColor(CR, CG, CB, a1))) then
-                t:SetColorTexture(CR, CG, CB, math.max(a0, a1))
+        -- Three lines: the red one on the edge, and its two coloured ghosts
+        -- (a warm one above, a cool one below, as on a critical hit's
+        -- number), which part from it and come back on a slow beat. When
+        -- combat starts they are thrown wide once and settle.
+        local function layer(cr, cg, cb, h, add)
+            local f = CreateFrame("Frame", nil, ce)
+            f:SetHeight(h)
+            f:SetPoint("LEFT", ce, "LEFT", 0, 0)
+            f:SetPoint("RIGHT", ce, "RIGHT", 0, 0)
+            local function seg(a0, a1)
+                local t = f:CreateTexture(nil, "OVERLAY")
+                t:SetColorTexture(1, 1, 1, 1)
+                if add then t:SetBlendMode("ADD") end
+                if not (CreateColor and pcall(t.SetGradient, t, "HORIZONTAL", CreateColor(cr, cg, cb, a0), CreateColor(cr, cg, cb, a1))) then
+                    t:SetColorTexture(cr, cg, cb, math.max(a0, a1))
+                end
+                return t
             end
-            return t
+            local l, m, r = seg(0, 1), seg(1, 1), seg(1, 0)
+            l:SetPoint("TOPLEFT"); l:SetPoint("BOTTOMLEFT"); l:SetWidth(160)
+            r:SetPoint("TOPRIGHT"); r:SetPoint("BOTTOMRIGHT"); r:SetWidth(160)
+            m:SetPoint("TOPLEFT", l, "TOPRIGHT"); m:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT")
+            return f
         end
-        local l, m, r = seg(0, 1), seg(1, 1), seg(1, 0)
-        l:SetPoint("TOPLEFT"); l:SetPoint("BOTTOMLEFT"); l:SetWidth(160)
-        r:SetPoint("TOPRIGHT"); r:SetPoint("BOTTOMRIGHT"); r:SetWidth(160)
-        m:SetPoint("TOPLEFT", l, "TOPRIGHT"); m:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT")
-        local want, cur, t0 = 0, 0, 0
+        local warm = layer(1.00, 0.28, 0.52, 2, true)
+        local cool = layer(0.32, 0.60, 1.00, 2, true)
+        local main = layer(0.96, 0.32, 0.26, 3, false)
+        local function place(f, y)
+            f:ClearAllPoints()
+            f:SetPoint("LEFT", ce, "LEFT", 0, y)
+            f:SetPoint("RIGHT", ce, "RIGHT", 0, y)
+        end
+        local want, cur, t0, burst = 0, 0, 0, 0
         ce:SetScript("OnUpdate", function(self, dt)
             t0 = t0 + dt
             -- In over a third of a second, out over a full one.
             local step = dt / (want > cur and 0.35 or 1.0)
             if cur < want then cur = math.min(want, cur + step) elseif cur > want then cur = math.max(want, cur - step) end
             if cur <= 0 and want <= 0 then self:SetAlpha(0); self:Hide(); return end
-            self:SetAlpha(cur * (0.78 + 0.12 * math.sin(t0 * 2.2)))
+            if burst > 0 then burst = math.max(0, burst - dt / 0.7) end
+            -- The beat: once every second and a half.
+            local beat = 0.5 + 0.5 * math.sin(t0 * 4.2)
+            self:SetAlpha(cur)
+            main:SetAlpha(0.80 + 0.20 * beat)
+            local apart = 1.5 + 3.5 * beat + 9 * burst * burst
+            place(warm, apart)
+            place(cool, -apart)
+            local ga = 0.35 + 0.45 * beat + 0.4 * burst
+            warm:SetAlpha(ga > 1 and 1 or ga)
+            cool:SetAlpha(ga > 1 and 1 or ga)
         end)
+        ce.Burst = function() burst = 1 end
         ce:Hide()
         local cev = CreateFrame("Frame")
         for _, e in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD" }) do cev:RegisterEvent(e) end
@@ -1500,6 +1530,7 @@ function Bars:ApplyPlate()
                     on = okC and not (issecretvalue and issecretvalue(c)) and c and true or false
                 end
             end
+            if on and want == 0 and event == "PLAYER_REGEN_DISABLED" then ce.Burst() end
             want = on and 1 or 0
             if on or cur > 0 then ce:Show() end
         end
