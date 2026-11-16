@@ -392,13 +392,56 @@ local function build()
         if not (MF and MF.SellAllJunkItems) then return end
         -- Say what it came to: the difference in your money a moment later.
         local before = call(_G.GetMoney)
-        pcall(MF.SellAllJunkItems)
-        C_Timer.After(1.2, function()
-            local after = call(_G.GetMoney)
-            if num(before) and num(after) and after > before then
-                ns:Print("Sold junk for " .. money(after - before) .. ".")
+        local function report()
+            C_Timer.After(1.2, function()
+                local after = call(_G.GetMoney)
+                if num(before) and num(after) and after > before then
+                    ns:Print("Sold junk for " .. money(after - before) .. ".")
+                end
+                M:Refresh()
+            end)
+        end
+        -- One at a time, as if you had dropped each on the merchant: the
+        -- game's own "sell all junk" sells them where they can't be bought
+        -- back, and nothing it sold showed on the Buy back page. (Only the
+        -- last twelve things sold can be bought back, however they went.)
+        -- Whatever is left after that (or all of it, if this client won't
+        -- sell this way) goes by the game's own call.
+        local CC = C_Container
+        local list = {}
+        if CC and CC.GetContainerNumSlots and CC.GetContainerItemInfo and CC.PickupContainerItem and _G.PickupMerchantItem then
+            for bag = 0, (_G.NUM_BAG_SLOTS or 4) do
+                local n = call(CC.GetContainerNumSlots, bag)
+                for slot = 1, (num(n) and n or 0) do
+                    local info = call(CC.GetContainerItemInfo, bag, slot)
+                    if type(info) == "table" and info.quality == 0 and not info.hasNoValue and not info.isLocked then
+                        list[#list + 1] = bag * 1000 + slot
+                    end
+                end
             end
-            M:Refresh()
+        end
+        if #list == 0 or CursorHasItem() then
+            pcall(MF.SellAllJunkItems)
+            return report()
+        end
+        local at = 0
+        C_Timer.NewTicker(0.08, function(self)
+            at = at + 1
+            local key = list[at]
+            local ok = key and win:IsShown() and not CursorHasItem()
+            if ok then
+                call(CC.PickupContainerItem, math.floor(key / 1000), key % 1000)
+                if CursorHasItem() then call(_G.PickupMerchantItem, 0) end
+                if CursorHasItem() then ClearCursor(); ok = false end -- (refused: the rest by the game's call)
+            end
+            if not ok or at >= #list then
+                self:Cancel()
+                C_Timer.After(0.4, function()
+                    local left = MF.GetNumJunkItems and call(MF.GetNumJunkItems)
+                    if win:IsShown() and num(left) and left > 0 then pcall(MF.SellAllJunkItems) end
+                    report()
+                end)
+            end
         end)
     end)
     win.restock = pill(win, "Restock", function()
