@@ -222,7 +222,11 @@ local function takeStep()
         return false
     end
     if job.mode == "one" then
-        if job.index > shown or not stepOn(job.index) then stopTaking() end
+        -- (A letter with nothing written in it is deleted once it is empty,
+        -- and the next one moves up into its place: fewer letters than at
+        -- the start means this one is done, not that there is more to take.)
+        job.count = job.count or shown
+        if shown < job.count or job.index > shown or not stepOn(job.index) then stopTaking() end
         return
     end
     for i = 1, shown do
@@ -331,6 +335,19 @@ local function newCard(i)
     c:SetScript("OnEnter", function(self) if ML.selected ~= self.index then self.fill(0.13, 0.13, 0.15, 1) end end)
     c:SetScript("OnLeave", function(self) if ML.selected ~= self.index then self.fill(unpack(CARD)) end end)
     c:SetScript("OnClick", function(self)
+        -- Shift-click: take what the letter holds (money, then each item)
+        -- without opening it, as the stock inbox does. Not cash on delivery:
+        -- that one is opened, so the price is seen before it is paid.
+        if IsShiftKeyDown() and self.index then
+            if ML.taking then return end
+            local h = header(self.index)
+            if h.cod > 0 then
+                UIErrorsFrame:AddMessage("Cash on delivery: open the letter to pay for it.", 1, 0.82, 0.1)
+            elseif h.money > 0 or h.items > 0 then
+                startTaking("one", self.index)
+                return
+            end
+        end
         ML.selected = self.index
         ML:Refresh()
     end)
