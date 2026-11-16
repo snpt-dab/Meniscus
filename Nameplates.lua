@@ -749,6 +749,17 @@ local function buildNumbers()
         local tc = CreateFrame("Frame")
         tc:RegisterEvent("PLAYER_TARGET_CHANGED")
         tc:SetScript("OnEvent", function() dots[RAILKEY] = nil end)
+        -- (And a nameplate is handed on to the next enemy that needs one,
+        -- with the last one's record still on it: a mob you had only
+        -- targeted, running past, showed a stranger's fire damage as a tick
+        -- of yours. A nameplate starts clean each time it is given out.)
+        local pa = CreateFrame("Frame")
+        pcall(pa.RegisterEvent, pa, "NAME_PLATE_UNIT_ADDED")
+        pa:SetScript("OnEvent", function(_, _, unit)
+            if type(unit) ~= "string" or secret(unit) then return end
+            local plate = plateOf(unit)
+            if plate then dots[plate] = nil end
+        end)
     end
 
     -- A nameplate going away with numbers still rising from it (the mob
@@ -1047,6 +1058,7 @@ local function buildNumbers()
                 -- Yours or your pet's, for how it is drawn: the old signs
                 -- are still good for telling those two apart.
                 local own = yoursOnly(unit, key, action, now)
+                local ownWhy = why
                 local pet = (not own) and action ~= "HEAL" and pets(unit, now) or false
                 dropStale(now)
                 -- In a group a log line alone is not enough. Your heals and
@@ -1078,14 +1090,16 @@ local function buildNumbers()
                 if grouped and not (own or pet) then
                     mineHit = false
                     why = "in a group, and no sign it was yours"
-                elseif threatWorks and not grouped and action ~= "HEAL" and not onMe and not (own or pet) then
+                elseif threatWorks and not grouped and action ~= "HEAL" and not onMe and not ((own and ownWhy ~= "tick") or pet) then
                     -- On your own, an enemy that is not fighting you, and
                     -- nothing of yours aimed at it: somebody else's fight.
                     -- (A mage's missiles on a mob nearby were shown: a log
                     -- line of yours, left over from a hit already shown by
                     -- another rule, was spent on them.) Your opening blow,
                     -- before the enemy has turned on you, still passes: it
-                    -- is on your target and follows a cast or swing.
+                    -- is on your target and follows a cast or swing. (A
+                    -- "tick of your effect" does not pass here: an enemy
+                    -- carrying an effect of yours is fighting you.)
                     mineHit = false
                     why = "not fighting you, and no sign it was yours"
                 elseif onMe then
