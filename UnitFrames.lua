@@ -2141,6 +2141,22 @@ function UF:OnInit(db)
         self.party[i].orbSide = "LEFT"
         self.party[i].orbGap = SIZES.party.D / 2 + 4
     end
+    -- Party members' pets: a tiny pill (as your own pet's) tucked under the
+    -- right end of its owner's bar, below the row of auras. Shown by the
+    -- game only while that member has a pet out.
+    self.partyPets = {}
+    if db.partyPets ~= false then
+        for i = 1, 4 do
+            local ok, pf = pcall(create, "partypet" .. i, "PartyPet" .. i, { size = "tiny", avatar = "flat",
+                side = "LEFT", watch = true, events = { "UNIT_PET", "GROUP_ROSTER_UPDATE" } })
+            if ok and pf then
+                pf:SetPoint("TOPLEFT", self.party[i].healthPill, "BOTTOMRIGHT", 18, 0)
+                self.partyPets[i] = pf
+            elseif MinimalUIDB then
+                MinimalUIDB.partyPetErr = tostring(pf)
+            end
+        end
+    end
     self:LayoutParty()
     do
         local ok, err = pcall(self.BuildNotes, self)
