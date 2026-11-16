@@ -1967,3 +1967,70 @@ do
         end)
     end)
 end
+
+-- ── Ping log ──────────────────────────────────────────────────────────────
+-- What a frame tells the game at the moment it is pinged, for the stock
+-- player frame and for ours, side by side (MinimalUIDB.pinglog, the last
+-- 40). To find out why a ping on an orb says only health when the stock
+-- frame is said to give health and mana.
+do
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_LOGIN")
+    ev:SetScript("OnEvent", function()
+        C_Timer.After(3, function()
+            if not MinimalUIDB then return end
+            MinimalUIDB.pinglog = {}
+            local log = MinimalUIDB.pinglog
+            local function dump(v)
+                if type(v) ~= "table" then return tostring(v) end
+                local parts = {}
+                for k, x in pairs(v) do parts[#parts + 1] = tostring(k) .. "=" .. tostring(x) end
+                return "{" .. table.concat(parts, ", ") .. "}"
+            end
+            local busy = false
+            local function watch(f, label)
+                if not (f and type(f.GetTargetInfo) == "function") then return end
+                for _, fn in ipairs({ "GetTargetInfo", "GetAllowRadialWheel" }) do
+                    if type(f[fn]) == "function" then
+                        pcall(hooksecurefunc, f, fn, function(self)
+                            if busy then return end
+                            busy = true
+                            local raw = rawget(self, fn) -- (the hooked one; ask the kind itself, not the hook again)
+                            local mix = _G.PingableType_PlayerUnitFrameMixin
+                            local src = (self == _G.PlayerFrame and mix and mix[fn]) or raw
+                            local ok, a = pcall(src, self)
+                            busy = false
+                            local over = {}
+                            local function isOver(name, r)
+                                if r and r.IsMouseOver then
+                                    local okO, o = pcall(r.IsMouseOver, r)
+                                    if okO and o then over[#over + 1] = name end
+                                end
+                            end
+                            if self == _G.PlayerFrame then
+                                isOver("portrait", self.PlayerFrameContainer and self.PlayerFrameContainer.PlayerPortrait)
+                                isOver("healthbar", self.healthbar)
+                                isOver("manabar", self.manabar)
+                            end
+                            log[#log + 1] = date("%H:%M:%S") .. " " .. label .. ":" .. fn .. " -> " .. (ok and dump(a) or ("error " .. tostring(a)))
+                                .. (#over > 0 and ("  pointer over " .. table.concat(over, "+")) or "")
+                            if #log > 40 then table.remove(log, 1) end
+                        end)
+                    end
+                end
+            end
+            watch(_G.PlayerFrame, "stock PlayerFrame")
+            watch(_G.MinimalUI_HealthOrb, "health orb")
+            watch(_G.MinimalUI_PowerOrb, "power orb")
+            watch(_G.MinimalUI_Player, "our player frame")
+            -- Anything the ping system announces, with what it carries.
+            local pe = CreateFrame("Frame")
+            for _, e in ipairs({ "PING_SYSTEM_ERROR", "CHAT_MSG_PING" }) do pcall(pe.RegisterEvent, pe, e) end
+            pe:SetScript("OnEvent", function(_, e, a, b, c)
+                local function show(v) return (issecretvalue and issecretvalue(v)) and "<hidden>" or tostring(v) end
+                log[#log + 1] = date("%H:%M:%S") .. " EVENT " .. e .. " " .. show(a) .. " | " .. show(b) .. " | " .. show(c)
+                if #log > 40 then table.remove(log, 1) end
+            end)
+        end)
+    end)
+end
