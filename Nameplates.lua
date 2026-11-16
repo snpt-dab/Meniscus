@@ -1056,9 +1056,33 @@ local function buildNumbers()
                 -- your pet's).
                 local grouped = IsInGroup and IsInGroup()
                 if secret(grouped) then grouped = false end
+                -- On your own there is a plainer sign than any of the
+                -- timing: the enemy is fighting you (you are on its threat
+                -- list). Nobody else is hitting it, as a rule, so whatever
+                -- lands on it is yours or your pet's: hits, ticks, misses,
+                -- all of it, with no line to wait for. (Its line, if one
+                -- is there, is still used up, so it can't be spent on a
+                -- stranger's hit a moment later.) Not in a group, where
+                -- everyone is on that list. If the game won't say, the
+                -- rules below decide as before.
+                local onMe = false
+                if not grouped and action ~= "HEAL" and UnitThreatSituation then
+                    local okT, t = pcall(UnitThreatSituation, "player", unit)
+                    onMe = okT and t ~= nil and not secret(t)
+                    if MinimalUIDB and not MinimalUIDB.threatdiag then
+                        MinimalUIDB.threatdiag = "first asked: ok=" .. tostring(okT) .. " hidden=" .. tostring(secret(t)) .. " value=" .. (secret(t) and "?" or tostring(t))
+                    end
+                end
                 if grouped and not (own or pet) then
                     mineHit = false
                     why = "in a group, and no sign it was yours"
+                elseif onMe then
+                    if action == "WOUND" and not (twinKey == key and twinAt == now) then
+                        takeLine(now)
+                        twinKey, twinAt = key, now
+                    end
+                    mineHit, byPet = true, pet
+                    why = "on your own, and it is fighting you" .. (pet and ": pet's" or "")
                 elseif action ~= "WOUND" and action ~= "HEAL" then
                     -- A miss, dodge, parry or block: the log prints no line
                     -- for these under "My actions" (seen: none within
