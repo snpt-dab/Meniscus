@@ -1471,6 +1471,9 @@ function Bars:ApplyPlate()
         -- combat starts they are thrown wide once and settle.
         local function layer(cr, cg, cb, h, add)
             local f = CreateFrame("Frame", nil, ce)
+            -- (At the line's own level: a child would otherwise sit one
+            -- higher, level with the wing panels, and draw across them.)
+            f:SetFrameLevel(ce:GetFrameLevel())
             f:SetHeight(h)
             f:SetPoint("LEFT", ce, "LEFT", 0, 0)
             f:SetPoint("RIGHT", ce, "RIGHT", 0, 0)
@@ -1505,14 +1508,16 @@ function Bars:ApplyPlate()
             if cur < want then cur = math.min(want, cur + step) elseif cur > want then cur = math.max(want, cur - step) end
             if cur <= 0 and want <= 0 then self:SetAlpha(0); self:Hide(); return end
             if burst > 0 then burst = math.max(0, burst - dt / 0.7) end
-            -- The beat: once every second and a half.
-            local beat = 0.5 + 0.5 * math.sin(t0 * 4.2)
+            -- After the opening burst it settles: the ghosts rest a pixel or
+            -- two off the line, faint, on a slow swell (once in four
+            -- seconds). The loud part is the start only.
+            local beat = 0.5 + 0.5 * math.sin(t0 * 1.6)
             self:SetAlpha(cur)
-            main:SetAlpha(0.80 + 0.20 * beat)
-            local apart = 1.5 + 3.5 * beat + 9 * burst * burst
+            main:SetAlpha(0.86 + 0.08 * beat)
+            local apart = 1.0 + 1.0 * beat + 11 * burst * burst
             place(warm, apart)
             place(cool, -apart)
-            local ga = 0.35 + 0.45 * beat + 0.4 * burst
+            local ga = 0.16 + 0.12 * beat + 0.75 * burst
             warm:SetAlpha(ga > 1 and 1 or ga)
             cool:SetAlpha(ga > 1 and 1 or ga)
         end)
