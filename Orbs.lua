@@ -103,10 +103,7 @@ local function createOrb(name, size)
     f:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
     -- Pings: an orb is your own unit frame, and takes a ping as one.
     f.unit = f.unit or "player"
-    if _G.PingableType_UnitFrameMixin and Mixin then
-        pcall(Mixin, f, _G.PingableType_UnitFrameMixin)
-        f:SetAttribute("ping-receiver", true)
-    end
+    ns.MakePingable(f, f.unit)
     -- Clickable area = the square inscribed in the circle, so the orb's empty
     -- corners never steal clicks from neighbouring buttons.
     local hit = size * (1 - 0.7071) / 2

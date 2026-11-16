@@ -490,6 +490,42 @@ function ns.StatMarkByName(name, size, dy)
     local key = type(name) == "string" and markByName[name:lower()]
     return key and ns.StatMark(key, size, dy) or nil
 end
+-- Pings: the game only pings a frame that says it can take one, as its own
+-- unit frames do: a ping mixin (it answers "what is this" from f.unit) and
+-- the receiver attribute. Your own frame and orbs take the player's own
+-- kind where the client has it: pinging the stock player frame says your
+-- health and mana in chat, and the plain unit kind only pointed at you.
+-- What each frame was given, and what it answers, is kept in
+-- MinimalUIDB.pingdiag.
+function ns.MakePingable(f, unit)
+    if not Mixin then return end
+    local own = unit == "player" and _G.PingableType_PlayerUnitFrameMixin
+    local mix = own or _G.PingableType_UnitFrameMixin
+    if not mix then return end
+    pcall(Mixin, f, mix)
+    local note = (own and "player kind" or "unit kind")
+    if own then
+        -- (If the player's kind can't answer for a frame of ours, the plain
+        -- one is put back: a ping that points at you beats a Lua error.)
+        local okT, a, b, c = pcall(f.GetTargetInfo, f)
+        note = note .. " GetTargetInfo ok=" .. tostring(okT) .. " " .. tostring(a) .. " " .. tostring(b) .. " " .. tostring(c)
+        if type(a) == "table" then
+            local parts = {}
+            for k, v in pairs(a) do parts[#parts + 1] = tostring(k) .. "=" .. tostring(v) end
+            note = note .. " {" .. table.concat(parts, ", ") .. "}"
+        end
+        if not okT and _G.PingableType_UnitFrameMixin then
+            pcall(Mixin, f, _G.PingableType_UnitFrameMixin)
+            note = note .. " -> unit kind put back"
+        end
+    end
+    pcall(f.SetAttribute, f, "ping-receiver", true)
+    if MinimalUIDB then
+        MinimalUIDB.pingdiag = MinimalUIDB.pingdiag or {}
+        MinimalUIDB.pingdiag[tostring(f.GetName and f:GetName() or unit)] = note
+    end
+end
+
 -- A coin, as text markup: a small flat disc in gold, silver or copper.
 ns.COIN = {
     g = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:230:194:90|t",

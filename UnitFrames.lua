@@ -781,10 +781,7 @@ local function create(unit, label, cfg)
     -- Pings: the game only pings a unit frame that says it can take one
     -- (as its own frames do): the ping mixin, which answers "whose frame
     -- is this" from f.unit, and the receiver attribute.
-    if _G.PingableType_UnitFrameMixin and Mixin then
-        pcall(Mixin, f, _G.PingableType_UnitFrameMixin)
-        f:SetAttribute("ping-receiver", true)
-    end
+    ns.MakePingable(f, unit)
     -- One edge only, the one the client acts on (the ActionButtonUseKeyDown
     -- setting: the press, by default). With both registered, targeting and
     -- the menu still fired once, but a Click Casting spell fired on the
