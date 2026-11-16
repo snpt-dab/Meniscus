@@ -2689,8 +2689,118 @@ local function buildMirror()
     for i = 1, 3 do quiet(_G["MirrorTimer" .. i]) end
 end
 
+-- ── Fishing pole on, and off again ────────────────────────────────────────
+-- Cast Fishing without a pole in hand and the game says "Requires Fishing
+-- Pole". Here that puts the pole from your bags into your hands (and notes
+-- what was in them), so the next press casts. It can't be one press: a cast
+-- has to come from a key or click of yours, and by the time the pole is on,
+-- that press is spent.
+--
+-- What you were holding goes back when the fishing is over, which the game
+-- never announces, so: when a fight starts (at that very moment, while
+-- hands may still be changed), when you mount, or when a minute and a half
+-- has gone by without a cast or a catch. Out of combat only, like any
+-- change of gear by an addon. If you change weapons yourself in between,
+-- that is respected and nothing is put back.
+local function buildPole()
+    local MH, OH = 16, 17
+    local function isPole(link)
+        if type(link) ~= "string" or secret(link) or not (C_Item and C_Item.GetItemInfoInstant) then return false end
+        local ok, _, _, _, _, _, classID, subID = pcall(C_Item.GetItemInfoInstant, link)
+        return ok and classID == 2 and subID == 20
+    end
+    local function inHand(slot)
+        local ok, link = pcall(GetInventoryItemLink, "player", slot)
+        return ok and type(link) == "string" and not secret(link) and link or nil
+    end
+    local function poleInBags()
+        local getLink = CC.GetContainerItemLink
+        if not getLink then return nil end
+        for bag = 0, (NUM_BAG_SLOTS or 4) do
+            local n = call(CC.GetContainerNumSlots or _G.GetContainerNumSlots, bag)
+            for slot = 1, (num(n) and n or 0) do
+                local link = call(getLink, bag, slot)
+                if isPole(link) then return link end
+            end
+        end
+    end
+    local equip = (C_Item and C_Item.EquipItemByName) or _G.EquipItemByName
+    local fishName
+    local function fishing()
+        if fishName == nil then
+            local f = C_Spell and C_Spell.GetSpellName
+            local n = f and call(f, 7620)
+            fishName = (type(n) == "string" and not secret(n) and n ~= "") and n or "Fishing"
+        end
+        return fishName
+    end
+    local was, lastFish = nil, 0 -- { mh = link, oh = link } while the pole is ours
+    local function restore(why)
+        if not was then return end
+        if InCombatLockdown() then return end
+        local w = was
+        was = nil
+        if not isPole(inHand(MH)) then return end -- you changed it yourself
+        if w.mh and equip then pcall(equip, w.mh, MH) end
+        if w.oh and equip then C_Timer.After(0.6, function() if not InCombatLockdown() then pcall(equip, w.oh, OH) end end) end
+        ns:Print("Fishing pole put away" .. (why and (" (" .. why .. ")") or "") .. ".")
+    end
+    local function take()
+        if was or InCombatLockdown() or not equip or EX.db.autoPole == false then return end
+        if isPole(inHand(MH)) then return end
+        local pole = poleInBags()
+        if not pole then return end
+        was = { mh = inHand(MH), oh = inHand(OH) }
+        lastFish = GetTime()
+        pcall(equip, pole, MH)
+        ns:Print("Fishing pole equipped: cast again.")
+    end
+    local poleWord
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "UI_ERROR_MESSAGE", "PLAYER_REGEN_DISABLED", "LOOT_OPENED" }) do pcall(ev.RegisterEvent, ev, e) end
+    for _, e in ipairs({ "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED" }) do
+        pcall(ev.RegisterUnitEvent, ev, e, "player")
+    end
+    local lastTry = 0
+    ev:SetScript("OnEvent", function(_, e, a1, a2, a3)
+        if e == "PLAYER_REGEN_DISABLED" then return restore("a fight") end
+        if e == "LOOT_OPENED" then if was then lastFish = GetTime() end return end
+        if e == "UI_ERROR_MESSAGE" then
+            -- "Requires Fishing Pole", by the game's own word for the pole.
+            if type(a2) ~= "string" or secret(a2) then return end
+            if poleWord == nil then
+                local f = (C_Item and C_Item.GetItemSubClassInfo) or _G.GetItemSubClassInfo
+                local w = f and call(f, 2, 20)
+                poleWord = (type(w) == "string" and not secret(w) and w ~= "") and w or "Fishing Pole"
+            end
+            if a2:find(poleWord, 1, true) or a2:find("Fishing Pole", 1, true) then take() end
+            return
+        end
+        -- A cast of yours.
+        if secret(a3) or type(a3) ~= "number" then return end
+        local f = C_Spell and C_Spell.GetSpellName
+        local n = f and call(f, a3)
+        if type(n) ~= "string" or secret(n) or n ~= fishing() then return end
+        if e == "UNIT_SPELLCAST_FAILED" then
+            -- (Where the game gives no "requires" message: a failed Fishing
+            -- with no pole in hand is the same thing.)
+            if GetTime() - lastTry > 1 then lastTry = GetTime(); take() end
+        elseif was then
+            lastFish = GetTime()
+        end
+    end)
+    C_Timer.NewTicker(5, function()
+        if not was or InCombatLockdown() then return end
+        if not isPole(inHand(MH)) then was = nil return end
+        local okM, mounted = pcall(IsMounted)
+        if okM and not secret(mounted) and mounted then return restore("mounted") end
+        if GetTime() - lastFish > 90 then restore("no casts for a while") end
+    end)
+end
+
 function EX:OnInit(db)
     self.db = db
+    pcall(buildPole)
     if db.mirror ~= false then pcall(buildMirror) end
     if db.talentMark ~= false then pcall(buildTalentMark) end
     if db.potions ~= false then
