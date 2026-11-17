@@ -665,6 +665,23 @@ local LV_CENTER = 2 -- seconds the finished card waits in the middle before it m
 -- with a crown of spikes and stars turning slowly behind it, "MILESTONE"
 -- stands above it, and it waits longer in the middle before moving off.
 local LV_MILESTONE = 10
+-- Why a level is a milestone: what it opens up, said on the card's first
+-- line, in amber. A level listed here is dressed as a milestone whether or
+-- not it is a tenth one. An entry is a line of words, or a table of lines
+-- by class file name (WARRIOR, HUNTER ...) with [1] for everyone else.
+-- (Only what is known to be true on this game is listed: a tenth level
+-- with nothing here still gets the dress, without a reason.)
+local LV_WHY = {
+    [10] = "Talents unlocked",
+}
+local function lvWhy(level)
+    local w = LV_WHY[level]
+    if type(w) == "table" then
+        local _, class = UnitClass("player")
+        w = (type(class) == "string" and w[class]) or w[1]
+    end
+    return type(w) == "string" and w or nil
+end
 local LV_CENTER_MS = 4
 local LV_LINGER = 7 -- extra seconds the card stays in all (the wait, then parked on the left)
 local banner
@@ -1123,7 +1140,8 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     for i = 1, #f.ghosts do f.ghosts[i]:SetText(level) end
     f.title:SetText("Level " .. level)
     -- A milestone's dress (or the usual one put back).
-    local ms = level % LV_MILESTONE == 0
+    local why = lvWhy(level)
+    local ms = level % LV_MILESTONE == 0 or why ~= nil
     f.milestone = ms
     local col = ms and LV_AMBER or LV_COLOR
     f.ringPaint(col[1] * (ms and 0.85 or 0.7), col[2] * (ms and 0.85 or 0.7), col[3] * (ms and 0.85 or 0.7), ms and 0.8 or 0.55)
@@ -1142,6 +1160,18 @@ function XP:ShowLevelUp(level, health, power, talents, _, str, agi, sta, int)
     local _, tok = UnitPowerType("player")
     local powerName = type(tok) == "string" and _G[tok] or "Power"
     local n = 0
+    -- (Every line back to its usual colour: the first may have been amber.)
+    for i = 1, #f.rows do
+        local l = f.rows[i].label
+        if not l.menCol then l.menCol = { l:GetTextColor() } end
+        l:SetTextColor(l.menCol[1], l.menCol[2], l.menCol[3], l.menCol[4] or 1)
+    end
+    if why and #f.rows > 0 then
+        n = 1
+        f.rows[1].label:SetText(why)
+        f.rows[1].label:SetTextColor(LV_AMBER[1], LV_AMBER[2], LV_AMBER[3])
+        f.rows[1].value:SetText("")
+    end
     local function add(v, label)
         if type(v) == "number" and not issecretvalue(v) and v > 0 and n < #f.rows then
             n = n + 1
