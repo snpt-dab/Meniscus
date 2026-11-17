@@ -917,8 +917,52 @@ local function buildNumbers()
                 end
                 return false
             end
-            lf:SetScript("OnEvent", function(_, _, _, r, g, b)
+            -- An experiment (/men logtext): the log's lines themselves, put
+            -- on the screen as they arrive. Their text is sealed (it can be
+            -- drawn, not read), but under "My actions" every line is yours,
+            -- and the amount is in it. If the line can be made short enough
+            -- by the log's own formatting settings, the line could BE the
+            -- combat text, with nothing to guess. This shows what they look
+            -- like; their colours go in the record (ctlog) with each LINE.
+            local strip, stripAt = nil, 0
+            local function stripShow(msg, r, g, b)
+                if not (MinimalUIDB and MinimalUIDB.logtext) then
+                    if strip then strip:Hide() end
+                    return
+                end
+                if not strip then
+                    strip = CreateFrame("Frame", nil, UIParent)
+                    strip:SetSize(700, 150)
+                    strip:SetPoint("TOP", UIParent, "TOP", 0, -120)
+                    strip:SetFrameStrata("HIGH")
+                    strip.rows = {}
+                    for i = 1, 8 do
+                        local t = strip:CreateFontString(nil, "OVERLAY")
+                        ns:SetFont(t, 13, "OUTLINE", true)
+                        t:SetPoint("TOP", 0, -(i - 1) * 18)
+                        strip.rows[i] = t
+                    end
+                end
+                strip:Show()
+                stripAt = stripAt % 8 + 1
+                local t = strip.rows[stripAt]
+                if not pcall(t.SetText, t, msg) then t:SetText("(a line that could not be drawn)") end
+                if not (type(r) == "number" and not secret(r) and pcall(t.SetTextColor, t, r, g, b)) then t:SetTextColor(1, 1, 1) end
+                for i = 1, 8 do strip.rows[i]:SetAlpha(i == stripAt and 1 or 0.55) end
+            end
+            ns.commands.logtext = function()
+                if not MinimalUIDB then return end
+                MinimalUIDB.logtext = not MinimalUIDB.logtext or nil
+                if strip and not MinimalUIDB.logtext then strip:Hide() end
+                ns:Print("Combat log lines on screen: " .. (MinimalUIDB.logtext and "on (hit something)" or "off") .. ".")
+            end
+            local function rgbNote(r, g, b)
+                if type(r) ~= "number" or secret(r) or secret(g) or secret(b) then return " (colour hidden)" end
+                return string.format(" colour %.2f %.2f %.2f", r, g, b)
+            end
+            lf:SetScript("OnEvent", function(_, _, msg, r, g, b)
                 if isRefill(GetTime()) then return end
+                pcall(stripShow, msg, r, g, b)
                 -- (White lines are the log's notices, "You killed ..." and
                 -- the like: not a hit.)
                 if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then
@@ -952,7 +996,7 @@ local function buildNumbers()
                 lineTimes[#lineTimes + 1] = now
                 if #lineTimes > 12 then table.remove(lineTimes, 1) end
                 if MinimalUIDB then MinimalUIDB.ctlines = lineCount .. " log lines heard this session, the last at " .. string.format("%.2f", now % 1000) end
-                note("LINE")
+                note("LINE" .. rgbNote(r, g, b))
                 dropStale(now)
                 local h = table.remove(held, 1)
                 if h then
