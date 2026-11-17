@@ -1024,6 +1024,85 @@ local function buildNumbers()
             MinimalUIDB.meterprobe = MinimalUIDB.meterprobe or {}
             MinimalUIDB.meterprobe[tag] = out
         end
+        -- The meter's running total of YOUR damage is hidden in a fight,
+        -- but a hidden number can be given to a bar or a line of text. Does
+        -- anything about that bar or text come back unhidden (how wide the
+        -- fill is, how wide the words are)? If so the total can be read,
+        -- and each step in it is one hit of yours, with its true size.
+        -- Tried five times a second in a fight; every way of asking is
+        -- written down once, and any that answers is followed
+        -- (MinimalUIDB.readback).
+        local rb = CreateFrame("StatusBar", nil, UIParent)
+        rb:SetSize(1000, 2); rb:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, -50)
+        rb:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+        rb:SetMinMaxValues(0, 100000)
+        local rfs = rb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        rfs:SetPoint("LEFT")
+        local told, lastSeen, steps = {}, {}, 0
+        local function mine()
+            local ok, ses = pcall(DM.GetCombatSessionFromType, 1, 0)
+            if not ok or type(ses) ~= "table" or type(ses.combatSources) ~= "table" then return nil end
+            for _, src in pairs(ses.combatSources) do
+                if type(src) == "table" and not secret(src.isLocalPlayer) and src.isLocalPlayer then return src.totalAmount end
+            end
+        end
+        local function ask(out, label, f)
+            local ok, v = pcall(f)
+            local state = (not ok and ("error: " .. tostring(v):sub(1, 70))) or (secret(v) and "hidden") or ("plain " .. type(v))
+            if told[label] ~= state then
+                told[label] = state
+                out[#out + 1] = string.format("%.2f %s: %s", GetTime() % 1000, label, state)
+            end
+            if ok and not secret(v) and (type(v) == "number" or type(v) == "string" or type(v) == "boolean") and lastSeen[label] ~= v and steps < 120 then
+                steps = steps + 1
+                out[#out + 1] = string.format("%.2f   %s = %s", GetTime() % 1000, label, tostring(v))
+                lastSeen[label] = v
+            end
+        end
+        local function readback()
+            if not DM or not MinimalUIDB or not InCombatLockdown() then return end
+            local v = mine()
+            if v == nil then return end
+            local out = MinimalUIDB.readback
+            if type(out) ~= "table" then out = {}; MinimalUIDB.readback = out end
+            if not told.start then told.start = true; out[#out + 1] = date("%H:%M:%S") .. " total is " .. (secret(v) and "hidden" or "plain") end
+            pcall(rb.SetValue, rb, v)
+            pcall(rfs.SetText, rfs, v)
+            local fill = rb:GetStatusBarTexture()
+            ask(out, "bar GetValue", function() return rb:GetValue() end)
+            ask(out, "fill GetWidth", function() return fill:GetWidth() end)
+            ask(out, "fill GetRight", function() return fill:GetRight() end)
+            ask(out, "fill GetRect", function() return (select(3, fill:GetRect())) end)
+            ask(out, "fill GetSize", function() return (fill:GetSize()) end)
+            ask(out, "fill IsShown", function() return fill:IsShown() end)
+            ask(out, "fill GetTexCoord", function() return (select(5, fill:GetTexCoord())) end)
+            ask(out, "text GetText", function() return rfs:GetText() end)
+            ask(out, "text GetStringWidth", function() return rfs:GetStringWidth() end)
+            ask(out, "text GetUnboundedStringWidth", function() return rfs:GetUnboundedStringWidth() end)
+            ask(out, "text GetWidth", function() return rfs:GetWidth() end)
+            ask(out, "text GetNumLines", function() return rfs:GetNumLines() end)
+            ask(out, "more than nothing", function() return v > 0 end)
+            ask(out, "as words", function() return tostring(v) end)
+            ask(out, "string.format", function() return string.format("%d", v) end)
+            ask(out, "math.floor", function() return math.floor(v) end)
+            ask(out, "as a table key", function() local t = {}; t[v] = true; return next(t) end)
+        end
+        C_Timer.NewTicker(0.2, function() pcall(readback) end)
+        -- Threat by other names for the same enemy: a nameplate's name gets
+        -- a hidden answer, "target" a plain one. Which else are plain?
+        C_Timer.NewTicker(1, function()
+            if not MinimalUIDB or not InCombatLockdown() or not UnitDetailedThreatSituation then return end
+            local out = MinimalUIDB.readback
+            if type(out) ~= "table" then out = {}; MinimalUIDB.readback = out end
+            for _, u in ipairs({ "target", "focus", "mouseover", "softenemy", "softinteract", "pettarget", "party1target", "targettarget", "anyenemy", "boss1" }) do
+                local okE, ex = pcall(UnitExists, u)
+                if okE and not secret(ex) and ex then
+                    ask(out, "threat on " .. u, function() return (select(5, UnitDetailedThreatSituation("player", u))) end)
+                    local g = IsInGroup and IsInGroup()
+                    if not secret(g) and g and not told.group then told.group = true; out[#out + 1] = "(in a group from here)"; told["threat on target"] = nil end
+                end
+            end
+        end)
         local mf = CreateFrame("Frame")
         mf:RegisterEvent("PLAYER_REGEN_DISABLED")
         mf:RegisterEvent("PLAYER_REGEN_ENABLED")
