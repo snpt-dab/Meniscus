@@ -951,12 +951,19 @@ local function buildNumbers()
     -- own damage meter shows nothing while this runs.
     -- For now only written into the log beside the hits, to see how the
     -- two line up before any rule is hung on it.
+    -- meterOn: your hits are drawn from the meter (the amount it lists is
+    -- yours for certain). What the game reports of a hit on an enemy is then
+    -- only kept (pendingW) for what the meter does not know: where the
+    -- enemy is, and whether it was a critical hit.
+    -- (db.numbersMeter = false: the older rules decide, as before.)
+    local meterOn, pendingW, lastPlace = false, {}, nil
     do
         local DM = C_DamageMeter
         if DM and DM.ResetAllCombatSessions and DM.GetCombatSessionSourceFromType then
             local mf = CreateFrame("Frame")
             local heard = pcall(mf.RegisterEvent, mf, "DAMAGE_METER_COMBAT_SESSION_UPDATED")
             if MinimalUIDB then MinimalUIDB.meterdiag = "the meter's update event " .. (heard and "can be listened for" or "cannot be listened for") end
+            meterOn = heard and NP.db.numbersMeter ~= false
             local guid, quietAt = nil, -9
             local function show(v) if secret(v) then return "hidden" end return tostring(v) end
             local function look(how, kind)
@@ -981,14 +988,30 @@ local function buildNumbers()
                     parts[#parts + 1] = string.format("[name %s, icon %s, amount %s, by %s]", okN and show(name) or "refused", okI and show(icon) or "refused",
                         show(sp.totalAmount), show(sp.creatureName))
                 end
+                local drawn = 0
+                if meterOn then
+                    while pendingW[1] and now - pendingW[1].t > 1.6 do table.remove(pendingW, 1) end
+                    for i = 1, n do
+                        local rec = table.remove(pendingW, 1)
+                        if rec then
+                            -- (One blow reported twice, as Heroic Strike is: one number.)
+                            while pendingW[1] and pendingW[1].t == rec.t and pendingW[1].unit == rec.unit do table.remove(pendingW, 1) end
+                            lastPlace = rec
+                        end
+                        local at = rec or lastPlace
+                        if at then
+                            drawn = drawn + 1
+                            present(at.unit, at.rel, at.x, at.y, "WOUND", rec and rec.indicator or "", list[i].totalAmount, at.school, false, false)
+                        end
+                    end
+                end
                 local okR, err = pcall(DM.ResetAllCombatSessions)
-                note(string.format("    METER (%s): %d of yours %s; wiped: %s", how, n, table.concat(parts, " "), okR and "yes" or ("refused: " .. tostring(err):sub(1, 80))))
+                note(string.format("    METER (%s): %d of yours, %d drawn %s; wiped: %s", how, n, drawn, table.concat(parts, " "), okR and "yes" or ("refused: " .. tostring(err):sub(1, 80))))
             end
             -- (Some hits moved the meter without the game saying so: it is
             -- also looked at every frame of a fight, to see whether the
             -- damage was there all along.)
             mf:SetScript("OnEvent", function(_, _, kind) look("told", kind) end)
-            mf:SetScript("OnUpdate", function() if InCombatLockdown() then look("looked") end end)
         elseif MinimalUIDB then
             MinimalUIDB.meterdiag = "no damage meter to ask"
         end
@@ -1211,7 +1234,13 @@ local function buildNumbers()
             hitSchool = school
             local now = GetTime()
             local mineHit
-            if not (key and guess) then
+            if meterOn and key and guess and action == "WOUND" then
+                if x then
+                    pendingW[#pendingW + 1] = { t = now, unit = unit, rel = rel, x = x, y = y, indicator = indicator, school = school }
+                    if #pendingW > 12 then table.remove(pendingW, 1) end
+                end
+                mineHit, why = false, "left to the meter"
+            elseif not (key and guess) then
                 mineHit, byPet, why = true, false, ""
             elseif logOn() then
                 -- Yours or your pet's, for how it is drawn: the old signs
