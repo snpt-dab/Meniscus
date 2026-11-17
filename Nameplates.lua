@@ -939,7 +939,54 @@ local function buildNumbers()
         local d = MinimalUIDB.ctlog
         if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
         d[#d + 1] = string.format("%.2f %s", GetTime() % 1000, text)
-        if #d > 90 then table.remove(d, 1) end
+        if #d > 280 then table.remove(d, 1) end
+    end
+    -- ── The game's damage meter as a ledger of YOUR hits (a measurement) ──
+    -- The meter keeps your damage apart from everyone else's, by ability.
+    -- Its totals are hidden in a fight, but how many abilities are listed is
+    -- not, and the meter can be wiped. Wiped after every look, anything
+    -- listed under you is damage you did since the last look: yours for
+    -- certain, in a group too, and with its ability. (Another addon,
+    -- MidnightBattleText, draws its numbers this way.) The cost: the game's
+    -- own damage meter shows nothing while this runs.
+    -- For now only written into the log beside the hits, to see how the
+    -- two line up before any rule is hung on it.
+    do
+        local DM = C_DamageMeter
+        if DM and DM.ResetAllCombatSessions and DM.GetCombatSessionSourceFromType then
+            local mf = CreateFrame("Frame")
+            local heard = pcall(mf.RegisterEvent, mf, "DAMAGE_METER_COMBAT_SESSION_UPDATED")
+            if MinimalUIDB then MinimalUIDB.meterdiag = "the meter's update event " .. (heard and "can be listened for" or "cannot be listened for") end
+            local guid, quietAt = nil, -9
+            local function show(v) if secret(v) then return "hidden" end return tostring(v) end
+            mf:SetScript("OnEvent", function(_, _, kind)
+                local now = GetTime()
+                if not secret(kind) and kind ~= 0 then return end
+                if not guid then local okG, g = pcall(UnitGUID, "player"); guid = okG and g or nil end
+                local ok, src = pcall(DM.GetCombatSessionSourceFromType, 0, 0, guid)
+                local list = ok and type(src) == "table" and not secret(src) and src.combatSpells
+                local n = (type(list) == "table" and not secret(list)) and #list or -1
+                if n <= 0 then
+                    if now - quietAt > 0.5 then
+                        quietAt = now
+                        note("    METER moved: nothing of yours listed" .. (n < 0 and (" (could not be read: " .. show(ok and "no list" or src) .. ")") or ""))
+                    end
+                    return
+                end
+                local parts = {}
+                for i = 1, math.min(n, 4) do
+                    local sp = list[i]
+                    local okN, name = pcall(C_Spell.GetSpellName, sp.spellID)
+                    local okI, icon = pcall(C_Spell.GetSpellTexture, sp.spellID)
+                    parts[#parts + 1] = string.format("[name %s, icon %s, amount %s, by %s]", okN and show(name) or "refused", okI and show(icon) or "refused",
+                        show(sp.totalAmount), show(sp.creatureName))
+                end
+                local okR, err = pcall(DM.ResetAllCombatSessions)
+                note(string.format("    METER moved: %d of yours %s; wiped: %s", n, table.concat(parts, " "), okR and "yes" or ("refused: " .. tostring(err):sub(1, 80))))
+            end)
+        elseif MinimalUIDB then
+            MinimalUIDB.meterdiag = "no damage meter to ask"
+        end
     end
     local function dropStale(now)
         while held[1] and now - held[1].t > 0.25 do
