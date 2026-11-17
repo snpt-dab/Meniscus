@@ -939,7 +939,98 @@ local function buildNumbers()
         local d = MinimalUIDB.ctlog
         if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
         d[#d + 1] = string.format("%.2f %s", GetTime() % 1000, text)
-        if #d > 90 then table.remove(d, 1) end
+        if #d > 260 then table.remove(d, 1) end
+    end
+    -- ── Threat, read as a ledger (a measurement, for now) ────────────────
+    -- The game will not say who hit an enemy, but it does say, unhidden,
+    -- how much threat YOU have on it (and your pet has): a number that only
+    -- your own blows raise. If it moves when a hit of yours lands and stays
+    -- still for anyone else's, it tells whose each hit was, in a group too.
+    -- Written into the same log as the hits, to see how the two line up:
+    -- when the number moves (before the hit is reported, or after), and by
+    -- how much.
+    local threatLast = {}
+    local function threatOne(who, unit)
+        if not UnitDetailedThreatSituation then return "none" end
+        local ok, _, _, _, _, v = pcall(UnitDetailedThreatSituation, who, unit)
+        if not ok then return "err" end
+        if secret(v) then return "hidden" end
+        if v == nil then return "nil" end
+        return v
+    end
+    local function threatNote(unit, tag, always)
+        local me, pet = threatOne("player", unit), threatOne("pet", unit)
+        local l = threatLast[unit]
+        if not l then l = {}; threatLast[unit] = l end
+        if not always and me == l.me and pet == l.pet then return end
+        local function d(v, was)
+            if type(v) == "number" and type(was) == "number" and v ~= was then return string.format("%s (%+d)", tostring(v), v - was) end
+            return tostring(v)
+        end
+        local g = IsInGroup and IsInGroup()
+        note(string.format("    THREAT %s %s: you %s, pet %s%s", tag, unit, d(me, l.me), d(pet, l.pet), (not secret(g) and g) and " [group]" or ""))
+        l.me, l.pet = me, pet
+    end
+    do
+        local tf = CreateFrame("Frame")
+        pcall(tf.RegisterEvent, tf, "UNIT_THREAT_LIST_UPDATE")
+        pcall(tf.RegisterEvent, tf, "NAME_PLATE_UNIT_ADDED")
+        pcall(tf.RegisterEvent, tf, "PLAYER_TARGET_CHANGED")
+        tf:SetScript("OnEvent", function(_, e, unit)
+            if e == "PLAYER_TARGET_CHANGED" then threatLast.target = nil return end
+            if type(unit) ~= "string" or secret(unit) then return end
+            if e == "NAME_PLATE_UNIT_ADDED" then threatLast[unit] = nil return end
+            if unit:find("^nameplate") or unit == "target" then threatNote(unit, "moved", false) end
+        end)
+    end
+    -- The game's own damage meter: what it will hand over in a fight and
+    -- after one (MinimalUIDB.meterprobe). Once each per session.
+    do
+        local DM = C_DamageMeter
+        local done = {}
+        local function probe(tag)
+            if done[tag] or not DM or not MinimalUIDB then return end
+            done[tag] = true
+            local out = { date("%H:%M:%S") }
+            local function show(v) if secret(v) then return "<hidden>" end return tostring(v) end
+            local function dump(t, ind, depth)
+                if secret(t) or type(t) ~= "table" then out[#out + 1] = ind .. show(t) return end
+                local n = 0
+                for k, v in pairs(t) do
+                    n = n + 1
+                    if n > 16 or #out > 150 then out[#out + 1] = ind .. "..." break end
+                    if type(v) == "table" and not secret(v) and depth < 3 then
+                        out[#out + 1] = ind .. show(k) .. ":"
+                        dump(v, ind .. "  ", depth + 1)
+                    else
+                        out[#out + 1] = ind .. show(k) .. " = " .. show(v)
+                    end
+                end
+                if n == 0 then out[#out + 1] = ind .. "(empty)" end
+            end
+            pcall(function()
+                local okA, a = pcall(DM.IsDamageMeterAvailable)
+                out[#out + 1] = "available: " .. tostring(okA) .. " " .. show(a)
+                for st = 0, 2 do
+                    local ok, r = pcall(DM.GetCombatSessionFromType, st, 0)
+                    out[#out + 1] = "session type " .. st .. ", damage done: ok=" .. tostring(ok)
+                    if ok then dump(r, "  ", 0) else out[#out + 1] = "  " .. tostring(r) end
+                end
+                local okG, guid = pcall(UnitGUID, "player")
+                local ok, r = pcall(DM.GetCombatSessionSourceFromType, 1, 0, guid)
+                out[#out + 1] = "your own entry (guid " .. (secret(guid) and "hidden" or "plain") .. "): ok=" .. tostring(ok)
+                if ok then dump(r, "  ", 0) else out[#out + 1] = "  " .. tostring(r) end
+            end)
+            MinimalUIDB.meterprobe = MinimalUIDB.meterprobe or {}
+            MinimalUIDB.meterprobe[tag] = out
+        end
+        local mf = CreateFrame("Frame")
+        mf:RegisterEvent("PLAYER_REGEN_DISABLED")
+        mf:RegisterEvent("PLAYER_REGEN_ENABLED")
+        mf:SetScript("OnEvent", function(_, e)
+            if e == "PLAYER_REGEN_DISABLED" then C_Timer.After(5, function() if InCombatLockdown() then probe("in a fight") end end)
+            else C_Timer.After(1, function() probe("after a fight") end) end
+        end)
     end
     local function dropStale(now)
         while held[1] and now - held[1].t > 0.25 do
@@ -1105,6 +1196,10 @@ local function buildNumbers()
     ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
         if type(unit) ~= "string" or secret(unit) or secret(action) or type(action) ~= "string" then return end
         showUnit = unit
+        if unit:find("^nameplate") then
+            threatNote(unit, "at the " .. action, true)
+            C_Timer.After(0.3, function() threatNote(unit, "0.3 s on", false) end)
+        end
         local mine = unit == "player"
         local x, y, rel
         local onRail, key = false, nil
