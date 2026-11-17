@@ -442,15 +442,41 @@ local function build()
     end)
 end
 
+-- TR.pass: this is not an NPC's list but one a spell of yours opened (a
+-- hunter's Beast Training, out in the world): the game's own window is left
+-- in charge. Teaching a pet from our window raised the game's "blocked from
+-- an action" box: what the game's window does there is evidently more than
+-- the plain "buy" an addon may make from a click.
+local function ghostApply(self)
+    if TR.pass then
+        self:SetAlpha(1); self:SetScale(1); self:EnableMouse(true)
+    else
+        self:SetAlpha(0); self:SetScale(0.001); self:EnableMouse(false)
+    end
+end
 local function ghost(f)
-    if not f or f.__muiGhost then return end
-    f.__muiGhost = true
-    local function apply(self) self:SetAlpha(0); self:SetScale(0.001); self:EnableMouse(false) end
-    f:HookScript("OnShow", apply)
-    if f:IsShown() then apply(f) end
+    if not f then return end
+    if not f.__muiGhost then
+        f.__muiGhost = true
+        f:HookScript("OnShow", ghostApply)
+    end
+    if f:IsShown() then ghostApply(f) end
 end
 
 local function open()
+    local okN, npc = pcall(UnitExists, "npc")
+    if issecretvalue and issecretvalue(npc) then npc = true end
+    TR.pass = okN and not npc and TR.db.petBlizz ~= false
+    if MinimalUIDB then MinimalUIDB.trainerdiag = date("%H:%M:%S") .. (TR.pass and " no NPC: the game's own window" or " an NPC: our window") end
+    if TR.pass then
+        ghost(_G.ClassTrainerFrame)
+        if win and win:IsShown() then
+            closing = true
+            win:Hide()
+            closing = false
+        end
+        return
+    end
     if not win then build() end
     offset = 0
     ghost(_G.ClassTrainerFrame)
