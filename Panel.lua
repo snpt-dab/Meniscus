@@ -92,6 +92,7 @@ local function openMenu(owner)
     local level = owner:GetParent():GetFrameLevel() + 40
     catcher:SetFrameLevel(level)
     menu:SetFrameLevel(level + 1)
+    local widest = 0
     for i, o in ipairs(opts) do
         local r = menuRow(i)
         r:SetFrameLevel(level + 2)
@@ -99,6 +100,7 @@ local function openMenu(owner)
         r:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * MENU_ROW)
         r:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -4, -4 - (i - 1) * MENU_ROW)
         r.text:SetText(o.label)
+        widest = math.max(widest, r.text:GetStringWidth() or 0)
         local selected = ok and o.key == cur
         r.dot:SetShown(selected)
         r.text:SetTextColor(unpack(selected and T.accent or T.text))
@@ -113,7 +115,8 @@ local function openMenu(owner)
     for i = #opts + 1, #menu.rows do menu.rows[i]:Hide() end
     menu:ClearAllPoints()
     menu:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, -4)
-    menu:SetSize(math.max(owner:GetWidth(), 200), #opts * MENU_ROW + 8)
+    -- (As wide as its longest line: one ran out past the right edge.)
+    menu:SetSize(math.max(owner:GetWidth(), 200, widest + 24 + 18), #opts * MENU_ROW + 8)
     catcher:Show()
     menu:Show()
 end
@@ -180,6 +183,7 @@ local function chevron(parent, color)
 end
 
 -- One settings row inside a group card.
+--   (enabled = fn: dimmed and not clickable while it returns false)
 --   item = { label, kind = "switch"|"dropdown"|"action", note = "…",
 --            get = fn, set = fn (switch: toggles), options = fn,
 --            run = fn (action), action = "button text", reload = bool }
@@ -215,6 +219,7 @@ local function makeRow(card, item, y, last)
     local kind = item.kind
     if kind == "switch" then
         local s = switch(row)
+        row.ctrl = s
         s:SetPoint("RIGHT", row, "RIGHT", -14, 0)
         local function toggle()
             item.set()
@@ -226,6 +231,7 @@ local function makeRow(card, item, y, last)
         function row:Refresh() local ok, on = pcall(item.get); s:SetOn(ok and on) end
     elseif kind == "dropdown" then
         local d = pill(row, CTRL_W)
+        row.ctrl = d
         d:SetPoint("RIGHT", row, "RIGHT", -14, 0)
         d.opts = { options = item.options, get = item.get, set = item.set, reload = item.reload }
         d.text:ClearAllPoints()
@@ -257,6 +263,19 @@ local function makeRow(card, item, y, last)
                 local ok, l = pcall(item.actionLabel)
                 if ok and l then a.text:SetText(l); a:SetWidth(math.max(a.text:GetStringWidth() + 28, 64)) end
             end
+        end
+    end
+    -- item.enabled: a setting that only means something while another is
+    -- set a certain way is dimmed, and not clickable, the rest of the time.
+    if item.enabled then
+        local base = row.Refresh
+        function row:Refresh()
+            if base then base(self) end
+            local ok, on = pcall(item.enabled)
+            on = ok and on and true or false
+            self:SetAlpha(on and 1 or 0.38)
+            self:EnableMouse(on)
+            if self.ctrl then self.ctrl:EnableMouse(on) end
         end
     end
     table.insert(controls, row)
@@ -542,9 +561,9 @@ local PAGES = {
     { key = "combat", title = "Combat", groups = {
         { title = "Numbers", items = {
             { "Combat numbers", kind = "dropdown", reload = true,
-              note = "Meniscus numbers are proven yours by the game's damage meter, which shows nothing while they are on",
-              options = function() return { { key = "game", label = "The game's, in our typeface" },
-                                            { key = "ours", label = "Meniscus numbers (no damage meter)" },
+              note = "Meniscus numbers switch off the damage meter",
+              options = function() return { { key = "game", label = "The game's, our typeface" },
+                                            { key = "ours", label = "Meniscus (no damage meter)" },
                                             { key = "off", label = "Leave the game's alone" } } end,
               get = function() return ns.modules.Nameplates.db.numbersMode or "game" end,
               set = function(k)
@@ -553,6 +572,7 @@ local PAGES = {
                   N.db.numbers = k == "ours"
               end },
             { "Where your hits show", kind = "dropdown",
+              enabled = function() return ns.modules.Nameplates.db.numbersMode == "ours" end,
               note = "A killing blow or a far target never uses the nameplate",
               options = function() return { { key = "frame", label = "From the target frame" },
                                             { key = "rail", label = "On the rails, high on screen" },
@@ -560,15 +580,18 @@ local PAGES = {
               get = function() return ns.modules.Nameplates.db.numbersWhere or "frame" end,
               set = function(k) ns.modules.Nameplates.db.numbersWhere = k end },
             { "Damage type beside the number", kind = "switch",
+              enabled = function() return ns.modules.Nameplates.db.numbersMode == "ours" end,
               note = "A small emblem for fire, frost, shadow and the rest (a blade for physical)",
               get = function() return ns.modules.Nameplates.db.numbersKind ~= false end,
               set = function() local d = ns.modules.Nameplates.db; d.numbersKind = d.numbersKind == false end },
             { "My pet's hits", kind = "switch",
+              enabled = function() return ns.modules.Nameplates.db.numbersMode == "ours" end,
               note = "Shown with a paw, smaller and sand-coloured (also a best guess)",
               get = function() return ns.modules.Nameplates.db.numbersPet ~= false end,
               set = function() local d = ns.modules.Nameplates.db; d.numbersPet = d.numbersPet == false end },
             { "Only my own hits and heals", kind = "switch", reload = true,
-              note = "By the combat log's \"My actions\" filter; a best guess without it",
+              enabled = function() return ns.modules.Nameplates.db.numbersMode == "ours" end,
+              note = "Proven by the game's damage meter; off shows everyone's",
               get = function() return ns.modules.Nameplates.db.numbersMine ~= false end,
               set = function() local d = ns.modules.Nameplates.db; d.numbersMine = d.numbersMine == false end },
             { "What you take, on the health orb", kind = "switch", reload = true,
