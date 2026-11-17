@@ -847,16 +847,65 @@ local function buildNumbers()
     -- hits reported with it) so that its line is not left over for some
     -- later hit to use, and nothing is shown for it: there is no amount.
     local CL = C_CombatLog
-    local OWN_ME, OWN_PET, OWN_MISS = { 0.70, 0.70, 0.72 }, { 0.70, 0.72, 0.70 }, { 0.72, 0.70, 0.70 }
     local logLines, held = {}, {}
     local logHeard = false
     local lastLine, lineCount = -99, 0
     local lineTimes, claimTimes = {}, {} -- when lines came, and when a hit took one (the last dozen of each)
     local twinKey, twinAt
     local threatWorks = false -- the game has answered "is it fighting you?" at least once
-    -- The log is running on the filter we gave it (see "Our own filter"):
-    -- known by the colour its lines arrive in, which is one we chose.
-    local ownSeen = false
+    -- ── A filter that prints only your hits ──────────────────────────────
+    -- "My actions" as it comes prints your heals, their ticks and more
+    -- beside your hits, and nothing for a miss. Each spare line could be
+    -- spent on somebody else's hit (a healer in a group saw everyone's
+    -- numbers), and misses had to be guessed. With the filter set to pass
+    -- only damage and misses, a line means exactly one hit or miss of yours.
+    --
+    -- An addon may not set that: handing the log a filter was tried, and the
+    -- game put up its "blocked from an action" box (the log's own code ends
+    -- in calls only the game's interface may make). It may be READ, though,
+    -- and the player can set it by hand in the log's own settings (Combat
+    -- Log tab, right-click, Settings, "My actions", Message Types): heals
+    -- off, misses on. So what the filter in use passes is looked at:
+    --   ownSeen:   it passes nothing but damage, misses and deaths;
+    --   missLines: it passes misses.
+    -- and the rules below use whichever holds. (Looked at again every few
+    -- seconds: it can be changed at any time.)
+    local ownSeen, missLines = false, false
+    local OWN_OK = { SWING_DAMAGE = true, RANGE_DAMAGE = true, SPELL_DAMAGE = true, SPELL_PERIODIC_DAMAGE = true, DAMAGE_SPLIT = true,
+                     DAMAGE_SHIELD = true, SWING_MISSED = true, RANGE_MISSED = true, SPELL_MISSED = true, SPELL_PERIODIC_MISSED = true,
+                     DAMAGE_SHIELD_MISSED = true, PARTY_KILL = true, UNIT_DIED = true, UNIT_DESTROYED = true, UNIT_DISSIPATES = true }
+    local filterAt = -99
+    local function filterCheck(now)
+        if now - filterAt < 3 then return end
+        filterAt = now
+        local own, miss = false, false
+        local cur = _G.Blizzard_CombatLog_CurrentSettings
+        local fl = type(cur) == "table" and cur.filters
+        if type(fl) == "table" then
+            own = true
+            for _, f in pairs(fl) do
+                -- (An entry that names no one, the second one of "My
+                -- actions", passes nothing: not counted.)
+                local live = false
+                if type(f) == "table" then
+                    for _, flags in pairs({ f.sourceFlags, f.destFlags }) do
+                        if type(flags) == "table" then for _, on in pairs(flags) do if on then live = true end end end
+                    end
+                end
+                if live and type(f.eventList) == "table" then
+                    for k, on in pairs(f.eventList) do
+                        if on and not OWN_OK[k] then own = false end
+                    end
+                    if f.eventList.SWING_MISSED and f.eventList.SPELL_MISSED then miss = true end
+                end
+            end
+        end
+        if MinimalUIDB and (own ~= ownSeen or miss ~= missLines or not MinimalUIDB.ownfilter) then
+            MinimalUIDB.ownfilter = date("%H:%M:%S") .. " the log's filter passes " .. (own and "only your damage" or "more than your damage")
+                .. (miss and ", with misses" or ", without misses")
+        end
+        ownSeen, missLines = own, miss
+    end
     -- One line taken for a hit: the oldest still good.
     -- tight: only a line printed in this very moment will do (a hit with no
     -- other sign of being yours; a line is stamped 0.8 s ahead of its time).
@@ -973,79 +1022,6 @@ local function buildNumbers()
                 if type(r) ~= "number" or secret(r) or secret(g) or secret(b) then return " (colour hidden)" end
                 return string.format(" colour %.2f %.2f %.2f", r, g, b)
             end
-            -- ── Our own filter ───────────────────────────────────────────
-            -- "My actions" prints your heals, their ticks and more beside
-            -- your hits, and prints nothing for a miss. Each spare line
-            -- could be spent on somebody else's hit (a healer in a group
-            -- saw everyone's numbers), and misses had to be guessed. So the
-            -- log is handed a filter of ours instead, built from the one in
-            -- use (same look) but passing only damage and misses, yours and
-            -- your pet's: then a line means exactly one hit or miss of
-            -- yours. Its lines come in colours we choose, a shade off the
-            -- log's grey, one for you, one for your pet, one for misses:
-            -- that is how it is known to be in force, and whose line it is.
-            -- Only while the log's own choice is "My actions" (any other
-            -- filter is left alone), never mid-fight, and put back whenever
-            -- the log's own code applies a filter. What the Combat Log tab
-            -- shows changes with it. (db.numbersOwnFilter = false: off.)
-            local applying = false
-            local function ownSettings()
-                local cur = _G.Blizzard_CombatLog_CurrentSettings
-                if type(cur) ~= "table" or type(cur.settings) ~= "table" or type(cur.colors) ~= "table"
-                   or type(cur.filters) ~= "table" or type(cur.filters[1]) ~= "table" then return nil end
-                local name = cur.name
-                if type(name) ~= "string" or secret(name) or not (name == MY_ACTIONS or name == "My actions") then return nil end
-                local function copy(t, d)
-                    local o = {}
-                    for k, v in pairs(t) do o[k] = (type(v) == "table" and d > 0) and copy(v, d - 1) or v end
-                    return o
-                end
-                local o = copy(cur, 5)
-                local list = {}
-                for k in pairs(cur.filters[1].eventList or {}) do list[k] = false end
-                for _, k in ipairs({ "SWING_DAMAGE", "RANGE_DAMAGE", "SPELL_DAMAGE", "SPELL_PERIODIC_DAMAGE", "DAMAGE_SPLIT", "DAMAGE_SHIELD",
-                                     "SWING_MISSED", "RANGE_MISSED", "SPELL_MISSED", "SPELL_PERIODIC_MISSED", "DAMAGE_SHIELD_MISSED", "PARTY_KILL" }) do
-                    list[k] = true
-                end
-                local ME, PET = _G.COMBATLOG_FILTER_MINE or 17681, _G.COMBATLOG_FILTER_MY_PET or 12561
-                o.filters = { { eventList = list, sourceFlags = { [ME] = true } }, { eventList = copy(list, 0), sourceFlags = { [PET] = true } } }
-                o.colors.unitColoring = o.colors.unitColoring or {}
-                o.colors.unitColoring[ME] = { r = OWN_ME[1], g = OWN_ME[2], b = OWN_ME[3], a = 1 }
-                o.colors.unitColoring[PET] = { r = OWN_PET[1], g = OWN_PET[2], b = OWN_PET[3], a = 1 }
-                o.colors.eventColoring = {}
-                for _, k in ipairs({ "SWING_MISSED", "RANGE_MISSED", "SPELL_MISSED", "SPELL_PERIODIC_MISSED", "DAMAGE_SHIELD_MISSED" }) do
-                    o.colors.eventColoring[k] = { r = OWN_MISS[1], g = OWN_MISS[2], b = OWN_MISS[3], a = 1 }
-                end
-                o.settings.showHistory = false -- (no refill of old lines each time it is applied)
-                o.settings.lineColoring = true
-                o.settings.lineColorPriority = 1
-                return o
-            end
-            local function applyOwn()
-                if NP.db.numbersOwnFilter == false or NP.db.numbersLog == false or InCombatLockdown() then return end
-                if not CL.ApplyFilterSettings then return end
-                local o = ownSettings()
-                if not o then return end
-                applying = true
-                local ok, err = pcall(CL.ApplyFilterSettings, o)
-                applying = false
-                if MinimalUIDB then
-                    MinimalUIDB.ownfilter = date("%H:%M:%S") .. (ok and " our filter was handed to the log" or (" the log refused our filter: " .. tostring(err):sub(1, 160)))
-                end
-            end
-            if CL.ApplyFilterSettings then
-                pcall(hooksecurefunc, CL, "ApplyFilterSettings", function()
-                    if applying then return end
-                    C_Timer.After(0.2, applyOwn)
-                end)
-                local af = CreateFrame("Frame")
-                af:RegisterEvent("PLAYER_ENTERING_WORLD")
-                af:RegisterEvent("PLAYER_REGEN_ENABLED")
-                af:SetScript("OnEvent", function(_, e)
-                    if e == "PLAYER_REGEN_ENABLED" and ownSeen then return end
-                    C_Timer.After(e == "PLAYER_ENTERING_WORLD" and 4 or 0.5, applyOwn)
-                end)
-            end
             lf:SetScript("OnEvent", function(_, _, msg, r, g, b)
                 if isRefill(GetTime()) then return end
                 pcall(stripShow, msg, r, g, b)
@@ -1077,21 +1053,13 @@ local function buildNumbers()
                     return
                 end
                 local now = GetTime()
-                local kind = nil
-                if type(r) == "number" and not secret(r) and not secret(g) and not secret(b) then
-                    local function is(c) return math.abs(r - c[1]) < 0.004 and math.abs(g - c[2]) < 0.004 and math.abs(b - c[3]) < 0.004 end
-                    kind = (is(OWN_ME) and "yours") or (is(OWN_PET) and "your pet") or (is(OWN_MISS) and "a miss") or nil
-                end
-                if (kind ~= nil) ~= ownSeen then
-                    ownSeen = kind ~= nil
-                    note(ownSeen and "(the log is on our filter: every line is a hit or miss of yours)" or "(the log is not on our filter)")
-                end
+                filterCheck(now)
                 lastLine = now
                 lineCount = lineCount + 1
                 lineTimes[#lineTimes + 1] = now
                 if #lineTimes > 12 then table.remove(lineTimes, 1) end
                 if MinimalUIDB then MinimalUIDB.ctlines = lineCount .. " log lines heard this session, the last at " .. string.format("%.2f", now % 1000) end
-                note("LINE" .. rgbNote(r, g, b) .. (kind and (" (" .. kind .. ")") or ""))
+                note("LINE" .. rgbNote(r, g, b))
                 dropStale(now)
                 local h = table.remove(held, 1)
                 if h then
@@ -1230,7 +1198,7 @@ local function buildNumbers()
                     mineHit = false
                     why = "in a group, and no sign it was yours"
                 elseif ownSeen and action == "HEAL" then
-                    -- (Our filter prints no heals: a heal goes by your cast alone.)
+                    -- (The filter prints no heals: a heal goes by your cast alone.)
                     mineHit, byPet = own and true or false, false
                     why = own and "heal, by your cast" or "a heal, and no cast of yours"
                 elseif threatWorks and not grouped and action ~= "HEAL" and not onMe and not ((own and ownWhy ~= "tick") or pet) then
@@ -1252,9 +1220,9 @@ local function buildNumbers()
                     end
                     mineHit, byPet = true, pet
                     why = "on your own, and it is fighting you" .. (pet and ": pet's" or "")
-                elseif action ~= "WOUND" and action ~= "HEAL" and not ownSeen then
-                    -- (On our own filter a miss has a line like any hit, and
-                    -- is matched to it below.)
+                elseif action ~= "WOUND" and action ~= "HEAL" and not missLines then
+                    -- (Where the filter passes misses, a miss has a line
+                    -- like any hit, and is matched to it below.)
                     -- A miss, dodge, parry or block: the log prints no line
                     -- for these under "My actions" (seen: none within
                     -- seconds of any of them), so waiting for one threw away
