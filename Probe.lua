@@ -2034,3 +2034,57 @@ do
         end)
     end)
 end
+
+-- ── Combat log settings probe ─────────────────────────────────────────────
+-- What the combat log's current filter is made of (which messages, from
+-- whom, in what colours), and what the log's own code hands the game when a
+-- filter is applied (C_CombatLog.ApplyFilterSettings). To find out whether
+-- we can apply a filter of our own: only your damage and misses, so that
+-- every line the log sends out is exactly one hit of yours.
+-- (MinimalUIDB.clset; the hook's catch in MinimalUIDB.clapply.)
+do
+    local function sec(v) return issecretvalue and issecretvalue(v) end
+    local function dump(out, v, path, depth)
+        if #out >= 400 then return end
+        if sec(v) then out[#out + 1] = path .. " = <hidden>" return end
+        if type(v) ~= "table" then out[#out + 1] = path .. " = " .. tostring(v):sub(1, 120) return end
+        if depth <= 0 then out[#out + 1] = path .. " = {...}" return end
+        local keys = {}
+        for k in pairs(v) do keys[#keys + 1] = k end
+        table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+        if #keys == 0 then out[#out + 1] = path .. " = {}" end
+        for _, k in ipairs(keys) do dump(out, v[k], path .. "." .. tostring(k), depth - 1) end
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_LOGIN")
+    ev:SetScript("OnEvent", function()
+        if C_CombatLog and C_CombatLog.ApplyFilterSettings then
+            local n = 0
+            pcall(hooksecurefunc, C_CombatLog, "ApplyFilterSettings", function(...)
+                if not MinimalUIDB then return end
+                n = n + 1
+                if n > 3 then return end
+                local out = MinimalUIDB.clapply
+                if type(out) ~= "table" or n == 1 then out = {}; MinimalUIDB.clapply = out end
+                out[#out + 1] = "call " .. n .. " at " .. date("%H:%M:%S") .. " with " .. select("#", ...) .. " arguments"
+                for i = 1, select("#", ...) do dump(out, (select(i, ...)), "arg" .. i, 6) end
+            end)
+        end
+        C_Timer.After(6, function()
+            if not MinimalUIDB then return end
+            local out = { "at " .. date("%H:%M:%S") }
+            MinimalUIDB.clset = out
+            dump(out, _G.Blizzard_CombatLog_CurrentSettings, "current", 6)
+            local list = _G.Blizzard_CombatLog_Filters
+            if type(list) == "table" and type(list.filters) == "table" then
+                for i, f in ipairs(list.filters) do
+                    out[#out + 1] = "filter " .. i .. ": " .. tostring(type(f) == "table" and f.name)
+                end
+            end
+            for _, name in ipairs({ "CombatLogResetFilter", "CombatLogAddFilter", "CombatLogSetCurrentEntry", "Blizzard_CombatLog_ApplyFilters",
+                                    "Blizzard_CombatLog_QuickButton_OnClick", "Blizzard_CombatLog_Refilter" }) do
+                out[#out + 1] = name .. ": " .. type(_G[name])
+            end
+        end)
+    end)
+end
