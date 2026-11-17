@@ -1036,13 +1036,24 @@ function Bars:ApplyPetWell()
         pcall(ev.RegisterEvent, ev, "UNIT_PET_EXPERIENCE")
         ev:SetScript("OnEvent", function(_, e, _, token)
             if e == "UNIT_POWER_UPDATE" or e == "UNIT_MAXPOWER" then
-                -- Only the mood (the pet's energy / focus ticks constantly).
-                if token == "HAPPINESS" or (type(token) ~= "string") then
-                    if w:IsShown() then w.mood() end
+                -- Any change of the pet's powers, at most twice a second. (It
+                -- used to wait for one named "HAPPINESS", and a pet fed up to
+                -- happy went on reading Unhappy until a reload: the name
+                -- evidently doesn't arrive that way here.)
+                local now = GetTime()
+                if w:IsShown() and now - (w.moodAt or 0) > 0.5 then
+                    w.moodAt = now
+                    w.mood()
                 end
                 return
             end
             C_Timer.After(0, w.refresh)
+        end)
+        -- And every two seconds regardless, while the pet is out: the mood
+        -- drifts down with no event at all on some clients, and reading it
+        -- costs a handful of curve look-ups.
+        C_Timer.NewTicker(2, function()
+            if w:IsShown() then ns.Timed("pet mood", w.mood) end
         end)
         self.petWell = w
     end
