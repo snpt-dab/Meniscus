@@ -965,6 +965,10 @@ local function buildNumbers()
     -- (db.numbersMeter = false: the older rules decide, as before.)
     local meterOn, pendingW = false, {}
     local grantAt, grantNow = nil, nil
+    -- The same for heals, from the meter's "healing done" list: a heal on
+    -- someone waits for that list to show something under you.
+    local healT = Enum and Enum.DamageMeterType and Enum.DamageMeterType.HealingDone or nil
+    local pendingH, grantHAt, grantHNow = {}, nil, nil
     do
         local DM = C_DamageMeter
         if DM and DM.ResetAllCombatSessions and DM.GetCombatSessionSourceFromType then
@@ -976,18 +980,39 @@ local function buildNumbers()
             local function show(v) if secret(v) then return "hidden" end return tostring(v) end
             local function look(how, kind)
                 local now = GetTime()
-                if how == "told" and not secret(kind) and kind ~= 0 then return end
                 if not guid then local okG, g = pcall(UnitGUID, "player"); guid = okG and g or nil end
-                local ok, src = pcall(DM.GetCombatSessionSourceFromType, 0, 0, guid)
-                local list = ok and type(src) == "table" and not secret(src) and src.combatSpells
-                local n = (type(list) == "table" and not secret(list)) and #list or -1
-                if n <= 0 then
+                local function listed(kindOf)
+                    local ok, src = pcall(DM.GetCombatSessionSourceFromType, 0, kindOf, guid)
+                    local l = ok and type(src) == "table" and not secret(src) and src.combatSpells
+                    if type(l) == "table" and not secret(l) then return l, #l end
+                    return nil, -1
+                end
+                local list, n = listed(0)
+                local nH = -1
+                if healT and not secret(healT) then local _; _, nH = listed(healT) end
+                if n <= 0 and nH <= 0 then
                     if how == "told" and now - quietAt > 0.5 then
                         quietAt = now
-                        note("    METER moved: nothing of yours listed" .. (n < 0 and (" (could not be read: " .. show(ok and "no list" or src) .. ")") or ""))
+                        note("    METER moved: nothing of yours listed" .. (n < 0 and " (could not be read)" or ""))
                     end
                     return
                 end
+                if nH > 0 then
+                    local drawnH = 0
+                    if meterOn then
+                        for i = 1, #pendingH do
+                            local rec = pendingH[i]
+                            if now - rec.t <= 0.03 then
+                                drawnH = drawnH + 1
+                                present(rec.unit, rec.rel, rec.x, rec.y, "HEAL", rec.indicator, rec.amount, rec.school, false, false)
+                            end
+                        end
+                        wipe(pendingH)
+                        if drawnH > 0 then grantHNow, grantHAt = now, nil else grantHAt = now end
+                    end
+                    note(string.format("    METER heals: %d of yours, %d drawn", nH, drawnH))
+                end
+                if n <= 0 then pcall(DM.ResetAllCombatSessions) return end
                 local parts = {}
                 for i = 1, math.min(n, 4) do
                     local sp = list[i]
@@ -1237,7 +1262,23 @@ local function buildNumbers()
             hitSchool = school
             local now = GetTime()
             local mineHit
-            if meterOn and key and guess and action == "WOUND" then
+            if meterOn and healT and key and guess and action == "HEAL" then
+                local own = yoursOnly(unit, key, action, now)
+                if own then
+                    mineHit, byPet, why = true, false, "heal, by your cast"
+                elseif grantHNow == now then
+                    mineHit, byPet, why = true, false, "the meter listed a heal of yours this instant"
+                elseif grantHAt and now - grantHAt <= 1.4 then
+                    grantHNow, grantHAt = now, nil
+                    mineHit, byPet, why = true, false, "the meter listed a heal of yours a moment ago"
+                else
+                    if x then
+                        pendingH[#pendingH + 1] = { t = now, unit = unit, rel = rel, x = x, y = y, indicator = indicator, amount = amount, school = school }
+                        if #pendingH > 16 then table.remove(pendingH, 1) end
+                    end
+                    mineHit, why = false, "waits for the meter's heals"
+                end
+            elseif meterOn and key and guess and action == "WOUND" then
                 local own = yoursOnly(unit, key, action, now)
                 local tick = own and why == "tick"
                 local pet = (not own) and pets(unit, now) or false
