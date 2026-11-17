@@ -1445,12 +1445,34 @@ local function gameNumbers(db)
             pcall(SetCVar, name, okD and def or "1")
         end
     end
-    -- The typeface the game draws its world numbers in is read when the
-    -- world loads: named here, it holds from the next time you log in.
-    local T = ns.Theme
-    local face = T and (T.fontBold or T.font)
-    if type(face) == "string" then _G.DAMAGE_TEXT_FONT = face end
-    if MinimalUIDB then MinimalUIDB.gamefont = date("%H:%M:%S") .. " the game's numbers: typeface " .. tostring(face) end
+end
+
+-- The typeface the game draws its world numbers in (DAMAGE_TEXT_FONT) is
+-- read as the world loads. Named at login it was too late (the numbers
+-- stayed in the game's own face): it is named as the addon's settings
+-- arrive, the earliest they can be known. (This frame is made after
+-- Theme.lua's, so the chosen typeface is already worked out.) The game may
+-- still only pick it up on a fresh log-in, not a reload.
+do
+    local ff = CreateFrame("Frame")
+    ff:RegisterEvent("ADDON_LOADED")
+    ff:SetScript("OnEvent", function(self, _, name)
+        if name ~= ns.name then return end
+        self:UnregisterAllEvents()
+        local mods = ns.db and ns.db.modules
+        local db = type(mods) == "table" and mods.Nameplates or nil
+        local mode = db and db.numbersMode
+        if mode == nil then mode = (db and db.numbers == false) and "off" or "game" end
+        local T = ns.Theme
+        local face = T and (T.fontBold or T.font)
+        if mode == "game" and type(face) == "string" then
+            face = face:gsub("/", "\\")
+            _G.DAMAGE_TEXT_FONT = face
+        end
+        if MinimalUIDB then
+            MinimalUIDB.gamefont = date("%H:%M:%S") .. " numbers: " .. tostring(mode) .. "; the game's typeface named as " .. tostring(_G.DAMAGE_TEXT_FONT)
+        end
+    end)
 end
 
 function NP:OnInit(db)
