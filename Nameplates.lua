@@ -951,12 +951,20 @@ local function buildNumbers()
     -- own damage meter shows nothing while this runs.
     -- For now only written into the log beside the hits, to see how the
     -- two line up before any rule is hung on it.
-    -- meterOn: your hits are drawn from the meter (the amount it lists is
-    -- yours for certain). What the game reports of a hit on an enemy is then
-    -- only kept (pendingW) for what the meter does not know: where the
-    -- enemy is, and whether it was a critical hit.
+    -- meterOn: the meter is the proof that a hit was yours. It moves, with
+    -- something listed under you, in the very moment a blow of yours lands
+    -- (seen: the same instant as the hit's own report, or up to a second
+    -- before it; never after). So a hit reported on an enemy waits
+    -- (pendingW) for the meter to move in that instant, and when the meter
+    -- moves with no hit yet reported, the next one reported is the one
+    -- (grantAt). The number, the place and the critical all come from the
+    -- hit's own report, as before: the meter's amounts are per ability, and
+    -- a thunder clap on three enemies is one sum there.
+    -- Not for the ticks of an effect of yours: those reach the meter only
+    -- together with your next blow, so they go by their own sign.
     -- (db.numbersMeter = false: the older rules decide, as before.)
-    local meterOn, pendingW, lastPlace = false, {}, nil
+    local meterOn, pendingW = false, {}
+    local grantAt, grantNow = nil, nil
     do
         local DM = C_DamageMeter
         if DM and DM.ResetAllCombatSessions and DM.GetCombatSessionSourceFromType then
@@ -990,20 +998,15 @@ local function buildNumbers()
                 end
                 local drawn = 0
                 if meterOn then
-                    while pendingW[1] and now - pendingW[1].t > 1.6 do table.remove(pendingW, 1) end
-                    for i = 1, n do
-                        local rec = table.remove(pendingW, 1)
-                        if rec then
-                            -- (One blow reported twice, as Heroic Strike is: one number.)
-                            while pendingW[1] and pendingW[1].t == rec.t and pendingW[1].unit == rec.unit do table.remove(pendingW, 1) end
-                            lastPlace = rec
-                        end
-                        local at = rec or lastPlace
-                        if at then
+                    for i = 1, #pendingW do
+                        local rec = pendingW[i]
+                        if now - rec.t <= 0.03 then
                             drawn = drawn + 1
-                            present(at.unit, at.rel, at.x, at.y, "WOUND", rec and rec.indicator or "", list[i].totalAmount, at.school, false, false)
+                            present(rec.unit, rec.rel, rec.x, rec.y, "WOUND", rec.indicator, rec.amount, rec.school, false, rec.pet)
                         end
                     end
+                    wipe(pendingW)
+                    if drawn > 0 then grantNow, grantAt = now, nil else grantAt = now end
                 end
                 local okR, err = pcall(DM.ResetAllCombatSessions)
                 note(string.format("    METER (%s): %d of yours, %d drawn %s; wiped: %s", how, n, drawn, table.concat(parts, " "), okR and "yes" or ("refused: " .. tostring(err):sub(1, 80))))
@@ -1235,11 +1238,23 @@ local function buildNumbers()
             local now = GetTime()
             local mineHit
             if meterOn and key and guess and action == "WOUND" then
-                if x then
-                    pendingW[#pendingW + 1] = { t = now, unit = unit, rel = rel, x = x, y = y, indicator = indicator, school = school }
-                    if #pendingW > 12 then table.remove(pendingW, 1) end
+                local own = yoursOnly(unit, key, action, now)
+                local tick = own and why == "tick"
+                local pet = (not own) and pets(unit, now) or false
+                if tick then
+                    mineHit, byPet, why = true, false, "tick of your effect"
+                elseif grantNow == now then
+                    mineHit, byPet, why = true, pet, "the meter moved for you this instant"
+                elseif grantAt and now - grantAt <= 1.4 then
+                    grantNow, grantAt = now, nil
+                    mineHit, byPet, why = true, pet, "the meter moved for you a moment ago"
+                else
+                    if x then
+                        pendingW[#pendingW + 1] = { t = now, unit = unit, rel = rel, x = x, y = y, indicator = indicator, amount = amount, school = school, pet = pet }
+                        if #pendingW > 16 then table.remove(pendingW, 1) end
+                    end
+                    mineHit, why = false, "waits for the meter"
                 end
-                mineHit, why = false, "left to the meter"
             elseif not (key and guess) then
                 mineHit, byPet, why = true, false, ""
             elseif logOn() then
