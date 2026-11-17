@@ -541,13 +541,16 @@ local PAGES = {
     } },
     { key = "combat", title = "Combat", groups = {
         { title = "Numbers", items = {
-            { "Meniscus combat numbers", kind = "switch", reload = true,
-              note = "Our damage and healing numbers; the game's own are turned down",
-              get = function() return ns.modules.Nameplates.db.numbers ~= false end,
-              set = function()
+            { "Combat numbers", kind = "dropdown", reload = true,
+              note = "Meniscus numbers are proven yours by the game's damage meter, which shows nothing while they are on",
+              options = function() return { { key = "game", label = "The game's, in our typeface" },
+                                            { key = "ours", label = "Meniscus numbers (no damage meter)" },
+                                            { key = "off", label = "Leave the game's alone" } } end,
+              get = function() return ns.modules.Nameplates.db.numbersMode or "game" end,
+              set = function(k)
                   local N = ns.modules.Nameplates
-                  N.db.numbers = N.db.numbers == false
-                  if not N.db.numbers and N.QuietGame then pcall(N.QuietGame, false) end
+                  N.db.numbersMode = k
+                  N.db.numbers = k == "ours"
               end },
             { "Where your hits show", kind = "dropdown",
               note = "A killing blow or a far target never uses the nameplate",
@@ -866,7 +869,7 @@ local KEYS = {
     ["Food and drink quickslot"] = "eat water bread conjured consumable flyout orb disc mug",
     ["Professions quickslot"] = "tradeskill craft alchemy cooking first aid enchanting smelting flyout orb disc",
     ["Tracking spells in the professions quickslot"] = "find herbs minerals ore track",
-    ["Meniscus combat numbers"] = "floating combat text fct sct damage healing scrolling",
+    ["Combat numbers"] = "floating combat text fct sct damage healing scrolling meter",
     ["Only my own hits and heals"] = "mine party others filter damage numbers",
     ["Where your hits show"] = "floating combat text position rail nameplate scrolling fct place character",
     ["My pet's hits"] = "pet minion demon hunter warlock floating combat text damage paw",

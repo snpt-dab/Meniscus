@@ -1422,8 +1422,46 @@ local function buildNumbers()
     end)
 end
 
+-- Which combat numbers (db.numbersMode):
+--   "game": the game's own, in our typeface. The game knows whose each hit
+--           is, so these are always right, and its damage meter is left
+--           alone. All an addon may change of them is the typeface and the
+--           size. The default.
+--   "ours": our numbers (below), proven yours by the damage meter, which
+--           shows nothing while they are on.
+--   "off":  neither of ours; the game's settings are put back as they were.
+local function gameNumbers(db)
+    pcall(quietGame, false)
+    for _, name in ipairs({ "floatingCombatTextCombatDamage_v2", "floatingCombatTextCombatHealing_v2",
+                            "floatingCombatTextPetMeleeDamage_v2", "floatingCombatTextPetSpellDamage_v2" }) do
+        pcall(SetCVar, name, "1")
+    end
+    -- (Left at a size the game no longer draws by an earlier version: back
+    -- to the game's own.)
+    for _, name in ipairs({ "WorldTextScale_v2", "WorldTextScale" }) do
+        local ok, cur = pcall(GetCVar, name)
+        if ok and tonumber(cur) and tonumber(cur) > 20 then
+            local okD, def = pcall(GetCVarDefault, name)
+            pcall(SetCVar, name, okD and def or "1")
+        end
+    end
+    -- The typeface the game draws its world numbers in is read when the
+    -- world loads: named here, it holds from the next time you log in.
+    local T = ns.Theme
+    local face = T and (T.fontBold or T.font)
+    if type(face) == "string" then _G.DAMAGE_TEXT_FONT = face end
+    if MinimalUIDB then MinimalUIDB.gamefont = date("%H:%M:%S") .. " the game's numbers: typeface " .. tostring(face) end
+end
+
 function NP:OnInit(db)
     self.db = db
+    if db.numbersMode == nil then db.numbersMode = (db.numbers == false) and "off" or "game" end
+    db.numbers = db.numbersMode == "ours"
+    if db.numbersMode == "game" then
+        pcall(gameNumbers, db)
+    elseif db.numbersMode == "off" then
+        pcall(quietGame, false)
+    end
     if db.numbers ~= false then
         pcall(quietGame, true)
         local ok, err = pcall(buildNumbers)
