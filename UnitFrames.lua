@@ -274,6 +274,14 @@ local function placeTag(av)
         c.maskLo:SetAllPoints(c); c.maskHi:SetAllPoints(c)
     end
     c.spikesHi:SetShown(c.split and c.kind == "boss" and SPIKES_OVER > 0)
+    -- The elite's studs and the rare's stars flank the top of the ring,
+    -- which here is behind the bar: turned upside down, they flank the
+    -- bottom instead, either side of the level badge.
+    if c.split then
+        c.studs:SetTexCoord(0, 1, 1, 0); c.stars:SetTexCoord(0, 1, 1, 0)
+    else
+        c.studs:SetTexCoord(0, 1, 0, 1); c.stars:SetTexCoord(0, 1, 0, 1)
+    end
     tag:ClearAllPoints()
     if av.tagBar then
         tag:SetPoint("CENTER", av.tagBar, "TOP", 0, 1)
