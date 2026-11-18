@@ -1822,6 +1822,40 @@ local REACTIVE = {
     PALADIN = { "Hammer of Wrath" },
 }
 local RX_MAX, RX_SIZE, RX_GAP = 4, 30, 6
+-- The flash goes on the action bar: every button in view that holds the
+-- spell (or a macro that casts it). Only a spell that is on no bar flashes
+-- on its own button above the dome. True if any bar button was found.
+local RX_BARS = { "ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton", "MultiBarRightButton", "MultiBarLeftButton",
+                  "MultiBar5Button", "MultiBar6Button", "MultiBar7Button" }
+local function flashOnBars(spell)
+    local found = false
+    for p = 1, #RX_BARS do
+        for i = 1, 12 do
+            local b = _G[RX_BARS[p] .. i]
+            local slot = b and b.action
+            if num(slot) and b:IsVisible() then
+                local ok, kind, id = pcall(GetActionInfo, slot)
+                if ok and kind == "macro" and num(id) and GetMacroSpell then
+                    kind, id = "spell", call(GetMacroSpell, id)
+                end
+                if ok and kind == "spell" and num(id) then
+                    local name = C_Spell.GetSpellName and call(C_Spell.GetSpellName, id)
+                    if type(name) == "string" and not secret(name) and name == spell then
+                        if b.__menFlash == nil then
+                            local okF, fx = pcall(EX.Flash, b, { size = b:GetWidth() or 36, shape = MEDIA .. "rounded.tga" })
+                            b.__menFlash = okF and fx or false
+                        end
+                        if b.__menFlash then
+                            b.__menFlash.Play()
+                            found = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return found
+end
 for i = 1, RX_MAX do _G["BINDING_NAME_CLICK MeniscusReactive" .. i .. ":LeftButton"] = "Reactive spell " .. i end
 local function buildReactive()
     local dome = _G.MinimalUI_MinimapDome
@@ -1945,7 +1979,10 @@ local function buildReactive()
                     if not b.vis:IsShown() then
                         b.vis:Show()
                         b.pop:Stop(); b.pop:Play()
-                        if not dim then b.fx.Play() end
+                        if not dim then
+                            local ok, onBar = pcall(flashOnBars, b.spell)
+                            if not (ok and onBar) then b.fx.Play() end
+                        end
                     end
                     local okc, c = pcall(C_Spell.GetSpellCooldown, b.spell)
                     if okc and type(c) == "table" then pcall(b.cd.SetCooldown, b.cd, c.startTime, c.duration) end
