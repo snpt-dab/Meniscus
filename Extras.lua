@@ -2009,6 +2009,8 @@ end
 -- "/men tidy" lists the spells on your bars that you have not cast in the
 -- last IDLE_DAYS days of play, each with a button that takes it off the
 -- bar (it stays in your spellbook). Nothing is ever moved without a click.
+-- A spell can be ignored instead (usage[char].ignore[spell]): it is kept
+-- in a section at the bottom, and no longer counted in the chat notice.
 local IDLE_DAYS = 4
 local function usageTable()
     local db = MinimalUIDB
@@ -2022,8 +2024,8 @@ local function usageTable()
 end
 local function idleButtons()
     local u = usageTable()
-    local out, byName = {}, {}
-    if not (u and GetActionInfo) or u.days <= IDLE_DAYS then return out, u end
+    local out, ign, byName = {}, {}, {}
+    if not (u and GetActionInfo) or u.days <= IDLE_DAYS then return out, u, ign end
     for slot = 1, 120 do
         local ok, kind, id = pcall(GetActionInfo, slot)
         if ok and kind == "spell" and num(id) then
@@ -2045,37 +2047,41 @@ local function idleButtons()
                         e = { slot = slot, slots = { slot }, name = name, id = id, idle = u.days - last, never = u.last[name] == nil,
                               icon = C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, id) }
                         byName[name] = e
-                        out[#out + 1] = e
+                        e.ignored = u.ignore ~= nil and u.ignore[name] == true
+                        local to = e.ignored and ign or out
+                        to[#to + 1] = e
                     end
                 end
             end
         end
     end
-    table.sort(out, function(a, b)
+    local function order(a, b)
         if a.idle ~= b.idle then return a.idle > b.idle end
         return a.slot < b.slot
-    end)
-    return out, u
+    end
+    table.sort(out, order)
+    table.sort(ign, order)
+    return out, u, ign
 end
 local tidyWin
 local function showTidy()
-    local list, u = idleButtons()
+    local list, u, ign = idleButtons()
     if not u then return end
     if u.days <= IDLE_DAYS then
         ns:Print("Still learning what you press: day " .. u.days .. " of " .. (IDLE_DAYS + 1)
             .. " played since it started counting. Try /men tidy again after that.")
         return
     end
-    if #list == 0 then
+    if #list == 0 and #ign == 0 then
         if tidyWin then tidyWin:Hide() end
         ns:Print("Every spell on your bars has been used in your last " .. IDLE_DAYS .. " days of play.")
         return
     end
-    local ROWS, RH, W, FOOT = 10, 28, 420, 52
+    local ROWS, RH, W, FOOT = 10, 28, 470, 52
     local TOP = ns.SHELL_H + 12
     if not tidyWin then
         local w = CreateFrame("Frame", "MeniscusTidy", UIParent)
-        w:SetSize(W, TOP + ROWS * RH + 10 + FOOT)
+        w:SetSize(W, TOP + ROWS * RH + 26 + FOOT)
         w:SetPoint("CENTER", 0, 60)
         w:SetFrameStrata("HIGH")
         w:SetToplevel(true)
@@ -2109,8 +2115,19 @@ local function showTidy()
             r.name:SetTextColor(T.text[1], T.text[2], T.text[3])
             r.note = r:CreateFontString(nil, "OVERLAY")
             ns:SetFont(r.note, 10)
-            r.note:SetPoint("LEFT", r.name, "RIGHT", 8, 0)
+            r.note:SetJustifyH("LEFT")
+            r.note:SetWordWrap(false)
             r.note:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+            -- (The heading of the ignored section, on a row of its own.)
+            r.head = r:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(r.head, 10, "", true)
+            r.head:SetPoint("LEFT", 0, -3)
+            r.head:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+            r.rule = r:CreateTexture(nil, "ARTWORK")
+            r.rule:SetHeight(1)
+            r.rule:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+            r.rule:SetPoint("LEFT", r.head, "RIGHT", 10, 0)
+            r.rule:SetPoint("RIGHT")
             r.off = ns.Pill(r, "Take off bar", function()
                 if InCombatLockdown() then ns:Print("Not in combat.") return end
                 if r.slots and PickupAction then
@@ -2122,6 +2139,12 @@ local function showTidy()
                 C_Timer.After(0.2, showTidy)
             end, { h = 20, font = 10 })
             r.off:SetPoint("RIGHT")
+            r.ign = ns.Pill(r, "Ignore", function()
+                if not r.spell then return end
+                u.ignore = u.ignore or {}
+                if r.ignored then u.ignore[r.spell] = nil else u.ignore[r.spell] = true end
+                showTidy()
+            end, { h = 20, font = 10, dimIdle = true })
             w.rows[i] = r
         end
         w.footer = ns:CreateFooter(w, FOOT)
@@ -2132,21 +2155,57 @@ local function showTidy()
         w.hint:SetPoint("RIGHT", w.footer, "RIGHT", -16, 0)
         w.hint:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
         w.hint:SetText("Spells taken off stay in your spellbook.")
+        w.more = w:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(w.more, 10)
+        w.more:SetPoint("BOTTOM", w.footer, "TOP", 0, 6)
+        w.more:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
         tidyWin = w
     end
     local w = tidyWin
     w.shell:SetSubtitle("On your bars, not cast in your last " .. IDLE_DAYS .. " days of play")
-    w.shell:SetChip((#list > ROWS and (ROWS .. " of " .. #list) or #list) .. (#list == 1 and " spell" or " spells"), T.accent)
-    w.shell:SetIcon(list[1].icon)
+    w.shell:SetChip(#list == 0 and "none" or (#list .. (#list == 1 and " spell" or " spells")), T.accent)
+    w.shell:SetIcon((list[1] or ign[1]).icon)
+    local total = #list + (#ign > 0 and #ign + 1 or 0)
+    w.more:SetText(total > ROWS and ("and " .. (total - ROWS) .. " more: clear some to see them") or "")
+    -- What goes on the rows: the unused, then a heading and the ignored.
+    local show = w.show or {}
+    w.show = show
+    for i = #show, 1, -1 do show[i] = nil end
+    for i = 1, #list do show[#show + 1] = list[i] end
+    if #ign > 0 then
+        show[#show + 1] = "head"
+        for i = 1, #ign do show[#show + 1] = ign[i] end
+    end
     for i, r in ipairs(w.rows) do
-        local e = list[i]
-        if e then
-            r.slots = e.slots
+        local e = show[i]
+        local head = e == "head"
+        r.head:SetShown(head); r.rule:SetShown(head)
+        r.icon:SetShown(not head); r.name:SetShown(not head); r.note:SetShown(not head)
+        if head then
+            r.spell = nil
+            r.head:SetText("Ignored")
+            r.off:Hide(); r.ign:Hide()
+            r:Show()
+        elseif e then
+            r.slots, r.spell, r.ignored = e.slots, e.name, e.ignored
             r.icon:SetTexture(e.icon)
+            r.icon:SetDesaturated(e.ignored)
+            r.icon:SetAlpha(e.ignored and 0.6 or 1)
             r.name:SetText(e.name)
-            r.note:SetText((e.never and "never, since counting began" or (e.idle .. " play days ago"))
-                .. (#e.slots > 1 and ("  ·  on " .. #e.slots .. " buttons") or ""))
+            local c = e.ignored and T.textDim or T.text
+            r.name:SetTextColor(c[1], c[2], c[3])
+            r.note:SetText((e.never and "never cast" or (e.idle .. " play days ago"))
+                .. (#e.slots > 1 and ("  ·  " .. #e.slots .. " buttons") or ""))
+            -- The pills on the right, and the note kept short of them.
+            r.off:SetShown(not e.ignored)
             r.off:SetLabel(#e.slots > 1 and "Take off bars" or "Take off bar")
+            r.ign:SetLabel(e.ignored and "Stop ignoring" or "Ignore")
+            r.ign:ClearAllPoints()
+            if e.ignored then r.ign:SetPoint("RIGHT") else r.ign:SetPoint("RIGHT", r.off, "LEFT", -6, 0) end
+            r.ign:Show()
+            r.note:ClearAllPoints()
+            r.note:SetPoint("LEFT", r.name, "RIGHT", 8, 0)
+            r.note:SetPoint("RIGHT", r.ign, "LEFT", -10, 0)
             r:Show()
         else
             r:Hide()
