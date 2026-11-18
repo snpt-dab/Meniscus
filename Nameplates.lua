@@ -444,9 +444,13 @@ end
 --          bars work with hidden amounts at all;
 --   red    one + amount = amount: never true, so never seen if a wrong
 --          sum really does hide the mark;
---   green  (one or two) the meter's total before and after your last one or
---          two blows: seen when this hit's amount is exactly what the meter
---          added for one of them.
+--   green  the meter's total before and after the blow of yours this hit
+--          was paired with: seen when the hit's amount is exactly what the
+--          meter added.
+--   blue   the same, with your ticks since the blow before counted into
+--          the sum (first trial: white always, red never, green only now
+--          and then, which is what ticks reaching the meter late, along
+--          with your next blow, would do).
 -- Also written down: the same bars measured with plain numbers at login
 -- (MinimalUIDB.labgeo), what the fill of a bar holding a hidden amount says
 -- of itself (labfill), and the game's console settings to do with floating
@@ -469,8 +473,8 @@ local function labFill(bar, when)
         MinimalUIDB.labfill = table.concat(parts, "; ")
     end
 end
-local function newGauge(host, dx, r, g, b)
-    local G = {}
+local function newGauge(host, dx, r, g, b, extra)
+    local G = { extra = extra or 0, more = {} }
     local function bar(reverse)
         local sb = CreateFrame("StatusBar", nil, host)
         sb:SetOrientation("VERTICAL")
@@ -485,11 +489,21 @@ local function newGauge(host, dx, r, g, b)
     G.now, G.before, G.amt = bar(true), bar(false), bar(false)
     G.now:SetPoint("TOP", host, "CENTER", dx, G_Y)
     G.before:SetPoint("BOTTOM", G.now:GetStatusBarTexture(), "BOTTOM")
-    G.amt:SetPoint("BOTTOM", G.before:GetStatusBarTexture(), "TOP")
+    -- (More bars may stand between "before" and "amount": other amounts to
+    -- be counted into the sum. One not in use holds 0, a pixel-step tall,
+    -- which the window's place allows for.)
+    local last = G.before
+    for i = 1, G.extra do
+        local sb = bar(false)
+        sb:SetPoint("BOTTOM", last:GetStatusBarTexture(), "TOP")
+        G.more[i] = sb
+        last = sb
+    end
+    G.amt:SetPoint("BOTTOM", last:GetStatusBarTexture(), "TOP")
     G.win = CreateFrame("Frame", nil, host)
     G.win:SetClipsChildren(true)
     G.win:SetSize(12, G_H * 2)
-    G.win:SetPoint("TOP", G.amt:GetStatusBarTexture(), "TOP", 0, G_H - G_S)
+    G.win:SetPoint("TOP", G.amt:GetStatusBarTexture(), "TOP", 0, G_H - G_S * (1 + G.extra))
     G.spot = CreateFrame("Frame", nil, G.win)
     G.spot:SetSize(7, 7)
     G.spot:SetPoint("CENTER", host, "CENTER", dx, G_Y)
@@ -502,11 +516,16 @@ local function newGauge(host, dx, r, g, b)
 end
 -- (Every bar runs from -1, so none is ever empty: an empty fill has no
 -- place for the next bar to stand on.)
-local function setGauge(G, before, amount, now)
+local function setGauge(G, before, amount, now, also)
     local h = G_S * (labM + 1)
     G.now:SetHeight(h); G.before:SetHeight(h); G.amt:SetHeight(h)
     G.now:SetMinMaxValues(-1, labM); G.before:SetMinMaxValues(-1, labM); G.amt:SetMinMaxValues(-1, labM)
     local ok = pcall(G.now.SetValue, G.now, now)
+    for i = 1, G.extra do
+        local sb = G.more[i]
+        sb:SetHeight(h); sb:SetMinMaxValues(-1, labM)
+        if also and also[i] ~= nil then ok = pcall(sb.SetValue, sb, also[i]) and ok else sb:SetValue(0) end
+    end
     ok = pcall(G.before.SetValue, G.before, before) and ok
     ok = pcall(G.amt.SetValue, G.amt, amount) and ok
     G.win:SetShown(ok)
@@ -1574,12 +1593,13 @@ local function buildNumbers()
         note(string.format("  engine #%d: yours: %s", h.id, h.how))
         lastPaired = h
         h.quick = not KSLOW[L.kind] and not KAFTER[L.kind]
+        h.lineKind = L.kind
         if KSLOW[L.kind] then
             local c
             if L.kind == "swing" and h.truth == true and dt >= 0 then c = delayLearn(dt) end
             lastSlow = { L = L, h = h, c = c }
         end
-        if h.waiting and h.show then
+        if h.waiting and (h.show or (h.dead and L.killed)) then
             present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.sch, false, pet)
         end
     end
@@ -1591,7 +1611,8 @@ local function buildNumbers()
     local function eSlow(h, now)
         for i = 1, #eLines do
             local L = eLines[i]
-            if not L.used and KSLOW[L.kind] and KCLASS[L.kind] == h.cls and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey)) then
+            if not L.used and KSLOW[L.kind] and KCLASS[L.kind] == h.cls
+               and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey) or (L.killed and h.key == RAILKEY)) then
                 local dt = h.t - L.t
                 local fits = dt >= -0.05 and dt <= 1.6
                 if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
@@ -1655,13 +1676,21 @@ local function buildNumbers()
             -- The blow that kills is often never reported as a hit (the
             -- enemy is gone before a swing is seen to land): a swing's line
             -- still waiting when you kill must not be spent on a later hit.
-            C_Timer.After(0.25, function()
+            -- (These lines were let go here at first, on the belief that
+            -- the blow that kills is never reported. It is, a swing's usual
+            -- gap after the kill: seen twice, 0.26 and 0.58 s on, and both
+            -- numbers were lost. The line is marked instead: its hit may
+            -- come on the dead enemy's nameplate or, that gone, as your
+            -- target's; and it is shown even though a dead enemy is no
+            -- longer "fighting you".)
+            for i = 1, #eLines do
+                local L = eLines[i]
+                if not L.used and KSLOW[L.kind] and now - L.t <= 0.05 then L.killed = true end
+            end
+            C_Timer.After(0.02, function()
                 for i = 1, #eLines do
                     local L = eLines[i]
-                    if not L.used and KSLOW[L.kind] and L.t <= now + 0.05 then
-                        L.used = true
-                        note("  engine: at your kill, a waiting " .. L.kind .. " line is let go")
-                    end
+                    if not L.used and KSLOW[L.kind] and math.abs(L.t - now) <= 0.05 then L.killed = true end
                 end
             end)
             return
@@ -1747,6 +1776,7 @@ local function buildNumbers()
     -- ── The lab's marks (see "The lab" near the top of this section) ───────
     local labGuid, labPrev, labHave, labNeed = nil, nil, false, false
     local labLines, labWait = {}, {}
+    local labTicks = {} -- amounts of your ticks since the meter last took in a blow of yours
     local labDriver = CreateFrame("Frame")
     labDriver:Hide()
     -- Your running total on the game's damage meter (read, never wiped). A
@@ -1778,10 +1808,10 @@ local function buildNumbers()
         labNeed = true
         labDriver:Show()
     end
-    local function labMark(f, amount, now)
+    local function labMark(f, amount, now, h)
         if f.gauges == nil then
             local ok, err = pcall(function()
-                f.gauges = { newGauge(f, -14, 1, 1, 1), newGauge(f, -5, 1, 0.25, 0.25), newGauge(f, 5, 0.3, 1, 0.4), newGauge(f, 14, 0.3, 1, 0.4) }
+                f.gauges = { newGauge(f, -14, 1, 1, 1), newGauge(f, -5, 1, 0.25, 0.25), newGauge(f, 5, 0.3, 1, 0.4), newGauge(f, 14, 0.35, 0.6, 1, 4) }
             end)
             if not ok then
                 f.gauges = false
@@ -1797,7 +1827,7 @@ local function buildNumbers()
         end
         f.gauges[3].win:Hide()
         f.gauges[4].win:Hide()
-        labWait[#labWait + 1] = { f = f, amount = amount, t = now, serial = f.serial }
+        labWait[#labWait + 1] = { f = f, amount = amount, t = now, serial = f.serial, h = h }
         labDriver:Show()
     end
     labDriver:SetScript("OnUpdate", function(self)
@@ -1815,6 +1845,12 @@ local function buildNumbers()
                     L.set = true
                     L.good = ok and labHave
                     L.b, L.a, L.many = labPrev, t, n > 1
+                    -- (A blow of yours: the ticks before it go with it, if
+                    -- the meter only takes ticks in along with a blow.)
+                    if L.kind ~= "tick" then
+                        L.ticks = labTicks
+                        labTicks = {}
+                    end
                 end
             end
             if ok then labPrev, labHave = t, true end
@@ -1828,16 +1864,23 @@ local function buildNumbers()
                 -- (A frame on from the hit, so a line of the same moment
                 -- has its totals.)
                 table.remove(labWait, i)
+                -- Green: the plain sum, with the line the pairing gave
+                -- this hit (or the latest line). Blue: the same sum with
+                -- your ticks since the blow before counted in.
+                local kind = w.h and w.h.lineKind
                 local used, said = 0, ""
                 for j = #labLines, 1, -1 do
                     local L = labLines[j]
-                    if used < 2 and L.set and L.good and L.t <= w.t + 0.02 and w.t - L.t <= 1.7 then
-                        used = used + 1
-                        setGauge(w.f.gauges[2 + used], L.b, w.amount, L.a)
-                        said = said .. string.format(" %s %.2f s before%s", L.kind, w.t - L.t, L.many and " (one of several in its moment)" or "")
+                    if used < 1 and L.set and L.good and L.t <= w.t + 0.02 and w.t - L.t <= 1.7 and (kind == nil or L.kind == kind) then
+                        used = 1
+                        setGauge(w.f.gauges[3], L.b, w.amount, L.a)
+                        local nt = L.ticks and #L.ticks or 0
+                        if L.kind ~= "tick" and nt <= 4 then setGauge(w.f.gauges[4], L.b, w.amount, L.a, L.ticks) end
+                        said = string.format(" %s %.2f s before%s; blue counts in %d tick(s)", L.kind, w.t - L.t, L.many and " (one of several in its moment)" or "", nt)
                     end
                 end
-                note(string.format("  marks: white and red set; green from %d line(s):%s", used, said ~= "" and said or " none"))
+                if kind == "tick" and #labTicks < 6 then labTicks[#labTicks + 1] = w.amount end
+                note(string.format("  marks #%s (%s): green from%s", tostring(w.h and w.h.id or "?"), tostring(kind or "unpaired"), said ~= "" and said or " no line"))
             end
         end
         if not labNeed and #labWait == 0 and #labLines == 0 then self:Hide() end
@@ -2048,11 +2091,13 @@ local function buildNumbers()
         end
     end
 
+    local labHit -- (the pairing's record of the hit in hand, for the lab's marks)
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("UNIT_COMBAT")
     ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
         if type(unit) ~= "string" or secret(unit) or secret(action) or type(action) ~= "string" then return end
         showUnit = unit
+        labHit = nil
         local mine = unit == "player"
         local x, y, rel
         local onRail, key = false, nil
@@ -2108,6 +2153,7 @@ local function buildNumbers()
             local now = GetTime()
             local mineHit
             local tag = ""
+            labHit = nil
             if meterOn and healT and key and guess and action == "HEAL" then
                 local own = yoursOnly(unit, key, action, now)
                 if own then
@@ -2172,7 +2218,9 @@ local function buildNumbers()
                 eNext = eNext + 1
                 local h = { id = eNext, t = now, cls = (action == "WOUND" and "wound") or (action == "HEAL" and "heal") or "miss",
                             unit = unit, rel = rel, x = x, y = y, action = action, indicator = indicator, amount = amount, sch = school,
-                            key = key, own = own, petSign = pet, truth = truth, show = truth == nil and x ~= nil, auto = autoOn() }
+                            key = key, own = own, petSign = pet, truth = truth, show = truth == nil and x ~= nil, auto = autoOn(),
+                            dead = truth == false and x ~= nil }
+                labHit = h
                 if type(school) == "number" and not secret(school) then h.school = school end
                 tag = " #" .. h.id
                 local verdict = eOnHit(h, now, grouped)
@@ -2312,7 +2360,7 @@ local function buildNumbers()
         end
         if not x then return end
         local made = present(unit, rel, x, y, action, indicator, amount, school, mine, petShown)
-        if made and not mine and action == "WOUND" and labOn() then pcall(labMark, made, amount, GetTime()) end
+        if made and not mine and action == "WOUND" and labOn() then pcall(labMark, made, amount, GetTime(), labHit) end
     end)
 end
 
