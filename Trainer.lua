@@ -14,6 +14,9 @@ local MEDIA = "Interface/AddOns/Meniscus/Media/"
 local W = 460
 local ROW_H = 44
 local ROWS = 9
+local HEAD_H = 26                 -- a heading's share of the list (a row's is ROW_H)
+local AREA = ROWS * ROW_H         -- the list's height
+local FRAMES = ROWS + 6           -- row frames: headings are slim, so more than ROWS can be in view
 local LIST_TOP = (ns.SHELL_H or 92) + 14
 local FOOT_H = 50
 local H = LIST_TOP + ROWS * ROW_H + 18 + FOOT_H
@@ -250,8 +253,13 @@ local function makeRow(i)
     ns.RoundedRect(r.chip, -6, 0, 8, 0.18, 0.18, 0.2, 1)
     r.chipText = text(r.chip, 10, true, T.textDim)
     r.chipText:SetPoint("CENTER")
-    r.head = text(r, 11, true, T.textDim)
-    r.head:SetPoint("LEFT", 6, 0)
+    r.head = text(r, 10, true, T.textDim)
+    r.head:SetPoint("LEFT", 4, -2)
+    r.rule = r:CreateTexture(nil, "ARTWORK")
+    r.rule:SetHeight(1)
+    r.rule:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    r.rule:SetPoint("LEFT", r.head, "RIGHT", 10, 0)
+    r.rule:SetPoint("RIGHT", r, "RIGHT", -2, -2)
     r:SetScript("OnEnter", function(self)
         local e = self.entry
         if not e or e.header then return end
@@ -312,12 +320,14 @@ local function fillRow(r, e)
     if not e then r:Hide(); return end
     r:Show()
     if e.header then
+        r:SetHeight(HEAD_H - 6)
         r.ring(0, 0, 0, 0); r.fill(0, 0, 0, 0)
         r.box:Hide(); r.name:Hide(); r.sub:Hide(); r.cost:Hide(); r.chip:Hide()
-        r.head:SetText(e.name); r.head:Show()
+        r.head:SetText(e.name); r.head:Show(); r.rule:Show()
         return
     end
-    r.head:Hide()
+    r:SetHeight(ROW_H - 6)
+    r.head:Hide(); r.rule:Hide()
     r.box:Show(); r.name:Show(); r.sub:Show(); r.cost:Show()
     r.ring(T.border[1], T.border[2], T.border[3], 1); r.fill(unpack(CARD))
     r.icon:SetTexture(e.icon)
@@ -361,9 +371,49 @@ local function fillRow(r, e)
     r.name:SetPoint("RIGHT", r.chip:IsShown() and r.chip or r.cost, "LEFT", -8, 0)
 end
 
-local function scroll(delta)
-    offset = math.max(0, math.min(offset - delta * 3, math.max(0, #data - ROWS)))
-    for i, r in ipairs(rows) do fillRow(r, data[i + offset]) end
+-- Headings take less room than rows, so the list is laid out from the top
+-- by each entry's own height, and how far it can be scrolled is found by
+-- walking up from the end until the window is full.
+local function tall(e) return e.header and HEAD_H or ROW_H end
+local function lastOffset()
+    local sum, first = 0, #data + 1
+    for i = #data, 1, -1 do
+        sum = sum + tall(data[i])
+        if sum > AREA + 0.5 then break end
+        first = i
+    end
+    return math.max(0, first - 1)
+end
+local barDrag
+local function scroll(delta, to)
+    local maxOff = lastOffset()
+    offset = math.max(0, math.min(to or (offset - delta * 2), maxOff))
+    local y, idx, shown = 0, offset, 0
+    for _, r in ipairs(rows) do
+        local e = data[idx + 1]
+        if e and y + tall(e) <= AREA + 0.5 then
+            idx = idx + 1
+            shown = shown + 1
+            r:SetPoint("TOPLEFT", win, "TOPLEFT", 18, -(LIST_TOP + y))
+            fillRow(r, e)
+            y = y + tall(e)
+        else
+            idx = #data -- (nothing after the first that does not fit)
+            fillRow(r, nil)
+        end
+    end
+    -- The scroll bar: there only when there is more than fits.
+    local track = win.track
+    if maxOff > 0 then
+        local th = math.max(28, AREA * shown / #data)
+        win.thumb:SetHeight(th)
+        win.thumb:SetPoint("TOP", track, "TOP", 0, -(AREA - 6 - th) * (offset / maxOff))
+        track.maxOff, track.th = maxOff, th
+        track:Show()
+    else
+        track:Hide()
+    end
+    if barDrag then return end
     -- The rows have new contents under a mouse that hasn't moved (you just
     -- learned the one it was on, or turned the wheel): show the tooltip of
     -- what is under it now, or none.
@@ -462,7 +512,47 @@ local function build()
     end)
     win.unavail:SetPoint("RIGHT", win.trainAll, "LEFT", -6, 0)
 
-    for i = 1, ROWS do rows[i] = makeRow(i) end
+    for i = 1, FRAMES do rows[i] = makeRow(i) end
+    -- The scroll bar, down the right of the list: a rail with a lighter
+    -- thumb. Click or drag anywhere on the rail.
+    local track = CreateFrame("Frame", nil, win)
+    track:SetSize(12, AREA - 6)
+    track:SetPoint("TOPRIGHT", win, "TOPRIGHT", -8, -LIST_TOP)
+    track:EnableMouse(true)
+    track:Hide()
+    local rail = track:CreateTexture(nil, "BACKGROUND")
+    rail:SetWidth(4)
+    rail:SetPoint("TOP"); rail:SetPoint("BOTTOM")
+    rail:SetColorTexture(0.13, 0.13, 0.15, 1)
+    win.thumb = track:CreateTexture(nil, "ARTWORK")
+    win.thumb:SetWidth(4)
+    win.thumb:SetColorTexture(0.42, 0.42, 0.47, 1)
+    win.thumb:SetPoint("TOP")
+    local function follow(self)
+        local _, cy = GetCursorPosition()
+        local top = self:GetTop()
+        if not (cy and top and self.maxOff) then return end
+        cy = cy / self:GetEffectiveScale()
+        local room = (AREA - 6) - self.th
+        local frac = room > 0 and (top - cy - self.th / 2) / room or 0
+        frac = math.max(0, math.min(1, frac))
+        local to = math.floor(frac * self.maxOff + 0.5)
+        if to ~= offset then scroll(0, to) end
+    end
+    track:SetScript("OnMouseDown", function(self)
+        barDrag = true
+        win.thumb:SetColorTexture(0.62, 0.62, 0.68, 1)
+        follow(self)
+        self:SetScript("OnUpdate", follow)
+    end)
+    local function drop(self)
+        barDrag = nil
+        win.thumb:SetColorTexture(0.42, 0.42, 0.47, 1)
+        self:SetScript("OnUpdate", nil)
+    end
+    track:SetScript("OnMouseUp", drop)
+    track:SetScript("OnHide", drop)
+    win.track = track
     win:EnableMouseWheel(true)
     win:SetScript("OnMouseWheel", function(_, d) scroll(d) end)
     win.empty = text(win, 11, false, T.textDim)
