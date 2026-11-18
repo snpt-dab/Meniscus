@@ -1700,6 +1700,111 @@ local function buildRare()
     end)
 end
 
+-- ── The bright flash ──────────────────────────────────────────────────────
+-- Made for the talent pip, now shared (the reactive spells use it too).
+-- The host's shape goes white, and its two coloured ghosts (a warm one and
+-- a cool one, as on a critical hit's number) are thrown apart and drawn
+-- back into it; with an emblem, the emblem's own ghosts do the same.
+-- Meant to be seen from the other side of the screen: three beats, one
+-- after another, each with the split thrown wide, a burst of light well
+-- past the host, and a ring of light running outward from it. (The one
+-- place the "no halos" rule is set aside, by request.)
+--   local fx = EX.Flash(host, { size, shape, emblem, emblemSize })   fx.Play()
+function EX.Flash(host, o)
+    local size = o.size
+    local fx = CreateFrame("Frame", nil, host)
+    fx:SetAllPoints()
+    fx:SetFrameLevel(host:GetFrameLevel() + 3)
+    local warm, cool, white
+    if o.emblem then
+        local function ghost(r, g, b)
+            local t = fx:CreateTexture(nil, "OVERLAY")
+            t:SetTexture(o.emblem)
+            t:SetSize(o.emblemSize, o.emblemSize)
+            t:SetBlendMode("ADD")
+            t:SetVertexColor(r, g, b, 0)
+            t:SetPoint("CENTER")
+            return t
+        end
+        warm, cool, white = ghost(1.00, 0.30, 0.42), ghost(0.30, 0.62, 1.00), ghost(1, 1, 1)
+    end
+    local function disc(sub)
+        local t = fx:CreateTexture(nil, "ARTWORK", nil, sub)
+        t:SetTexture(o.shape)
+        t:SetSize(size, size)
+        t:SetBlendMode("ADD")
+        t:SetVertexColor(1, 1, 1, 0)
+        t:SetPoint("CENTER")
+        return t
+    end
+    local dWarm, dCool, dWhite = disc(1), disc(1), disc(2)
+    local FLASH, SPREAD, BEATS = 0.6, 26, 3
+    local burst = fx:CreateTexture(nil, "BACKGROUND")
+    burst:SetTexture(MEDIA .. "spot.tga")
+    burst:SetBlendMode("ADD")
+    burst:SetSize(240, 240)
+    burst:SetPoint("CENTER")
+    burst:SetVertexColor(1.00, 0.86, 0.50, 0)
+    local wave = fx:CreateTexture(nil, "BACKGROUND", nil, 1)
+    wave:SetTexture(MEDIA .. "circle.tga")
+    wave:SetBlendMode("ADD")
+    wave:SetPoint("CENTER")
+    wave:SetVertexColor(1.00, 0.90, 0.62, 0)
+    local age = FLASH
+    fx:Hide()
+    local function rest()
+        burst:SetVertexColor(1.00, 0.86, 0.50, 0); wave:SetVertexColor(1.00, 0.90, 0.62, 0)
+        if warm then
+            warm:SetVertexColor(1.00, 0.30, 0.42, 0); cool:SetVertexColor(0.30, 0.62, 1.00, 0); white:SetVertexColor(1, 1, 1, 0)
+        end
+        dWarm:SetVertexColor(1.00, 0.30, 0.42, 0); dCool:SetVertexColor(0.30, 0.62, 1.00, 0); dWhite:SetVertexColor(1, 1, 1, 0)
+    end
+    fx:SetScript("OnUpdate", function(self, dt)
+        age = age + dt
+        local p = age / FLASH
+        if p < BEATS then p = p - math.floor(p) else p = 1 end
+        if p >= 1 then
+            rest()
+            self:Hide()
+            return
+        end
+        -- Out fast, back slowly; the light dies as they come home.
+        local out = p < 0.18 and (p / 0.18) or (1 - (p - 0.18) / 0.82) ^ 2
+        local a = (p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88) * 1.0
+        -- The two ghosts sit opposite each other and go round the host
+        -- counter-clockwise, steadily, a third of a turn to each beat. Half
+        -- a turn per beat put every beat on the same line (the pair is
+        -- symmetrical); a third shows the orbit at three different places,
+        -- like three glimpses of something already going round.
+        local th = math.pi + (2 * math.pi / 3) * (age / FLASH)
+        local ox, oy = math.cos(th) * SPREAD * out, math.sin(th) * SPREAD * out
+        if warm then
+            warm:SetPoint("CENTER", ox, oy)
+            cool:SetPoint("CENTER", -ox, -oy)
+            warm:SetVertexColor(1.00, 0.30, 0.42, a)
+            cool:SetVertexColor(0.30, 0.62, 1.00, a)
+            white:SetVertexColor(1, 1, 1, a * 0.5)
+        end
+        dWarm:SetPoint("CENTER", ox, oy)
+        dCool:SetPoint("CENTER", -ox, -oy)
+        dWarm:SetVertexColor(1.00, 0.30, 0.42, a * 0.55)
+        dCool:SetVertexColor(0.30, 0.62, 1.00, a * 0.55)
+        -- (The white: hard at the start, gone by a third of the way.)
+        dWhite:SetVertexColor(1, 1, 1, p < 0.08 and (p / 0.08) * 0.9 or math.max(0, 0.9 * (1 - (p - 0.08) / 0.28)))
+        -- The burst: full at once, gone by two thirds of the beat.
+        burst:SetVertexColor(1.00, 0.86, 0.50, p < 0.06 and (p / 0.06) * 0.85 or math.max(0, 0.85 * (1 - (p - 0.06) / 0.6)))
+        -- The ring of light: out from the host to seven times its width.
+        local ws = size + 140 * (1 - (1 - p) ^ 2)
+        wave:SetSize(ws, ws)
+        wave:SetVertexColor(1.00, 0.90, 0.62, 0.32 * (1 - p) ^ 1.5)
+    end)
+    -- (Hidden mid-flash, as a reactive spell's picture is when the spell is
+    -- pressed: put out, so it does not pick up where it left off.)
+    fx:SetScript("OnHide", function() age = FLASH * BEATS; rest() end)
+    function fx.Play() age = 0; fx:Show() end
+    return fx
+end
+
 -- ── Reactive spells ───────────────────────────────────────────────────────
 -- Spells that can only be pressed now and then (Overpower after a dodge,
 -- Execute on a dying target, Riposte after a parry...) don't need a place
@@ -1755,6 +1860,8 @@ local function buildReactive()
         local al = ag:CreateAnimation("Alpha")
         al:SetFromAlpha(0); al:SetToAlpha(1); al:SetDuration(0.12)
         b.vis, b.icon, b.cd, b.pop = vis, icon, cd, ag
+        -- (And the talent pip's flash with it, same settings to begin with.)
+        b.fx = EX.Flash(vis, { size = RX_SIZE, shape = MEDIA .. "rounded.tga" })
         b:SetScript("OnEnter", function(self)
             if not (self.spell and self.vis:IsShown()) then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1835,6 +1942,7 @@ local function buildReactive()
                     if not b.vis:IsShown() then
                         b.vis:Show()
                         b.pop:Stop(); b.pop:Play()
+                        if not dim then b.fx.Play() end
                     end
                     local okc, c = pcall(C_Spell.GetSpellCooldown, b.spell)
                     if okc and type(c) == "table" then pcall(b.cd.SetCooldown, b.cd, c.startTime, c.duration) end
@@ -1963,36 +2071,34 @@ local function showTidy()
         ns:Print("Every spell on your bars has been used in your last " .. IDLE_DAYS .. " days of play.")
         return
     end
-    local ROWS, RH, W = 10, 26, 380
+    local ROWS, RH, W, FOOT = 10, 28, 420, 52
+    local TOP = ns.SHELL_H + 12
     if not tidyWin then
         local w = CreateFrame("Frame", "MeniscusTidy", UIParent)
-        w:SetSize(W, 74 + ROWS * RH + 44)
+        w:SetSize(W, TOP + ROWS * RH + 10 + FOOT)
         w:SetPoint("CENTER", 0, 60)
         w:SetFrameStrata("HIGH")
+        w:SetToplevel(true)
+        w:SetClampedToScreen(true)
         w:EnableMouse(true)
         w:SetMovable(true)
         w:RegisterForDrag("LeftButton")
         w:SetScript("OnDragStart", w.StartMoving)
         w:SetScript("OnDragStop", w.StopMovingOrSizing)
+        w:Hide()
         ns.RoundedRect(w, -8, 0, 14, T.border[1], T.border[2], T.border[3], 1)
         ns.RoundedRect(w, -7, 1, 13, 0.06, 0.06, 0.07, 0.97)
         table.insert(UISpecialFrames, "MeniscusTidy")
-        local title = w:CreateFontString(nil, "OVERLAY")
-        ns:SetFont(title, 14, "", true)
-        title:SetPoint("TOPLEFT", 18, -16)
-        title:SetText("Unused buttons")
-        title:SetTextColor(T.text[1], T.text[2], T.text[3])
-        w.sub = w:CreateFontString(nil, "OVERLAY")
-        ns:SetFont(w.sub, 10)
-        w.sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
-        w.sub:SetPoint("RIGHT", w, "RIGHT", -18, 0)
-        w.sub:SetJustifyH("LEFT")
-        w.sub:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+        -- The header band and footer the other windows have.
+        w.shell = ns:CreateShell(w)
+        w.shell:SetRing(T.accent)
+        w.shell:SetTitle("Unused buttons")
+        w.shell:SetSubtitleWidth(W - 150)
         w.rows = {}
         for i = 1, ROWS do
             local r = CreateFrame("Frame", nil, w)
             r:SetSize(W - 36, RH)
-            r:SetPoint("TOPLEFT", 18, -66 - (i - 1) * RH)
+            r:SetPoint("TOPLEFT", 18, -TOP - (i - 1) * RH)
             r.icon = r:CreateTexture(nil, "ARTWORK")
             r.icon:SetSize(20, 20)
             r.icon:SetPoint("LEFT")
@@ -2018,14 +2124,20 @@ local function showTidy()
             r.off:SetPoint("RIGHT")
             w.rows[i] = r
         end
-        w.close = ns.Pill(w, "Close", function() w:Hide() end, { h = 24 })
-        w.close:SetPoint("BOTTOMLEFT", 18, 14)
+        w.footer = ns:CreateFooter(w, FOOT)
+        w.close = ns.Pill(w.footer, "Close", function() w:Hide() end, { h = 26 })
+        w.close:SetPoint("LEFT", w.footer, "LEFT", 14, 0)
+        w.hint = w.footer:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(w.hint, 10)
+        w.hint:SetPoint("RIGHT", w.footer, "RIGHT", -16, 0)
+        w.hint:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+        w.hint:SetText("Spells taken off stay in your spellbook.")
         tidyWin = w
     end
     local w = tidyWin
-    w.sub:SetText("On your bars, but not cast in your last " .. IDLE_DAYS .. " days of play"
-        .. (#list > ROWS and ("  (" .. ROWS .. " of " .. #list .. ")") or "")
-        .. ". Taking one off the bar leaves it in your spellbook.")
+    w.shell:SetSubtitle("On your bars, not cast in your last " .. IDLE_DAYS .. " days of play")
+    w.shell:SetChip((#list > ROWS and (ROWS .. " of " .. #list) or #list) .. (#list == 1 and " spell" or " spells"), T.accent)
+    w.shell:SetIcon(list[1].icon)
     for i, r in ipairs(w.rows) do
         local e = list[i]
         if e then
@@ -2521,93 +2633,10 @@ local function buildTalentMark()
     -- one, as on a critical hit's number) thrown apart and drawn back into
     -- it, with a brief brightening of the emblem itself. When a point
     -- arrives, and again every minute and a half while one waits.
-    local fx = CreateFrame("Frame", nil, chip)
-    fx:SetAllPoints()
-    fx:SetFrameLevel(chip:GetFrameLevel() + 3)
-    local function ghost(r, g, b)
-        local t = fx:CreateTexture(nil, "OVERLAY")
-        t:SetTexture(MEDIA .. "micro_talent.tga")
-        t:SetSize(14, 14)
-        t:SetBlendMode("ADD")
-        t:SetVertexColor(r, g, b, 0)
-        t:SetPoint("CENTER")
-        return t
-    end
-    local warm, cool, white = ghost(1.00, 0.30, 0.42), ghost(0.30, 0.62, 1.00), ghost(1, 1, 1)
-    -- And the whole disc with it, as the experience bar and the Quick Buff
-    -- pill flash: the disc goes white, and its own two coloured ghosts
-    -- split and come home on the same beat as the emblem's.
-    local function disc(size, sub)
-        local t = fx:CreateTexture(nil, "ARTWORK", nil, sub)
-        t:SetTexture(MEDIA .. "circle.tga")
-        t:SetSize(size, size)
-        t:SetBlendMode("ADD")
-        t:SetVertexColor(1, 1, 1, 0)
-        t:SetPoint("CENTER")
-        return t
-    end
-    local dWarm, dCool, dWhite = disc(22, 1), disc(22, 1), disc(22, 2)
-    -- Meant to be seen from the other side of the screen: three beats, one
-    -- after another, each with the split thrown wide, a burst of light well
-    -- past the disc, and a ring of light running outward from it. (The one
-    -- place the "no halos" rule is set aside, by request.)
-    local FLASH, SPREAD, BEATS = 0.6, 26, 3
-    local burst = fx:CreateTexture(nil, "BACKGROUND")
-    burst:SetTexture(MEDIA .. "spot.tga")
-    burst:SetBlendMode("ADD")
-    burst:SetSize(240, 240)
-    burst:SetPoint("CENTER")
-    burst:SetVertexColor(1.00, 0.86, 0.50, 0)
-    local wave = fx:CreateTexture(nil, "BACKGROUND", nil, 1)
-    wave:SetTexture(MEDIA .. "circle.tga")
-    wave:SetBlendMode("ADD")
-    wave:SetPoint("CENTER")
-    wave:SetVertexColor(1.00, 0.90, 0.62, 0)
-    local age = FLASH
-    fx:Hide()
-    fx:SetScript("OnUpdate", function(self, dt)
-        age = age + dt
-        local p = age / FLASH
-        if p < BEATS then p = p - math.floor(p) else p = 1 end
-        if p >= 1 then
-            burst:SetVertexColor(1.00, 0.86, 0.50, 0); wave:SetVertexColor(1.00, 0.90, 0.62, 0)
-            warm:SetVertexColor(1.00, 0.30, 0.42, 0); cool:SetVertexColor(0.30, 0.62, 1.00, 0); white:SetVertexColor(1, 1, 1, 0)
-            dWarm:SetVertexColor(1.00, 0.30, 0.42, 0); dCool:SetVertexColor(0.30, 0.62, 1.00, 0); dWhite:SetVertexColor(1, 1, 1, 0)
-            self:Hide()
-            return
-        end
-        -- Out fast, back slowly; the light dies as they come home.
-        local out = p < 0.18 and (p / 0.18) or (1 - (p - 0.18) / 0.82) ^ 2
-        local a = (p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88) * 1.0
-        -- The two ghosts sit opposite each other and go round the disc
-        -- counter-clockwise, steadily, a third of a turn to each beat. Half
-        -- a turn per beat put every beat on the same line (the pair is
-        -- symmetrical); a third shows the orbit at three different places,
-        -- like three glimpses of something already going round.
-        local th = math.pi + (2 * math.pi / 3) * (age / FLASH)
-        local ox, oy = math.cos(th) * SPREAD * out, math.sin(th) * SPREAD * out
-        warm:SetPoint("CENTER", ox, oy)
-        cool:SetPoint("CENTER", -ox, -oy)
-        warm:SetVertexColor(1.00, 0.30, 0.42, a)
-        cool:SetVertexColor(0.30, 0.62, 1.00, a)
-        white:SetVertexColor(1, 1, 1, a * 0.5)
-        dWarm:SetPoint("CENTER", ox, oy)
-        dCool:SetPoint("CENTER", -ox, -oy)
-        dWarm:SetVertexColor(1.00, 0.30, 0.42, a * 0.55)
-        dCool:SetVertexColor(0.30, 0.62, 1.00, a * 0.55)
-        -- (The white: hard at the start, gone by a third of the way.)
-        dWhite:SetVertexColor(1, 1, 1, p < 0.08 and (p / 0.08) * 0.9 or math.max(0, 0.9 * (1 - (p - 0.08) / 0.28)))
-        -- The burst: full at once, gone by two thirds of the beat.
-        burst:SetVertexColor(1.00, 0.86, 0.50, p < 0.06 and (p / 0.06) * 0.85 or math.max(0, 0.85 * (1 - (p - 0.06) / 0.6)))
-        -- The ring of light: out from the disc to seven times its width.
-        local ws = 22 + 140 * (1 - (1 - p) ^ 2)
-        wave:SetSize(ws, ws)
-        wave:SetVertexColor(1.00, 0.90, 0.62, 0.32 * (1 - p) ^ 1.5)
-    end)
+    local fx = EX.Flash(chip, { size = 22, shape = MEDIA .. "circle.tga", emblem = MEDIA .. "micro_talent.tga", emblemSize = 14 })
     local function flash()
         if not chip.on then return end
-        age = 0
-        fx:Show()
+        fx.Play()
     end
     C_Timer.NewTicker(45, flash)
     local function update(fresh)
