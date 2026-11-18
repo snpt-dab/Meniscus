@@ -1914,18 +1914,31 @@ local function usageTable()
 end
 local function idleButtons()
     local u = usageTable()
-    local out = {}
+    local out, byName = {}, {}
     if not (u and GetActionInfo) or u.days <= IDLE_DAYS then return out, u end
     for slot = 1, 120 do
         local ok, kind, id = pcall(GetActionInfo, slot)
         if ok and kind == "spell" and num(id) then
             local name = C_Spell.GetSpellName and call(C_Spell.GetSpellName, id)
-            if type(name) == "string" and not secret(name) then
+            -- (Attack, Shoot and the like are switched on, not cast: they
+            -- never count as a cast, so they are never "unused".)
+            local auto = (IsAttackAction and call(IsAttackAction, slot)) or (IsAutoRepeatAction and call(IsAutoRepeatAction, slot))
+                or (C_Spell.IsAutoAttackSpell and call(C_Spell.IsAutoAttackSpell, id))
+                or (C_Spell.IsAutoRepeatSpell and call(C_Spell.IsAutoRepeatSpell, id))
+            if type(name) == "string" and not secret(name) and auto ~= true then
                 local passive = C_Spell.IsSpellPassive and call(C_Spell.IsSpellPassive, id)
                 local last = u.last[name] or 0
                 if passive ~= true and u.days - last >= IDLE_DAYS then
-                    out[#out + 1] = { slot = slot, name = name, id = id, idle = u.days - last, never = u.last[name] == nil,
-                                      icon = C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, id) }
+                    -- (One row per spell, however many buttons hold it.)
+                    local e = byName[name]
+                    if e then
+                        e.slots[#e.slots + 1] = slot
+                    else
+                        e = { slot = slot, slots = { slot }, name = name, id = id, idle = u.days - last, never = u.last[name] == nil,
+                              icon = C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, id) }
+                        byName[name] = e
+                        out[#out + 1] = e
+                    end
                 end
             end
         end
@@ -1994,9 +2007,11 @@ local function showTidy()
             r.note:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
             r.off = ns.Pill(r, "Take off bar", function()
                 if InCombatLockdown() then ns:Print("Not in combat.") return end
-                if r.slot and PickupAction then
-                    pcall(PickupAction, r.slot)
-                    pcall(ClearCursor)
+                if r.slots and PickupAction then
+                    for i = 1, #r.slots do
+                        pcall(PickupAction, r.slots[i])
+                        pcall(ClearCursor)
+                    end
                 end
                 C_Timer.After(0.2, showTidy)
             end, { h = 20, font = 10 })
@@ -2014,10 +2029,12 @@ local function showTidy()
     for i, r in ipairs(w.rows) do
         local e = list[i]
         if e then
-            r.slot = e.slot
+            r.slots = e.slots
             r.icon:SetTexture(e.icon)
             r.name:SetText(e.name)
-            r.note:SetText(e.never and "never, since counting began" or (e.idle .. " play days ago"))
+            r.note:SetText((e.never and "never, since counting began" or (e.idle .. " play days ago"))
+                .. (#e.slots > 1 and ("  ·  on " .. #e.slots .. " buttons") or ""))
+            r.off:SetLabel(#e.slots > 1 and "Take off bars" or "Take off bar")
             r:Show()
         else
             r:Hide()
