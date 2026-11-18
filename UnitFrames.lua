@@ -256,8 +256,9 @@ local CREST_LABEL = { elite = "Elite", rare = "Rare", rareelite = "Rare Elite", 
 -- The same layout has the boss's turning spikes cross the health bar:
 -- there the spikes are drawn in two parts, each behind a mask that stays
 -- put while the spikes turn. The part below the bar is as it was; the part
--- over the bar is faint (SPIKES_OVER), so the bar reads through it.
-local SPIKES_OVER = 0.35
+-- over the bar is drawn at SPIKES_OVER: 0, not at all, so the spikes look
+-- to pass behind the bar (0.35 was tried first: faint, but still on it).
+local SPIKES_OVER = 0
 local function placeTag(av)
     local c = av.crest
     local tag = c and c.tag
@@ -272,7 +273,7 @@ local function placeTag(av)
     else
         c.maskLo:SetAllPoints(c); c.maskHi:SetAllPoints(c)
     end
-    c.spikesHi:SetShown(c.split and c.kind == "boss")
+    c.spikesHi:SetShown(c.split and c.kind == "boss" and SPIKES_OVER > 0)
     tag:ClearAllPoints()
     if av.tagBar then
         tag:SetPoint("CENTER", av.tagBar, "TOP", 0, 1)
@@ -379,7 +380,7 @@ local function showCrest(av, kind)
     c.stars:SetVertexColor(SILVER[1], SILVER[2], SILVER[3], 1)
     c.spikes:SetShown(kind == "boss")
     c.spikes:SetRotation(0)
-    c.spikesHi:SetShown(kind == "boss" and c.split == true)
+    c.spikesHi:SetShown(kind == "boss" and c.split == true and SPIKES_OVER > 0)
     c.spikesHi:SetRotation(0)
     -- (The shimmer: pale, over the ring's own colour.)
     c.fx:SetVertexColor(1, 0.96, 0.86, kind == "boss" and 0.75 or 0.55)
