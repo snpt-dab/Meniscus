@@ -2253,6 +2253,15 @@ local function applyRange(f)
         f:SetAlpha(1) return
     end
     local grouped = safeBool(UnitInParty, unit) or safeBool(UnitInRaid, unit)
+    -- A group member's pet is not "in the party" by the game's reckoning,
+    -- so it never faded. It fades by its own distance where the game will
+    -- say, and by its owner's where it won't.
+    local owner
+    if type(unit) == "string" then
+        local kind, n = unit:match("^(party)pet(%d+)$")
+        if not kind then kind, n = unit:match("^(raid)pet(%d+)$") end
+        if kind then owner = kind .. n; grouped = true end
+    end
     if not grouped then
         if unit == "target" then
             f:SetAlpha(targetInActionRange() == false and OUT_ALPHA or 1)
@@ -2261,8 +2270,11 @@ local function applyRange(f)
         end
         return
     end
-    if safeBool(UnitIsConnected, unit) == false then f:SetAlpha(OUT_ALPHA) return end
+    if safeBool(UnitIsConnected, owner or unit) == false then f:SetAlpha(OUT_ALPHA) return end
     local ok, inRange, checked = pcall(UnitInRange, unit)
+    if owner and (not ok or (not issecretvalue(inRange) and checked ~= true)) then
+        ok, inRange, checked = pcall(UnitInRange, owner)
+    end
     if not ok then f:SetAlpha(1) return end
     if issecretvalue(inRange) then
         if f.SetAlphaFromBoolean then f:SetAlphaFromBoolean(inRange, 1, OUT_ALPHA) else f:SetAlpha(1) end
