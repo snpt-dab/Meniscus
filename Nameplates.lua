@@ -222,6 +222,415 @@ local function quietGame(on)
 end
 NP.QuietGame = quietGame
 
+-- ── A combat log filter of our own ────────────────────────────────────────
+-- The game will not tell an addon who dealt a hit. Its own Combat Log tab
+-- knows, though, and each line it prints reaches us as one event with the
+-- line's colour readable (the words are sealed). What the log prints, and
+-- in what colour, is a filter. An addon may not hand the log one (tried: the
+-- "blocked from an action" box), but the game keeps its filters in an
+-- ordinary saved table: written out as you log out or reload, read back in
+-- and applied by the game's own code as you come in. So ours is put into
+-- that table at the very end of a session, and never during one (touching
+-- it earlier would get the log's own buttons blocked). The game applies it
+-- itself the next time. Nothing of the damage meter is touched.
+--
+-- The filter passes only what you and your pet do to others: hits, ticks
+-- and misses, and heals once the colours are known to come through (a heal
+-- line that could not be told from a hit's was the trouble before). Each
+-- line is coloured by what it was, one colour a kind, so a line says: a
+-- thing of yours, of this kind, happened now.
+-- It is the log's first filter while "Meniscus numbers" is the choice, and
+-- is taken out again, and the filter that was in use put back, when it is
+-- not. (MinimalUIDB.logfilter says what was done and when.)
+local LOGNAME = "Meniscus"
+local LOG_KINDS = {
+    { "SWING_DAMAGE",          0.92, 0.36, 0.30, "swing" },
+    { "RANGE_DAMAGE",          0.92, 0.50, 0.26, "shot" },
+    { "SPELL_DAMAGE",          0.92, 0.64, 0.22, "spell" },
+    { "SPELL_PERIODIC_DAMAGE", 0.86, 0.46, 0.62, "tick" },
+    { "DAMAGE_SHIELD",         0.80, 0.72, 0.46, "shield" },
+    { "DAMAGE_SPLIT",          0.72, 0.66, 0.52, "split" },
+    { "SWING_MISSED",          0.56, 0.60, 0.70, "swingmiss" },
+    { "RANGE_MISSED",          0.56, 0.66, 0.74, "shotmiss" },
+    { "SPELL_MISSED",          0.56, 0.72, 0.78, "spellmiss" },
+    { "SPELL_PERIODIC_MISSED", 0.62, 0.56, 0.76, "tickmiss" },
+    { "DAMAGE_SHIELD_MISSED",  0.68, 0.62, 0.80, "shieldmiss" },
+    { "SPELL_HEAL",            0.42, 0.90, 0.50, "heal" },
+    { "SPELL_PERIODIC_HEAL",   0.42, 0.80, 0.64, "healtick" },
+    { "PARTY_KILL",            0.94, 0.88, 0.58, "kill" },
+}
+local LOG_HEALS = { SPELL_HEAL = true, SPELL_PERIODIC_HEAL = true }
+local FLAG_MINE = _G.COMBATLOG_FILTER_MINE or 17681
+local FLAG_PET = _G.COMBATLOG_FILTER_MY_PET or 12561
+-- What kind of line a colour stands for (nil: not one of ours).
+local function logKind(r, g, b)
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" or secret(r) or secret(g) or secret(b) then return nil end
+    for i = 1, #LOG_KINDS do
+        local k = LOG_KINDS[i]
+        if math.abs(r - k[2]) < 0.02 and math.abs(g - k[3]) < 0.02 and math.abs(b - k[4]) < 0.02 then return k[5] end
+    end
+    -- (The log brightens a line it means to stand out by half again.)
+    for i = 1, #LOG_KINDS do
+        local k = LOG_KINDS[i]
+        if math.abs(r - math.min(1, k[2] * 1.5)) < 0.02 and math.abs(g - math.min(1, k[3] * 1.5)) < 0.02
+           and math.abs(b - math.min(1, k[4] * 1.5)) < 0.02 then return k[5] end
+    end
+    return nil
+end
+local function copyTable(t, depth)
+    local out = {}
+    for k, v in pairs(t) do
+        if type(v) == "table" and depth < 8 then out[k] = copyTable(v, depth + 1) else out[k] = v end
+    end
+    return out
+end
+-- At the end of a session: ours in (first, and in use), or out.
+local function logFilterSync()
+    local db = NP.db
+    if not db or not MinimalUIDB then return end
+    local rec = MinimalUIDB.logfilter
+    if type(rec) ~= "table" then rec = {}; MinimalUIDB.logfilter = rec end
+    local F = _G.Blizzard_CombatLog_Filters
+    if type(F) ~= "table" or type(F.filters) ~= "table" then
+        rec.note = date("%H:%M:%S") .. " the log has no list of filters to add to"
+        return
+    end
+    local list = F.filters
+    local function indexOf(name)
+        if type(name) ~= "string" then return nil end
+        for i = 1, #list do
+            local f = list[i]
+            if type(f) == "table" and f.name == name then return i end
+        end
+    end
+    local cur = tonumber(F.currentFilter)
+    local curName = cur and type(list[cur]) == "table" and list[cur].name or nil
+    if type(curName) == "string" and curName ~= LOGNAME then rec.was = curName end
+    -- Ours comes out first, wherever it is: it is built afresh each time.
+    local had = false
+    for i = #list, 1, -1 do
+        local f = list[i]
+        if type(f) == "table" and f.name == LOGNAME then table.remove(list, i); had = true end
+    end
+    local want = db.enabled ~= false and db.numbersMode == "ours" and db.numbersMine ~= false and db.numbersLog ~= false
+    if not want then
+        if had then
+            F.currentFilter = indexOf(rec.was) or 1
+            rec.on = false
+            rec.note = date("%H:%M:%S") .. " taken out; the log is back on \"" .. tostring(rec.was or "its first filter") .. "\""
+        end
+        return
+    end
+    local base = list[1]
+    if type(base) ~= "table" then
+        if had then F.currentFilter = 1 end
+        rec.note = date("%H:%M:%S") .. " the log has no filter to model ours on"
+        return
+    end
+    local withHeals = rec.typed == true
+    local mine = copyTable(base, 0)
+    mine.name, mine.quickButtonName = LOGNAME, LOGNAME
+    mine.tooltip = "Only your own hits, a colour for each kind. Meniscus reads these to tell which numbers are yours."
+    mine.hasQuickButton, mine.onQuickBar = true, true
+    mine.quickButtonDisplay = { solo = true, party = true, raid = true }
+    if type(mine.settings) ~= "table" then mine.settings = {} end
+    local st = mine.settings
+    st.lineColoring, st.lineColorPriority, st.lineHighlighting, st.showHistory, st.timestamp = true, 3, true, false, false
+    if type(mine.colors) ~= "table" then mine.colors = {} end
+    local c = mine.colors
+    -- (The kill notice stays a line the log brightens. Should the log colour
+    -- by who acted after all, the notice still comes out white, which is how
+    -- the older rules know it; in its own colour, brightened, it is still
+    -- known here.)
+    c.eventColoring, c.highlightedEvents = {}, { PARTY_KILL = true }
+    -- (Should the log colour by who acted after all, you and your pet at
+    -- least come apart: a hair off the grey it uses for both.)
+    if type(c.unitColoring) ~= "table" then c.unitColoring = {} end
+    c.unitColoring[FLAG_MINE] = { a = 1, r = 0.70, g = 0.70, b = 0.72 }
+    c.unitColoring[FLAG_PET] = { a = 1, r = 0.70, g = 0.72, b = 0.70 }
+    -- Every kind of line the log knows, off; then ours, on.
+    local events = {}
+    if type(base.filters) == "table" then
+        for _, sub in pairs(base.filters) do
+            if type(sub) == "table" and type(sub.eventList) == "table" then
+                for ev in pairs(sub.eventList) do
+                    if type(ev) == "string" then events[ev] = false end
+                end
+            end
+        end
+    end
+    for i = 1, #LOG_KINDS do
+        local k = LOG_KINDS[i]
+        if withHeals or not LOG_HEALS[k[1]] then
+            events[k[1]] = true
+            c.eventColoring[k[1]] = { a = 1, r = k[2], g = k[3], b = k[4] }
+        end
+    end
+    mine.filters = {
+        { eventList = events, sourceFlags = { [FLAG_MINE] = true } },
+        { eventList = copyTable(events, 0), sourceFlags = { [FLAG_PET] = true } },
+    }
+    table.insert(list, 1, mine)
+    F.currentFilter = 1
+    rec.on, rec.heals = true, withHeals
+    rec.note = date("%H:%M:%S") .. " put in as the log's first filter" .. (withHeals and ", heals among its lines" or "")
+end
+do
+    local lo = CreateFrame("Frame")
+    lo:RegisterEvent("PLAYER_LOGOUT")
+    lo:SetScript("OnEvent", function()
+        local ok, err = pcall(logFilterSync)
+        if not ok and MinimalUIDB then MinimalUIDB.logfilterErr = date("%H:%M:%S") .. " " .. tostring(err) end
+    end)
+end
+-- A little after login: is the log on our filter? Said in chat when it is
+-- not, with what to do about it.
+local function logFilterTell()
+    local db = NP.db
+    if not db or db.numbersMode ~= "ours" or db.numbersMine == false or db.numbersLog == false then return end
+    local state = "absent"
+    local cur = _G.Blizzard_CombatLog_CurrentSettings
+    local name = type(cur) == "table" and cur.name
+    if type(name) == "string" and not secret(name) and name == LOGNAME then
+        state = "in use"
+    else
+        local F = _G.Blizzard_CombatLog_Filters
+        if type(F) == "table" and type(F.filters) == "table" then
+            for i = 1, #F.filters do
+                local f = F.filters[i]
+                if type(f) == "table" and f.name == LOGNAME then state = "set aside" end
+            end
+        end
+    end
+    if MinimalUIDB then
+        local rec = MinimalUIDB.logfilter
+        if type(rec) ~= "table" then rec = {}; MinimalUIDB.logfilter = rec end
+        rec.seen = date("%H:%M:%S") .. " after login our filter was " .. state
+            .. "; the log's own: " .. tostring(type(name) == "string" and not secret(name) and name or "?")
+    end
+    if state == "absent" then
+        ns:Print("Combat numbers: the Combat Log filter that tells your hits from everyone else's goes in as the game saves your settings. /reload once more to switch it on.")
+    elseif state == "set aside" then
+        ns:Print("Combat numbers: the Combat Log is on another filter, so the older rules are deciding whose hits are whose. Click \"" .. LOGNAME .. "\" in the Combat Log tab to go back.")
+    end
+end
+
+-- ── The lab (/men lab, then reload) ───────────────────────────────────────
+-- Trials that write down what they find and change nothing that is shown,
+-- but for three small marks under each of your numbers. Off unless asked
+-- for, and only with Meniscus numbers.
+--
+-- The one being tried: matching a hit to yours by its amount, with nothing
+-- read. Amounts are hidden values in a fight; they can be handed to a bar
+-- but not compared. The game's damage meter keeps your running total (also
+-- hidden), and it is left alone here: only read, before and after a blow of
+-- yours. A hit is that blow if
+--     total before + the hit's amount = total after,
+-- and bars can be made to say so by where they end. Three bars, a fixed
+-- number of pixels to a point of damage: the "after" bar hangs down from a
+-- spot; the "before" bar stands on the after bar's far end; the "amount"
+-- bar stands on the before bar's end. If the sum holds, the amount bar ends
+-- exactly at the spot; if it is off by even one, it ends a hundred pixels
+-- away. A small window is hung on that end, and a mark sits at the spot,
+-- drawn only through the window: seen when the sum holds, and not
+-- otherwise. Nothing here ever learns a number.
+--
+-- Under each number, while the lab is on:
+--   white  nothing + amount = amount: always true, so always seen if the
+--          bars work with hidden amounts at all;
+--   red    one + amount = amount: never true, so never seen if a wrong
+--          sum really does hide the mark;
+--   green  (one or two) the meter's total before and after your last one or
+--          two blows: seen when this hit's amount is exactly what the meter
+--          added for one of them.
+-- Also written down: the same bars measured with plain numbers at login
+-- (MinimalUIDB.labgeo), what the fill of a bar holding a hidden amount says
+-- of itself (labfill), and the game's console settings to do with floating
+-- text (labcvars; looking for a switch for its XP line).
+local G_S, G_H, G_Y = 128, 56, -15 -- pixels to a point of damage; half the window's height; the mark, below the number's middle
+local labM = 20000                 -- the most the bars can hold (kept above your total on the meter)
+local function labOn()
+    return MinimalUIDB and MinimalUIDB.lab == true and NP.db and NP.db.numbersMode == "ours" or false
+end
+local labFillN = {}
+local function labFill(bar, when)
+    if not bar then return end
+    local okS, sh = pcall(function() return bar:GetStatusBarTexture():IsShown() end)
+    local key = when .. ": " .. ((not okS and "error") or (secret(sh) and "hidden") or (sh and "shown" or "not shown"))
+    labFillN[key] = (labFillN[key] or 0) + 1
+    if MinimalUIDB then
+        local parts = {}
+        for k, n in pairs(labFillN) do parts[#parts + 1] = k .. " x" .. n end
+        table.sort(parts)
+        MinimalUIDB.labfill = table.concat(parts, "; ")
+    end
+end
+local function newGauge(host, dx, r, g, b)
+    local G = {}
+    local function bar(reverse)
+        local sb = CreateFrame("StatusBar", nil, host)
+        sb:SetOrientation("VERTICAL")
+        sb:SetStatusBarTexture("Interface/Buttons/WHITE8x8")
+        sb:SetStatusBarColor(0, 0, 0, 0)
+        sb:SetSize(2, 10)
+        sb:SetMinMaxValues(-1, 1)
+        sb:SetValue(0)
+        if reverse then sb:SetReverseFill(true) end
+        return sb
+    end
+    G.now, G.before, G.amt = bar(true), bar(false), bar(false)
+    G.now:SetPoint("TOP", host, "CENTER", dx, G_Y)
+    G.before:SetPoint("BOTTOM", G.now:GetStatusBarTexture(), "BOTTOM")
+    G.amt:SetPoint("BOTTOM", G.before:GetStatusBarTexture(), "TOP")
+    G.win = CreateFrame("Frame", nil, host)
+    G.win:SetClipsChildren(true)
+    G.win:SetSize(12, G_H * 2)
+    G.win:SetPoint("TOP", G.amt:GetStatusBarTexture(), "TOP", 0, G_H - G_S)
+    G.spot = CreateFrame("Frame", nil, G.win)
+    G.spot:SetSize(7, 7)
+    G.spot:SetPoint("CENTER", host, "CENTER", dx, G_Y)
+    local t = G.spot:CreateTexture(nil, "OVERLAY")
+    t:SetAllPoints()
+    t:SetTexture(MEDIA .. "circle.tga")
+    t:SetVertexColor(r, g, b, 1)
+    G.win:Hide()
+    return G
+end
+-- (Every bar runs from -1, so none is ever empty: an empty fill has no
+-- place for the next bar to stand on.)
+local function setGauge(G, before, amount, now)
+    local h = G_S * (labM + 1)
+    G.now:SetHeight(h); G.before:SetHeight(h); G.amt:SetHeight(h)
+    G.now:SetMinMaxValues(-1, labM); G.before:SetMinMaxValues(-1, labM); G.amt:SetMinMaxValues(-1, labM)
+    local ok = pcall(G.now.SetValue, G.now, now)
+    ok = pcall(G.before.SetValue, G.before, before) and ok
+    ok = pcall(G.amt.SetValue, G.amt, amount) and ok
+    G.win:SetShown(ok)
+    return ok
+end
+-- The bars measured with plain numbers, which can be read back: do they end
+-- where the sum says, at small totals and at large ones?
+local function labCalibrate()
+    if not MinimalUIDB then return end
+    local out = { date("%H:%M:%S") }
+    MinimalUIDB.labgeo = out
+    local okB, probe = pcall(CreateFrame, "StatusBar", nil, UIParent)
+    if not okB or not probe then out[#out + 1] = "no bar to measure with: " .. tostring(probe) return end
+    probe:SetSize(100, 4)
+    probe:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, -60)
+    probe:SetStatusBarTexture("Interface/Buttons/WHITE8x8")
+    out[#out + 1] = "reverse fill " .. (type(probe.SetReverseFill) == "function" and "there" or "MISSING")
+        .. ", fill style " .. (type(probe.SetFillStyle) == "function" and "there" or "missing")
+    local steps = {}
+    local function add(fn) steps[#steps + 1] = fn end
+    local function plainCase(label, lo, hi, v)
+        local function read(when)
+            local okP, err = pcall(function()
+                local fl = probe:GetStatusBarTexture()
+                out[#out + 1] = string.format("plain bar, %s (%s to %s, at %s), %s: fill shown %s, %.1f wide of 100",
+                    label, lo, hi, v, when, tostring(fl:IsShown()), fl:GetWidth())
+            end)
+            if not okP then out[#out + 1] = "plain bar, " .. label .. ", " .. when .. ": " .. tostring(err):sub(1, 110) end
+        end
+        add(function() pcall(function() probe:SetMinMaxValues(lo, hi); probe:SetValue(v) end); read("at once") end)
+        add(function() read("a moment on") end)
+    end
+    plainCase("at its least", 0, 1, 0)
+    plainCase("above its least", 0, 1, 1)
+    plainCase("part way", 5, 9, 7)
+    plainCase("least and most the same", 5, 5, 5)
+    add(function() pcall(function() probe:SetReverseFill(true); probe:SetMinMaxValues(0, 10); probe:SetValue(3) end) end)
+    add(function()
+        local okP, err = pcall(function()
+            local fl = probe:GetStatusBarTexture()
+            out[#out + 1] = string.format("plain bar, filled from its far end, at 3 of 10: fill starts %.1f in from the left and is %.1f wide (70 and 30 if that works)",
+                fl:GetLeft() - probe:GetLeft(), fl:GetWidth())
+        end)
+        if not okP then out[#out + 1] = "plain bar, filled from its far end: " .. tostring(err):sub(1, 110) end
+        pcall(function() probe:SetReverseFill(false) end)
+    end)
+    local host = CreateFrame("Frame", nil, UIParent)
+    host:SetSize(10, 10)
+    host:SetPoint("CENTER")
+    host:SetAlpha(0)
+    local okG, G = pcall(newGauge, host, 0, 1, 1, 1)
+    if not okG then out[#out + 1] = "the three bars could not be built: " .. tostring(G):sub(1, 160) end
+    local function gaugeCase(label, m, before, amount, now)
+        local function read(when)
+            local okR, err = pcall(function()
+                local _, cy = host:GetCenter()
+                local top = G.amt:GetStatusBarTexture():GetTop()
+                local nb = G.now:GetStatusBarTexture():GetBottom()
+                local bt = G.before:GetStatusBarTexture():GetTop()
+                out[#out + 1] = string.format("%s, %s: window off by %.2f (0 = lined up); bars %.0f tall, asked %.0f; after-bar runs %.1f down (should be %.0f); before-bar %.1f up (should be %.0f)",
+                    label, when, top - (cy + G_Y + G_S), G.now:GetHeight(), G_S * (m + 1), (cy + G_Y) - nb, G_S * (now + 1), bt - nb, G_S * (before + 1))
+            end)
+            if not okR then out[#out + 1] = label .. ", " .. when .. ": " .. tostring(err):sub(1, 160) end
+        end
+        add(function()
+            local keep = labM
+            labM = m
+            local ok = pcall(setGauge, G, before, amount, now)
+            labM = keep
+            if not ok then out[#out + 1] = label .. ": could not be set" end
+            read("at once")
+        end)
+        add(function() read("a moment on") end)
+    end
+    if okG then
+        gaugeCase("small, the sum holds", 20000, 1000, 57, 1057)
+        gaugeCase("small, one too many", 20000, 1000, 58, 1057)
+        gaugeCase("first blow of a fight", 20000, 0, 57, 57)
+        gaugeCase("a hit for nothing", 20000, 1000, 0, 1000)
+        gaugeCase("middling, the sum holds", 200000, 150000, 57, 150057)
+        gaugeCase("large, the sum holds", 1000000, 800000, 300, 800300)
+        gaugeCase("large, one too few", 1000000, 800000, 299, 800300)
+    end
+    local i = 0
+    C_Timer.NewTicker(0.12, function()
+        i = i + 1
+        local fn = steps[i]
+        if fn then pcall(fn) end
+        if i >= #steps then pcall(function() host:Hide(); probe:Hide() end) end
+    end, #steps)
+end
+-- The console's settings to do with floating text, once: is there a switch
+-- for the game's XP line by itself?
+local function labCensus()
+    if not MinimalUIDB or (type(MinimalUIDB.labcvars) == "table" and MinimalUIDB.labcvars.v == 1) then return end
+    local out = { v = 1 }
+    MinimalUIDB.labcvars = out
+    local get = (C_Console and C_Console.GetAllCommands) or _G.ConsoleGetAllCommands
+    local ok, all = pcall(get)
+    if not ok or type(all) ~= "table" then
+        out[1] = "the list of console settings can't be had: " .. tostring(all):sub(1, 100)
+        return
+    end
+    local n, total = 0, 0
+    for _, c in pairs(all) do
+        total = total + 1
+        local name = type(c) == "table" and c.command
+        if type(name) == "string" then
+            local l = name:lower()
+            if l:find("worldtext") or l:find("floating") or l:find("combattext") or l:find("damagetext") or l:find("scrolling")
+               or l:find("experience") or (l:find("xp") and not l:find("expan") and not l:find("expl") and not l:find("expo")) then
+                n = n + 1
+                if n <= 140 then
+                    local okV, v = pcall(GetCVar, name)
+                    out[#out + 1] = name .. " = " .. tostring(okV and v or "?") .. "  | " .. tostring(c.help or ""):sub(1, 100)
+                end
+            end
+        end
+    end
+    out[#out + 1] = n .. " matched, of " .. total
+end
+ns.commands.lab = function()
+    if not MinimalUIDB then return end
+    MinimalUIDB.lab = not MinimalUIDB.lab or nil
+    ns:Print("Combat text lab: " .. (MinimalUIDB.lab and "on. With Meniscus numbers chosen, reload: your hits then carry small test marks under them."
+        or "off (reload to be rid of the marks)."))
+end
+
 local function buildNumbers()
     local host = CreateFrame("Frame", nil, UIParent)
     host:SetAllPoints()
@@ -315,6 +724,7 @@ local function buildNumbers()
             local f = items[i]
             if f.live then
                 f.age = f.age + dt
+                if f.fillLater then f.fillLater = nil; labFill(f.bar, "a frame on") end
                 local k = f.age / (f.life or NUM_LIFE)
                 if k >= 1 then
                     f.live = false
@@ -390,6 +800,7 @@ local function buildNumbers()
     local function show(rel, x, y, value, r, g, b, crit, small, kind)
         local f = item()
         if not f then return end
+        if f.gauges then for i = 1, #f.gauges do f.gauges[i].win:Hide() end end
         f.unit = showUnit
         f.onTarget = false
         if showUnit and showUnit ~= "player" then
@@ -448,6 +859,8 @@ local function buildNumbers()
             f.bar:SetValue(1)
             if MinimalUIDB then MinimalUIDB.zeroclip = "the bar would not take the amount" end
         end
+        f.fillLater = nil
+        if f.bar and secret(value) and labOn() then labFill(f.bar, "at once"); f.fillLater = true end
         -- (A hidden amount goes straight in; nothing is done with it here.)
         local ok = pcall(f.fs.SetText, f.fs, value)
         if MinimalUIDB and not MinimalUIDB.ctdiag then
@@ -463,6 +876,7 @@ local function buildNumbers()
         f.warm:SetAlpha(0); f.cool:SetAlpha(0)
         f.back:SetShown(not small)
         spawned = spawned + 1
+        f.serial = spawned
         local scale = crit and 1.55 or (small and 0.85 or 1)
         f.burst:SetVertexColor(r + (1 - r) * 0.45, g + (1 - g) * 0.45, b + (1 - b) * 0.45, 1)
         f.burst:SetAlpha(0)
@@ -503,6 +917,7 @@ local function buildNumbers()
         end
         f:Show()
         driver:Show()
+        return f
     end
     -- Where a unit's numbers start: just above its nameplate.
     local function plateOf(unit)
@@ -708,7 +1123,7 @@ local function buildNumbers()
                 if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
                 local okN, n = pcall(C_Spell.GetSpellName, spellID)
                 d[#d + 1] = string.format("%.2f CAST %s", now % 1000, tostring(okN and not secret(n) and n or spellID))
-                if #d > 40 then table.remove(d, 1) end
+                if #d > 700 then table.remove(d, 1) end
             end
             if helpful(spellID) then
                 heals[#heals + 1] = now + 1.2
@@ -799,21 +1214,21 @@ local function buildNumbers()
         local crit = not secret(indicator) and indicator == "CRITICAL"
         local kind = NP.db.numbersKind ~= false and not secret(school) and SCHOOL_ICON[school] or nil
         if action == "HEAL" then
-            show(rel, x, y, amount, 0.42, 0.92, 0.50, crit)
+            return show(rel, x, y, amount, 0.42, 0.92, 0.50, crit)
         elseif action == "WOUND" then
             if mine then
-                show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind)
+                return show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind)
             elseif petShown then
                 -- Your pet's: its own kind, whatever the school. A paw, a
                 -- sandy colour, and a size down so your own hits lead.
-                show(rel, x, y, amount, PET_TINT[1], PET_TINT[2], PET_TINT[3], crit, not crit,
+                return show(rel, x, y, amount, PET_TINT[1], PET_TINT[2], PET_TINT[3], crit, not crit,
                      NP.db.numbersKind ~= false and "micro_class_druid.tga" or nil)
             else
                 local c = (not secret(school) and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
-                show(rel, x, y, amount, c[1], c[2], c[3], crit, nil, kind)
+                return show(rel, x, y, amount, c[1], c[2], c[3], crit, nil, kind)
             end
         elseif WORDS[action] then
-            show(rel, x, y, WORDS[action], 0.80, 0.80, 0.86, false, true)
+            return show(rel, x, y, WORDS[action], 0.80, 0.80, 0.86, false, true)
         end
     end
 
@@ -932,14 +1347,17 @@ local function buildNumbers()
         if not okE or secret(on) or not on then return false end
         local cur = _G.Blizzard_CombatLog_CurrentSettings
         local name = type(cur) == "table" and cur.name
-        return type(name) == "string" and not secret(name) and (name == MY_ACTIONS or name == "My actions")
+        -- (Our own filter too: if its colours turn out not to come through,
+        -- these older rules are what is left, and it passes only your
+        -- damage and misses, which suits them.)
+        return type(name) == "string" and not secret(name) and (name == MY_ACTIONS or name == "My actions" or name == LOGNAME)
     end
     local function note(text)
         if not MinimalUIDB then return end
         local d = MinimalUIDB.ctlog
         if type(d) ~= "table" then d = {}; MinimalUIDB.ctlog = d end
         d[#d + 1] = string.format("%.2f %s", GetTime() % 1000, text)
-        if #d > 280 then table.remove(d, 1) end
+        if #d > 700 then table.remove(d, 1) end
     end
     -- ── The game's damage meter as a ledger of YOUR hits (a measurement) ──
     -- The meter keeps your damage apart from everyone else's, by ability.
@@ -962,7 +1380,8 @@ local function buildNumbers()
     -- a thunder clap on three enemies is one sum there.
     -- Not for the ticks of an effect of yours: those reach the meter only
     -- together with your next blow, so they go by their own sign.
-    -- (db.numbersMeter = false: the older rules decide, as before.)
+    -- (Only when "Meniscus (damage meter blanked)" is the choice: reading
+    -- the meter this way wipes it, so it shows nothing.)
     local meterOn, pendingW = false, {}
     local grantAt, grantNow = nil, nil
     -- The same for heals, from the meter's "healing done" list: a heal on
@@ -975,7 +1394,7 @@ local function buildNumbers()
             local mf = CreateFrame("Frame")
             local heard = pcall(mf.RegisterEvent, mf, "DAMAGE_METER_COMBAT_SESSION_UPDATED")
             if MinimalUIDB then MinimalUIDB.meterdiag = "the meter's update event " .. (heard and "can be listened for" or "cannot be listened for") end
-            meterOn = heard and NP.db.numbersMeter ~= false
+            meterOn = heard and NP.db.numbersMode == "meter"
             local guid, quietAt = nil, -9
             local function show(v) if secret(v) then return "hidden" end return tostring(v) end
             local function look(how, kind)
@@ -1050,6 +1469,361 @@ local function buildNumbers()
             note("  a held hit got no log line: not yours, dropped")
         end
     end
+    -- ── Whose hit, with our own filter in the log ───────────────────────────
+    -- With the filter at the top of this section in use, every line the log
+    -- prints is a thing of yours, and its colour says what kind. How lines
+    -- and hits arrive, as recorded:
+    --   * a spell's or a special's line comes first and its hit right behind
+    --     it, in the same moment (an area spell: line, hit, line, hit);
+    --   * a tick's hit comes first, and its line right behind;
+    --   * a swing's line comes when the blow is struck, but its hit is only
+    --     reported when the swing is seen to land: 0.26, 0.58 or 1.3 s later
+    --     in the fights looked at. That gap is where somebody else's blow
+    --     can slip in. So a swing's hit has to be on the enemy you were
+    --     attacking when the line came, physical, and (in a group, once
+    --     enough of your own swings have been timed) one of your usual gaps
+    --     after the line.
+    -- A hit is yours if a line of the right kind is there for it, and each
+    -- line is good for one hit.
+    --
+    -- On your own there is a surer sign (the enemy is fighting you), and
+    -- that still decides what is shown. The pairing is worked out all the
+    -- same and written beside it in the record ("engine #n"), so how often
+    -- the two agree can be counted before the pairing is trusted in a
+    -- group, where it is the only sign there is.
+    local KCLASS = { swing = "wound", shot = "wound", spell = "wound", tick = "wound", shield = "wound", split = "wound",
+                     swingmiss = "miss", shotmiss = "miss", spellmiss = "miss", tickmiss = "miss", shieldmiss = "miss",
+                     heal = "heal", healtick = "heal", kill = "kill" }
+    local KSLOW = { swing = true, shot = true, swingmiss = true, shotmiss = true } -- the hit is reported later than the line
+    local KAFTER = { tick = true, healtick = true, tickmiss = true }               -- the line comes just after the hit
+    local eLines, eHits, eNext = {}, {}, 0
+    local typedSeen, typedOdd = 0, 0
+    local lastSlow, lastPaired
+    local eDriver = CreateFrame("Frame")
+    eDriver:Hide()
+    local function oursCurrent()
+        local cur = _G.Blizzard_CombatLog_CurrentSettings
+        local name = type(cur) == "table" and cur.name
+        return type(name) == "string" and not secret(name) and name == LOGNAME
+    end
+    -- Our filter is in use, its lines are coming, and their colours are ours.
+    local function typedOn()
+        if not logHeard or NP.db.numbersLog == false or NP.db.numbersMode ~= "ours" then return false end
+        if typedOdd >= 6 and typedSeen == 0 then return false end
+        if not oursCurrent() then return false end
+        local okE, on = pcall(CL.AreFilteredEventsEnabled)
+        return (okE and not secret(on) and on) and true or false
+    end
+    local function autoOn()
+        local f = (C_Spell and C_Spell.IsCurrentSpell) or _G.IsCurrentSpell
+        local okA, auto = pcall(f, 6603)
+        return okA and not secret(auto) and auto == true
+    end
+    -- How long after its line a swing of yours is reported: learnt on your
+    -- own, where there is no doubt which hit was the swing's
+    -- (MinimalUIDB.swingd: each usual gap, and how often it was seen).
+    local function delayLearn(dt)
+        if not MinimalUIDB then return nil end
+        local d = MinimalUIDB.swingd
+        if type(d) ~= "table" then d = {}; MinimalUIDB.swingd = d end
+        for i = 1, #d do
+            local c = d[i]
+            if math.abs(c.d - dt) <= 0.06 then
+                c.d = (c.d * c.n + dt) / (c.n + 1)
+                c.n = math.min(c.n + 1, 60)
+                return c
+            end
+        end
+        if #d < 8 then d[#d + 1] = { d = dt, n = 1 }; return d[#d] end
+        return nil
+    end
+    local function delayKnown(dt)
+        local d = MinimalUIDB and MinimalUIDB.swingd
+        if type(d) ~= "table" then return true end
+        local total = 0
+        for i = 1, #d do total = total + d[i].n end
+        if total < 8 then return true end
+        for i = 1, #d do
+            if d[i].n >= 2 and math.abs(d[i].d - dt) <= 0.07 then return true end
+        end
+        return false
+    end
+    local function ePair(L, h, how, now)
+        L.used, h.done, h.mine = true, true, true
+        local dt = h.t - L.t
+        -- Yours or your pet's: a swing on the enemy you are swinging at is
+        -- yours, one on what the pet is attacking is the pet's; a spell is
+        -- yours unless only the pet had just cast.
+        local pet = false
+        if h.cls ~= "heal" then
+            if KSLOW[L.kind] then
+                pet = not (h.key == L.key and h.auto) and L.petKey ~= nil and h.key == L.petKey
+            else
+                pet = (not h.own) and h.petSign == true
+            end
+        end
+        h.pet = pet
+        h.how = string.format("%s line, %s (%+.2f s)%s", L.kind, how, dt, pet and ", pet's" or "")
+        note(string.format("  engine #%d: yours: %s", h.id, h.how))
+        lastPaired = h
+        if KSLOW[L.kind] then
+            local c
+            if L.kind == "swing" and h.truth == true and dt >= 0 then c = delayLearn(dt) end
+            lastSlow = { L = L, h = h, c = c }
+        end
+        if h.waiting and h.show then
+            present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.sch, false, pet)
+        end
+    end
+    -- Lines and hits past their time.
+    local function eSweep(now)
+        for i = #eLines, 1, -1 do
+            local L = eLines[i]
+            if L.used then
+                table.remove(eLines, i)
+            elseif now - L.t > L.life then
+                table.remove(eLines, i)
+                note(string.format("  engine: a %s line went unclaimed (no hit was reported for it)", L.kind))
+            end
+        end
+        for i = #eHits, 1, -1 do
+            local h = eHits[i]
+            if h.done then
+                table.remove(eHits, i)
+            elseif now - h.t > 0.07 then
+                table.remove(eHits, i)
+                -- (A line that came right behind this hit, and then found
+                -- no hit behind itself: it was this hit's after all.)
+                local got
+                for j = 1, #eLines do
+                    local L = eLines[j]
+                    if not L.used and L.prev == h then got = L break end
+                end
+                if got then
+                    ePair(got, h, "the line came just behind it", now)
+                else
+                    h.done, h.mine = true, false
+                    note(string.format("  engine #%d: not yours (no line of yours for it)", h.id))
+                end
+            end
+        end
+        if #eLines == 0 and #eHits == 0 then eDriver:Hide() end
+    end
+    eDriver:SetScript("OnUpdate", function() eSweep(GetTime()) end)
+    local function eOnLine(kind, now)
+        eSweep(now)
+        local cls = KCLASS[kind]
+        if cls == "kill" then
+            -- The blow that kills is often never reported as a hit (the
+            -- enemy is gone before a swing is seen to land): a swing's line
+            -- still waiting when you kill must not be spent on a later hit.
+            C_Timer.After(0.25, function()
+                for i = 1, #eLines do
+                    local L = eLines[i]
+                    if not L.used and KSLOW[L.kind] and L.t <= now + 0.05 then
+                        L.used = true
+                        note("  engine: at your kill, a waiting " .. L.kind .. " line is let go")
+                    end
+                end
+            end)
+            return
+        end
+        local L = { t = now, kind = kind, life = KSLOW[kind] and 1.6 or 0.15 }
+        if KSLOW[kind] then
+            -- (Whom you, and your pet, were attacking as the blow was struck.)
+            L.key = plateOf("target") or RAILKEY
+            local okP, has = pcall(UnitExists, "pettarget")
+            if okP and not secret(has) and has then L.petKey = plateOf("pettarget") end
+        else
+            local prev
+            for i = #eHits, 1, -1 do
+                local h = eHits[i]
+                if not h.done and h.cls == cls and now - h.t <= 0.07 then prev = h break end
+            end
+            if prev and KAFTER[kind] then
+                ePair(L, prev, "came with its hit", now)
+                return
+            end
+            L.prev = prev
+        end
+        eLines[#eLines + 1] = L
+        eDriver:Show()
+    end
+    -- A hit reported on an enemy (or a heal on someone): true if a line of
+    -- yours answers for it, false if not, nil if that is not known yet (a
+    -- tick's line comes a moment after its hit).
+    local function eOnHit(h, now, grouped)
+        eSweep(now)
+        -- 1. A line of this moment, of a kind whose hit comes with it: the
+        --    oldest first.
+        for i = 1, #eLines do
+            local L = eLines[i]
+            if not L.used and not KSLOW[L.kind] and KCLASS[L.kind] == h.cls and now - L.t <= (grouped and 0.05 or 0.15) then
+                -- (Heroic Strike and its like are reported as two hits, an
+                -- empty swing and then the strike. If the empty one took a
+                -- swing's line a moment ago, that line goes back.)
+                local sl = lastSlow
+                if sl and sl.h.key == h.key and now - sl.h.t <= 0.15 and h.cls == "wound" and not KAFTER[L.kind] then
+                    lastSlow = nil
+                    if sl.c then sl.c.n = sl.c.n - 1 end
+                    if now - sl.L.t <= sl.L.life then
+                        sl.L.used = false
+                        local there = false
+                        for j = 1, #eLines do if eLines[j] == sl.L then there = true end end
+                        if not there then eLines[#eLines + 1] = sl.L end
+                        note("  engine: the swing line taken a moment ago goes back (that hit was the empty half of a strike)")
+                    end
+                end
+                ePair(L, h, "came with its line", now)
+                return true
+            end
+        end
+        -- 2. A swing or a shot struck a moment ago, whose hit was still to
+        --    be reported.
+        for i = 1, #eLines do
+            local L = eLines[i]
+            if not L.used and KSLOW[L.kind] and KCLASS[L.kind] == h.cls and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey)) then
+                local dt = now - L.t
+                local fits = dt >= 0 and dt <= 1.6
+                if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
+                if fits and grouped and L.kind == "swing" and not delayKnown(dt) then fits = false end
+                if fits then
+                    ePair(L, h, "its report came later", now)
+                    return true
+                end
+            end
+        end
+        -- 3. The other half of a blocked blow: the game reports one as two
+        --    hits in the same moment, one line between them.
+        local lp = lastPaired
+        if lp and lp.key == h.key and lp.t == now and h.cls == "wound" and not secret(h.indicator) and not secret(lp.indicator)
+           and ((h.indicator == "BLOCK" and lp.indicator == "BLOCK_REDUCED") or (h.indicator == "BLOCK_REDUCED" and lp.indicator == "BLOCK")) then
+            h.done, h.mine, h.pet, h.how = true, true, lp.pet, "the other half of a blocked blow"
+            note(string.format("  engine #%d: yours: %s", h.id, h.how))
+            return true
+        end
+        -- 4. Not known yet: a tick's line comes just behind its hit.
+        h.waiting = true
+        eHits[#eHits + 1] = h
+        eDriver:Show()
+        return nil
+    end
+
+    -- ── The lab's marks (see "The lab" near the top of this section) ───────
+    local labGuid, labPrev, labHave, labNeed = nil, nil, false, false
+    local labLines, labWait = {}, {}
+    local labDriver = CreateFrame("Frame")
+    labDriver:Hide()
+    -- Your running total on the game's damage meter (read, never wiped). A
+    -- hidden value in a fight: handed on to the bars as it is.
+    local function labTotal()
+        local got
+        local ok = pcall(function()
+            if not labGuid then labGuid = UnitGUID("player") end
+            local src = C_DamageMeter.GetCombatSessionSourceFromType(0, 0, labGuid)
+            got = 0
+            if type(src) == "table" then
+                local t = src.totalAmount
+                if type(t) == "number" then got = t end
+            end
+        end)
+        if not ok then return nil, false end
+        return got, true
+    end
+    -- (Out of a fight the total can be read: the bars are kept big enough
+    -- for three times it and some.)
+    local function labSize()
+        local t, ok = labTotal()
+        if not ok then return end
+        if type(t) == "number" and not secret(t) then labM = math.max(20000, t * 3 + 20000) end
+        labPrev, labHave = t, true
+    end
+    local function labLine(now, kind)
+        labLines[#labLines + 1] = { t = now, kind = kind }
+        labNeed = true
+        labDriver:Show()
+    end
+    local function labMark(f, amount, now)
+        if f.gauges == nil then
+            local ok, err = pcall(function()
+                f.gauges = { newGauge(f, -14, 1, 1, 1), newGauge(f, -5, 1, 0.25, 0.25), newGauge(f, 5, 0.3, 1, 0.4), newGauge(f, 14, 0.3, 1, 0.4) }
+            end)
+            if not ok then
+                f.gauges = false
+                if MinimalUIDB then MinimalUIDB.labmarks = "the marks could not be built: " .. tostring(err):sub(1, 160) end
+            end
+        end
+        if not f.gauges then return end
+        local okW = setGauge(f.gauges[1], 0, amount, amount)
+        local okR = setGauge(f.gauges[2], 1, amount, amount)
+        if MinimalUIDB and not MinimalUIDB.labmarks then
+            MinimalUIDB.labmarks = "first marks set: white " .. tostring(okW) .. ", red " .. tostring(okR) .. "; the amount was "
+                .. (secret(amount) and "hidden" or "plain") .. "; bars sized for " .. labM
+        end
+        f.gauges[3].win:Hide()
+        f.gauges[4].win:Hide()
+        labWait[#labWait + 1] = { f = f, amount = amount, t = now, serial = f.serial }
+        labDriver:Show()
+    end
+    labDriver:SetScript("OnUpdate", function(self)
+        local now = GetTime()
+        if labNeed then
+            -- A line of yours came since the last look: the total as it
+            -- was before (the last reading) and as it is now.
+            labNeed = false
+            local t, ok = labTotal()
+            local n = 0
+            for i = 1, #labLines do if not labLines[i].set then n = n + 1 end end
+            for i = 1, #labLines do
+                local L = labLines[i]
+                if not L.set then
+                    L.set = true
+                    L.good = ok and labHave
+                    L.b, L.a, L.many = labPrev, t, n > 1
+                end
+            end
+            if ok then labPrev, labHave = t, true end
+        end
+        while labLines[1] and now - labLines[1].t > 2.5 do table.remove(labLines, 1) end
+        for i = #labWait, 1, -1 do
+            local w = labWait[i]
+            if not w.f.live or w.f.serial ~= w.serial or not w.f.gauges then
+                table.remove(labWait, i)
+            elseif now > w.t then
+                -- (A frame on from the hit, so a line of the same moment
+                -- has its totals.)
+                table.remove(labWait, i)
+                local used, said = 0, ""
+                for j = #labLines, 1, -1 do
+                    local L = labLines[j]
+                    if used < 2 and L.set and L.good and L.t <= w.t + 0.02 and w.t - L.t <= 1.7 then
+                        used = used + 1
+                        setGauge(w.f.gauges[2 + used], L.b, w.amount, L.a)
+                        said = said .. string.format(" %s %.2f s before%s", L.kind, w.t - L.t, L.many and " (one of several in its moment)" or "")
+                    end
+                end
+                note(string.format("  marks: white and red set; green from %d line(s):%s", used, said ~= "" and said or " none"))
+            end
+        end
+        if not labNeed and #labWait == 0 and #labLines == 0 then self:Hide() end
+    end)
+    if labOn() then
+        local lr = CreateFrame("Frame")
+        lr:RegisterEvent("PLAYER_REGEN_ENABLED")
+        lr:SetScript("OnEvent", function()
+            C_Timer.After(1.5, function() if not InCombatLockdown() then pcall(labSize) end end)
+        end)
+        C_Timer.After(2, function() pcall(labSize) end)
+        -- (And the "before" reading kept fresh while nothing of yours is
+        -- landing.)
+        C_Timer.NewTicker(2, function()
+            if not labNeed and #labLines == 0 then
+                local t, ok = labTotal()
+                if ok then labPrev, labHave = t, true end
+            end
+        end)
+    end
+
     if guess and CL and CL.SetFilteredEventsEnabled and CL.AreFilteredEventsEnabled then
         local lf = CreateFrame("Frame")
         if pcall(lf.RegisterEvent, lf, "COMBAT_LOG_MESSAGE") then
@@ -1128,6 +1902,33 @@ local function buildNumbers()
             lf:SetScript("OnEvent", function(_, _, msg, r, g, b)
                 if isRefill(GetTime()) then return end
                 pcall(stripShow, msg, r, g, b)
+                -- With our own filter in use, a line's colour says what it
+                -- was, and the pairing above takes it from here. (Whether
+                -- the colours come through as asked is counted: three seen
+                -- and it is settled that they do, six lines in other
+                -- colours first and that they don't. The filter gets its
+                -- heal lines only once they are known to.)
+                if NP.db.numbersMode == "ours" and oursCurrent() then
+                    local kind = logKind(r, g, b)
+                    local rec = MinimalUIDB and MinimalUIDB.logfilter
+                    if kind then
+                        typedSeen = typedSeen + 1
+                        if typedSeen == 3 and type(rec) == "table" then rec.typed = true end
+                    else
+                        typedOdd = typedOdd + 1
+                        if typedOdd == 6 and typedSeen == 0 and type(rec) == "table" then rec.typed = false end
+                    end
+                    if kind and typedOn() then
+                        local now = GetTime()
+                        lastLine = now
+                        lineCount = lineCount + 1
+                        if MinimalUIDB then MinimalUIDB.ctlines = lineCount .. " log lines heard this session, the last at " .. string.format("%.2f", now % 1000) end
+                        note("LINE " .. kind)
+                        eOnLine(kind, now)
+                        if KCLASS[kind] == "wound" and labOn() then labLine(now, kind) end
+                        return
+                    end
+                end
                 -- (White lines are the log's notices, "You killed ..." and
                 -- the like: not a hit.)
                 if type(r) == "number" and not secret(r) and r > 0.95 and g > 0.95 and b > 0.95 then
@@ -1190,7 +1991,16 @@ local function buildNumbers()
             end)
             -- Keep the log sending. (Out of combat only: whether the game
             -- would mind mid-fight hasn't been tried.)
+            local wasOurs, toldAside = false, false
             local function keep()
+                if NP.db.numbersMode == "ours" then
+                    if oursCurrent() then
+                        wasOurs, toldAside = true, false
+                    elseif wasOurs and not toldAside then
+                        toldAside = true
+                        ns:Print("Combat numbers: the Combat Log has been moved to another filter, so the older rules are deciding whose hits are whose. Click \"" .. LOGNAME .. "\" in the Combat Log tab to go back.")
+                    end
+                end
                 if InCombatLockdown() or NP.db.numbersLog == false then return end
                 local okE, on = pcall(CL.AreFilteredEventsEnabled)
                 if okE and not secret(on) and not on then pcall(CL.SetFilteredEventsEnabled, true) end
@@ -1262,6 +2072,7 @@ local function buildNumbers()
             hitSchool = school
             local now = GetTime()
             local mineHit
+            local tag = ""
             if meterOn and healT and key and guess and action == "HEAL" then
                 local own = yoursOnly(unit, key, action, now)
                 if own then
@@ -1298,6 +2109,53 @@ local function buildNumbers()
                 end
             elseif not (key and guess) then
                 mineHit, byPet, why = true, false, ""
+            elseif typedOn() then
+                -- Our own filter is in the log: lines are paired with hits
+                -- (see "Whose hit, with our own filter in the log").
+                local own = yoursOnly(unit, key, action, now)
+                local ownWhy = why
+                local pet = (not own) and action ~= "HEAL" and pets(unit, now) or false
+                local grouped = IsInGroup and IsInGroup()
+                if secret(grouped) then grouped = false end
+                -- On your own, the plain sign: an enemy that is fighting you
+                -- is being hit by you (or your pet); one that is not, and
+                -- has nothing of yours aimed at it, is somebody else's.
+                local onMe = false
+                if not grouped and action ~= "HEAL" and UnitThreatSituation then
+                    local okT, t = pcall(UnitThreatSituation, "player", unit)
+                    onMe = okT and t ~= nil and not secret(t)
+                    if onMe then threatWorks = true end
+                end
+                local truth
+                if not grouped and action ~= "HEAL" then
+                    if onMe then
+                        truth = true
+                    elseif threatWorks and not ((own and ownWhy ~= "tick") or pet) then
+                        truth = false
+                    end
+                end
+                eNext = eNext + 1
+                local h = { id = eNext, t = now, cls = (action == "WOUND" and "wound") or (action == "HEAL" and "heal") or "miss",
+                            unit = unit, rel = rel, x = x, y = y, action = action, indicator = indicator, amount = amount, sch = school,
+                            key = key, own = own, petSign = pet, truth = truth, show = truth == nil and x ~= nil, auto = autoOn() }
+                if type(school) == "number" and not secret(school) then h.school = school end
+                tag = " #" .. h.id
+                local verdict = eOnHit(h, now, grouped)
+                if action == "HEAL" and own then
+                    -- (Shown now, by your cast: not a second time when its
+                    -- line comes.)
+                    h.show = false
+                    mineHit, byPet, why = true, false, "heal, by your cast"
+                elseif truth ~= nil then
+                    mineHit, byPet = truth, truth and pet or false
+                    why = truth and ("on your own, and it is fighting you" .. (pet and ": pet's" or ""))
+                        or "not fighting you, and no sign it was yours"
+                elseif verdict == true then
+                    mineHit, byPet, why = true, h.pet, h.how
+                else
+                    mineHit, byPet = false, false
+                    why = verdict == nil and "waits a moment for its line" or "no line of yours for it"
+                end
             elseif logOn() then
                 -- Yours or your pet's, for how it is drawn: the old signs
                 -- are still good for telling those two apart.
@@ -1411,14 +2269,15 @@ local function buildNumbers()
                     tostring(not secret(indicator) and indicator or "?"),
                     secret(amount) and "hidden" or tostring(amount),
                     secret(school) and "hidden" or tostring(school),
-                    mineHit and "shown" or "dropped", why ~= "" and (" (" .. why .. ")") or "")
-                if #d > 90 then table.remove(d, 1) end
+                    mineHit and "shown" or "dropped", (why ~= "" and (" (" .. why .. ")") or "") .. tag)
+                if #d > 700 then table.remove(d, 1) end
             end
             if not mineHit then return end
             petShown = byPet
         end
         if not x then return end
-        present(unit, rel, x, y, action, indicator, amount, school, mine, petShown)
+        local made = present(unit, rel, x, y, action, indicator, amount, school, mine, petShown)
+        if made and not mine and action == "WOUND" and labOn() then pcall(labMark, made, amount, GetTime()) end
     end)
 end
 
@@ -1427,8 +2286,12 @@ end
 --           is, so these are always right, and its damage meter is left
 --           alone. All an addon may change of them is the typeface and the
 --           size. The default.
---   "ours": our numbers (below), proven yours by the damage meter, which
---           shows nothing while they are on.
+--   "ours": our numbers, proven yours by the game's combat log, through a
+--           filter of our own that is put into it (see "A combat log filter
+--           of our own"). The damage meter is left alone.
+--   "meter": our numbers, proven yours by the damage meter, which shows
+--           nothing while they are on (it is wiped after every look). Kept
+--           beside "ours" to compare the two.
 --   "off":  neither of ours; the game's settings are put back as they were.
 local function gameNumbers(db)
     pcall(quietGame, false)
@@ -1478,7 +2341,13 @@ end
 function NP:OnInit(db)
     self.db = db
     if db.numbersMode == nil then db.numbersMode = (db.numbers == false) and "off" or "game" end
-    db.numbers = db.numbersMode == "ours"
+    db.numbers = db.numbersMode == "ours" or db.numbersMode == "meter"
+    if db.numbersMode == "ours" then
+        C_Timer.After(6, function() pcall(logFilterTell) end)
+        if MinimalUIDB and MinimalUIDB.lab == true then
+            C_Timer.After(3, function() pcall(labCensus); pcall(labCalibrate) end)
+        end
+    end
     if db.numbersMode == "game" then
         pcall(gameNumbers, db)
     elseif db.numbersMode == "off" then
