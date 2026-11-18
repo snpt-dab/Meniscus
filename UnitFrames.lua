@@ -248,6 +248,21 @@ end
 -- Only on portraits big enough to carry it; nothing glows past the art.
 local CREST_RING_R = 0.80 -- the ring's outer edge in the textures (dist/crest.py)
 local CREST_LABEL = { elite = "Elite", rare = "Rare", rareelite = "Rare Elite", boss = "Boss" }
+-- Where the name tag ("BOSS", "ELITE") sits: on the top of the portrait's
+-- ring, as a rule. Where the portrait hangs under the health bar (the
+-- target above the dome) that put the tag in the middle of the bar, hiding
+-- what little of the bar showed between the two: there it sits on the
+-- bar's top edge instead (av.tagBar, set by the layout).
+local function placeTag(av)
+    local tag = av.crest and av.crest.tag
+    if not tag then return end
+    tag:ClearAllPoints()
+    if av.tagBar then
+        tag:SetPoint("CENTER", av.tagBar, "TOP", 0, 1)
+    else
+        tag:SetPoint("CENTER", av, "TOP", 0, 5)
+    end
+end
 local function crestOf(av)
     if av.crest then return av.crest end
     local d = av.D or 0
@@ -280,7 +295,6 @@ local function crestOf(av)
     local tag = CreateFrame("Frame", nil, c)
     tag:SetFrameLevel(av:GetFrameLevel() + 12)
     tag:SetHeight(12)
-    tag:SetPoint("CENTER", av, "TOP", 0, 5)
     tag.ring = ns.RoundedRect(tag, -8, 0, 6, 1, 1, 1, 1)
     ns.RoundedRect(tag, -7, 1, 5, 0.05, 0.05, 0.06, 0.97)
     tag.text = tag:CreateFontString(nil, "OVERLAY")
@@ -316,6 +330,7 @@ local function crestOf(av)
     end)
     c:Hide()
     av.crest = c
+    placeTag(av)
     return c
 end
 
@@ -1118,6 +1133,8 @@ function UF:PlaceTarget()
         hp:SetPoint("BOTTOM", t, "BOTTOM")
         pw:SetPoint("TOP", t, "TOP")
         av:SetPoint("TOP", hp, "BOTTOM", 0, STRIP_OVERLAP)
+        av.tagBar = hp
+        placeTag(av)
         if not av.bust then av.bust = true; self:LayoutAvatar(av); self:RefreshAvatar(av) end
         -- No avatar on the bar's end any more: both texts use the caps' inset.
         t.name:SetPoint("LEFT", hp, "LEFT", s.H / 2, 0)
@@ -1135,6 +1152,8 @@ function UF:PlaceTarget()
         hp:SetPoint("TOP", t, "TOP")
         pw:SetPoint("BOTTOM", t, "BOTTOM")
         av:SetPoint("CENTER", hp, "RIGHT", 0, -2)
+        av.tagBar = nil
+        placeTag(av)
         if av.bust then av.bust = nil; self:LayoutAvatar(av); self:RefreshAvatar(av) end
         local avatarInset = s.D / 2 + 6
         t.name:SetPoint("LEFT", hp, "LEFT", s.H / 2, 0)
