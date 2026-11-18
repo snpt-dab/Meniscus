@@ -319,6 +319,10 @@ local function crestOf(av)
     mask:SetTexture(MEDIA .. "crest_ring.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     mask:SetAllPoints()
     c.fx:AddMaskTexture(mask)
+    -- (The ring the spikes stand on, its studs, stars and shimmer go behind
+    -- the bar with them: cut off by the same mask.)
+    c.ring:AddMaskTexture(c.maskLo); c.studs:AddMaskTexture(c.maskLo)
+    c.stars:AddMaskTexture(c.maskLo); c.fx:AddMaskTexture(c.maskLo)
     -- Name tag: a small dark pill sitting on the top of the ring.
     local tag = CreateFrame("Frame", nil, c)
     tag:SetFrameLevel(av:GetFrameLevel() + 12)
