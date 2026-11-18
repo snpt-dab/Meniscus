@@ -694,7 +694,10 @@ local function buildNumbers()
         f.bar:SetStatusBarColor(0, 0, 0, 0)
         f.bar:SetMinMaxValues(0, 1)
         f.bar:SetValue(1)
-        f.clip = CreateFrame("Frame", nil, f)
+        f.gate = CreateFrame("Frame", nil, f)
+        f.gate:SetClipsChildren(true)
+        f.gate:SetAllPoints(f.bar)
+        f.clip = CreateFrame("Frame", nil, f.gate)
         f.clip:SetClipsChildren(true)
         local fill = f.bar:GetStatusBarTexture()
         local okClip = fill and pcall(function()
@@ -824,6 +827,11 @@ local function buildNumbers()
         local f = item()
         if not f then return end
         if f.gauges then for i = 1, #f.gauges do f.gauges[i].win:Hide() end end
+        if f.gated then
+            f.gated = nil
+            f.gate:ClearAllPoints()
+            f.gate:SetAllPoints(f.bar)
+        end
         f.unit = showUnit
         f.onTarget = false
         if showUnit and showUnit ~= "player" then
@@ -1523,6 +1531,8 @@ local function buildNumbers()
     local KSLOW = { swing = true, shot = true, swingmiss = true, shotmiss = true } -- the hit is reported later than the line
     local KAFTER = { tick = true, healtick = true, tickmiss = true }               -- the line comes just after the hit
     local eLines, eHits, eNext = {}, {}, 0
+    local labTicks = {} -- amounts of your ticks since the meter last took in a blow of yours
+    local gateShow      -- (set further down: a swing's hit shown behind the gate)
     local typedSeen, typedOdd = 0, 0
     local lastSlow, lastPaired
     local eDriver = CreateFrame("Frame")
@@ -1594,6 +1604,7 @@ local function buildNumbers()
         lastPaired = h
         h.quick = not KSLOW[L.kind] and not KAFTER[L.kind]
         h.lineKind = L.kind
+        if L.kind == "tick" and h.cls == "wound" and #labTicks < 6 then labTicks[#labTicks + 1] = h.amount end
         if KSLOW[L.kind] then
             local c
             if L.kind == "swing" and h.truth == true and dt >= 0 then c = delayLearn(dt) end
@@ -1616,6 +1627,14 @@ local function buildNumbers()
                 local dt = h.t - L.t
                 local fits = dt >= -0.05 and dt <= 1.6
                 if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
+                if fits and h.grouped and L.kind == "swing" and h.cls == "wound" and h.show and dt > 0.02 then
+                    local pet = not (h.key == L.key and h.auto) and L.petKey ~= nil and h.key == L.petKey
+                    if gateShow and gateShow(h, L, pet) then
+                        h.done, h.mine = true, nil
+                        note(string.format("  engine #%d: drawn behind the gate: shows only if it is exactly your swing of %.2f s ago", h.id, dt))
+                        return true
+                    end
+                end
                 if fits and h.grouped and L.kind == "swing" and dt > 0.1 and not delayKnown(dt) then fits = false end
                 if fits then
                     ePair(L, h, dt < 0.02 and "came with its hit" or "its report came later", now)
@@ -1724,6 +1743,7 @@ local function buildNumbers()
         end
         eLines[#eLines + 1] = L
         eDriver:Show()
+        return L
     end
     -- A hit reported on an enemy (or a heal on someone): true if a line of
     -- yours answers for it, false if not, nil if that is not known yet (a
@@ -1776,7 +1796,6 @@ local function buildNumbers()
     -- ── The lab's marks (see "The lab" near the top of this section) ───────
     local labGuid, labPrev, labHave, labNeed = nil, nil, false, false
     local labLines, labWait = {}, {}
-    local labTicks = {} -- amounts of your ticks since the meter last took in a blow of yours
     local labDriver = CreateFrame("Frame")
     labDriver:Hide()
     -- Your running total on the game's damage meter (read, never wiped). A
@@ -1804,9 +1823,59 @@ local function buildNumbers()
         labPrev, labHave = t, true
     end
     local function labLine(now, kind)
-        labLines[#labLines + 1] = { t = now, kind = kind }
+        local r = { t = now, kind = kind }
+        labLines[#labLines + 1] = r
         labNeed = true
         labDriver:Show()
+        return r
+    end
+    -- ── A swing in a group, matched by its amount ───────────────────────────
+    -- The one place the pairing above can be fooled is a swing in a group:
+    -- its hit is reported up to 1.3 s after its line, and someone else's
+    -- blow on the same enemy can land in between. There the hit is not
+    -- judged at all. Every hit that could be the swing's is drawn, behind a
+    -- gate that is only open if
+    --     your total before the swing + (your ticks since) + this amount
+    --         = your total after it
+    -- (the lab's bars; tried on your own with marks: the true sum always
+    -- showed, a sum off by one never did). Somebody else's hit stays behind
+    -- a shut gate unless it is for exactly your swing's amount. Nothing is
+    -- read, so the line is not used up: each hit in its time is tried.
+    -- With ticks to count it is drawn twice, once for the sum without them
+    -- and once with (which of the two the meter does was not settled); at
+    -- most one of the two can be seen.
+    local GATE_H = 70
+    local function gateOne(h, L, also, pet)
+        local f = present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.sch, false, pet)
+        if not f then return end
+        local extra = also and 4 or 0
+        local key = also and "gateT" or "gateP"
+        if f[key] == nil then
+            local ok, G = pcall(newGauge, f, 0, 1, 1, 1, extra)
+            f[key] = ok and G or false
+            if ok then G.spot:Hide() end
+        end
+        local G = f[key]
+        if not G or not setGauge(G, L.lab.b, h.amount, L.lab.a, also) then
+            -- (No gate to be had: better not shown than shown unproven.)
+            f.live = false
+            f:Hide()
+            return
+        end
+        G.win:Hide()
+        f.gated = true
+        f.gate:ClearAllPoints()
+        f.gate:SetSize(300, GATE_H * 2)
+        f.gate:SetPoint("TOP", G.amt:GetStatusBarTexture(), "TOP", 0, GATE_H - G_S * (1 + extra) - G_Y)
+    end
+    gateShow = function(h, L, pet)
+        local lab = L.lab
+        if not (lab and lab.set and lab.good) or lab.many or labM > 300000 then return false end
+        local ticks = lab.ticks
+        if ticks and #ticks > 4 then return false end
+        gateOne(h, L, nil, pet)
+        if ticks and #ticks > 0 then gateOne(h, L, ticks, pet) end
+        return true
     end
     local function labMark(f, amount, now, h)
         if f.gauges == nil then
@@ -1879,13 +1948,12 @@ local function buildNumbers()
                         said = string.format(" %s %.2f s before%s; blue counts in %d tick(s)", L.kind, w.t - L.t, L.many and " (one of several in its moment)" or "", nt)
                     end
                 end
-                if kind == "tick" and #labTicks < 6 then labTicks[#labTicks + 1] = w.amount end
                 note(string.format("  marks #%s (%s): green from%s", tostring(w.h and w.h.id or "?"), tostring(kind or "unpaired"), said ~= "" and said or " no line"))
             end
         end
         if not labNeed and #labWait == 0 and #labLines == 0 then self:Hide() end
     end)
-    if labOn() then
+    if NP.db.numbersMode == "ours" then
         local lr = CreateFrame("Frame")
         lr:RegisterEvent("PLAYER_REGEN_ENABLED")
         lr:SetScript("OnEvent", function()
@@ -2002,8 +2070,11 @@ local function buildNumbers()
                         lineCount = lineCount + 1
                         if MinimalUIDB then MinimalUIDB.ctlines = lineCount .. " log lines heard this session, the last at " .. string.format("%.2f", now % 1000) end
                         note("LINE " .. kind)
-                        eOnLine(kind, now)
-                        if KCLASS[kind] == "wound" and labOn() then labLine(now, kind) end
+                        local EL = eOnLine(kind, now)
+                        if KCLASS[kind] == "wound" then
+                            local lr = labLine(now, kind)
+                            if EL then EL.lab = lr end
+                        end
                         return
                     end
                 end
