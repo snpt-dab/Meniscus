@@ -838,6 +838,7 @@ local PAGES = {
             { "UI frames", kind = "action", action = "Record", run = function() cmd("uiprobe", "") end },
             { "Damage meter", kind = "action", action = "Record", run = function() cmd("dmprobe", "") end },
             { "Guild window", kind = "action", action = "Record", run = function() cmd("guildprobe", "") end },
+            { "Friends window", kind = "action", action = "Record", run = function() cmd("friendprobe", "") end },
             { "Item counts", kind = "action", action = "Record", run = function() cmd("countprobe", "") end },
             { "Main action bar art", kind = "action", action = "Record", run = function() cmd("barprobe", "") end },
         } },

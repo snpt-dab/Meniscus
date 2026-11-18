@@ -367,6 +367,77 @@ end
 -- /men guildprobe: the guild & communities window (open it on the Roster
 -- page first): frames with key, shown/visible, alpha, level, size and first
 -- anchor; textures and text. Saved to MinimalUIDB.guildprobe.
+-- /men friendprobe: why the friends window's list is empty. Counts only (no
+-- names are recorded): what the game says it has, and what the window's
+-- lists hold and show. Saved to MinimalUIDB.friendprobe.
+ns.commands.friendprobe = function()
+    local F = _G.SocialUIFrame or _G.FriendsFrame
+    if not F or not F:IsShown() then ns:Print("Open the friends window first."); return end
+    local out = {}
+    local function say(v)
+        if issecretvalue and issecretvalue(v) then return "<hidden " .. type(v) .. ">" end
+        return tostring(v)
+    end
+    local function ask(label, fn, ...)
+        if type(fn) ~= "function" then out[#out + 1] = label .. ": no such function" return end
+        local ok, a, b = pcall(fn, ...)
+        out[#out + 1] = label .. ": " .. (ok and (say(a) .. (b ~= nil and (", " .. say(b)) or "")) or ("error " .. tostring(a)))
+    end
+    ask("BNConnected", _G.BNConnected)
+    ask("BNGetNumFriends", _G.BNGetNumFriends)
+    ask("BNFeaturesEnabledAndConnected", _G.BNFeaturesEnabledAndConnected)
+    ask("C_FriendList.GetNumFriends", C_FriendList and C_FriendList.GetNumFriends)
+    ask("C_FriendList.GetNumOnlineFriends", C_FriendList and C_FriendList.GetNumOnlineFriends)
+    ask("IsRestrictedAccount", _G.IsRestrictedAccount)
+    out[#out + 1] = string.format("window %s alpha %s scale %s %sx%s", tostring(F:GetName()), say(F:GetAlpha()), say(F:GetScale()),
+        say(F:GetWidth()), say(F:GetHeight()))
+    local function keyOf(parent, child)
+        for k, v in pairs(parent) do if v == child and type(k) == "string" then return k end end
+        return "?"
+    end
+    local function walk(f, depth, path)
+        if depth > 4 then return end
+        local kids = { f:GetChildren() }
+        for _, c in ipairs(kids) do
+            local okF, forbidden = pcall(c.IsForbidden, c)
+            if okF and not forbidden then
+                local name = path .. "." .. keyOf(f, c)
+                local box = c.ScrollBox
+                if box then
+                    local line = string.format("%s: shown %s visible %s alpha %s %sx%s", name, say(c:IsShown()), say(c:IsVisible()),
+                        say(c:GetAlpha()), say(c:GetWidth()), say(c:GetHeight()))
+                    local okD, dp = pcall(box.GetDataProvider, box)
+                    if okD and dp and dp.GetSize then
+                        local okS, n = pcall(dp.GetSize, dp)
+                        line = line .. "  data " .. (okS and say(n) or "error")
+                    else
+                        line = line .. "  data: none"
+                    end
+                    local target = box.ScrollTarget
+                    if target then
+                        local rows = { target:GetChildren() }
+                        local vis, firstA, firstH = 0, nil, nil
+                        for _, r in ipairs(rows) do
+                            if r:IsVisible() then
+                                vis = vis + 1
+                                if not firstA then firstA, firstH = r:GetAlpha(), r:GetHeight() end
+                            end
+                        end
+                        line = line .. string.format("  rows %d, visible %d, first alpha %s height %s; box alpha %s %sx%s; target %sx%s",
+                            #rows, vis, say(firstA), say(firstH), say(box:GetAlpha()), say(box:GetWidth()), say(box:GetHeight()),
+                            say(target:GetWidth()), say(target:GetHeight()))
+                    end
+                    out[#out + 1] = line
+                end
+                walk(c, depth + 1, name)
+            end
+        end
+    end
+    pcall(walk, F, 1, "F")
+    MinimalUIDB.friendprobe = out
+    ns:Print("Friends window recorded (" .. #out .. " lines). /reload to save it.")
+end
+
 ns.commands.guildprobe = function()
     local root = _G.CommunitiesFrame
     if not root or not root:IsShown() then ns:Print("Open the guild window first."); return end
