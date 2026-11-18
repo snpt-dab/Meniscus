@@ -258,6 +258,9 @@ local LOG_KINDS = {
     { "SPELL_HEAL",            0.42, 0.90, 0.50, "heal" },
     { "SPELL_PERIODIC_HEAL",   0.42, 0.80, 0.64, "healtick" },
     { "PARTY_KILL",            0.94, 0.88, 0.58, "kill" },
+    -- (Seen: the log paints a spell that misses in a grey of its own,
+    -- whatever colour its kind was given. Known by that grey.)
+    { "",                      0.50, 0.50, 0.50, "miss" },
 }
 local LOG_HEALS = { SPELL_HEAL = true, SPELL_PERIODIC_HEAL = true }
 local FLAG_MINE = _G.COMBATLOG_FILTER_MINE or 17681
@@ -336,6 +339,7 @@ local function logFilterSync()
     if type(mine.settings) ~= "table" then mine.settings = {} end
     local st = mine.settings
     st.lineColoring, st.lineColorPriority, st.lineHighlighting, st.showHistory, st.timestamp = true, 3, true, false, false
+    st.missColoring = false
     if type(mine.colors) ~= "table" then mine.colors = {} end
     local c = mine.colors
     -- (The kill notice stays a line the log brightens. Should the log colour
@@ -361,7 +365,7 @@ local function logFilterSync()
     end
     for i = 1, #LOG_KINDS do
         local k = LOG_KINDS[i]
-        if withHeals or not LOG_HEALS[k[1]] then
+        if k[1] ~= "" and (withHeals or not LOG_HEALS[k[1]]) then
             events[k[1]] = true
             c.eventColoring[k[1]] = { a = 1, r = k[2], g = k[3], b = k[4] }
         end
@@ -1458,7 +1462,10 @@ local function buildNumbers()
             -- (Some hits moved the meter without the game saying so: it is
             -- also looked at every frame of a fight, to see whether the
             -- damage was there all along.)
-            mf:SetScript("OnEvent", function(_, _, kind) look("told", kind) end)
+            -- (Only when the meter is the chosen proof: every look wipes it.
+            -- Left listening under "damage meter kept", it was wiping the
+            -- meter there too.)
+            if meterOn then mf:SetScript("OnEvent", function(_, _, kind) look("told", kind) end) end
         elseif MinimalUIDB then
             MinimalUIDB.meterdiag = "no damage meter to ask"
         end
@@ -1492,7 +1499,7 @@ local function buildNumbers()
     -- the two agree can be counted before the pairing is trusted in a
     -- group, where it is the only sign there is.
     local KCLASS = { swing = "wound", shot = "wound", spell = "wound", tick = "wound", shield = "wound", split = "wound",
-                     swingmiss = "miss", shotmiss = "miss", spellmiss = "miss", tickmiss = "miss", shieldmiss = "miss",
+                     swingmiss = "miss", shotmiss = "miss", spellmiss = "miss", tickmiss = "miss", shieldmiss = "miss", miss = "miss",
                      heal = "heal", healtick = "heal", kill = "kill" }
     local KSLOW = { swing = true, shot = true, swingmiss = true, shotmiss = true } -- the hit is reported later than the line
     local KAFTER = { tick = true, healtick = true, tickmiss = true }               -- the line comes just after the hit
@@ -1566,6 +1573,7 @@ local function buildNumbers()
         h.how = string.format("%s line, %s (%+.2f s)%s", L.kind, how, dt, pet and ", pet's" or "")
         note(string.format("  engine #%d: yours: %s", h.id, h.how))
         lastPaired = h
+        h.quick = not KSLOW[L.kind] and not KAFTER[L.kind]
         if KSLOW[L.kind] then
             local c
             if L.kind == "swing" and h.truth == true and dt >= 0 then c = delayLearn(dt) end
@@ -1574,6 +1582,27 @@ local function buildNumbers()
         if h.waiting and h.show then
             present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.sch, false, pet)
         end
+    end
+    -- A swing or a shot struck a moment ago, whose hit was still to be
+    -- reported: is this hit that one? Asked only once the hit has waited its
+    -- moment for a line of its own. (Asked at once, a tick landing while a
+    -- swing's line waited took that line, its own line went spare, and the
+    -- swing's real report was then thrown away: seen.)
+    local function eSlow(h, now)
+        for i = 1, #eLines do
+            local L = eLines[i]
+            if not L.used and KSLOW[L.kind] and KCLASS[L.kind] == h.cls and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey)) then
+                local dt = h.t - L.t
+                local fits = dt >= -0.05 and dt <= 1.6
+                if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
+                if fits and h.grouped and L.kind == "swing" and dt > 0.1 and not delayKnown(dt) then fits = false end
+                if fits then
+                    ePair(L, h, dt < 0.02 and "came with its hit" or "its report came later", now)
+                    return true
+                end
+            end
+        end
+        return false
     end
     -- Lines and hits past their time.
     local function eSweep(now)
@@ -1601,6 +1630,15 @@ local function buildNumbers()
                 end
                 if got then
                     ePair(got, h, "the line came just behind it", now)
+                elseif h.cls == "wound" and lastPaired and lastPaired ~= h and lastPaired.quick and lastPaired.key == h.key
+                       and lastPaired.t >= h.t and lastPaired.t - h.t <= 0.15 then
+                    -- (Heroic Strike and its like: an empty swing reported
+                    -- just ahead of the strike. It has no line, and must
+                    -- not take a waiting swing's.)
+                    h.done, h.mine = true, false
+                    note(string.format("  engine #%d: not yours (the empty half of a strike)", h.id))
+                elseif eSlow(h, now) then
+                    -- (paired there)
                 else
                     h.done, h.mine = true, false
                     note(string.format("  engine #%d: not yours (no line of yours for it)", h.id))
@@ -1634,6 +1672,15 @@ local function buildNumbers()
             L.key = plateOf("target") or RAILKEY
             local okP, has = pcall(UnitExists, "pettarget")
             if okP and not secret(has) and has then L.petKey = plateOf("pettarget") end
+            -- (A swing reported at once, its line a frame behind it: seen.)
+            for i = #eHits, 1, -1 do
+                local h = eHits[i]
+                if not h.done and h.cls == KCLASS[kind] and now - h.t <= 0.05 and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey))
+                   and not (kind == "swing" and h.school and h.school ~= 1) then
+                    ePair(L, h, "the line came just behind it", now)
+                    return
+                end
+            end
         else
             local prev
             for i = #eHits, 1, -1 do
@@ -1678,21 +1725,9 @@ local function buildNumbers()
                 return true
             end
         end
-        -- 2. A swing or a shot struck a moment ago, whose hit was still to
-        --    be reported.
-        for i = 1, #eLines do
-            local L = eLines[i]
-            if not L.used and KSLOW[L.kind] and KCLASS[L.kind] == h.cls and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey)) then
-                local dt = now - L.t
-                local fits = dt >= 0 and dt <= 1.6
-                if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
-                if fits and grouped and L.kind == "swing" and not delayKnown(dt) then fits = false end
-                if fits then
-                    ePair(L, h, "its report came later", now)
-                    return true
-                end
-            end
-        end
+        -- 2. (A swing struck a moment ago, whose hit was still to be
+        --    reported, is tried last: see eSlow, at the end of the wait.)
+        h.grouped = grouped
         -- 3. The other half of a blocked blow: the game reports one as two
         --    hits in the same moment, one line between them.
         local lp = lastPaired
