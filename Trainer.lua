@@ -146,6 +146,40 @@ local function compareText(old, new)
 end
 
 -- ── Data ──────────────────────────────────────────────────────────────────
+-- A profession's own next level ("Expert Mining") is not one more recipe:
+-- those are lifted out into a section of their own at the top of the list.
+-- Known by its name: a level's word, then the profession the trainer's
+-- other entries ask for.
+local TIERS = { "Apprentice", "Journeyman", "Expert", "Artisan", "Master", "Grand Master", "Illustrious", "Zen Master" }
+local function isTier(name, skills)
+    if type(name) ~= "string" or secret(name) then return false end
+    for i = 1, #TIERS do
+        local t = TIERS[i]
+        if name:sub(1, #t + 1) == t .. " " then
+            local rest = name:sub(#t + 2)
+            if skills[rest] or next(skills) == nil then return true end
+        end
+    end
+    return false
+end
+local function sectioned(list)
+    local skills = {}
+    for _, e in ipairs(list) do
+        if type(e.skillName) == "string" and not secret(e.skillName) then skills[e.skillName] = true end
+    end
+    local top, rest = {}, {}
+    for _, e in ipairs(list) do
+        if not e.header and isTier(e.name, skills) then top[#top + 1] = e else rest[#rest + 1] = e end
+    end
+    if #top == 0 then return list end
+    local out = { { header = true, section = true, name = "Skill level" } }
+    for _, e in ipairs(top) do out[#out + 1] = e end
+    if #rest > 0 and not rest[1].header then
+        out[#out + 1] = { header = true, section = true, name = next(skills) and "Recipes" or "Everything else" }
+    end
+    for _, e in ipairs(rest) do out[#out + 1] = e end
+    return out
+end
 local function services()
     known = nil -- re-read the spellbook each refresh (you may just have learned something)
     local list, avail = {}, 0
@@ -177,7 +211,7 @@ local function services()
             end
         end
     end
-    return list, avail
+    return sectioned(list), avail
 end
 
 -- ── Window ────────────────────────────────────────────────────────────────
@@ -265,7 +299,7 @@ local function makeRow(i)
         local e = self.entry
         if not e then return end
         if e.header then
-            call(e.expanded and _G.CollapseTrainerSkillLine or _G.ExpandTrainerSkillLine, e.index)
+            if not e.section then call(e.expanded and _G.CollapseTrainerSkillLine or _G.ExpandTrainerSkillLine, e.index) end
             return
         end
         if e.available then call(_G.BuyTrainerService, e.index) end
