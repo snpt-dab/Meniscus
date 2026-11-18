@@ -1531,6 +1531,12 @@ local function buildNumbers()
     local KSLOW = { swing = true, shot = true, swingmiss = true, shotmiss = true } -- the hit is reported later than the line
     local KAFTER = { tick = true, healtick = true, tickmiss = true }               -- the line comes just after the hit
     local eLines, eHits, eNext = {}, {}, 0
+    -- Somebody else has been hitting what you are fighting (until this
+    -- time): a swing's hit is then proved by its amount, in a group or not.
+    local contested = 0
+    -- Hits just ruled "not yours" that had a sign of being yours: kept a
+    -- moment, in case their line is only late (see eRescue).
+    local eLate = {}
     local labTicks = {} -- amounts of your ticks since the meter last took in a blow of yours
     local gateShow      -- (set further down: a swing's hit shown behind the gate)
     local typedSeen, typedOdd = 0, 0
@@ -1627,7 +1633,7 @@ local function buildNumbers()
                 local dt = h.t - L.t
                 local fits = dt >= -0.05 and dt <= 1.6
                 if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
-                if fits and h.grouped and L.kind == "swing" and h.cls == "wound" and h.show and dt > 0.02 then
+                if fits and (h.grouped or h.t <= contested) and L.kind == "swing" and h.cls == "wound" and h.show and dt > 0.02 then
                     local pet = not (h.key == L.key and h.auto) and L.petKey ~= nil and h.key == L.petKey
                     if gateShow and gateShow(h, L, pet) then
                         h.done, h.mine = true, nil
@@ -1644,11 +1650,31 @@ local function buildNumbers()
         end
         return false
     end
+    -- A spell's line with no hit behind it, a frame on: was its hit the one
+    -- thrown out a moment before? Seen with Thunder Clap: both hits came
+    -- first and their lines a quarter of a second later (the log runs
+    -- behind now and then), and both numbers were lost.
+    local function eRescue(L, now)
+        for i = 1, #eLate do
+            local h = eLate[i]
+            if not h.rescued and KCLASS[L.kind] == h.cls and L.t - h.t >= 0 and L.t - h.t <= 0.6 then
+                h.rescued, h.waiting = true, true
+                ePair(L, h, "its line came late", now)
+                return true
+            end
+        end
+        return false
+    end
     -- Lines and hits past their time.
     local function eSweep(now)
+        for i = #eLate, 1, -1 do
+            if now - eLate[i].t > 1 then table.remove(eLate, i) end
+        end
         for i = #eLines, 1, -1 do
             local L = eLines[i]
             if L.used then
+                table.remove(eLines, i)
+            elseif not KSLOW[L.kind] and not KAFTER[L.kind] and now - L.t > 0.03 and #eLate > 0 and eRescue(L, now) then
                 table.remove(eLines, i)
             elseif now - L.t > L.life then
                 table.remove(eLines, i)
@@ -1682,6 +1708,12 @@ local function buildNumbers()
                 else
                     h.done, h.mine = true, false
                     note(string.format("  engine #%d: not yours (no line of yours for it)", h.id))
+                    if h.own or h.truth == true then
+                        if #eLate < 8 then eLate[#eLate + 1] = h end
+                    end
+                    -- (Somebody else's, as far as can be told: not the
+                    -- empty half of a strike of your own.)
+                    if h.cls ~= "heal" and not (h.own and h.school == 1) then contested = h.t + 30 end
                 end
             end
         end
@@ -2310,21 +2342,22 @@ local function buildNumbers()
                 eNext = eNext + 1
                 local h = { id = eNext, t = now, cls = (action == "WOUND" and "wound") or (action == "HEAL" and "heal") or "miss",
                             unit = unit, rel = rel, x = x, y = y, action = action, indicator = indicator, amount = amount, sch = school,
-                            key = key, own = own, petSign = pet, truth = truth, show = truth == nil and x ~= nil, auto = autoOn(),
+                            key = key, own = own, petSign = pet, truth = truth, show = x ~= nil, auto = autoOn(),
                             dead = truth == false and x ~= nil }
                 labHit = h
                 if type(school) == "number" and not secret(school) then h.school = school end
-                tag = " #" .. h.id
+                -- (The plain sign is no longer what decides: out in the
+                -- world other players hit what you are fighting, and by
+                -- that sign all of theirs was drawn as yours. Seen: 22 of a
+                -- stranger's spells shown, every one of which the pairing
+                -- had right. It is kept in the record, for the score.)
+                tag = " #" .. h.id .. (truth == true and " [fighting you]" or truth == false and " [not fighting you]" or "")
                 local verdict = eOnHit(h, now, grouped)
                 if action == "HEAL" and own then
                     -- (Shown now, by your cast: not a second time when its
                     -- line comes.)
                     h.show = false
                     mineHit, byPet, why = true, false, "heal, by your cast"
-                elseif truth ~= nil then
-                    mineHit, byPet = truth, truth and pet or false
-                    why = truth and ("on your own, and it is fighting you" .. (pet and ": pet's" or ""))
-                        or "not fighting you, and no sign it was yours"
                 elseif verdict == true then
                     mineHit, byPet, why = true, h.pet, h.how
                 else
