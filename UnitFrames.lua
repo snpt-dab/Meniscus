@@ -253,9 +253,26 @@ local CREST_LABEL = { elite = "Elite", rare = "Rare", rareelite = "Rare Elite", 
 -- target above the dome) that put the tag in the middle of the bar, hiding
 -- what little of the bar showed between the two: there it sits on the
 -- bar's top edge instead (av.tagBar, set by the layout).
+-- The same layout has the boss's turning spikes cross the health bar:
+-- there the spikes are drawn in two parts, each behind a mask that stays
+-- put while the spikes turn. The part below the bar is as it was; the part
+-- over the bar is faint (SPIKES_OVER), so the bar reads through it.
+local SPIKES_OVER = 0.35
 local function placeTag(av)
-    local tag = av.crest and av.crest.tag
+    local c = av.crest
+    local tag = c and c.tag
     if not tag then return end
+    c.split = av.tagBar ~= nil
+    c.maskLo:ClearAllPoints(); c.maskHi:ClearAllPoints()
+    if c.split then
+        c.maskLo:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT"); c.maskLo:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT")
+        c.maskLo:SetPoint("TOP", av.tagBar, "BOTTOM")
+        c.maskHi:SetPoint("TOPLEFT", c, "TOPLEFT"); c.maskHi:SetPoint("TOPRIGHT", c, "TOPRIGHT")
+        c.maskHi:SetPoint("BOTTOM", av.tagBar, "BOTTOM")
+    else
+        c.maskLo:SetAllPoints(c); c.maskHi:SetAllPoints(c)
+    end
+    c.spikesHi:SetShown(c.split and c.kind == "boss")
     tag:ClearAllPoints()
     if av.tagBar then
         tag:SetPoint("CENTER", av.tagBar, "TOP", 0, 1)
@@ -283,6 +300,16 @@ local function crestOf(av)
     c.stars = tex("crest_stars.tga", 3)
     -- The spikes turn, so they get a holder of their own.
     c.spikes = tex("crest_spikes.tga", 0)
+    c.spikesHi = tex("crest_spikes.tga", 0) -- (the part over a health bar: see placeTag)
+    c.spikesHi:Hide()
+    local function part(t)
+        local m = c:CreateMaskTexture()
+        m:SetTexture("Interface/Buttons/WHITE8X8", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        m:SetAllPoints()
+        t:AddMaskTexture(m)
+        return m
+    end
+    c.maskLo, c.maskHi = part(c.spikes), part(c.spikesHi)
     -- Shimmer: bright streaks moving round, only where the ring is.
     c.fx = c:CreateTexture(nil, "ARTWORK", nil, 4)
     c.fx:SetAllPoints()
@@ -321,10 +348,12 @@ local function crestOf(av)
             self.stars:SetVertexColor(SILVER[1], SILVER[2], SILVER[3], k)
         elseif kind == "boss" then
             self.spikes:SetRotation(ph * 0.12)
+            self.spikesHi:SetRotation(ph * 0.12)
             local k = 0.5 + 0.5 * math.sin(ph * 1.6)
             local r, g, b = EMBER[1] + (GOLD[1] - EMBER[1]) * k, EMBER[2] + (GOLD[2] - EMBER[2]) * k,
                 EMBER[3] + (GOLD[3] - EMBER[3]) * k
             self.spikes:SetVertexColor(r, g, b, 1)
+            self.spikesHi:SetVertexColor(r, g, b, SPIKES_OVER)
             self.ring:SetVertexColor(r, g, b, 1)
         end
     end)
@@ -350,6 +379,8 @@ local function showCrest(av, kind)
     c.stars:SetVertexColor(SILVER[1], SILVER[2], SILVER[3], 1)
     c.spikes:SetShown(kind == "boss")
     c.spikes:SetRotation(0)
+    c.spikesHi:SetShown(kind == "boss" and c.split == true)
+    c.spikesHi:SetRotation(0)
     -- (The shimmer: pale, over the ring's own colour.)
     c.fx:SetVertexColor(1, 0.96, 0.86, kind == "boss" and 0.75 or 0.55)
     c.tag.text:SetText(string.upper(CREST_LABEL[kind] or ""))
