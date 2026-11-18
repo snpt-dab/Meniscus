@@ -1714,7 +1714,7 @@ function EX.Flash(host, o)
     local size = o.size
     local fx = CreateFrame("Frame", nil, host)
     fx:SetAllPoints()
-    fx:SetFrameLevel(host:GetFrameLevel() + 3)
+    fx:SetFrameLevel(o.level or (host:GetFrameLevel() + 3))
     local warm, cool, white
     if o.emblem then
         local function ghost(r, g, b)
@@ -1832,6 +1832,9 @@ local function buildReactive()
         b:SetSize(RX_SIZE, RX_SIZE)
         b:RegisterForClicks("AnyDown", "AnyUp")
         b:SetFrameStrata("MEDIUM")
+        -- (Well up in its layer: the target's frame stands just above, and
+        -- the button and its flash were being drawn behind it.)
+        b:SetFrameLevel(60)
         b:Hide()
         local vis = CreateFrame("Frame", nil, b)
         vis:SetAllPoints()
@@ -1861,7 +1864,7 @@ local function buildReactive()
         al:SetFromAlpha(0); al:SetToAlpha(1); al:SetDuration(0.12)
         b.vis, b.icon, b.cd, b.pop = vis, icon, cd, ag
         -- (And the talent pip's flash with it, same settings to begin with.)
-        b.fx = EX.Flash(vis, { size = RX_SIZE, shape = MEDIA .. "rounded.tga" })
+        b.fx = EX.Flash(vis, { size = RX_SIZE, shape = MEDIA .. "rounded.tga", level = 90 })
         b:SetScript("OnEnter", function(self)
             if not (self.spell and self.vis:IsShown()) then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
