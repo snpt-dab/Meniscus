@@ -1887,6 +1887,27 @@ local function buildNumbers()
                 if MinimalUIDB then MinimalUIDB.labmarks = "the marks could not be built: " .. tostring(err):sub(1, 160) end
             end
         end
+        -- A yellow mark, seen only where the amount is nothing at all: it
+        -- sits in the part of the 0-to-1 bar its fill has NOT covered. (The
+        -- blow that kills is drawn, by the record, and yet not seen: is the
+        -- game reporting it as a hit for 0?)
+        if f.zeroMark == nil and f.bar then
+            f.zeroMark = false
+            pcall(function()
+                local z = CreateFrame("Frame", nil, f)
+                z:SetClipsChildren(true)
+                z:SetPoint("TOPLEFT", f.bar:GetStatusBarTexture(), "TOPRIGHT")
+                z:SetPoint("BOTTOMRIGHT", f.bar, "BOTTOMRIGHT")
+                local d = CreateFrame("Frame", nil, z)
+                d:SetSize(12, 12)
+                d:SetPoint("CENTER", f, "CENTER", 0, 0)
+                local t = d:CreateTexture(nil, "OVERLAY")
+                t:SetAllPoints()
+                t:SetTexture(MEDIA .. "circle.tga")
+                t:SetVertexColor(1, 0.85, 0.2, 1)
+                f.zeroMark = z
+            end)
+        end
         if not f.gauges then return end
         local okW = setGauge(f.gauges[1], 0, amount, amount)
         local okR = setGauge(f.gauges[2], 1, amount, amount)
