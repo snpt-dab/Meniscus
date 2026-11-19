@@ -390,9 +390,11 @@ function Bars:Arrange()
             safe(function()
                 b:ClearAllPoints()
                 if gap then
+                    -- Read across the dome, like a line of text:
+                    -- 1 2 3 (dome) 4 5 6 on top, 7 8 9 (dome) 0 - = below.
                     local k = (i - 1) % 6
-                    local x = (k % 3) * step + (i > 6 and (blockW + gap) or 0)
-                    local y = (1 - math.floor(k / 3)) * step
+                    local x = (k % 3) * step + (k >= 3 and (blockW + gap) or 0)
+                    local y = (i <= 6 and 1 or 0) * step
                     b:SetPoint("BOTTOMLEFT", self.main, "BOTTOMLEFT", x, y)
                 else
                     b:SetPoint("BOTTOMLEFT", self.main, "BOTTOMLEFT", (i - 1) * step, 0)
