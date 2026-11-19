@@ -233,6 +233,24 @@ end)
 
 -- ── Readout ───────────────────────────────────────────────────────────────
 local box
+-- The commands, as the readout's buttons run them too (report is further
+-- down, hence the forward name).
+local report
+local function toggleTrace()
+    MinimalUIDB.perfTrace = not MinimalUIDB.perfTrace or nil
+    ns:Print("Handler tracing " .. (MinimalUIDB.perfTrace and "ON" or "off") .. ". /reload to apply. (/men perf shows whether it is running.)")
+end
+local function resetJobs()
+    wipe(stats)
+    ns:Print("Timed-job stats cleared.")
+end
+local function collect()
+    local before = memKB()
+    pcall(collectgarbage, "collect")
+    local after = memKB()
+    ns:Print(string.format("After a full collect: %s (was %s).", fmtKB(after), fmtKB(before)))
+end
+local PILL_H, PILL_GAP = 20, 4
 local function buildBox()
     box = CreateFrame("Frame", "MinimalUIPerf", UIParent)
     box:Hide() -- new frames start shown; the toggle below would hide it at once
@@ -263,7 +281,24 @@ local function buildBox()
     box.body:SetPoint("TOPLEFT", 10, -24)
     box.body:SetJustifyH("LEFT")
     box.body:SetSpacing(2)
+    -- Buttons for the commands, in two rows along the bottom. The trace
+    -- button names what it will do; Reload lights up while a trace change
+    -- is waiting for one.
     local acc = 1
+    local function soon() acc = 1 end -- redraw at once after a press
+    local function pill(label, fn)
+        return ns.Pill(box, label, function() fn(); soon() end, { h = PILL_H, font = 10, pad = 16, minW = 36, ring = true, dimIdle = true })
+    end
+    box.trace = pill("Start trace", toggleTrace)
+    box.reload = pill("Reload", function() pcall(_G.ReloadUI or (C_UI and C_UI.Reload)) end)
+    box.report = pill("Report", function() report() end)
+    box.reset = pill("Reset", resetJobs)
+    box.gc = pill("Collect", collect)
+    box.reset:SetPoint("BOTTOMLEFT", 10, 10)
+    box.gc:SetPoint("LEFT", box.reset, "RIGHT", PILL_GAP, 0)
+    box.report:SetPoint("LEFT", box.gc, "RIGHT", PILL_GAP, 0)
+    box.trace:SetPoint("BOTTOMLEFT", box.reset, "TOPLEFT", 0, PILL_GAP)
+    box.reload:SetPoint("LEFT", box.trace, "RIGHT", PILL_GAP, 0)
     box:SetScript("OnUpdate", function(self, dt)
         acc = acc + dt
         if acc < 1 then return end
@@ -308,13 +343,20 @@ local function buildBox()
         table.insert(lines, "Samples " .. n .. (session.logged and string.format("  (last %d s ago)", GetTime() - session.logged) or ""))
         if InCombatLockdown() then table.insert(lines, WARN .. "In combat|r") end
         self.body:SetText(table.concat(lines, "\n"))
-        self:SetHeight(32 + #lines * 13)
-        -- Fit the widest line (the CPU line grows with its addon share).
-        self:SetWidth(math.max(210, math.ceil(self.body:GetStringWidth()) + 24))
+        local label = want and "Stop trace" or "Start trace"
+        if self.traceLabel ~= label then self.traceLabel = label; self.trace:SetLabel(label) end
+        local waiting = want ~= have
+        if self.reload.primary ~= waiting then self.reload.primary = waiting; self.reload:Repaint() end
+        self:SetHeight(32 + #lines * 13 + 2 * (PILL_H + PILL_GAP) + 10)
+        -- Fit the widest line (the CPU line grows with its addon share)
+        -- and the wider row of buttons.
+        local row1 = self.trace:GetWidth() + PILL_GAP + self.reload:GetWidth()
+        local row2 = self.reset:GetWidth() + self.gc:GetWidth() + self.report:GetWidth() + 2 * PILL_GAP
+        self:SetWidth(math.max(210, math.ceil(self.body:GetStringWidth()) + 24, math.ceil(math.max(row1, row2)) + 20))
     end)
 end
 
-local function report()
+function report()
     local kb = memKB()
     local recent, peak, all, src = cpu()
     local p = db()
@@ -341,16 +383,11 @@ ns.commands.perf = function(rest)
     if rest == "report" then
         report()
     elseif rest == "trace" then
-        MinimalUIDB.perfTrace = not MinimalUIDB.perfTrace or nil
-        ns:Print("Handler tracing " .. (MinimalUIDB.perfTrace and "ON" or "off") .. ". /reload to apply. (/men perf shows whether it is running.)")
+        toggleTrace()
     elseif rest == "reset" then
-        wipe(stats)
-        ns:Print("Timed-job stats cleared.")
+        resetJobs()
     elseif rest == "gc" then
-        local before = memKB()
-        pcall(collectgarbage, "collect")
-        local after = memKB()
-        ns:Print(string.format("After a full collect: %s (was %s).", fmtKB(after), fmtKB(before)))
+        collect()
     else
         if not box then buildBox() end
         box:SetShown(not box:IsShown())
