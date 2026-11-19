@@ -672,6 +672,13 @@ local function buildNumbers()
     --     side and a cool one to the other, closing in to a narrow one
     --     that stays, and shifts a little, while the number rises and fades.
     local SIZE = 20
+    -- Easier to see (0.1.515), two settings on the Combat page: how large
+    -- the numbers are and how dark the patch behind them is. Both are a
+    -- step up from what they were (size 1, shade 0.42) unless set back.
+    local SIZES = { normal = 1, large = 1.2, huge = 1.4 }
+    local SHADES = { soft = 0.42, medium = 0.62, strong = 0.80 }
+    local function sizeMul() return SIZES[NP.db and NP.db.numbersSize or "large"] or 1.2 end
+    local function shade() return SHADES[NP.db and NP.db.numbersShade or "medium"] or 0.62 end
     local function item()
         for i = 1, #items do if not items[i].live then return items[i] end end
         if #items >= NUM_POOL then return nil end
@@ -715,8 +722,8 @@ local function buildNumbers()
         outer.body = f
         f.back = f:CreateTexture(nil, "BACKGROUND")
         f.back:SetTexture("Interface/AddOns/Meniscus/Media/spot.tga")
-        f.back:SetVertexColor(0, 0, 0, 0.42)
-        f.back:SetSize(SIZE * 3.4, SIZE * 1.9)
+        f.back:SetVertexColor(0, 0, 0, shade())
+        f.back:SetSize(SIZE * 3.8, SIZE * 2.1)
         f.back:SetPoint("CENTER")
         local function line(layer, sub)
             local t = f:CreateFontString(nil, layer, nil)
@@ -773,8 +780,11 @@ local function buildNumbers()
                     if f.crit then
                         -- Lands at well over its size and snaps down to it.
                         if f.age < 0.20 then sc = f.scale * (1.7 - 0.7 * (f.age / 0.20) ^ 0.6) end
-                    elseif f.age < 0.10 then
-                        sc = f.scale * (0.6 + 0.4 * f.age / 0.10)
+                    elseif f.age < 0.14 then
+                        -- An ordinary hit lands a third over its size and
+                        -- settles (it used to open small and grow, which
+                        -- the eye passed over); a small one, a little.
+                        sc = f.scale * (1 + (f.small and 0.15 or 0.35) * (1 - (f.age / 0.14) ^ 0.6))
                     end
                     f:SetScale(sc)
                     if not pcall(f.SetPoint, f, "CENTER", f.rel or UIParent, f.rel and "TOP" or "BOTTOMLEFT",
@@ -822,7 +832,7 @@ local function buildNumbers()
     -- ("restricted region"), only anchored to: so the number is hung on it.
     local showUnit -- (the unit the hit being shown is on; set by the event below)
     local WIDE_ORDER = { 0, 2, -2, 1, -1, 3, -3 }
-    local zeroCurve, zeroBack
+    local zeroCurve, zeroBack, zeroBackFor
     local function show(rel, x, y, value, r, g, b, crit, small, kind)
         local f = item()
         if not f then return end
@@ -856,14 +866,22 @@ local function buildNumbers()
         -- goes: the game reports that as two hits at once, the strike and
         -- an empty swing.
         local seen = nil -- the opacity to draw with, when it could be had
+        local SH = shade()
         if secret(value) then
             if zeroCurve == nil then
-                zeroCurve, zeroBack = false, false
+                zeroCurve = false
                 if C_CurveUtil and C_CurveUtil.CreateCurve then
                     local okC, c = pcall(C_CurveUtil.CreateCurve)
                     if okC and c and pcall(function() c:AddPoint(0, 0); c:AddPoint(0.5, 0); c:AddPoint(1, 1) end) then zeroCurve = c end
+                end
+            end
+            -- (The patch's curve ends at the shade chosen: made again when
+            -- that setting changes.)
+            if zeroBackFor ~= SH then
+                zeroBackFor, zeroBack = SH, false
+                if C_CurveUtil and C_CurveUtil.CreateCurve then
                     local okB, cb = pcall(C_CurveUtil.CreateCurve)
-                    if okB and cb and pcall(function() cb:AddPoint(0, 0); cb:AddPoint(0.5, 0); cb:AddPoint(1, 0.42) end) then zeroBack = cb end
+                    if okB and cb and pcall(function() cb:AddPoint(0, 0); cb:AddPoint(0.5, 0); cb:AddPoint(1, SH) end) then zeroBack = cb end
                 end
             end
             local how = "no curve"
@@ -874,16 +892,16 @@ local function buildNumbers()
                     how = "curve gave an opacity"
                     local okB, ab = false, nil
                     if zeroBack then okB, ab = pcall(zeroBack.Evaluate, zeroBack, value) end
-                    if not (okB and ab ~= nil and pcall(f.back.SetVertexColor, f.back, 0, 0, 0, ab)) then f.back:SetVertexColor(0, 0, 0, 0.42) end
+                    if not (okB and ab ~= nil and pcall(f.back.SetVertexColor, f.back, 0, 0, 0, ab)) then f.back:SetVertexColor(0, 0, 0, SH) end
                     if kind and not pcall(f.kind.SetVertexColor, f.kind, r, g, b, a) then f.kind:SetVertexColor(r, g, b, 1) end
                 else
                     how = "the curve would not take a hidden amount: " .. tostring(a):sub(1, 80)
-                    f.back:SetVertexColor(0, 0, 0, 0.42)
+                    f.back:SetVertexColor(0, 0, 0, SH)
                 end
             end
             if MinimalUIDB and MinimalUIDB.zerodiag ~= how then MinimalUIDB.zerodiag = how end
         else
-            f.back:SetVertexColor(0, 0, 0, 0.42)
+            f.back:SetVertexColor(0, 0, 0, SH)
         end
         f.zeroSeen = seen
         if f.bar and not pcall(f.bar.SetValue, f.bar, secret(value) and value or 1) then
@@ -908,7 +926,8 @@ local function buildNumbers()
         f.back:SetShown(not small)
         spawned = spawned + 1
         f.serial = spawned
-        local scale = crit and 1.55 or (small and 0.85 or 1)
+        local scale = (crit and 1.55 or (small and 0.85 or 1)) * sizeMul()
+        f.small = small and true or false
         f.burst:SetVertexColor(r + (1 - r) * 0.45, g + (1 - g) * 0.45, b + (1 - b) * 0.45, 1)
         f.burst:SetAlpha(0)
         f.crit, f.scale = crit, scale
