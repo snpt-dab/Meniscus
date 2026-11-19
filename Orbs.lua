@@ -552,6 +552,7 @@ local function spawnBubble(R, half, pool, k)
     b.a = 0.30 + 0.60 * k
     b.wf, b.wp, b.wa = 2 + math.random() * 3, math.random() * 6.28, 0.5 + math.random() * 2
     b.pop = nil
+    b.tex:SetSize(b.s, b.s) -- (once: only a pop changes it)
     b.tex:Show()
     table.insert(R.live, b)
 end
@@ -712,7 +713,14 @@ local function buildRage(f)
         table.insert(self.sparks, s)
     end
 
+    -- (The costliest handler in the addon when measured: 0.08 ms on every
+    -- frame. Above ~95 fps it now runs every other frame, with the time of
+    -- both; the boil is soft enough that 60 steps a second read the same.)
+    local owed = 0
     R:SetScript("OnUpdate", function(self, dt)
+        owed = owed + dt
+        if owed < 0.0105 then return end
+        dt, owed = owed, 0
         if dt > 0.05 then dt = 0.05 end -- keep the springs stable through hitches
         local t = self.t + dt
         self.t = t
@@ -799,7 +807,6 @@ local function buildRage(f)
                         self:Spark(b.x, b.y)
                     end
                 end
-                b.tex:SetSize(b.s, b.s)
                 b.tex:SetAlpha(b.a * math.min(1, (b.y - b.y0) / 14))
             end
             if gone then
