@@ -720,6 +720,20 @@ local function buildNumbers()
         f:SetSize(10, 10)
         f:SetPoint("CENTER", outer, "CENTER")
         outer.body = f
+        -- A critical sits on a pill: dark, with a hairline ring in the
+        -- number's own colour. Only criticals, so the shape turns up a few
+        -- times a fight and not on every hit. It is a frame of its own under
+        -- the number's (a child frame would draw over the text), hung on the
+        -- text's two ends: the text is a hidden value in a fight and can't
+        -- be measured, but it can be anchored to.
+        local pf = CreateFrame("Frame", nil, outer.clip)
+        pf:SetFrameLevel(f:GetFrameLevel())
+        f:SetFrameLevel(pf:GetFrameLevel() + 1)
+        pf:SetHeight(SIZE + 12)
+        pf.ring = ns.RoundedRect(pf, -7, -1, (SIZE + 12) / 2 + 1, 1, 1, 1, 0.6)
+        ns.RoundedRect(pf, -6, 0, (SIZE + 12) / 2, 0.05, 0.05, 0.06, 0.88)
+        pf:Hide()
+        outer.pill = pf
         f.back = f:CreateTexture(nil, "BACKGROUND")
         f.back:SetTexture("Interface/AddOns/Meniscus/Media/spot.tga")
         f.back:SetVertexColor(0, 0, 0, shade())
@@ -923,7 +937,15 @@ local function buildNumbers()
             f.warm:SetText(""); f.cool:SetText("")
         end
         f.warm:SetAlpha(0); f.cool:SetAlpha(0)
-        f.back:SetShown(not small)
+        local pillOn = crit and not (NP.db and NP.db.numbersCritPill == false) and true or false
+        f.pill:SetShown(pillOn)
+        if pillOn then
+            f.pill:ClearAllPoints()
+            f.pill:SetPoint("LEFT", kind and f.kind or f.fs, "LEFT", -13, 0)
+            f.pill:SetPoint("RIGHT", f.fs, "RIGHT", 13, 0)
+            f.pill.ring(r, g, b, 0.60)
+        end
+        f.back:SetShown(not small and not pillOn)
         spawned = spawned + 1
         f.serial = spawned
         local scale = (crit and 1.55 or (small and 0.85 or 1)) * sizeMul()
