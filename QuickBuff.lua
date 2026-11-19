@@ -581,7 +581,12 @@ local function buildButton()
         local t, since = 0, 0
         -- Everything here runs on one clock, at half speed: unhurried.
         local PACE = 0.5
+        local owed = 0
         fx:SetScript("OnUpdate", function(_, dt)
+            -- (Every other frame above ~95 fps: see the rage boil.)
+            owed = owed + dt
+            if owed < 0.0105 then return end
+            dt, owed = owed, 0
             dt = dt * PACE
             t, since = t + dt, since + dt
             local pull, alpha = REST, FRINGE

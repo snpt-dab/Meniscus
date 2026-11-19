@@ -619,11 +619,27 @@ function XP:OnInit(db)
     -- we don't get an event for), so keep re-checking twice a second.
     -- Every frame for the first few seconds (no visible flash on load), then
     -- twice a second.
-    local acc, age = 0, 0
+    -- (Measured: the full walk cost 0.75 ms each time. After the first
+    -- seconds it is only done when one of the two bars is seen to have
+    -- come back, or every 10 s for what a look at the top can't tell.)
+    local acc, age, full = 0, 0, 0
+    local function back()
+        for i = 1, #TRACKING do
+            local f = _G[TRACKING[i]]
+            if f then
+                local ok, a = pcall(f.GetAlpha, f)
+                if not ok or issecretvalue(a) or a > 0 then return true end
+            end
+        end
+        return false
+    end
     CreateFrame("Frame"):SetScript("OnUpdate", function(_, dt)
         acc, age = acc + dt, age + dt
         if age > 5 and acc < 0.5 then return end
+        full = full + acc
         acc = 0
+        if age > 5 and full < 10 and not back() then return end
+        full = 0
         hideBlizzardTracking()
     end)
     for _, name in ipairs({ "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer" }) do
