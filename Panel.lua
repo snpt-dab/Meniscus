@@ -678,7 +678,7 @@ local PAGES = {
               get = function() return ns.modules.Skins.db and ns.modules.Skins.db.coords end,
               set = function() local d = ns.modules.Skins.db; if d then d.coords = not d.coords end end },
             { "Flight timer", kind = "switch", reload = true,
-              note = "A thin bar at the top of the screen; times are learned from your own flights",
+              note = "A bar low on the screen; times are learned from your own flights",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.flight ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.flight = d.flight == false end end },
             { "Node memory on the world map", kind = "switch", reload = true,
