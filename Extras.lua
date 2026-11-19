@@ -1552,26 +1552,54 @@ end
 -- ── Flight timer ──────────────────────────────────────────────────────────
 -- How long each flight takes is learned from your own flights (from where,
 -- to where, seconds: MinimalUIDB.flights["From|To"]). On a flight you have
--- taken before, a thin bar at the top of the screen counts it down; on a
--- new one it shows the time flown so far.
+-- taken before, a pill bar low on the screen counts it down; on a new one
+-- it shows the time flown so far.
+--
+-- The timer bars (flight, breath, fatigue) share one stack, low and in the
+-- middle, growing upwards: the top of the screen is kept clear. Each is a
+-- pill bar with its word above it on the left and the time on the right.
+local TIMER_W, TIMER_H = 208, 13
+local timerHolder, timerBars = nil, {}
+local function timerLayout()
+    local n = 0
+    for i = 1, #timerBars do
+        local b = timerBars[i]
+        if b:IsShown() then
+            b:ClearAllPoints()
+            b:SetPoint("BOTTOM", timerHolder, "BOTTOM", 0, n * (TIMER_H + 20))
+            n = n + 1
+        end
+    end
+end
+local function timerBar()
+    if not timerHolder then
+        timerHolder = CreateFrame("Frame", "MeniscusMirror", UIParent)
+        timerHolder:SetSize(TIMER_W, 1)
+        timerHolder:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 290)
+    end
+    local b = ns:CreatePillBar(timerHolder, TIMER_W, TIMER_H)
+    b.label = ns:CreateText(b, 11, T.text)
+    b.label:SetPoint("BOTTOMLEFT", b, "TOPLEFT", 6, 3)
+    b.left = ns:CreateText(b, 11, T.textDim)
+    b.left:SetPoint("BOTTOMRIGHT", b, "TOPRIGHT", -6, 3)
+    for _, fs in ipairs({ b.label, b.left }) do
+        fs:SetShadowOffset(1, -1)
+        fs:SetShadowColor(0, 0, 0, 0.9)
+    end
+    b:Hide()
+    timerBars[#timerBars + 1] = b
+    return b
+end
+
 local function buildFlight()
     local db = MinimalUIDB
     if not db then return end
     db.flights = db.flights or {}
-    local bar = CreateFrame("Frame", nil, UIParent)
-    bar:SetSize(180, 3)
-    bar:SetPoint("TOP", UIParent, "TOP", 0, -96)
-    bar:Hide()
-    local track = bar:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(T.border[1], T.border[2], T.border[3], 0.9)
-    local fill = bar:CreateTexture(nil, "ARTWORK")
-    fill:SetPoint("TOPLEFT"); fill:SetPoint("BOTTOMLEFT")
-    fill:SetColorTexture(0.86, 0.89, 0.94, 0.9)
-    local label = bar:CreateFontString(nil, "OVERLAY")
-    ns:SetFont(label, 11, "OUTLINE")
-    label:SetPoint("BOTTOM", bar, "TOP", 0, 5)
-    label:SetTextColor(T.text[1], T.text[2], T.text[3])
+    local bar = timerBar()
+    bar.bar:SetStatusBarColor(0.80, 0.86, 0.95)
+    bar.bar:SetMinMaxValues(0, 1)
+    local label, left = bar.label, bar.left
+    local shownSec
     local src, dst, started, known, key
     local function clock(s)
         s = math.max(0, math.floor(s + 0.5))
@@ -1580,7 +1608,7 @@ local function buildFlight()
     local onTaxi, finish
     local poll = 0
     bar:SetScript("OnUpdate", function(self, dt)
-        if not started then self:Hide() return end
+        if not started then self:Hide(); timerLayout() return end
         local flown = GetTime() - started
         -- Landed? (Looked at twice a second; the game's "control gained"
         -- can come a moment before the flight is really over.)
@@ -1589,13 +1617,13 @@ local function buildFlight()
             poll = 0
             if flown > 3 and not onTaxi() then finish() return end
         end
-        if known then
-            fill:SetWidth(math.max(0.01, math.min(1, flown / known)) * self:GetWidth())
-            fill:Show()
-            label:SetText((dst or "Flight") .. "   " .. clock(known - flown))
-        else
-            fill:Hide()
-            label:SetText((dst or "Flight") .. "   " .. clock(flown))
+        -- A known flight fills as it goes and counts down; a new one
+        -- stays empty and counts up.
+        self.bar:SetValue(known and math.min(1, flown / known) or 0)
+        local sec = math.floor((known and (known - flown) or flown) + 0.5)
+        if sec ~= shownSec then
+            shownSec = sec
+            left:SetText(clock(sec))
         end
     end)
     if type(_G.TakeTaxiNode) == "function" then
@@ -1619,6 +1647,7 @@ local function buildFlight()
         if key and took > 8 then db.flights[key] = math.floor(took) end
         started, src, dst, known, key = nil, nil, nil, nil, nil
         bar:Hide()
+        timerLayout()
     end
     ev:SetScript("OnEvent", function(_, e)
         if e == "PLAYER_CONTROL_LOST" then
@@ -1631,7 +1660,10 @@ local function buildFlight()
                 known = key and db.flights[key] or nil
                 -- Just the place, without ", Zone".
                 if dst then dst = dst:match("^([^,]+)") or dst end
+                label:SetText(dst or "Flight")
+                shownSec = nil
                 bar:Show()
+                timerLayout()
             end)
         end
     end)
@@ -2767,36 +2799,14 @@ end
 -- are underwater. Ours instead: a pill bar with the word and the seconds
 -- left on it, blue for breath, amber for fatigue. The game's is put away.
 local function buildMirror()
-    local W, H = 208, 13
     local COLOR = { BREATH = { 0.36, 0.66, 1.00 }, EXHAUSTION = { 0.95, 0.76, 0.32 },
                     FEIGNDEATH = { 0.90, 0.62, 0.32 }, DEATH = { 0.92, 0.36, 0.30 } }
-    local holder = CreateFrame("Frame", "MeniscusMirror", UIParent)
-    holder:SetSize(W, 1)
-    holder:SetPoint("TOP", UIParent, "TOP", 0, -150)
-    local bars, order = {}, {}
-    local function layout()
-        local n = 0
-        for _, timer in ipairs(order) do
-            local b = bars[timer]
-            if b:IsShown() then
-                b:ClearAllPoints()
-                b:SetPoint("TOP", holder, "TOP", 0, -n * (H + 20))
-                n = n + 1
-            end
-        end
-    end
+    local bars = {}
+    local layout = timerLayout
     local function get(timer)
         local b = bars[timer]
         if b then return b end
-        b = ns:CreatePillBar(holder, W, H)
-        b.label = ns:CreateText(b, 11, T.text)
-        b.label:SetPoint("BOTTOMLEFT", b, "TOPLEFT", 6, 3)
-        b.left = ns:CreateText(b, 11, T.textDim)
-        b.left:SetPoint("BOTTOMRIGHT", b, "TOPRIGHT", -6, 3)
-        for _, fs in ipairs({ b.label, b.left }) do
-            fs:SetShadowOffset(1, -1)
-            fs:SetShadowColor(0, 0, 0, 0.9)
-        end
+        b = timerBar()
         local acc = 0
         b:SetScript("OnUpdate", function(self, dt)
             if self.paused then return end
@@ -2813,9 +2823,7 @@ local function buildMirror()
                 self.left:SetText("")
             end
         end)
-        b:Hide()
         bars[timer] = b
-        order[#order + 1] = timer
         return b
     end
     local function start(timer, value, max, _, paused, label)
