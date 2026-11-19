@@ -209,6 +209,7 @@ local function logSample()
         recent and string.format("%.3f", recent) or "n/a", GetFramerate(), tags))
     minute.grown, minute.peak, minute.t0, minute.combat, minute.n = 0, 0, GetTime(), 0, 0
     wipe(minute.wins)
+    session.logged = GetTime()
     while #p.samples > 120 do table.remove(p.samples, 1) end
     if kb and kb > p.peakMem then p.peakMem = math.floor(kb) end
     if peak and peak > p.peakCPU then p.peakCPU = peak end
@@ -283,6 +284,29 @@ local function buildBox()
         end
         local fps = GetFramerate()
         table.insert(lines, "FPS     " .. grade(-fps, -50, -25) .. string.format("%.0f", fps) .. "|r")
+        -- What is being recorded, so a measuring session can be trusted:
+        -- is the trace really on (it only changes at a reload), how long
+        -- this record has run (a reload starts it over), how many jobs
+        -- have been timed, and when the last minute's sample was saved.
+        local want, have = MinimalUIDB and MinimalUIDB.perfTrace and true or false, ns.perfTracing and true or false
+        local trace
+        if have and want then trace = OK .. "on|r"
+        elseif have then trace = WARN .. "on (off after /reload)|r"
+        elseif want then trace = WARN .. "off (on after /reload)|r"
+        else trace = "|cff8a8a92off|r" end
+        table.insert(lines, " ")
+        table.insert(lines, "Trace   " .. trace)
+        local ran = GetTime() - session.start
+        local need = 15 * 60
+        table.insert(lines, "Record  " .. (ran >= need and OK or WARN) .. string.format("%d:%02d", math.floor(ran / 60), math.floor(ran % 60))
+            .. "|r" .. (ran < need and "  (15 min wanted)" or "  (enough to read)"))
+        local jobs = 0
+        for _ in pairs(stats) do jobs = jobs + 1 end
+        table.insert(lines, "Jobs    " .. jobs .. " timed")
+        local p = MinimalUIDB and MinimalUIDB.perf
+        local n = p and p.samples and #p.samples or 0
+        table.insert(lines, "Samples " .. n .. (session.logged and string.format("  (last %d s ago)", GetTime() - session.logged) or ""))
+        if InCombatLockdown() then table.insert(lines, WARN .. "In combat|r") end
         self.body:SetText(table.concat(lines, "\n"))
         self:SetHeight(32 + #lines * 13)
         -- Fit the widest line (the CPU line grows with its addon share).
@@ -318,7 +342,7 @@ ns.commands.perf = function(rest)
         report()
     elseif rest == "trace" then
         MinimalUIDB.perfTrace = not MinimalUIDB.perfTrace or nil
-        ns:Print("Handler tracing " .. (MinimalUIDB.perfTrace and "ON" or "off") .. ". /reload to apply.")
+        ns:Print("Handler tracing " .. (MinimalUIDB.perfTrace and "ON" or "off") .. ". /reload to apply. (/men perf shows whether it is running.)")
     elseif rest == "reset" then
         wipe(stats)
         ns:Print("Timed-job stats cleared.")
