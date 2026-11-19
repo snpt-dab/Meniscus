@@ -1032,9 +1032,10 @@ local function build()
         tg:SetAttribute("cards", n)
     end
 
-    win:SetScript("OnShow", function()
-        call(PlaySound, SOUNDKIT and SOUNDKIT.IG_BACKPACK_OPEN)
-        B.shownAt = GetTime()
+    -- Everything a showing needs: tiles laid out, and the secure toggle
+    -- told which cards to show. (Also run once at login with the window
+    -- shut: see B:Prime.)
+    B.prepare = function()
         layout()
         if B.db.mode == "separate" then
             for bag, card in pairs(cards) do
@@ -1043,6 +1044,11 @@ local function build()
             end
         end
         B:Refresh()
+    end
+    win:SetScript("OnShow", function()
+        call(PlaySound, SOUNDKIT and SOUNDKIT.IG_BACKPACK_OPEN)
+        B.shownAt = GetTime()
+        B.prepare()
     end)
     win:SetScript("OnHide", function()
         call(PlaySound, SOUNDKIT and SOUNDKIT.IG_BACKPACK_CLOSE)
@@ -1052,6 +1058,23 @@ local function build()
         end
         if C_NewItems and C_NewItems.ClearAll then pcall(C_NewItems.ClearAll) end
     end)
+end
+
+-- Made ready at login, out of sight. The window and its tiles are secure
+-- and can't be built in a fight, so if the bags had not been opened since
+-- logging in (or a reload), the bag key in a fight fell back to the game's
+-- own bags, and using anything from those was refused ("blocked from an
+-- action only available to the Blizzard UI"): reported with a health potion
+-- mid-fight. Now ours is always built and laid out before the first fight,
+-- and the secure toggle can show it.
+function B:Prime()
+    if win or InCombatLockdown() then return end
+    build()
+    if not (win and B.prepare) then return end
+    B.prepare()
+    if not win:IsShown() then
+        for _, card in pairs(cards) do card:Hide() end
+    end
 end
 
 -- Our windows hold secure tiles, so they can only open/close out of combat.
@@ -1416,6 +1439,15 @@ function B:OnInit(db)
     owner:RegisterEvent("UPDATE_BINDINGS")
     owner:RegisterEvent("PLAYER_REGEN_ENABLED")
     owner:SetScript("OnEvent", function(_, e)
+        -- (The bags, made ready: a moment after coming into the world, when
+        -- the bags' contents are known; after the fight if that was in one.)
+        if not win then
+            if e == "PLAYER_ENTERING_WORLD" then
+                C_Timer.After(2, function() pcall(B.Prime, B) end)
+            elseif e == "PLAYER_REGEN_ENABLED" then
+                pcall(B.Prime, B)
+            end
+        end
         if e == "PLAYER_REGEN_ENABLED" and not owner.pending then return end
         bindKeys()
     end)
