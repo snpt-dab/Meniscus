@@ -1478,6 +1478,7 @@ local function makeStatsCard(page, top, pageH)
     dr:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
     dr:SetPoint("LEFT", dl, "RIGHT", 8, 0)
     dr:SetPoint("RIGHT", card, "TOPLEFT", ax0 + #ATTRS * TW + (#ATTRS - 1) * TG, divY)
+    card.resistHead = { dg, dl, dr }
     card.resists = {}
     local CH = 20
     for i, r in ipairs(RESISTS) do
@@ -1705,9 +1706,24 @@ local function makeStatsCard(page, top, pageH)
         t.bar:SetPoint("BOTTOMRIGHT", -2, 0)
         t:SetScript("OnClick", function() setView(def[1]) end)
         tabs[def[1]] = t
+        t.x = tx
         tx = tx + t:GetWidth() + 12
     end
     setView(C.db and C.db.statsView == "graph" and "graph" or "details")
+
+    -- Without the resistances (someone else's card, when there is nothing
+    -- to be known of theirs): the row goes and what is under it moves up.
+    function card.setResists(on)
+        on = on and true or false
+        if card.resistsOn == on then return end
+        card.resistsOn = on
+        for _, o in ipairs(card.resistHead) do o:SetShown(on) end
+        for _, chip in ipairs(card.resists) do chip:SetShown(on) end
+        local up = on and 0 or (12 + CH + 12)
+        card.list:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -(listTop - up))
+        graph:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -(listTop - up))
+        for _, t in pairs(tabs) do t:SetPoint("TOPLEFT", card, "TOPLEFT", t.x, -(listTop - 20 - up)) end
+    end
 
     return card
 end
@@ -1720,7 +1736,9 @@ end
 -- "+12"; with neither, "?".
 C.CARD_W = W - 20 - 440
 function C.MakeStatsCard(page, top, pageH) return makeStatsCard(page, top, pageH) end
-function C.FillOtherCard(card, unit, base, gear, rows)
+-- Resistances: the game's number where it gives one above nothing, else
+-- res[school] (from their gear); with neither, the row is hidden.
+function C.FillOtherCard(card, unit, base, gear, rows, res)
     for i, tile in ipairs(card.attrs) do
         local b0, eff, pos, neg = call(UnitStat, unit, i)
         local col = T.text
@@ -1747,7 +1765,15 @@ function C.FillOtherCard(card, unit, base, gear, rows)
         tile:Show()
     end
     pcall(updateRadar, card, unit, gear or NO_GEAR)
-    pcall(updateResists, card.resists, unit)
+    local anyRes = res ~= nil
+    for _, chip in ipairs(card.resists) do
+        local _, total = call(UnitResistance, unit, chip.school)
+        if plain(total) and total > 0 then anyRes = true
+        else total = res and res[chip.school] or 0 end
+        chip.value = total
+        chip.fs:SetText(string.format("%d", total))
+    end
+    card.setResists(anyRes)
     card.list:SetData(rows)
 end
 
