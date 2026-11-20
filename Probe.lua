@@ -2159,6 +2159,20 @@ do
         local key = class .. "|" .. race
         MinimalUIDB.baseStats[key] = MinimalUIDB.baseStats[key] or {}
         MinimalUIDB.baseStats[key][level] = table.concat(parts, ",")
+        -- What the race has of each resistance before gear and buffs (fire,
+        -- nature, frost, shadow, arcane), for the same estimate.
+        if UnitResistance then
+            local r = {}
+            for school = 2, 6 do
+                local ok, rb = pcall(UnitResistance, "player", school)
+                if not ok or type(rb) ~= "number" or hidden(rb) then r = nil break end
+                r[#r + 1] = tostring(rb)
+            end
+            if r then
+                MinimalUIDB.baseResists = MinimalUIDB.baseResists or {}
+                MinimalUIDB.baseResists[race] = table.concat(r, ",")
+            end
+        end
     end
     local f = CreateFrame("Frame")
     f:RegisterEvent("PLAYER_LOGIN")

@@ -211,7 +211,7 @@ local function auras(rows, unit, filter, max)
     return shown
 end
 local function fillPlayer(unit)
-    local rows, base, gear = {}, nil, nil
+    local rows, base, gear, res = {}, nil, nil, nil
     local read = 0
     if I.mode == "gear" then
         wipe(gearSum)
@@ -228,6 +228,10 @@ local function fillPlayer(unit)
         if read > 0 then
             gear = {}
             for i = 1, 5 do gear[i] = gearSum[STAT_KEYS[i]] or 0 end
+            -- (Resistances as their gear has them: what a race or a buff
+            -- adds is not counted. 2 fire, 3 nature, 4 frost, 5 shadow, 6 arcane.)
+            res = {}
+            for school = 2, 6 do res[school] = gearSum["RESISTANCE" .. school .. "_NAME"] or 0 end
         end
     end
     for i = 1, 5 do
@@ -252,7 +256,7 @@ local function fillPlayer(unit)
     stat(rows, "Targeting", (call(UnitName, unit .. "target")))
     head(rows, "Buffs", "micro_buff.tga")
     if auras(rows, unit, "HELPFUL", 24) == 0 then note(rows, InCombatLockdown() and "Not readable in a fight" or "None") end
-    return rows, base, gear
+    return rows, base, gear, res
 end
 local function fillCreature(unit)
     local rows = {}
@@ -303,9 +307,9 @@ end
 local function fillInfo(unit)
     local Cm = ns.modules.Character
     if not (win and win.card and Cm and Cm.FillOtherCard) then return end
-    local rows, base, gear
-    if isTrue(call(UnitIsPlayer, unit)) then rows, base, gear = fillPlayer(unit) else rows = fillCreature(unit) end
-    Cm.FillOtherCard(win.card, unit, base, gear, rows)
+    local rows, base, gear, res
+    if isTrue(call(UnitIsPlayer, unit)) then rows, base, gear, res = fillPlayer(unit) else rows = fillCreature(unit) end
+    Cm.FillOtherCard(win.card, unit, base, gear, rows, res)
 end
 
 local function makeTile(parent, slotName)
