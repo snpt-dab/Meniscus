@@ -1382,11 +1382,27 @@ end
 -- A line is "<seconds since the session began>|<what>|<details...>"; each
 -- session starts with an "S" line carrying the date and time. Hidden
 -- values (health in a fight, some names) are written as "?". Chat is not
--- recorded. The newest 100,000 lines are kept. It reaches the disk at the
--- next /reload or logout, like everything else.
+-- recorded. The newest 15,000 lines or so are kept, for every character
+-- (0.1.527: it was 100,000, and the record had grown to five of the saved
+-- file's six megabytes, read and written at every reload). It reaches the
+-- disk at the next /reload or logout, like everything else.
 do
     local J, t0, running = nil, 0, false
-    local MAX, KEEP = 120000, 100000
+    local MAX, KEEP = 20000, 15000
+    -- The newest KEEP lines of a list longer than MAX, starting at a
+    -- session's first line where there is one near the cut.
+    local function trimmed(list)
+        local n = #list
+        if n <= MAX then return list end
+        local from = n - KEEP + 1
+        for i = from, math.min(n, from + 3000) do
+            local l = list[i]
+            if type(l) == "string" and l:find("^[%d%.]+|S|") then from = i break end
+        end
+        local keep = {}
+        for i = from, n do keep[#keep + 1] = list[i] end
+        return keep
+    end
     local function hidden(v) return issecretvalue and issecretvalue(v) end
     local function sv(x)
         if x == nil then return "" end
@@ -1677,15 +1693,12 @@ do
         if running or not MinimalUIDB then return end
         MinimalUIDB.journal = MinimalUIDB.journal or {}
         local key = ns.CharKey and ns:CharKey() or "?"
+        -- Keep the newest lines, of every character's record.
+        for k, list in pairs(MinimalUIDB.journal) do
+            if type(list) == "table" then MinimalUIDB.journal[k] = trimmed(list) end
+        end
         J = MinimalUIDB.journal[key]
         if not J then J = {}; MinimalUIDB.journal[key] = J end
-        -- Keep the newest lines.
-        if #J > MAX then
-            local keep = {}
-            for i = #J - KEEP + 1, #J do keep[#keep + 1] = J[i] end
-            J = keep
-            MinimalUIDB.journal[key] = J
-        end
         t0 = GetTime()
         running = true
         header()
@@ -1722,7 +1735,15 @@ do
     end
     local boot = CreateFrame("Frame")
     boot:RegisterEvent("PLAYER_LOGIN")
-    boot:SetScript("OnEvent", function() if MinimalUIDB and MinimalUIDB.record then pcall(start) end end)
+    boot:SetScript("OnEvent", function()
+        if not MinimalUIDB then return end
+        if MinimalUIDB.record then pcall(start)
+        elseif type(MinimalUIDB.journal) == "table" then -- (not recording: an old long record is still cut down)
+            for k, list in pairs(MinimalUIDB.journal) do
+                if type(list) == "table" then MinimalUIDB.journal[k] = trimmed(list) end
+            end
+        end
+    end)
 
     ns.commands = ns.commands or {}
     ns.commands.record = function(rest, raw)
