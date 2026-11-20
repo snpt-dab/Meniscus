@@ -174,15 +174,28 @@ local function questTime(id, index)
     end
     return oldTimers[index]
 end
+local function refreshOldTimers()
+    wipe(oldTimers)
+    if GetQuestTimers and GetQuestIndexForTimer then pcall(function() readOldTimers(GetQuestTimers()) end) end
+end
+-- (For the quest log window: seconds left on a quest, or nil.)
+ns.QuestTime = function(id, index) refreshOldTimers(); return questTime(id, index) end
+ns.FmtTime = fmtTime
+-- What the game said, kept for troubleshooting (MinimalUIDB.questTimerApi).
+local function timerDiag(found)
+    if not MinimalUIDB then return end
+    local n = 0
+    for _ in pairs(oldTimers) do n = n + 1 end
+    local d = "GetTimeAllowed " .. tostring(QL.GetTimeAllowed ~= nil) .. ", GetQuestTimers " .. tostring(GetQuestTimers ~= nil)
+        .. ", GetQuestIndexForTimer " .. tostring(GetQuestIndexForTimer ~= nil) .. ", old timers " .. n
+        .. ", timed quests found " .. found
+    if MinimalUIDB.questTimerApi ~= d then MinimalUIDB.questTimerApi = d end
+end
 
 local function gather()
     local tracked, all = {}, {}
-    wipe(oldTimers)
-    if GetQuestTimers and GetQuestIndexForTimer then pcall(function() readOldTimers(GetQuestTimers()) end) end
-    if MinimalUIDB and not MinimalUIDB.questTimerApi then
-        MinimalUIDB.questTimerApi = "GetTimeAllowed " .. tostring(QL.GetTimeAllowed ~= nil)
-            .. ", GetQuestTimers " .. tostring(GetQuestTimers ~= nil)
-    end
+    refreshOldTimers()
+    local timed = 0
     soonestEnd = nil
     local n = call(QL.GetNumQuestLogEntries) or 0
     local zone = GetRealZoneText and GetRealZoneText()
@@ -229,7 +242,11 @@ local function gather()
                 progress[id] = sum
                 e.hot = hitTarget or (hotUntil[id] ~= nil and hotUntil[id] > now)
                 local left = questTime(id, i)
-                if left and not e.complete then
+                -- (Whether or not it counts as complete: a timed delivery
+                -- has no objectives, so the game calls it complete from the
+                -- start, and those are most of the timed quests there are.)
+                if left then
+                    timed = timed + 1
                     e.timeEnd = now + left
                     if left > 0 and (not soonestEnd or e.timeEnd < soonestEnd) then soonestEnd = e.timeEnd end
                 end
@@ -248,6 +265,7 @@ local function gather()
     for _, e in ipairs(list) do e.group = (e.hot or e.timeEnd) and 1 or (e.here and 2 or 3) end
     local P = TR.panel
     if P and P.ticker then P.ticker:SetShown(soonestEnd ~= nil) end
+    timerDiag(timed)
     table.sort(list, function(a, b)
         if a.group ~= b.group then return a.group < b.group end
         local la, lb = type(a.level) == "number" and a.level or 0, type(b.level) == "number" and b.level or 0
