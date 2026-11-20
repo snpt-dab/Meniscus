@@ -1738,7 +1738,9 @@ C.CARD_W = W - 20 - 440
 function C.MakeStatsCard(page, top, pageH) return makeStatsCard(page, top, pageH) end
 -- Resistances: the game's number where it gives one above nothing, else
 -- res[school] (from their gear); with neither, the row is hidden.
-function C.FillOtherCard(card, unit, base, gear, rows, res)
+-- buff[i]: what their buffs add to an attribute (read from the buffs' own
+-- tooltips by the caller); it goes on top and shows as the graph's blue.
+function C.FillOtherCard(card, unit, base, gear, rows, res, buff)
     for i, tile in ipairs(card.attrs) do
         local b0, eff, pos, neg = call(UnitStat, unit, i)
         local col = T.text
@@ -1747,6 +1749,8 @@ function C.FillOtherCard(card, unit, base, gear, rows, res)
             tile.value:SetText(string.format("%d", eff))
         else
             local g, b = gear and gear[i], base and base[i]
+            local bf = buff and buff[i] or 0
+            if bf > 0 then g = (g or 0) + bf end
             if b then
                 b0, eff, pos, neg = b, b + (g or 0), g or 0, 0
                 tile.value:SetText(string.format("%d", eff))
