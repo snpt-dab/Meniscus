@@ -737,8 +737,25 @@ function I:OnInit(db)
             GameTooltip:Hide()
         end)
         b:SetScript("OnClick", function() I:Open() end)
-        -- (Above its left end: to the left of it is the power orb.)
-        b:SetPoint("BOTTOMLEFT", tf, "TOPLEFT", 14, 5)
+        -- Where: under the bar, beside the portrait that hangs from its
+        -- middle, on the side the buffs do not run to (above the bar is the
+        -- cast bar, at its ends the power orb and the target's target).
+        -- The plain target frame has no hanging portrait: under its left end.
+        local function seat()
+            pcall(function()
+                local hp, av = tf.healthPill, tf.avatar
+                b:ClearAllPoints()
+                if UFm.targetStrip and hp and av and av.D then
+                    local x = av.D / 2 + 6
+                    if UFm.targetAurasRight then b:SetPoint("LEFT", hp, "BOTTOM", x, -19)
+                    else b:SetPoint("RIGHT", hp, "BOTTOM", -x, -19) end
+                else
+                    b:SetPoint("TOPLEFT", tf, "BOTTOMLEFT", 14, -4)
+                end
+            end)
+        end
+        b:SetScript("OnShow", seat)
+        seat()
         b:SetFrameLevel(tf:GetFrameLevel() + 5)
         I.button = b
     end)
