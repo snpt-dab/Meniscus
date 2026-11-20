@@ -661,6 +661,51 @@ local function equipLocOf(link)
     local ok, _, _, _, loc, _, classID, subID = pcall(C_Item.GetItemInfoInstant, link)
     if ok then return loc, classID, subID end
 end
+-- What a piece is worth to your class (0.1.526): each stat times a weight,
+-- and a little for its armour. Armour, rings, trinkets and things held in
+-- the off hand are judged by this, not by item level: a higher-level green
+-- with fewer of the stats you want was being marked over a blue (a robe
+-- with +6 Int +3 Spi over one with +6 Sta +4 Int +4 Spi). The weights are
+-- by class, not by build, and plain on purpose: what a levelling character
+-- of that class mostly wants. Enchantments are not counted on either side
+-- (the game's stat reading leaves them out).
+--                 Str   Agi   Sta   Int   Spi   armour
+local WEIGHTS = {
+    WARRIOR = { 1.0, 0.6, 0.8, 0.0, 0.1, 0.03 },
+    PALADIN = { 1.0, 0.4, 0.8, 0.5, 0.2, 0.03 },
+    HUNTER  = { 0.2, 1.0, 0.6, 0.3, 0.2, 0.02 },
+    ROGUE   = { 0.6, 1.0, 0.6, 0.0, 0.05, 0.02 },
+    PRIEST  = { 0.0, 0.0, 0.5, 1.0, 0.8, 0.01 },
+    MAGE    = { 0.0, 0.0, 0.5, 1.0, 0.5, 0.01 },
+    WARLOCK = { 0.0, 0.0, 0.9, 0.8, 0.4, 0.01 },
+    SHAMAN  = { 0.6, 0.5, 0.7, 0.8, 0.4, 0.02 },
+    DRUID   = { 0.6, 0.6, 0.7, 0.8, 0.5, 0.02 },
+}
+local WEIGHT_KEY = { ITEM_MOD_STRENGTH_SHORT = 1, ITEM_MOD_AGILITY_SHORT = 2, ITEM_MOD_STAMINA_SHORT = 3,
+                     ITEM_MOD_INTELLECT_SHORT = 4, ITEM_MOD_SPIRIT_SHORT = 5, RESISTANCE0_NAME = 6 }
+local function gearScore(link)
+    local st = itemStats(link)
+    if not st then return nil end
+    local _, cls = UnitClass("player")
+    local w = WEIGHTS[cls or ""] or WEIGHTS.WARRIOR
+    local caster = w[4] >= 0.8
+    local total = 0
+    for k, v in pairs(st) do
+        if type(v) == "number" and not issecretvalue(v) and type(k) == "string" then
+            local i = WEIGHT_KEY[k]
+            local m
+            if i then m = w[i]
+            elseif k == "ITEM_MOD_DAMAGE_PER_SECOND_SHORT" then m = 0
+            elseif k:find("^RESISTANCE") then m = 0.1                       -- a resistance
+            elseif k:find("SPELL") or k:find("HEAL") or k:find("MANA") then m = caster and 0.8 or 0.1
+            elseif k:find("ATTACK_POWER") then m = caster and w[1] < 0.5 and 0.05 or 0.5
+            else m = 0.5 end                                               -- anything else: worth something
+            total = total + v * m
+        end
+    end
+    return total
+end
+
 function ns.IsUpgrade(link)
     if type(link) ~= "string" or issecretvalue(link) or not (C_Item and C_Item.GetItemInfoInstant) then return false end
     local known = upCache[link]
@@ -681,8 +726,10 @@ function ns.IsUpgrade(link)
     local tool = isWeapon and TOOL_WEAPON[subID]
     -- Weapons are judged by their damage per second, not their item level.
     local newDps = isWeapon and weaponDps(link) or nil
+    local newScore = not isWeapon and gearScore(link) or nil
     if not tool then
         local lowest, empty, same = nil, false, false
+        local lowScore, scored = nil, newScore ~= nil -- (scored: every piece compared could be read)
         local beats = false
         local heavierWorn = false -- what is worn there is a heavier kind of armour than this
         local main = GetInventoryItemLink("player", 16)
@@ -717,6 +764,9 @@ function ns.IsUpgrade(link)
                     else
                         local l = gearLevel(worn)
                         if l and (not lowest or l < lowest) then lowest = l end
+                        local sc = scored and gearScore(worn) or nil
+                        if not sc then scored = false
+                        elseif not lowScore or sc < lowScore then lowScore = sc end
                     end
                 end
             end
@@ -731,7 +781,8 @@ function ns.IsUpgrade(link)
         elseif empty then res = true
         elseif wrongArmor and heavierWorn then res = false
         elseif beats then res = true
-        elseif lowest and new > lowest then res = true end
+        elseif scored and lowScore then res = newScore > lowScore + 0.05
+        elseif lowest and new > lowest then res = true end -- (stats not to be had: by item level)
         if res and ns.ItemUnusable(link) then res = false end
     end
     upCache[link] = res
