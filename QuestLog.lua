@@ -222,6 +222,7 @@ local function takeFS(size, bold, color)
     local fs = pool.fs[used.fs]
     if not fs then fs = detail.content:CreateFontString(nil, "OVERLAY"); pool.fs[used.fs] = fs end
     ns:SetFont(fs, size, "", bold)
+    fs.__size = size
     fs:SetTextColor(unpack(color or T.text))
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(true)
@@ -396,7 +397,13 @@ showDetail = function(e, retried)
     local function place(fs, gap)
         fs:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
         fs:SetWidth(w)
-        y = y - fs:GetStringHeight() - (gap or 8)
+        -- (Never less than one line of its font: a height read back as
+        -- nothing let the next line be drawn over this one, seen with the
+        -- quest timer over the title.)
+        local h = fs:GetStringHeight() or 0
+        local line = (fs.__size or 12) * 1.2
+        if h < line then h = line end
+        y = y - h - (gap or 8)
     end
     if not e then
         local fs = takeFS(12, false, T.textDim)
@@ -419,7 +426,7 @@ showDetail = function(e, retried)
     -- A timed quest: the time left, counting down while the window is up.
     local left = ns.QuestTime and ns.QuestTime(id, e.index)
     if type(left) == "number" then
-        y = y + 10
+        y = y + 8
         local tf = takeFS(12, true, { 1, 0.78, 0.35, 1 })
         Q.timerFS, Q.timerEnd, Q.timerSec = tf, GetTime() + left, nil
         local function paint()
