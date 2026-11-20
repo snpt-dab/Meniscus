@@ -2195,3 +2195,68 @@ do
         C_Timer.After(e == "PLAYER_LOGIN" and 5 or 2, function() pcall(note) end)
     end)
 end
+
+-- ── Do buffs say how much they give? ─────────────────────────────────────
+-- For the inspect window (someone's resistances and attributes from their
+-- buffs): what the game hands over for a buff besides its name. Written
+-- once a session for you, and once for the first other player you target
+-- out of a fight: MinimalUIDB.auravals[who] = lines of
+--   "<spell id> <name> | points: ... | tip: <the tooltip's own words>"
+-- (spells only: nobody's name is kept).
+do
+    local function hidden(v) return issecretvalue and issecretvalue(v) end
+    local function show(v)
+        if v == nil then return "nil" end
+        if hidden(v) then return "hidden" end
+        return tostring(v)
+    end
+    local function dump(unit, who)
+        local U = C_UnitAuras
+        if not (MinimalUIDB and U and U.GetAuraDataByIndex) then return end
+        local out = {}
+        for i = 1, 16 do
+            local ok, a = pcall(U.GetAuraDataByIndex, unit, i, "HELPFUL")
+            if not ok or type(a) ~= "table" then break end
+            local pts = "none"
+            if hidden(a.points) then pts = "hidden"
+            elseif type(a.points) == "table" then
+                local p = {}
+                for n = 1, math.min(#a.points, 6) do p[n] = show(a.points[n]) end
+                pts = #p > 0 and table.concat(p, ",") or "empty"
+            end
+            local tip = "no tooltip call"
+            local T = C_TooltipInfo
+            if T and T.GetUnitBuffByAuraInstanceID and a.auraInstanceID ~= nil then
+                local ok2, d = pcall(T.GetUnitBuffByAuraInstanceID, unit, a.auraInstanceID)
+                if not ok2 then tip = "error"
+                elseif type(d) ~= "table" or type(d.lines) ~= "table" then tip = "nothing"
+                else
+                    local words = {}
+                    for n = 2, math.min(#d.lines, 4) do
+                        local l = d.lines[n]
+                        words[#words + 1] = show(l and l.leftText)
+                    end
+                    tip = table.concat(words, " / ")
+                end
+            end
+            out[#out + 1] = show(a.spellId) .. " " .. show(a.name) .. " | points: " .. pts .. " | tip: " .. tip
+        end
+        MinimalUIDB.auravals = MinimalUIDB.auravals or {}
+        MinimalUIDB.auravals[who] = out
+    end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:RegisterEvent("PLAYER_TARGET_CHANGED")
+    local did = false
+    f:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_LOGIN" then
+            C_Timer.After(8, function() pcall(dump, "player", "you") end)
+        elseif not did and not InCombatLockdown() then
+            local ok, isP = pcall(UnitIsPlayer, "target")
+            if ok and not hidden(isP) and isP and not UnitIsUnit("target", "player") then
+                did = true
+                pcall(dump, "target", "another player")
+            end
+        end
+    end)
+end
