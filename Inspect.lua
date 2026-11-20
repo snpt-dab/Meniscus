@@ -176,6 +176,11 @@ local function infoRow(h)
         r = CreateFrame("Frame", nil, info.card)
         r.l = r:CreateFontString(nil, "OVERLAY")
         r.v = r:CreateFontString(nil, "OVERLAY")
+        -- (A font before any text: SetText on a string with none is an
+        -- error, and left the whole column empty in 0.1.530.)
+        ns:SetFont(r.l, 11, "", false)
+        ns:SetFont(r.v, 11, "", true)
+        r.font = "line"
         r.l:SetJustifyH("LEFT"); r.l:SetJustifyV("TOP")
         r.v:SetJustifyH("RIGHT")
         r.v:SetPoint("TOPRIGHT")
@@ -475,7 +480,8 @@ function I:Refresh()
     if not win or not win:IsShown() or not self.unit then return end
     local unit = self.unit
     local sum, n = 0, 0
-    pcall(fillInfo, unit)
+    local okInfo, errInfo = pcall(fillInfo, unit)
+    if not okInfo and MinimalUIDB then MinimalUIDB.inspectErr = tostring(errInfo) end
     if not isTrue(call(UnitIsPlayer, unit)) then
         -- A creature or a pet: its name in its attitude's colour, and
         -- "Level 12 Beast" under it.
@@ -707,14 +713,15 @@ function I:OnInit(db)
         acc, dirty = 0, false
         I:Refresh()
     end)
-    -- "Inspect" beside the target frame (to its left, level with it): there
+    -- "Inspect" by the target frame: there
     -- whenever you have a target, since it is the frame's child.
     C_Timer.After(1, function()
         local UFm = ns.modules.UnitFrames
         local tf = UFm and UFm.target
         if not (tf and ns.Pill) or InCombatLockdown() or db.button == false then return end
         local b = ns.Pill(tf, "Inspect", function() I:Open() end, { h = 16, font = 9, pad = 16, ring = true, dimIdle = true })
-        b:SetPoint("RIGHT", tf, "LEFT", -8, 0)
+        -- (Above its left end: to the left of it is the power orb.)
+        b:SetPoint("BOTTOMLEFT", tf, "TOPLEFT", 14, 5)
         b:SetFrameLevel(tf:GetFrameLevel() + 5)
         I.button = b
     end)
