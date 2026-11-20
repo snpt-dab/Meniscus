@@ -688,7 +688,7 @@ local function buildNumbers()
     --     light in short glints (a few with a thin cross of light).
     -- The sparks are textures of the number's own frame, so a hit for
     -- nothing hides them with the rest.
-    local SPARKS, GLINTS, SPARK_FALL = 16, 5, 80
+    local SPARKS, GLINTS, SPARK_FALL = 8, 3, 80 -- (fewer than the first 16: asked for)
     local rnd = math.random
     local SPOT = "Interface/AddOns/Meniscus/Media/spot.tga"
     local function sparksOff(f)
@@ -902,9 +902,11 @@ local function buildNumbers()
                     f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
                     if f.crit then
                         -- White-hot as it lands, cooling to its own colour.
-                        if f.age < 0.36 then
-                            local h = 1 - f.age / 0.36
-                            local mix = 0.9 * h * h
+                        -- (Longer and whiter than first made: fully white
+                        -- for the first moment, half a second to cool.)
+                        if f.age < 0.50 then
+                            local h = 1 - f.age / 0.50
+                            local mix = h < 0.84 and (h / 0.84) ^ 1.5 or 1
                             local r, g, b = f.cr + (1 - f.cr) * mix, f.cg + (1 - f.cg) * mix, f.cb + (1 - f.cb) * mix
                             if f.zeroSeen == nil or not pcall(f.fs.SetTextColor, f.fs, r, g, b, f.zeroSeen) then f.fs:SetTextColor(r, g, b, 1) end
                             f.hot = true
@@ -936,9 +938,9 @@ local function buildNumbers()
                         -- A burst of light behind it as it lands, gone in under half a second.
                         -- (Brighter than it was: full strength at the landing,
                         -- and paler, nearer white, than the number's colour.)
-                        local bq = f.age < 0.48 and (1 - f.age / 0.48) or 0
-                        f.burst:SetAlpha(bq * bq)
-                        local bs = SIZE * (3.2 + 2.2 * (1 - bq))
+                        local bq = f.age < 0.60 and (1 - f.age / 0.60) or 0
+                        f.burst:SetAlpha(bq ^ 1.5)
+                        local bs = SIZE * (4.2 + 2.6 * (1 - bq))
                         f.burst:SetSize(bs * 1.5, bs)
                     end
                 end
@@ -1056,7 +1058,7 @@ local function buildNumbers()
         f.serial = spawned
         local scale = (crit and 1.55 or (small and 0.85 or 1)) * sizeMul()
         f.small = small and true or false
-        f.burst:SetVertexColor(r + (1 - r) * 0.45, g + (1 - g) * 0.45, b + (1 - b) * 0.45, 1)
+        f.burst:SetVertexColor(r + (1 - r) * 0.70, g + (1 - g) * 0.70, b + (1 - b) * 0.70, 1)
         f.burst:SetAlpha(0)
         f.crit, f.scale = crit, scale
         f.cr, f.cg, f.cb, f.hot = r, g, b, nil
