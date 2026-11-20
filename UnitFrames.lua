@@ -1527,9 +1527,46 @@ function UF:BuildCure()
         hint:SetPoint("CENTER", vis, "BOTTOMRIGHT", -1, 2)
         hint:SetShadowOffset(1, -1)
         hint:SetShadowColor(0, 0, 0, 1)
-        -- The ring breathes while it shows.
-        vis:SetScript("OnUpdate", function() ring:SetAlpha(0.6 + 0.4 * math.sin(GetTime() * 5)) end)
-        b.vis, b.ring, b.icon, b.hint = vis, ring, icon, hint
+        -- Arriving, it flashes (it used to just appear, and went unseen):
+        -- the picture goes white for a moment and a burst of light in the
+        -- kind's colour opens behind it, as behind a critical hit. While it
+        -- waits, a smaller burst every couple of seconds, and the ring
+        -- breathes.
+        local burst = vis:CreateTexture(nil, "BACKGROUND", nil, -1)
+        burst:SetTexture(MEDIA .. "spot.tga")
+        burst:SetBlendMode("ADD")
+        burst:SetPoint("CENTER")
+        burst:SetAlpha(0)
+        local white = vis:CreateTexture(nil, "OVERLAY")
+        white:SetTexture(MEDIA .. "circle.tga")
+        white:SetBlendMode("ADD")
+        white:SetAllPoints()
+        white:SetAlpha(0)
+        local t0 = 0
+        vis:SetScript("OnShow", function() t0 = GetTime() end)
+        vis:SetScript("OnUpdate", function(self)
+            local now = GetTime()
+            ring:SetAlpha(0.6 + 0.4 * math.sin(now * 5))
+            if b.quiet then burst:SetAlpha(0); white:SetAlpha(0) return end
+            local age = now - t0
+            local s = self:GetWidth()
+            if age < 0.55 then
+                local q = 1 - age / 0.55
+                burst:SetAlpha(q ^ 1.5)
+                burst:SetSize(s * (2.4 + 2.2 * (1 - q)), s * (2.4 + 2.2 * (1 - q)))
+                white:SetAlpha(age < 0.32 and (1 - age / 0.32) or 0)
+            else
+                white:SetAlpha(0)
+                local ph = ((age - 0.55) % 2.0) / 0.7
+                if ph < 1 then
+                    burst:SetAlpha(0.55 * (1 - ph) ^ 2)
+                    burst:SetSize(s * (1.8 + 1.6 * ph), s * (1.8 + 1.6 * ph))
+                else
+                    burst:SetAlpha(0)
+                end
+            end
+        end)
+        b.vis, b.ring, b.icon, b.hint, b.burst = vis, ring, icon, hint, burst
         b:SetScript("OnEnter", function(self)
             if not self.vis:IsShown() then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1621,6 +1658,7 @@ function UF:BuildCure()
                 b.ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
                 b.hint:SetText("")
                 b.vis:SetAlpha(0.45)
+                b.quiet = true
                 b.vis:Show()
             else
                 b.vis:Hide()
@@ -1637,7 +1675,10 @@ function UF:BuildCure()
         end
         c = c or GOLD
         b.ring:SetVertexColor(c[1], c[2], c[3], 1)
+        b.burst:SetVertexColor(c[1] + (1 - c[1]) * 0.5, c[2] + (1 - c[2]) * 0.5, c[3] + (1 - c[3]) * 0.5)
         b.hint:SetText(right and "R" or "")
+        -- (Dim and plain a moment ago, now known: that is an arrival too.)
+        if b.quiet then b.quiet = nil; b.vis:Hide() end
         b.vis:Show()
     end
     local function updateAll() for _, b in ipairs(chips) do pcall(update, b) end end
@@ -1676,6 +1717,23 @@ function UF:BuildCure()
         GameTooltip:Show()
     end)
     pill:SetScript("OnLeave", function() pFill(0.06, 0.06, 0.07, 0.97); GameTooltip:Hide() end)
+    -- The pill arrives in a white flash of its own shape, as the Quick Buff
+    -- pill leaves in one, and gives a fainter one every couple of seconds
+    -- while it waits to be pressed.
+    local pFlash = ns.RoundedRect(pill, 6, 0, PH / 2, 1, 1, 1, 0, "OVERLAY")
+    local pT0, pLast = 0, 0
+    pill.arrive = function() pT0 = GetTime() end
+    pill:HookScript("OnUpdate", function()
+        local age = GetTime() - pT0
+        local a = 0
+        if age < 0.55 then
+            a = 0.9 * (1 - age / 0.55) ^ 1.5
+        else
+            local ph = ((age - 0.55) % 2.2) / 0.7
+            if ph < 1 then a = 0.32 * (1 - ph) ^ 2 end
+        end
+        if a ~= pLast then pLast = a; pFlash(1, 1, 1, a) end
+    end)
     local PILL_UNITS = { "player", "party1", "party2", "party3", "party4" }
     local showing = {}
     local function updatePill()
@@ -1698,6 +1756,7 @@ function UF:BuildCure()
         local spell = (kind and typeSpell[kind]) or spells[1]
         -- (Placed afresh each time: the map it sits over is built after
         -- this, and the first placing used to be kept.)
+        if showing.unit ~= unit or showing.spell ~= spell or not pill:IsShown() then pill.arrive() end
         showing.unit, showing.spell = unit, spell
         pill:SetAttribute("type", "spell")
         pill:SetAttribute("spell", spell)
