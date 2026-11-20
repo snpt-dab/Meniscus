@@ -772,6 +772,14 @@ local PAGES = {
             moduleSwitch("Trainer", "Trainer"),
             moduleSwitch("Mailbox", "Mail"),
             moduleSwitch("Inspect", "Inspect"),
+            { "Attributes as bars", kind = "switch",
+              note = "The Graph view: stacked bars, not the pentagon",
+              get = function() local d = ns.modules.Character.db; return d and d.graphBars == true end,
+              set = function()
+                  local d = ns.modules.Character.db
+                  if d then d.graphBars = not d.graphBars end
+                  if ns.modules.Character.ApplyGraphStyle then ns.modules.Character.ApplyGraphStyle() end
+              end },
             { "Dialog text types itself out", kind = "switch",
               get = function() return ns.modules.Dialogs.db and ns.modules.Dialogs.db.typewriter end,
               set = function() local d = ns.modules.Dialogs.db; if d then d.typewriter = not d.typewriter end end },
@@ -953,6 +961,7 @@ local KEYS = {
     ["Map coordinates"] = "location position xy",
     ["Flight timer"] = "taxi flight path gryphon wind rider travel time",
     ["Node memory on the world map"] = "herb ore mining gather spots dots",
+    ["Attributes as bars"] = "graph pentagon radar stats chart character inspect strength",
     ["Remembered nodes on the minimap too"] = "herb ore mining gather",
     ["Nearly capped notice"] = "skill trainer train limit",
     ["Capped skill warning"] = "skill trainer train limit maxed",
