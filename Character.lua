@@ -791,7 +791,20 @@ local function statsData(unit)
     rows = {}
     local aBase, armor, _, aPos, aNeg = call(UnitArmor, "player")
     stat(rows, "Armor", fmt(armor, "%d"), buffColor(aPos, aNeg), armorTip("player", armor, aBase, aPos, aNeg))
-    local dBase, dMod = call(UnitDefense, "player")
+    -- (This client has no UnitDefense: the row never showed. It is asked as
+    -- UnitDefenseSkill here, and failing that read from the Defense skill
+    -- line, number 95.)
+    local dBase, dMod
+    local defFn = _G.UnitDefense or _G.UnitDefenseSkill
+    if defFn then dBase, dMod = call(defFn, "player") end
+    if not plain(dBase) and C_SkillInfo and C_SkillInfo.GetSkillLineInfoByID then
+        local info = call(C_SkillInfo.GetSkillLineInfoByID, 95)
+        if type(info) == "table" then dBase, dMod = info.rank or info.skillRank, info.modifier or info.skillModifier end
+    end
+    if MinimalUIDB and not MinimalUIDB.defdiag then
+        MinimalUIDB.defdiag = "UnitDefense " .. tostring(_G.UnitDefense ~= nil) .. ", UnitDefenseSkill "
+            .. tostring(_G.UnitDefenseSkill ~= nil) .. ", read " .. tostring(plain(dBase) and true or false)
+    end
     if plain(dBase) then
         local def = dBase + (plain(dMod) and dMod or 0)
         local lines = { "Each point makes you a little harder to hit and to critically hit, and adds to your dodge, parry and block." }
