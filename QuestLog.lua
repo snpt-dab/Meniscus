@@ -388,6 +388,7 @@ end
 local showDetail
 showDetail = function(e, retried)
     Q.detailEntry = e
+    Q.timerFS = nil
     resetPool()
     local content = detail.content
     local w = content:GetWidth()
@@ -415,7 +416,39 @@ showDetail = function(e, retried)
     local cr, cg, cb = diffColor(e.level)
     meta:SetText(string.format("|cff%02x%02x%02xLevel %s|r%s", cr * 255, cg * 255, cb * 255, tostring(e.level or "?"),
         e.zone and ("   ·   " .. e.zone) or ""))
-    place(meta, 16)
+    -- A timed quest: the time left, counting down while the window is up.
+    local left = ns.QuestTime and ns.QuestTime(id, e.index)
+    if type(left) == "number" then
+        y = y + 10
+        local tf = takeFS(12, true, { 1, 0.78, 0.35, 1 })
+        Q.timerFS, Q.timerEnd, Q.timerSec = tf, GetTime() + left, nil
+        local function paint()
+            local sec = math.floor(Q.timerEnd - GetTime())
+            if sec == Q.timerSec then return end
+            Q.timerSec = sec
+            if sec <= 0 then
+                tf:SetText("Out of time")
+                tf:SetTextColor(1, 0.42, 0.38)
+            else
+                tf:SetText("Time left  " .. ns.FmtTime(sec))
+                if sec < 60 then tf:SetTextColor(1, 0.42, 0.38) else tf:SetTextColor(1, 0.78, 0.35) end
+            end
+        end
+        paint()
+        place(tf, 16)
+        if not Q.ticker then
+            Q.ticker = CreateFrame("Frame", nil, win)
+            local acc = 0
+            Q.ticker:SetScript("OnUpdate", function(self, dt)
+                acc = acc + dt
+                if acc < 0.2 then return end
+                acc = 0
+                if Q.timerFS and Q.timerPaint then Q.timerPaint() else self:Hide() end
+            end)
+        end
+        Q.timerPaint = paint
+        Q.ticker:Show()
+    end
 
     local function section(label)
         local h = takeFS(10, true, T.textDim)
