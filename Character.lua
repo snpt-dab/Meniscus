@@ -938,9 +938,12 @@ local function updateRadar(card, unit, gearOver)
         -- used to stop at the first unknown one, and a creature was left
         -- with the numbers of the last player looked at.)
         tile.value:SetText(fmt(eff, "%d") or (unit == "player" and "0" or "?"))
+        rd.raw[i], rd.e[i] = eff, nil
         if not (plain(eff) and plain(pos) and plain(neg)) then
             bad = true
         else
+            rd.e[i], rd.b[i], rd.g[i], rd.f[i] = eff, math.max(0, eff - pos - neg),
+                math.min(math.max(pos, 0), gear[i]), math.max(0, pos - math.min(math.max(pos, 0), gear[i]))
             local bare = math.max(0, eff - pos - neg)
             local g = math.min(math.max(pos, 0), gear[i])
             tile.bare, tile.gear, tile.buff = bare, g, math.max(0, pos - g)
@@ -948,6 +951,7 @@ local function updateRadar(card, unit, gearOver)
             top = math.max(top, eff, bare + g)
         end
     end
+    if card.bars then pcall(card.bars.fill, rd, unit) end
     if bad or top <= 0 then rd.shapes:Hide(); card.radarScale:SetText(""); return end
     local scale = math.ceil(top / 10) * 10
     for n = 1, 3 do
@@ -1414,6 +1418,8 @@ local function makeModelArea(page, x1, y1, x2, y2, tint)
 end
 
 -- Stats card: resistance chips across the top, scrolling stat list below.
+local statCards = {} -- (every card made: the graph's style is switched on all of them)
+function C.ApplyGraphStyle() for _, c in ipairs(statCards) do c.restyle() end end
 local function makeStatsCard(page, top, pageH)
     local card = CreateFrame("Frame", nil, page)
     card:SetPoint("TOPLEFT", page, "TOPLEFT", 440, top)
@@ -1624,7 +1630,8 @@ local function makeStatsCard(page, top, pageH)
         end
     end
     card.radar = { shapes = shapes, layers = LAYERS, draw = drawShape,
-                   v = { {}, {}, {} }, gear = {}, tmp = {} }
+                   v = { {}, {}, {} }, gear = {}, tmp = {},
+                   raw = {}, e = {}, b = {}, g = {}, f = {}, you = {} }
     -- What each shape is.
     local LEGEND = { { "Buffs", LAYERS[1].edge }, { "Gear", LAYERS[2].edge }, { "Base", LAYERS[3].edge } }
     for n, e in ipairs(LEGEND) do
@@ -1683,12 +1690,142 @@ local function makeStatsCard(page, top, pageH)
         card.corners[i] = tile
     end
 
+    -- The same as bars (0.1.540, a setting: "Attributes as bars"): a bar
+    -- for each attribute, in three lengths end to end (what the class and
+    -- race have, what the gear adds, what buffs add), all five to one
+    -- scale, with the total at the end and the parts spelled out under it.
+    -- An attribute the class has little use for is dimmed. On someone
+    -- else's card a tick on each bar marks where your own stands.
+    local bars = CreateFrame("Frame", nil, card)
+    bars:SetSize(tilesW, listH)
+    bars:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -listTop)
+    bars.rows = {}
+    local ROW = math.min(46, math.floor((listH - 16) / 5))
+    local BAR_Y, BAR_H = 19, 6
+    local SEG = { { 0.82, 0.84, 0.88, 0.95 }, { GREEN[1], GREEN[2], GREEN[3], 0.95 }, { BUFF_BLUE[1], BUFF_BLUE[2], BUFF_BLUE[3], 0.95 } }
+    for i, a in ipairs(ATTRS) do
+        local r = CreateFrame("Frame", nil, bars)
+        r:SetSize(tilesW, ROW)
+        r:SetPoint("TOPLEFT", bars, "TOPLEFT", 0, -(i - 1) * ROW)
+        local glyph = r:CreateTexture(nil, "ARTWORK")
+        glyph:SetTexture(MEDIA .. a[4])
+        glyph:SetSize(14, 14)
+        glyph:SetPoint("TOPLEFT", 0, -1)
+        glyph:SetVertexColor(a[3][1], a[3][2], a[3][3], 1)
+        local name = text(r, 10, true, T.textDim)
+        name:SetPoint("LEFT", glyph, "RIGHT", 5, 0)
+        name:SetText(a[2])
+        r.total = text(r, 12, true)
+        r.total:SetPoint("TOPRIGHT", 0, -1)
+        local track = r:CreateTexture(nil, "BACKGROUND")
+        track:SetColorTexture(1, 1, 1, 0.07)
+        track:SetHeight(BAR_H)
+        track:SetPoint("TOPLEFT", 0, -BAR_Y)
+        track:SetPoint("TOPRIGHT", 0, -BAR_Y)
+        r.seg = {}
+        for n = 1, 3 do
+            local t = r:CreateTexture(nil, "ARTWORK")
+            t:SetColorTexture(SEG[n][1], SEG[n][2], SEG[n][3], SEG[n][4])
+            t:SetHeight(BAR_H)
+            t:Hide()
+            r.seg[n] = t
+        end
+        r.you = r:CreateTexture(nil, "OVERLAY")
+        r.you:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+        r.you:SetSize(2, BAR_H + 6)
+        r.you:Hide()
+        r.sub = text(r, 9, false, T.textDim)
+        r.sub:SetPoint("TOPLEFT", 0, -(BAR_Y + BAR_H + 3))
+        r:EnableMouse(true)
+        r:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(a[2], a[3][1], a[3][2], a[3][3])
+            if self.e then
+                GameTooltip:AddDoubleLine("Base", string.format("%d", self.b), 0.6, 0.6, 0.65, 1, 1, 1)
+                if self.g > 0 then GameTooltip:AddDoubleLine("From gear", string.format("+%d", self.g), 0.6, 0.6, 0.65, GREEN[1], GREEN[2], GREEN[3]) end
+                if self.f > 0 then GameTooltip:AddDoubleLine("From buffs", string.format("+%d", self.f), 0.6, 0.6, 0.65, BUFF_BLUE[1], BUFF_BLUE[2], BUFF_BLUE[3]) end
+                if self.mine then GameTooltip:AddDoubleLine("Yours (the tick)", string.format("%d", self.mine), 0.6, 0.6, 0.65, T.accent[1], T.accent[2], T.accent[3]) end
+            else
+                GameTooltip:AddLine("Not known.", 0.6, 0.6, 0.65)
+            end
+            if self.dimmed then GameTooltip:AddLine("Of little use to this class.", 0.6, 0.6, 0.65) end
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        bars.rows[i] = r
+    end
+    function bars.fill(rd, unit)
+        local other = unit ~= "player"
+        local top = 0
+        for i = 1, 5 do
+            local e = rd.e[i]
+            if e and e > top then top = e end
+            rd.you[i] = nil
+            if other then
+                local _, mine = call(UnitStat, "player", i)
+                if plain(mine) then
+                    rd.you[i] = mine
+                    if mine > top then top = mine end
+                end
+            end
+        end
+        local scale = top > 0 and math.ceil(top / 10) * 10 or 1
+        local _, class = UnitClass(unit)
+        local w = ns.StatWeights and type(class) == "string" and not secret(class) and ns.StatWeights[class]
+        for i, r in ipairs(bars.rows) do
+            local e = rd.e[i]
+            r.e, r.b, r.g, r.f, r.mine = e, rd.b[i], rd.g[i], rd.f[i], rd.you[i]
+            r.dimmed = w and w[i] < 0.3 or false
+            r:SetAlpha(r.dimmed and 0.45 or 1)
+            if not e then
+                r.total:SetText(fmt(rd.raw[i], "%d") or "?")
+                r.sub:SetText("")
+                for n = 1, 3 do r.seg[n]:Hide() end
+                r.you:Hide()
+            else
+                local x = 0
+                for n = 1, 3 do
+                    local v = (n == 1 and r.b) or (n == 2 and r.g) or r.f
+                    local px = v / scale * tilesW
+                    local t = r.seg[n]
+                    if px >= 0.5 then
+                        t:ClearAllPoints()
+                        t:SetPoint("TOPLEFT", r, "TOPLEFT", x, -BAR_Y)
+                        t:SetWidth(px)
+                        t:Show()
+                        x = x + px
+                    else
+                        t:Hide()
+                    end
+                end
+                -- (Someone whose base is not known: what is shown is only
+                -- what their gear and buffs add.)
+                r.total:SetText((other and r.b == 0 and e > 0) and ("+" .. e) or string.format("%d", e))
+                local parts = r.b > 0 and (r.b .. " base") or ""
+                if r.g > 0 then parts = parts .. (parts ~= "" and "   " or "") .. "+" .. r.g .. " gear" end
+                if r.f > 0 then parts = parts .. (parts ~= "" and "   " or "") .. "+" .. r.f .. " buffs" end
+                r.sub:SetText(parts)
+                if r.mine then
+                    r.you:ClearAllPoints()
+                    r.you:SetPoint("CENTER", r, "TOPLEFT", r.mine / scale * tilesW, -(BAR_Y + BAR_H / 2))
+                    r.you:Show()
+                else
+                    r.you:Hide()
+                end
+            end
+        end
+    end
+    card.bars = bars
+
     -- The switch between the two views.
     local tabs = {}
     local function setView(v)
         if C.db then C.db.statsView = v end
+        card.view = v
         local isGraph = v == "graph"
-        graph:SetShown(isGraph)
+        local asBars = C.db and C.db.graphBars and true or false
+        graph:SetShown(isGraph and not asBars)
+        bars:SetShown(isGraph and asBars)
         card.list:SetShown(not isGraph)
         for key, t in pairs(tabs) do
             local on = key == v
@@ -1716,6 +1853,8 @@ local function makeStatsCard(page, top, pageH)
         tx = tx + t:GetWidth() + 12
     end
     setView(C.db and C.db.statsView == "graph" and "graph" or "details")
+    card.restyle = function() setView(card.view or "details") end
+    statCards[#statCards + 1] = card
 
     -- Without the resistances (someone else's card, when there is nothing
     -- to be known of theirs): the row goes and what is under it moves up.
@@ -1728,6 +1867,7 @@ local function makeStatsCard(page, top, pageH)
         local up = on and 0 or (12 + CH + 12)
         card.list:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -(listTop - up))
         graph:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -(listTop - up))
+        bars:SetPoint("TOPLEFT", card, "TOPLEFT", ax0, -(listTop - up))
         for _, t in pairs(tabs) do t:SetPoint("TOPLEFT", card, "TOPLEFT", t.x, -(listTop - 20 - up)) end
     end
 

@@ -682,6 +682,7 @@ local WEIGHTS = {
     SHAMAN  = { 0.6, 0.5, 0.7, 0.8, 0.4, 0.02 },
     DRUID   = { 0.6, 0.6, 0.7, 0.8, 0.5, 0.02 },
 }
+ns.StatWeights = WEIGHTS -- (the stats card dims the attributes a class has no use for)
 local WEIGHT_KEY = { ITEM_MOD_STRENGTH_SHORT = 1, ITEM_MOD_AGILITY_SHORT = 2, ITEM_MOD_STAMINA_SHORT = 3,
                      ITEM_MOD_INTELLECT_SHORT = 4, ITEM_MOD_SPIRIT_SHORT = 5, RESISTANCE0_NAME = 6 }
 local function gearScore(link)
