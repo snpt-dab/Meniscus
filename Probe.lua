@@ -2126,3 +2126,54 @@ do
         end)
     end)
 end
+
+-- ── What a class and race start from, level by level ─────────────────────
+-- For the inspect window's estimate of someone else's attributes (their
+-- gear's bonuses on top of what their class and race have at that level,
+-- which the game tells nobody but them). The published tables are for the
+-- classic game and may not hold here, so your own are written down as you
+-- level, to check a table against:
+--   MinimalUIDB.baseStats["CLASS|Race"][level] = "str,agi,sta,int,spi"
+-- (the first number UnitStat gives: without gear or buffs). It also notes,
+-- once, whether the game answers UnitStat for another player (statdiag:
+-- kinds of answer only, nobody's name).
+do
+    local function hidden(v) return issecretvalue and issecretvalue(v) end
+    local function note()
+        if not (MinimalUIDB and UnitStat) then return end
+        local _, class = UnitClass("player")
+        local _, race = UnitRace("player")
+        local level = UnitLevel("player")
+        if type(class) ~= "string" or type(race) ~= "string" or type(level) ~= "number" or hidden(level) then return end
+        local parts = {}
+        for i = 1, 5 do
+            local ok, base = pcall(UnitStat, "player", i)
+            if not ok or type(base) ~= "number" or hidden(base) then return end
+            parts[i] = tostring(base)
+        end
+        MinimalUIDB.baseStats = MinimalUIDB.baseStats or {}
+        local key = class .. "|" .. race
+        MinimalUIDB.baseStats[key] = MinimalUIDB.baseStats[key] or {}
+        MinimalUIDB.baseStats[key][level] = table.concat(parts, ",")
+    end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:RegisterEvent("PLAYER_LEVEL_UP")
+    f:RegisterEvent("PLAYER_TARGET_CHANGED")
+    local asked = false
+    f:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_TARGET_CHANGED" then
+            if asked or not MinimalUIDB or not UnitStat then return end
+            local okP, isP = pcall(UnitIsPlayer, "target")
+            if not (okP and isP and not hidden(isP)) or UnitIsUnit("target", "player") then return end
+            asked = true
+            local ok, a, b = pcall(UnitStat, "target", 1)
+            MinimalUIDB.statdiag = "ok " .. tostring(ok) .. ", " .. (hidden(a) and "hidden" or type(a))
+                .. (type(a) == "number" and not hidden(a) and (a > 0 and " >0" or " 0") or "")
+                .. ", " .. (hidden(b) and "hidden" or type(b))
+            return
+        end
+        -- (A moment after: the new level's numbers are not there at once.)
+        C_Timer.After(e == "PLAYER_LOGIN" and 5 or 2, function() pcall(note) end)
+    end)
+end
