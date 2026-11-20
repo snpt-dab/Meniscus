@@ -928,21 +928,27 @@ local function updateRadar(card, unit, gearOver)
             end
         end
     end
-    local top = 0
+    local top, bad = 0, false
     for i, src in ipairs(card.attrs) do
         local tile = card.corners[i]
         tile.bare, tile.gear, tile.buff = nil, nil, nil
         local eff, pos, neg = src.eff, src.pos, src.neg
         tile.eff, tile.pos, tile.neg, tile.unit, tile.index = eff, pos, neg, src.unit, src.index
-        tile.value:SetText(fmt(eff, "%d") or "0")
-        if not (plain(eff) and plain(pos) and plain(neg)) then rd.shapes:Hide(); card.radarScale:SetText(""); return end
-        local bare = math.max(0, eff - pos - neg)
-        local g = math.min(math.max(pos, 0), gear[i])
-        tile.bare, tile.gear, tile.buff = bare, g, math.max(0, pos - g)
-        rd.v[3][i], rd.v[2][i], rd.v[1][i] = bare, bare + g, math.max(0, eff)
-        top = math.max(top, eff, bare + g)
+        -- (Every corner is written before giving up on the shapes: it
+        -- used to stop at the first unknown one, and a creature was left
+        -- with the numbers of the last player looked at.)
+        tile.value:SetText(fmt(eff, "%d") or (unit == "player" and "0" or "?"))
+        if not (plain(eff) and plain(pos) and plain(neg)) then
+            bad = true
+        else
+            local bare = math.max(0, eff - pos - neg)
+            local g = math.min(math.max(pos, 0), gear[i])
+            tile.bare, tile.gear, tile.buff = bare, g, math.max(0, pos - g)
+            rd.v[3][i], rd.v[2][i], rd.v[1][i] = bare, bare + g, math.max(0, eff)
+            top = math.max(top, eff, bare + g)
+        end
     end
-    if top <= 0 then rd.shapes:Hide(); card.radarScale:SetText(""); return end
+    if bad or top <= 0 then rd.shapes:Hide(); card.radarScale:SetText(""); return end
     local scale = math.ceil(top / 10) * 10
     for n = 1, 3 do
         for i = 1, 5 do rd.v[n][i] = math.min(1, rd.v[n][i] / scale) end
