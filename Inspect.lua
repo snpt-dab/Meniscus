@@ -158,140 +158,15 @@ end
 local win, tiles = nil, {}
 local closing = false
 
--- ── The column of details ────────────────────────────────────────────────
--- Headings, "label ... value" rows, wrapped notes and rows of aura
--- pictures, laid out down a card; all from one pool, refilled each time.
-local info
-local IW = INFO_W - 20 - 28
-local DIM = T.textDim or { 0.6, 0.6, 0.65, 1 }
-local function infoReset()
-    for i = 1, #info.rows do info.rows[i]:Hide() end
-    for i = 1, #info.icons do info.icons[i]:Hide() end
-    info.n, info.ni, info.y = 0, 0, -14
-end
-local function infoRow(h)
-    info.n = info.n + 1
-    local r = info.rows[info.n]
-    if not r then
-        r = CreateFrame("Frame", nil, info.card)
-        r.l = r:CreateFontString(nil, "OVERLAY")
-        r.v = r:CreateFontString(nil, "OVERLAY")
-        -- (A font before any text: SetText on a string with none is an
-        -- error, and left the whole column empty in 0.1.530.)
-        ns:SetFont(r.l, 11, "", false)
-        ns:SetFont(r.v, 11, "", true)
-        r.font = "line"
-        r.l:SetJustifyH("LEFT"); r.l:SetJustifyV("TOP")
-        r.v:SetJustifyH("RIGHT")
-        r.v:SetPoint("TOPRIGHT")
-        r:SetScript("OnEnter", function(self)
-            if not self.item then return end
-            ns.TipAnchor(self)
-            if pcall(GameTooltip.SetHyperlink, GameTooltip, "item:" .. self.item) then GameTooltip:Show() end
-        end)
-        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        info.rows[info.n] = r
-    end
-    r.item = nil
-    r:EnableMouse(false)
-    r.v:SetText("")
-    r.l:ClearAllPoints()
-    r.l:SetPoint("TOPLEFT")
-    r.l:SetWidth(0)
-    r.l:SetWordWrap(false)
-    r:ClearAllPoints()
-    r:SetPoint("TOPLEFT", info.card, "TOPLEFT", 14, info.y)
-    r:SetSize(IW, h)
-    r:Show()
-    return r
-end
-local function rowFont(r, key, ls, lb, vs, vb) -- (set once per look: SetFont makes a table each time)
-    if r.font == key then return end
-    r.font = key
-    ns:SetFont(r.l, ls, "", lb)
-    if vs then ns:SetFont(r.v, vs, "", vb) end
-end
-local function infoHead(label)
-    if info.n > 0 then info.y = info.y - 10 end
-    local r = infoRow(14)
-    rowFont(r, "head", 9, true)
-    r.l:SetTextColor(DIM[1], DIM[2], DIM[3], 1)
-    r.l:SetText(label:upper())
-    info.y = info.y - 18
-end
-local function infoLine(label, value, c)
-    local r = infoRow(15)
-    rowFont(r, "line", 11, false, 11, true)
-    r.l:SetTextColor(DIM[1], DIM[2], DIM[3], 1)
-    r.l:SetText(label)
-    c = c or T.text
-    r.v:SetTextColor(c[1], c[2], c[3], 1)
-    r.v:SetText(value) -- (a hidden value goes straight through)
-    info.y = info.y - 17
-    return r
-end
-local function infoNote(str, c)
-    local r = infoRow(14)
-    rowFont(r, "note", 10, false)
-    c = c or DIM
-    r.l:SetTextColor(c[1], c[2], c[3], 1)
-    r.l:SetWidth(IW)
-    r.l:SetWordWrap(true)
-    r.l:SetText(str)
-    local h = math.max(r.l:GetStringHeight() or 0, 12)
-    r:SetHeight(h)
-    info.y = info.y - h - 5
-    return r
-end
-local function infoItem(item, times)
-    local name, link = nil, nil
-    if C_Item and C_Item.GetItemInfo then name, link = call(C_Item.GetItemInfo, item) end
-    local r = infoLine(type(link) == "string" and link or ("Item " .. item), times > 1 and ("x" .. times) or "")
-    r.l:SetTextColor(1, 1, 1, 1)
-    r.l:SetWidth(IW - 30)
-    r.item = item
-    r:EnableMouse(true)
-end
-local ICON, PER = 22, 8
-local function infoAuras(unit, filter, max)
-    local U = C_UnitAuras
-    if not (U and U.GetAuraDataByIndex) then return 0 end
-    local shown = 0
-    for i = 1, max do
-        local ok, a = pcall(U.GetAuraDataByIndex, unit, i, filter)
-        if not ok or type(a) ~= "table" then break end
-        info.ni = info.ni + 1
-        local b = info.icons[info.ni]
-        if not b then
-            b = CreateFrame("Frame", nil, info.card)
-            b:SetSize(ICON, ICON)
-            b.tex = b:CreateTexture(nil, "ARTWORK")
-            b.tex:SetAllPoints()
-            b.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            b:EnableMouse(true)
-            b:SetScript("OnEnter", function(self)
-                if not (self.aura and GameTooltip.SetUnitAuraByAuraInstanceID) then return end
-                ns.TipAnchor(self)
-                if pcall(GameTooltip.SetUnitAuraByAuraInstanceID, GameTooltip, self.unit, self.aura) then GameTooltip:Show() end
-            end)
-            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            info.icons[info.ni] = b
-        end
-        b.unit, b.aura = unit, a.auraInstanceID
-        b.tex:SetTexture(a.icon)
-        b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", info.card, "TOPLEFT", 14 + (shown % PER) * (ICON + 3), info.y - math.floor(shown / PER) * (ICON + 3))
-        b:Show()
-        shown = shown + 1
-    end
-    if shown > 0 then info.y = info.y - math.ceil(shown / PER) * (ICON + 3) - 3 end
-    return shown
-end
-
+-- ── The details card ─────────────────────────────────────────────────────
+-- The character window's own card (Character.lua: attribute tiles across
+-- the top, resistances, and "Details" or "Graph" under them), filled for
+-- whoever is shown. The rows here are what goes under "Details".
 local STAT_KEYS = { "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_STAMINA_SHORT",
                     "ITEM_MOD_INTELLECT_SHORT", "ITEM_MOD_SPIRIT_SHORT" }
-local STAT_NAMES = { "Strength", "Agility", "Stamina", "Intellect", "Spirit" }
 local RANK = { elite = "Elite", rareelite = "Rare elite", rare = "Rare", worldboss = "Boss", trivial = "Trivial", minus = "Minor" }
+local RED = { 0.92, 0.38, 0.35, 1 }
+local DIM = T.textDim or { 0.6, 0.6, 0.65, 1 }
 local gearSum = {}
 -- What a class and race have at a level before gear, where it is known:
 -- so far only what the game has told this account about its own characters
@@ -311,11 +186,35 @@ local function baseFor(unit, i)
         if n == i then return tonumber(v) end
     end
 end
+local function head(rows, title, glyph) rows[#rows + 1] = { kind = "header", text = title, glyph = glyph } end
+local function stat(rows, label, value, color, tooltip, icon)
+    if not secret(value) and value == nil then return end -- (a hidden value is shown as it is)
+    rows[#rows + 1] = { kind = "stat", label = label, value = value, color = color, tooltip = tooltip, icon = icon }
+end
+local function note(rows, str) rows[#rows + 1] = { kind = "stat", label = str, value = "" } end
+local function auras(rows, unit, filter, max)
+    local U = C_UnitAuras
+    if not (U and U.GetAuraDataByIndex) then return 0 end
+    local shown = 0
+    for i = 1, max do
+        local ok, a = pcall(U.GetAuraDataByIndex, unit, i, filter)
+        if not ok or type(a) ~= "table" then break end
+        local id, icon, count = a.auraInstanceID, a.icon, a.applications
+        rows[#rows + 1] = { kind = "stat", label = a.name, labelColor = filter == "HARMFUL" and RED or T.text,
+            icon = (icon ~= nil and not secret(icon)) and icon or nil,
+            value = (plain(count) and count > 1) and ("x" .. count) or "",
+            tooltip = function(tip)
+                if tip.SetUnitAuraByAuraInstanceID then pcall(tip.SetUnitAuraByAuraInstanceID, tip, unit, id) end
+            end }
+        shown = shown + 1
+    end
+    return shown
+end
 local function fillPlayer(unit)
-    infoHead("Attributes")
+    local rows, base, gear = {}, nil, nil
+    local read = 0
     if I.mode == "gear" then
         wipe(gearSum)
-        local read = 0
         for _, b in pairs(tiles) do
             local link = call(GetInventoryItemLink, unit, b.slot)
             local st = link and not secret(link) and ns.ItemStats and ns.ItemStats(link)
@@ -326,154 +225,87 @@ local function fillPlayer(unit)
                 end
             end
         end
-        local exact, guessed, bare = false, false, false
-        for i = 1, 5 do
-            local _, real = call(UnitStat, unit, i)
-            local gear = gearSum[STAT_KEYS[i]] or 0
-            local label = _G["SPELL_STAT" .. i .. "_NAME"] or STAT_NAMES[i]
-            if plain(real) and real > 0 then
-                exact = true
-                infoLine(label, string.format("%d", real))
-            else
-                local base = baseFor(unit, i)
-                if base then
-                    guessed = true
-                    infoLine(label, string.format("~%d", base + gear))
-                else
-                    bare = true
-                    infoLine(label, string.format("+%d", gear), gear > 0 and T.text or DIM)
-                end
-            end
+        if read > 0 then
+            gear = {}
+            for i = 1, 5 do gear[i] = gearSum[STAT_KEYS[i]] or 0 end
         end
-        local armor = gearSum.RESISTANCE0_NAME
-        if armor and armor > 0 then infoLine(_G.ARMOR or "Armor", string.format("%d", armor)) end
-        if read == 0 then infoNote("Their gear has not arrived yet.")
-        elseif guessed then infoNote("About: what their class and race have at this level, plus their gear. Talents and buffs are not counted.")
-        elseif bare and not exact then infoNote("From their gear alone. What their class and race add at this level is not known yet.") end
-    else
-        infoNote("Out of reach: their gear cannot be seen from here.")
     end
-    infoHead("About")
+    for i = 1, 5 do
+        local b = baseFor(unit, i)
+        if b then base = base or {}; base[i] = b end
+    end
+    head(rows, "About", "micro_character.tga")
+    local _, real = call(UnitStat, unit, 1)
+    if not (plain(real) and real > 0) then
+        if I.mode ~= "gear" then note(rows, "Out of reach: their gear is not shown")
+        elseif read == 0 then note(rows, "Their gear has not arrived yet")
+        elseif base then note(rows, "Attributes: class and race, plus gear")
+        else note(rows, "Attributes: from their gear alone") end
+    end
+    local armor = gear and gearSum.RESISTANCE0_NAME
+    if armor and armor > 0 then stat(rows, "Armor from gear", string.format("%d", armor)) end
     local _, rank = call(GetGuildInfo, unit)
-    if type(rank) == "string" and not secret(rank) and rank ~= "" then infoLine("Guild rank", rank) end
+    if type(rank) == "string" and not secret(rank) and rank ~= "" then stat(rows, "Guild rank", rank) end
     local _, faction = call(UnitFactionGroup, unit)
-    if type(faction) == "string" and not secret(faction) and faction ~= "" then infoLine("Faction", faction) end
-    if isTrue(call(UnitIsPVP, unit)) then infoLine("Player combat", "Flagged", { 0.92, 0.38, 0.35 }) end
-    local tn = call(UnitName, unit .. "target")
-    if tn then infoLine("Targeting", tn) end
-    infoHead("Buffs")
-    if infoAuras(unit, "HELPFUL", 24) == 0 then infoNote(InCombatLockdown() and "Not readable in a fight." or "None.") end
+    if type(faction) == "string" and not secret(faction) and faction ~= "" then stat(rows, "Faction", faction) end
+    if isTrue(call(UnitIsPVP, unit)) then stat(rows, "Player combat", "Flagged", RED) end
+    stat(rows, "Targeting", (call(UnitName, unit .. "target")))
+    head(rows, "Buffs", "micro_buff.tga")
+    if auras(rows, unit, "HELPFUL", 24) == 0 then note(rows, InCombatLockdown() and "Not readable in a fight" or "None") end
+    return rows, base, gear
 end
 local function fillCreature(unit)
-    infoHead("About")
+    local rows = {}
+    head(rows, "About", "micro_character.tga")
     local kind = call(UnitCreatureType, unit)
-    if kind and (secret(kind) or kind ~= "") then infoLine("Kind", kind) end
+    if kind and (secret(kind) or kind ~= "") then stat(rows, "Kind", kind) end
     local family = call(UnitCreatureFamily, unit)
-    if family and (secret(family) or family ~= "") then infoLine("Family", family) end
+    if family and (secret(family) or family ~= "") then stat(rows, "Family", family) end
     local cls = call(UnitClassification, unit)
-    if type(cls) == "string" and not secret(cls) and RANK[cls] then infoLine("Rank", RANK[cls], T.accent) end
-    if isTrue(call(UnitIsTapDenied, unit)) then infoLine("Claimed", "By someone else", DIM) end
-    if isTrue(call(UnitIsDead, unit)) then infoLine("State", "Dead", DIM) end
-    local tn = call(UnitName, unit .. "target")
-    if tn then infoLine("Targeting", tn) end
-    infoHead("On it")
-    local n = infoAuras(unit, "HELPFUL", 16) + infoAuras(unit, "HARMFUL", 16)
-    if n == 0 then infoNote(InCombatLockdown() and "Not readable in a fight." or "Nothing.") end
+    if type(cls) == "string" and not secret(cls) and RANK[cls] then stat(rows, "Rank", RANK[cls], T.accent) end
+    if isTrue(call(UnitIsTapDenied, unit)) then stat(rows, "Claimed", "By someone else", DIM) end
+    if isTrue(call(UnitIsDead, unit)) then stat(rows, "State", "Dead", DIM) end
+    stat(rows, "Targeting", (call(UnitName, unit .. "target")))
+    head(rows, "On it", "micro_buff.tga")
+    if auras(rows, unit, "HELPFUL", 16) + auras(rows, unit, "HARMFUL", 16) == 0 then
+        note(rows, InCombatLockdown() and "Not readable in a fight" or "Nothing")
+    end
     local id = npcID(unit)
     local r = id and record(id)
-    infoHead("What you have seen")
+    head(rows, "What you have seen", "micro_journal.tga")
     if not r then
-        infoNote(id and "Nothing yet. Kills, casts and notable drops are noted as you fight it."
-            or "Nothing is kept for this one.")
-        return
+        note(rows, id and "Nothing yet: it fills in as you fight it" or "Nothing is kept for this one")
+        return rows
     end
-    infoLine("Kills", string.format("%d", r.k or 0))
-    if r.lo then infoLine("Levels", r.lo == r.hi and tostring(r.lo) or (r.lo .. " to " .. r.hi)) end
+    stat(rows, "Kills", string.format("%d", r.k or 0))
+    if r.lo then stat(rows, "Levels", r.lo == r.hi and tostring(r.lo) or (r.lo .. " to " .. r.hi)) end
     if r.c and next(r.c) then
         local names = {}
         for name in pairs(r.c) do names[#names + 1] = name end
         table.sort(names)
-        infoNote("Casts: " .. table.concat(names, ", "), T.text)
+        for n, name in ipairs(names) do stat(rows, n == 1 and "Casts" or "", name) end
     end
     if r.d and next(r.d) then
-        infoNote("Dropped for you:")
         local ids = {}
         for item in pairs(r.d) do ids[#ids + 1] = item end
         table.sort(ids)
-        for _, item in ipairs(ids) do infoItem(item, r.d[item]) end
+        for _, item in ipairs(ids) do
+            local _, link = nil, nil
+            if C_Item and C_Item.GetItemInfo then _, link = call(C_Item.GetItemInfo, item) end
+            local icon = C_Item and C_Item.GetItemIconByID and call(C_Item.GetItemIconByID, item)
+            rows[#rows + 1] = { kind = "stat", label = type(link) == "string" and link or ("Item " .. item),
+                labelColor = T.text, icon = icon, value = r.d[item] > 1 and ("x" .. r.d[item]) or "",
+                tooltip = function(tip) pcall(tip.SetHyperlink, tip, "item:" .. item) end }
+        end
     end
+    return rows
 end
 local function fillInfo(unit)
-    if not info then return end
-    infoReset()
-    if isTrue(call(UnitIsPlayer, unit)) then fillPlayer(unit) else fillCreature(unit) end
-end
-
-local function makeTile(parent, slotName)
-    local id, empty = call(GetInventorySlotInfo, slotName .. "Slot")
-    if not id then return end
-    local b = CreateFrame("Button", nil, parent)
-    b:SetSize(TILE, TILE)
-    b.slot, b.empty, b.slotName = id, empty, slotName
-    b.ring = ns.RoundedRect(b, -8, 0, 7, T.border[1], T.border[2], T.border[3], 1)
-    ns.RoundedRect(b, -7, 1, 6, unpack(FILL))
-    local mask = b:CreateMaskTexture()
-    mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    mask:SetPoint("TOPLEFT", 2, -2)
-    mask:SetPoint("BOTTOMRIGHT", -2, 2)
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints(mask)
-    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    b.icon:AddMaskTexture(mask)
-    local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints(mask)
-    hl:SetColorTexture(1, 1, 1, 0.12)
-    hl:AddMaskTexture(mask)
-    b.ilvl = b:CreateFontString(nil, "OVERLAY")
-    ns:SetFont(b.ilvl, 9, "OUTLINE", true)
-    b.ilvl:SetPoint("TOPRIGHT", -3, -3)
-    b:SetScript("OnClick", function(self)
-        local link = call(GetInventoryItemLink, I.unit, self.slot)
-        if link and HandleModifiedItemClick then HandleModifiedItemClick(link) end
-    end)
-    b:SetScript("OnEnter", function(self)
-        ns.TipAnchor(self)
-        local has = I.unit and GameTooltip:SetInventoryItem(I.unit, self.slot)
-        if not has then GameTooltip:SetText(_G[self.slotName:upper() .. "SLOT"] or self.slotName) end
-        GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    tiles[slotName] = b
-    return b
-end
-
-local function makeModel(page, x1, y1, x2, y2)
-    local cx = (x1 + x2) / 2
-    local spot = page:CreateTexture(nil, "BACKGROUND", nil, 1)
-    spot:SetTexture(MEDIA .. "spot.tga")
-    spot:SetSize(300, 300)
-    spot:SetPoint("CENTER", page, "TOPLEFT", cx, (y1 + y2) / 2 - 2)
-    local floor = page:CreateTexture(nil, "BACKGROUND", nil, 2)
-    floor:SetTexture(MEDIA .. "spot.tga")
-    floor:SetVertexColor(0, 0, 0, 0.7)
-    floor:SetSize(160, 28)
-    floor:SetPoint("CENTER", page, "TOPLEFT", cx, y2 + 12)
-    local model = CreateFrame("PlayerModel", nil, page)
-    model:SetPoint("TOPLEFT", page, "TOPLEFT", x1, y1 - 24)
-    model:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", x2, y2 - 24)
-    model.facing, model.spot = 0, spot
-    model:EnableMouse(true)
-    model:SetScript("OnMouseDown", function(self, btn) if btn == "LeftButton" then self.dragX = GetCursorPosition() end end)
-    model:SetScript("OnMouseUp", function(self) self.dragX = nil end)
-    model:SetScript("OnHide", function(self) self.dragX = nil end)
-    model:SetScript("OnUpdate", function(self)
-        if not self.dragX then return end
-        local x = GetCursorPosition()
-        self.facing = self.facing + (x - self.dragX) / (UIParent:GetEffectiveScale() * 90)
-        self.dragX = x
-        self:SetFacing(self.facing)
-    end)
-    return model
+    local Cm = ns.modules.Character
+    if not (win and win.card and Cm and Cm.FillOtherCard) then return end
+    local rows, base, gear
+    if isTrue(call(UnitIsPlayer, unit)) then rows, base, gear = fillPlayer(unit) else rows = fillCreature(unit) end
+    Cm.FillOtherCard(win.card, unit, base, gear, rows)
 end
 
 function I:Refresh()
@@ -538,7 +370,9 @@ end
 
 local function build()
     win = CreateFrame("Frame", "MinimalUIInspect", UIParent)
-    win:SetSize(W + INFO_W, H)
+    -- (As wide as the gear and the character window's stats card.)
+    local Cm = ns.modules.Character
+    win:SetSize(W + (Cm and Cm.CARD_W or INFO_W - 20) + 20, H)
     win:SetFrameStrata("HIGH")
     win:SetToplevel(true)
     win:SetClampedToScreen(true)
@@ -598,11 +432,13 @@ local function build()
             m:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", GEAR_W, top - 8 * (TILE + GAP) - TILE)
         end
     end
-    local card = CreateFrame("Frame", nil, page)
-    card:SetPoint("TOPLEFT", page, "TOPLEFT", W, 0)
-    card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 20)
-    ns.RoundedRect(card, -6, 0, 10, 1, 1, 1, 0.035)
-    info = { card = card, rows = {}, icons = {}, n = 0, ni = 0, y = -14 }
+    if Cm and Cm.MakeStatsCard then
+        local card = Cm.MakeStatsCard(page, 0, H - PAGE_TOP)
+        card:ClearAllPoints()
+        card:SetPoint("TOPLEFT", page, "TOPLEFT", W, 0)
+        card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
+        win.card = card
+    end
 
     win:SetScript("OnHide", function()
         win.shell:ClearModel()

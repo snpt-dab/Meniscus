@@ -907,13 +907,14 @@ end
 -- called buffs. Only the player has gear to add up.
 local GEAR_KEY = { "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_STAMINA_SHORT",
                    "ITEM_MOD_INTELLECT_SHORT", "ITEM_MOD_SPIRIT_SHORT" }
-local function updateRadar(card, unit)
+local NO_GEAR = {}
+local function updateRadar(card, unit, gearOver)
     local rd = card.radar
     if not rd then return end
     local gear = rd.gear
-    for i = 1, 5 do gear[i] = 0 end
+    for i = 1, 5 do gear[i] = gearOver and gearOver[i] or 0 end
     local getStats = (C_Item and C_Item.GetItemStats) or _G.GetItemStats
-    if unit == "player" and getStats then
+    if unit == "player" and getStats and not gearOver then
         for slot = 1, 19 do
             local link = GetInventoryItemLink("player", slot)
             if link then
@@ -1407,7 +1408,7 @@ local function makeModelArea(page, x1, y1, x2, y2, tint)
 end
 
 -- Stats card: resistance chips across the top, scrolling stat list below.
-local function makeStatsCard(page, top)
+local function makeStatsCard(page, top, pageH)
     local card = CreateFrame("Frame", nil, page)
     card:SetPoint("TOPLEFT", page, "TOPLEFT", 440, top)
     card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
@@ -1506,7 +1507,7 @@ local function makeStatsCard(page, top)
         table.insert(card.resists, chip)
     end
 
-    local cardW, cardH = W - 20 - 440, H - PAGE_TOP + top - 16
+    local cardW, cardH = W - 20 - 440, (pageH or (H - PAGE_TOP)) + top - 16
     local listTop = 8 + TH + 12 + 12 + CH + 8 + 20 -- tiles, divider, pills, a gap, the view switch
     -- (As wide as the row of tiles, plus the 8 the rows keep clear on the
     -- right for the scroll thumb.)
@@ -1709,6 +1710,45 @@ local function makeStatsCard(page, top)
     setView(C.db and C.db.statsView == "graph" and "graph" or "details")
 
     return card
+end
+
+-- The same card for someone else (the inspect window, 0.1.533): the tiles,
+-- the resistances and the graph, with the list under "Details" filled by
+-- the caller. The game's own numbers are used where it gives them for the
+-- unit; else base[i] (what their class and race have at that level, where
+-- known) plus gear[i] (added up from what they wear); gear alone shows as
+-- "+12"; with neither, "?".
+C.CARD_W = W - 20 - 440
+function C.MakeStatsCard(page, top, pageH) return makeStatsCard(page, top, pageH) end
+function C.FillOtherCard(card, unit, base, gear, rows)
+    for i, tile in ipairs(card.attrs) do
+        local b0, eff, pos, neg = call(UnitStat, unit, i)
+        local col = T.text
+        if plain(eff) and eff > 0 then
+            col = buffColor(pos, neg) or T.text
+            tile.value:SetText(string.format("%d", eff))
+        else
+            local g, b = gear and gear[i], base and base[i]
+            if b then
+                b0, eff, pos, neg = b, b + (g or 0), g or 0, 0
+                tile.value:SetText(string.format("%d", eff))
+            elseif g then
+                b0, eff, pos, neg = nil, g, g, 0
+                tile.value:SetText("+" .. g)
+                col = g > 0 and GREEN or T.textDim
+            else
+                b0, eff, pos, neg = nil, nil, nil, nil
+                tile.value:SetText("?")
+                col = T.textDim
+            end
+        end
+        tile.base, tile.eff, tile.pos, tile.neg, tile.unit, tile.index = b0, eff, pos, neg, unit, i
+        tile.value:SetTextColor(col[1], col[2], col[3])
+        tile:Show()
+    end
+    pcall(updateRadar, card, unit, gear or NO_GEAR)
+    pcall(updateResists, card.resists, unit)
+    card.list:SetData(rows)
 end
 
 local function buildGear(page)
