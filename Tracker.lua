@@ -145,8 +145,45 @@ local HOT_SECONDS = 90
 local hotUntil, progress = {}, {}
 local targetName
 
+-- Timed quests. The time left is asked of the game each time the log is
+-- read (the newer call by quest, else the older list of timers by log
+-- line) and counted down from there by the panel's own clock. A timed
+-- quest sits under NOW whether or not you are making progress on it.
+local soonestEnd -- when the first running timer ends (GetTime), or nil
+local function fmtTime(sec)
+    if sec < 0 then sec = 0 end
+    sec = math.floor(sec)
+    if sec >= 3600 then return string.format("%d:%02d:%02d", sec / 3600, (sec % 3600) / 60, sec % 60) end
+    return string.format("%d:%02d", sec / 60, sec % 60)
+end
+local oldTimers = {}
+local function readOldTimers(...)
+    for i = 1, select("#", ...) do
+        local left = select(i, ...)
+        local index = call(GetQuestIndexForTimer, i)
+        if type(index) == "number" and type(left) == "number" and not secretv(left) then oldTimers[index] = left end
+    end
+end
+local function questTime(id, index)
+    if QL.GetTimeAllowed then
+        local total, elapsed = call(QL.GetTimeAllowed, id)
+        if type(total) == "number" and type(elapsed) == "number" and not secretv(total) and not secretv(elapsed)
+            and total > 0 then
+            return total - elapsed
+        end
+    end
+    return oldTimers[index]
+end
+
 local function gather()
     local tracked, all = {}, {}
+    wipe(oldTimers)
+    if GetQuestTimers and GetQuestIndexForTimer then pcall(function() readOldTimers(GetQuestTimers()) end) end
+    if MinimalUIDB and not MinimalUIDB.questTimerApi then
+        MinimalUIDB.questTimerApi = "GetTimeAllowed " .. tostring(QL.GetTimeAllowed ~= nil)
+            .. ", GetQuestTimers " .. tostring(GetQuestTimers ~= nil)
+    end
+    soonestEnd = nil
     local n = call(QL.GetNumQuestLogEntries) or 0
     local zone = GetRealZoneText and GetRealZoneText()
     local now = GetTime()
@@ -191,6 +228,11 @@ local function gather()
                 if was ~= nil and sum > was then hotUntil[id] = now + HOT_SECONDS end
                 progress[id] = sum
                 e.hot = hitTarget or (hotUntil[id] ~= nil and hotUntil[id] > now)
+                local left = questTime(id, i)
+                if left and not e.complete then
+                    e.timeEnd = now + left
+                    if left > 0 and (not soonestEnd or e.timeEnd < soonestEnd) then soonestEnd = e.timeEnd end
+                end
                 -- An item the quest wants you to use (Blizzard's tracker shows
                 -- these as buttons): link and icon.
                 if GetQuestLogSpecialItemInfo then
@@ -203,7 +245,9 @@ local function gather()
         end
     end
     local list = #tracked > 0 and tracked or all
-    for _, e in ipairs(list) do e.group = e.hot and 1 or (e.here and 2 or 3) end
+    for _, e in ipairs(list) do e.group = (e.hot or e.timeEnd) and 1 or (e.here and 2 or 3) end
+    local P = TR.panel
+    if P and P.ticker then P.ticker:SetShown(soonestEnd ~= nil) end
     table.sort(list, function(a, b)
         if a.group ~= b.group then return a.group < b.group end
         local la, lb = type(a.level) == "number" and a.level or 0, type(b.level) == "number" and b.level or 0
@@ -372,6 +416,53 @@ function TR:Console(x, y, w, h)
         holder:SetScript("OnMouseWheel", function(_, d) P.offset = P.offset - d * 34; place() end)
 
         P.lines, P.used, P.btns, P.usedBtns = {}, 0, {}, 0
+        -- Quest timers: the lines in the list that count down, and one more
+        -- on the tab strip for when the list is not the tab showing (the
+        -- damage meter in a fight), so a running timer is always in sight.
+        P.timers = {}
+        P.clock = ns:CreateText(P, 11, T.text)
+        P.clock:SetPoint("RIGHT", P.tabAuto, "LEFT", -8, 0)
+        P.clock:Hide()
+        local function paintTime(fs, left, lead)
+            local sec = math.floor(left)
+            if fs.shownSec == sec then return end
+            fs.shownSec = sec
+            if sec <= 0 then
+                fs:SetText("Out of time")
+                fs:SetTextColor(1, 0.42, 0.38)
+            else
+                fs:SetText(lead .. fmtTime(sec))
+                if sec < 60 then fs:SetTextColor(1, 0.42, 0.38) else fs:SetTextColor(1, 0.78, 0.35) end
+            end
+        end
+        P.paintTime = paintTime
+        local ticker = CreateFrame("Frame", nil, P)
+        ticker:Hide()
+        local acc = 0
+        ticker:SetScript("OnUpdate", function(self, dt)
+            acc = acc + dt
+            if acc < 0.2 then return end
+            acc = 0
+            local now = GetTime()
+            if holder:IsShown() then
+                P.clock:Hide()
+                for i = 1, #P.timers do
+                    local fs = P.timers[i]
+                    paintTime(fs, fs.timeEnd - now, "Time left  ")
+                end
+            elseif soonestEnd then
+                P.clock:Show()
+                paintTime(P.clock, soonestEnd - now, "")
+            end
+            -- Run out: read the log again (the quest fails, or goes).
+            if not soonestEnd or soonestEnd - now < -1 then
+                soonestEnd = nil
+                self:Hide()
+                if P.again then P.again() end
+            end
+        end)
+        ticker:SetScript("OnHide", function() P.clock:Hide(); P.clock.shownSec = nil end)
+        P.ticker = ticker
         function P.take(size, bold)
             P.used = P.used + 1
             local fs = P.lines[P.used]
@@ -437,6 +528,7 @@ function TR:Console(x, y, w, h)
             for i = 1, #P.lines do P.lines[i]:Hide() end
             for i = 1, #P.btns do P.btns[i]:Hide() end
             P.used, P.usedBtns = 0, 0
+            wipe(P.timers)
             local width = math.max(60, holder:GetWidth() - 10)
             content:SetWidth(width + 10)
             local yy = 4
@@ -508,6 +600,13 @@ function TR:Console(x, y, w, h)
                 b:ClearAllPoints()
                 b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
                 b:SetSize(width + 10, yy - top)
+                if e.timeEnd then
+                    local ts = P.take(10, true)
+                    ts.timeEnd, ts.shownSec = e.timeEnd, nil
+                    P.paintTime(ts, e.timeEnd - GetTime(), "Time left  ")
+                    put(ts, 10, 1)
+                    P.timers[#P.timers + 1] = ts
+                end
                 local objs = e.objs
                 local any = false
                 if e.complete then
