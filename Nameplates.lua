@@ -937,7 +937,8 @@ local function buildNumbers()
             f.warm:SetText(""); f.cool:SetText("")
         end
         f.warm:SetAlpha(0); f.cool:SetAlpha(0)
-        local pillOn = crit and not (NP.db and NP.db.numbersCritPill == false) and true or false
+        -- (Off unless switched on: tried as the default and not liked.)
+        local pillOn = crit and NP.db and NP.db.numbersCritPill == true or false
         f.pill:SetShown(pillOn)
         if pillOn then
             f.pill:ClearAllPoints()
