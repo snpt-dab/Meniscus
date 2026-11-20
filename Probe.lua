@@ -2147,9 +2147,13 @@ do
         if type(class) ~= "string" or type(race) ~= "string" or type(level) ~= "number" or hidden(level) then return end
         local parts = {}
         for i = 1, 5 do
-            local ok, base = pcall(UnitStat, "player", i)
-            if not ok or type(base) ~= "number" or hidden(base) then return end
-            parts[i] = tostring(base)
+            -- (The first number is the total here, not the base: Orc
+            -- warrior 18 read 62 Strength, gear and all. What is left when
+            -- the bonuses are taken off is the base.)
+            local ok, _, eff, pos, neg = pcall(UnitStat, "player", i)
+            if not ok or type(eff) ~= "number" or hidden(eff) or type(pos) ~= "number" or hidden(pos)
+                or type(neg) ~= "number" or hidden(neg) then return end
+            parts[i] = tostring(eff - pos - neg)
         end
         MinimalUIDB.baseStats = MinimalUIDB.baseStats or {}
         local key = class .. "|" .. race

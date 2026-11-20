@@ -308,6 +308,73 @@ local function fillInfo(unit)
     Cm.FillOtherCard(win.card, unit, base, gear, rows)
 end
 
+local function makeTile(parent, slotName)
+    local id, empty = call(GetInventorySlotInfo, slotName .. "Slot")
+    if not id then return end
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(TILE, TILE)
+    b.slot, b.empty, b.slotName = id, empty, slotName
+    b.ring = ns.RoundedRect(b, -8, 0, 7, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(b, -7, 1, 6, unpack(FILL))
+    local mask = b:CreateMaskTexture()
+    mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetPoint("TOPLEFT", 2, -2)
+    mask:SetPoint("BOTTOMRIGHT", -2, 2)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints(mask)
+    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    b.icon:AddMaskTexture(mask)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(mask)
+    hl:SetColorTexture(1, 1, 1, 0.12)
+    hl:AddMaskTexture(mask)
+    b.ilvl = b:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(b.ilvl, 9, "OUTLINE", true)
+    b.ilvl:SetPoint("TOPRIGHT", -3, -3)
+    b:SetScript("OnClick", function(self)
+        local link = call(GetInventoryItemLink, I.unit, self.slot)
+        if link and HandleModifiedItemClick then HandleModifiedItemClick(link) end
+    end)
+    b:SetScript("OnEnter", function(self)
+        ns.TipAnchor(self)
+        local has = I.unit and GameTooltip:SetInventoryItem(I.unit, self.slot)
+        if not has then GameTooltip:SetText(_G[self.slotName:upper() .. "SLOT"] or self.slotName) end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    tiles[slotName] = b
+    return b
+end
+
+local function makeModel(page, x1, y1, x2, y2)
+    local cx = (x1 + x2) / 2
+    local spot = page:CreateTexture(nil, "BACKGROUND", nil, 1)
+    spot:SetTexture(MEDIA .. "spot.tga")
+    spot:SetSize(300, 300)
+    spot:SetPoint("CENTER", page, "TOPLEFT", cx, (y1 + y2) / 2 - 2)
+    local floor = page:CreateTexture(nil, "BACKGROUND", nil, 2)
+    floor:SetTexture(MEDIA .. "spot.tga")
+    floor:SetVertexColor(0, 0, 0, 0.7)
+    floor:SetSize(160, 28)
+    floor:SetPoint("CENTER", page, "TOPLEFT", cx, y2 + 12)
+    local model = CreateFrame("PlayerModel", nil, page)
+    model:SetPoint("TOPLEFT", page, "TOPLEFT", x1, y1 - 24)
+    model:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", x2, y2 - 24)
+    model.facing, model.spot = 0, spot
+    model:EnableMouse(true)
+    model:SetScript("OnMouseDown", function(self, btn) if btn == "LeftButton" then self.dragX = GetCursorPosition() end end)
+    model:SetScript("OnMouseUp", function(self) self.dragX = nil end)
+    model:SetScript("OnHide", function(self) self.dragX = nil end)
+    model:SetScript("OnUpdate", function(self)
+        if not self.dragX then return end
+        local x = GetCursorPosition()
+        self.facing = self.facing + (x - self.dragX) / (UIParent:GetEffectiveScale() * 90)
+        self.dragX = x
+        self:SetFacing(self.facing)
+    end)
+    return model
+end
+
 function I:Refresh()
     if not win or not win:IsShown() or not self.unit then return end
     local unit = self.unit
