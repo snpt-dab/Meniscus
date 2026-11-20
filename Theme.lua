@@ -422,6 +422,7 @@ local function itemStats(link)
     local ok, t = pcall(f, link)
     return ok and type(t) == "table" and t or nil
 end
+ns.ItemStats = itemStats -- (the inspect window adds up someone's gear with it)
 local function statLabel(key)
     local s = _G[key]
     if type(s) == "string" and s ~= "" then return s end

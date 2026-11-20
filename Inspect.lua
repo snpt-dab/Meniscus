@@ -8,6 +8,24 @@ local T = ns.Theme
 -- drag-to-rotate model.
 -- Blizzard's inspect frame stays open but invisible: closing it clears the
 -- inspect data. Closing ours closes it.
+--
+-- 0.1.530: it opens for anything you have targeted ("Inspect" beside the
+-- target frame, or /men inspect), with a column of what can be known:
+--   a player in reach: gear as before, attributes (the game's own numbers
+--     if it gives them, else gear's bonuses, on top of the class and race
+--     base where that is known), guild rank, buffs;
+--   a player out of reach: the model and the same without gear;
+--   a creature or pet: its kind, family, rank, who it is after, what is on
+--     it, and what you have seen of it (below).
+--
+-- What you have seen of a creature: one small record for each kind of
+-- creature (not each one), written only when something happens:
+--   MinimalUIDB.bestiary[npcID] = { n = name, k = kills, lo, hi = levels
+--     seen, c = { [spell name] = true } (casts with a cast bar, 12 at most),
+--     d = { [itemID] = times } (quest items and green or better, 8) }
+-- A kill is one that died while you had it targeted and it was yours.
+-- There is no combat log for addons here, so what it does without a cast
+-- bar is not known.
 
 local I = ns:NewModule("Inspect", { enabled = true })
 
@@ -16,6 +34,7 @@ local PAGE_TOP = (ns.SHELL_H or 92) + 16
 local TILE, GAP = 38, 6
 local GEAR_W = 380
 local W = GEAR_W + 20
+local INFO_W = 250 -- (the column of details to the right of the gear)
 local H = PAGE_TOP + 8 * (TILE + GAP) + TILE + 30
 local FILL = { 0.06, 0.06, 0.07, 0.97 }
 
@@ -50,9 +69,340 @@ local function qualityColor(q)
     return plain(q) and q >= 2 and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
 end
 
+-- ── What you have seen of a creature ─────────────────────────────────────
+local function npcOf(guid)
+    if type(guid) ~= "string" or secret(guid) then return end
+    local kind, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)%-")
+    if kind == "Creature" or kind == "Vehicle" then return tonumber(id) end
+end
+local function npcID(unit)
+    local g = call(UnitGUID, unit)
+    local id = npcOf(g)
+    if id then return id, g end
+end
+local function record(id, make)
+    if not (id and MinimalUIDB) then return end
+    local all = MinimalUIDB.bestiary
+    if not all then
+        if not make then return end
+        all = {}; MinimalUIDB.bestiary = all
+    end
+    local r = all[id]
+    if not r and make then r = {}; all[id] = r end
+    return r
+end
+local function count(t) local n = 0; for _ in pairs(t) do n = n + 1 end return n end
+local function isTrue(v) return not secret(v) and v == true end
+local seenDead, seenLoot, nDead, nLoot = {}, {}, 0, 0
+local function noteTarget()
+    local id = npcID("target")
+    if not id or not isTrue(call(UnitCanAttack, "player", "target")) then return end
+    local r = record(id, true)
+    local name = call(UnitName, "target")
+    if type(name) == "string" and not secret(name) then r.n = name end
+    local lvl = call(UnitLevel, "target")
+    if plain(lvl) and lvl > 0 then
+        if not r.lo or lvl < r.lo then r.lo = lvl end
+        if not r.hi or lvl > r.hi then r.hi = lvl end
+    end
+end
+local function noteCast(spellID)
+    local id = npcID("target")
+    if not id then return end
+    local name
+    if plain(spellID) and C_Spell and C_Spell.GetSpellName then name = call(C_Spell.GetSpellName, spellID) end
+    if type(name) ~= "string" or secret(name) then
+        name = call(UnitCastingInfo, "target")
+        if type(name) ~= "string" or secret(name) then name = call(UnitChannelInfo, "target") end
+    end
+    if type(name) ~= "string" or secret(name) or name == "" then return end
+    local r = record(id, true)
+    r.c = r.c or {}
+    if not r.c[name] and count(r.c) < 12 then r.c[name] = true; return true end
+end
+local function noteDeath()
+    if not isTrue(call(UnitIsDead, "target")) then return end
+    local id, guid = npcID("target")
+    if not id or seenDead[guid] then return end
+    if isTrue(call(UnitIsTapDenied, "target")) then return end
+    if nDead > 300 then wipe(seenDead); nDead = 0 end
+    seenDead[guid] = true; nDead = nDead + 1
+    local r = record(id, true)
+    r.k = (r.k or 0) + 1
+    return true
+end
+local function noteLoot()
+    if not (GetNumLootItems and GetLootSourceInfo and GetLootSlotLink and GetLootSlotInfo) then return end
+    local n = call(GetNumLootItems)
+    if not plain(n) then return end
+    for slot = 1, n do
+        local link = call(GetLootSlotLink, slot)
+        local _, _, _, _, quality, _, isQuest = call(GetLootSlotInfo, slot)
+        local guid = call(GetLootSourceInfo, slot)
+        local id = npcOf(guid)
+        local item = type(link) == "string" and not secret(link) and tonumber(link:match("item:(%d+)"))
+        if id and item and (isTrue(isQuest) or (plain(quality) and quality >= 2)) then
+            local key = guid .. ":" .. item
+            if not seenLoot[key] then
+                if nLoot > 300 then wipe(seenLoot); nLoot = 0 end
+                seenLoot[key] = true; nLoot = nLoot + 1
+                local r = record(id, true)
+                r.d = r.d or {}
+                if r.d[item] or count(r.d) < 8 then r.d[item] = (r.d[item] or 0) + 1 end
+            end
+        end
+    end
+end
+
 -- ── Window ────────────────────────────────────────────────────────────────
 local win, tiles = nil, {}
 local closing = false
+
+-- ── The column of details ────────────────────────────────────────────────
+-- Headings, "label ... value" rows, wrapped notes and rows of aura
+-- pictures, laid out down a card; all from one pool, refilled each time.
+local info
+local IW = INFO_W - 20 - 28
+local DIM = T.textDim or { 0.6, 0.6, 0.65, 1 }
+local function infoReset()
+    for i = 1, #info.rows do info.rows[i]:Hide() end
+    for i = 1, #info.icons do info.icons[i]:Hide() end
+    info.n, info.ni, info.y = 0, 0, -14
+end
+local function infoRow(h)
+    info.n = info.n + 1
+    local r = info.rows[info.n]
+    if not r then
+        r = CreateFrame("Frame", nil, info.card)
+        r.l = r:CreateFontString(nil, "OVERLAY")
+        r.v = r:CreateFontString(nil, "OVERLAY")
+        r.l:SetJustifyH("LEFT"); r.l:SetJustifyV("TOP")
+        r.v:SetJustifyH("RIGHT")
+        r.v:SetPoint("TOPRIGHT")
+        r:SetScript("OnEnter", function(self)
+            if not self.item then return end
+            ns.TipAnchor(self)
+            if pcall(GameTooltip.SetHyperlink, GameTooltip, "item:" .. self.item) then GameTooltip:Show() end
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        info.rows[info.n] = r
+    end
+    r.item = nil
+    r:EnableMouse(false)
+    r.v:SetText("")
+    r.l:ClearAllPoints()
+    r.l:SetPoint("TOPLEFT")
+    r.l:SetWidth(0)
+    r.l:SetWordWrap(false)
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", info.card, "TOPLEFT", 14, info.y)
+    r:SetSize(IW, h)
+    r:Show()
+    return r
+end
+local function rowFont(r, key, ls, lb, vs, vb) -- (set once per look: SetFont makes a table each time)
+    if r.font == key then return end
+    r.font = key
+    ns:SetFont(r.l, ls, "", lb)
+    if vs then ns:SetFont(r.v, vs, "", vb) end
+end
+local function infoHead(label)
+    if info.n > 0 then info.y = info.y - 10 end
+    local r = infoRow(14)
+    rowFont(r, "head", 9, true)
+    r.l:SetTextColor(DIM[1], DIM[2], DIM[3], 1)
+    r.l:SetText(label:upper())
+    info.y = info.y - 18
+end
+local function infoLine(label, value, c)
+    local r = infoRow(15)
+    rowFont(r, "line", 11, false, 11, true)
+    r.l:SetTextColor(DIM[1], DIM[2], DIM[3], 1)
+    r.l:SetText(label)
+    c = c or T.text
+    r.v:SetTextColor(c[1], c[2], c[3], 1)
+    r.v:SetText(value) -- (a hidden value goes straight through)
+    info.y = info.y - 17
+    return r
+end
+local function infoNote(str, c)
+    local r = infoRow(14)
+    rowFont(r, "note", 10, false)
+    c = c or DIM
+    r.l:SetTextColor(c[1], c[2], c[3], 1)
+    r.l:SetWidth(IW)
+    r.l:SetWordWrap(true)
+    r.l:SetText(str)
+    local h = math.max(r.l:GetStringHeight() or 0, 12)
+    r:SetHeight(h)
+    info.y = info.y - h - 5
+    return r
+end
+local function infoItem(item, times)
+    local name, link = nil, nil
+    if C_Item and C_Item.GetItemInfo then name, link = call(C_Item.GetItemInfo, item) end
+    local r = infoLine(type(link) == "string" and link or ("Item " .. item), times > 1 and ("x" .. times) or "")
+    r.l:SetTextColor(1, 1, 1, 1)
+    r.l:SetWidth(IW - 30)
+    r.item = item
+    r:EnableMouse(true)
+end
+local ICON, PER = 22, 8
+local function infoAuras(unit, filter, max)
+    local U = C_UnitAuras
+    if not (U and U.GetAuraDataByIndex) then return 0 end
+    local shown = 0
+    for i = 1, max do
+        local ok, a = pcall(U.GetAuraDataByIndex, unit, i, filter)
+        if not ok or type(a) ~= "table" then break end
+        info.ni = info.ni + 1
+        local b = info.icons[info.ni]
+        if not b then
+            b = CreateFrame("Frame", nil, info.card)
+            b:SetSize(ICON, ICON)
+            b.tex = b:CreateTexture(nil, "ARTWORK")
+            b.tex:SetAllPoints()
+            b.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            b:EnableMouse(true)
+            b:SetScript("OnEnter", function(self)
+                if not (self.aura and GameTooltip.SetUnitAuraByAuraInstanceID) then return end
+                ns.TipAnchor(self)
+                if pcall(GameTooltip.SetUnitAuraByAuraInstanceID, GameTooltip, self.unit, self.aura) then GameTooltip:Show() end
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            info.icons[info.ni] = b
+        end
+        b.unit, b.aura = unit, a.auraInstanceID
+        b.tex:SetTexture(a.icon)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", info.card, "TOPLEFT", 14 + (shown % PER) * (ICON + 3), info.y - math.floor(shown / PER) * (ICON + 3))
+        b:Show()
+        shown = shown + 1
+    end
+    if shown > 0 then info.y = info.y - math.ceil(shown / PER) * (ICON + 3) - 3 end
+    return shown
+end
+
+local STAT_KEYS = { "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_STAMINA_SHORT",
+                    "ITEM_MOD_INTELLECT_SHORT", "ITEM_MOD_SPIRIT_SHORT" }
+local STAT_NAMES = { "Strength", "Agility", "Stamina", "Intellect", "Spirit" }
+local RANK = { elite = "Elite", rareelite = "Rare elite", rare = "Rare", worldboss = "Boss", trivial = "Trivial", minus = "Minor" }
+local gearSum = {}
+-- What a class and race have at a level before gear, where it is known:
+-- so far only what the game has told this account about its own characters
+-- (MinimalUIDB.baseStats, Probe.lua). A table for everyone is to come once
+-- the published classic one has been checked against those.
+local function baseFor(unit, i)
+    local _, class = UnitClass(unit)
+    local _, race = UnitRace(unit)
+    local lvl = UnitLevel(unit)
+    if type(class) ~= "string" or secret(class) or type(race) ~= "string" or secret(race) or not plain(lvl) then return end
+    local t = MinimalUIDB and MinimalUIDB.baseStats and MinimalUIDB.baseStats[class .. "|" .. race]
+    local line = t and t[lvl]
+    if type(line) ~= "string" then return end
+    local n = 0
+    for v in line:gmatch("[^,]+") do
+        n = n + 1
+        if n == i then return tonumber(v) end
+    end
+end
+local function fillPlayer(unit)
+    infoHead("Attributes")
+    if I.mode == "gear" then
+        wipe(gearSum)
+        local read = 0
+        for _, b in pairs(tiles) do
+            local link = call(GetInventoryItemLink, unit, b.slot)
+            local st = link and not secret(link) and ns.ItemStats and ns.ItemStats(link)
+            if st then
+                read = read + 1
+                for k, v in pairs(st) do
+                    if type(v) == "number" and not secret(v) then gearSum[k] = (gearSum[k] or 0) + v end
+                end
+            end
+        end
+        local exact, guessed, bare = false, false, false
+        for i = 1, 5 do
+            local _, real = call(UnitStat, unit, i)
+            local gear = gearSum[STAT_KEYS[i]] or 0
+            local label = _G["SPELL_STAT" .. i .. "_NAME"] or STAT_NAMES[i]
+            if plain(real) and real > 0 then
+                exact = true
+                infoLine(label, string.format("%d", real))
+            else
+                local base = baseFor(unit, i)
+                if base then
+                    guessed = true
+                    infoLine(label, string.format("~%d", base + gear))
+                else
+                    bare = true
+                    infoLine(label, string.format("+%d", gear), gear > 0 and T.text or DIM)
+                end
+            end
+        end
+        local armor = gearSum.RESISTANCE0_NAME
+        if armor and armor > 0 then infoLine(_G.ARMOR or "Armor", string.format("%d", armor)) end
+        if read == 0 then infoNote("Their gear has not arrived yet.")
+        elseif guessed then infoNote("About: what their class and race have at this level, plus their gear. Talents and buffs are not counted.")
+        elseif bare and not exact then infoNote("From their gear alone. What their class and race add at this level is not known yet.") end
+    else
+        infoNote("Out of reach: their gear cannot be seen from here.")
+    end
+    infoHead("About")
+    local _, rank = call(GetGuildInfo, unit)
+    if type(rank) == "string" and not secret(rank) and rank ~= "" then infoLine("Guild rank", rank) end
+    local _, faction = call(UnitFactionGroup, unit)
+    if type(faction) == "string" and not secret(faction) and faction ~= "" then infoLine("Faction", faction) end
+    if isTrue(call(UnitIsPVP, unit)) then infoLine("Player combat", "Flagged", { 0.92, 0.38, 0.35 }) end
+    local tn = call(UnitName, unit .. "target")
+    if tn then infoLine("Targeting", tn) end
+    infoHead("Buffs")
+    if infoAuras(unit, "HELPFUL", 24) == 0 then infoNote(InCombatLockdown() and "Not readable in a fight." or "None.") end
+end
+local function fillCreature(unit)
+    infoHead("About")
+    local kind = call(UnitCreatureType, unit)
+    if kind and (secret(kind) or kind ~= "") then infoLine("Kind", kind) end
+    local family = call(UnitCreatureFamily, unit)
+    if family and (secret(family) or family ~= "") then infoLine("Family", family) end
+    local cls = call(UnitClassification, unit)
+    if type(cls) == "string" and not secret(cls) and RANK[cls] then infoLine("Rank", RANK[cls], T.accent) end
+    if isTrue(call(UnitIsTapDenied, unit)) then infoLine("Claimed", "By someone else", DIM) end
+    if isTrue(call(UnitIsDead, unit)) then infoLine("State", "Dead", DIM) end
+    local tn = call(UnitName, unit .. "target")
+    if tn then infoLine("Targeting", tn) end
+    infoHead("On it")
+    local n = infoAuras(unit, "HELPFUL", 16) + infoAuras(unit, "HARMFUL", 16)
+    if n == 0 then infoNote(InCombatLockdown() and "Not readable in a fight." or "Nothing.") end
+    local id = npcID(unit)
+    local r = id and record(id)
+    infoHead("What you have seen")
+    if not r then
+        infoNote(id and "Nothing yet. Kills, casts and notable drops are noted as you fight it."
+            or "Nothing is kept for this one.")
+        return
+    end
+    infoLine("Kills", string.format("%d", r.k or 0))
+    if r.lo then infoLine("Levels", r.lo == r.hi and tostring(r.lo) or (r.lo .. " to " .. r.hi)) end
+    if r.c and next(r.c) then
+        local names = {}
+        for name in pairs(r.c) do names[#names + 1] = name end
+        table.sort(names)
+        infoNote("Casts: " .. table.concat(names, ", "), T.text)
+    end
+    if r.d and next(r.d) then
+        infoNote("Dropped for you:")
+        local ids = {}
+        for item in pairs(r.d) do ids[#ids + 1] = item end
+        table.sort(ids)
+        for _, item in ipairs(ids) do infoItem(item, r.d[item]) end
+    end
+end
+local function fillInfo(unit)
+    if not info then return end
+    infoReset()
+    if isTrue(call(UnitIsPlayer, unit)) then fillPlayer(unit) else fillCreature(unit) end
+end
 
 local function makeTile(parent, slotName)
     local id, empty = call(GetInventorySlotInfo, slotName .. "Slot")
@@ -125,7 +475,22 @@ function I:Refresh()
     if not win or not win:IsShown() or not self.unit then return end
     local unit = self.unit
     local sum, n = 0, 0
-    for _, b in pairs(tiles) do
+    pcall(fillInfo, unit)
+    if not isTrue(call(UnitIsPlayer, unit)) then
+        -- A creature or a pet: its name in its attitude's colour, and
+        -- "Level 12 Beast" under it.
+        local sh = win.shell
+        sh:SetAttitude(unit)
+        sh:SetTitle(UnitName(unit))
+        local lvl = UnitLevel(unit)
+        local kind = call(UnitCreatureType, unit)
+        local bits = {}
+        if plain(lvl) then bits[#bits + 1] = "Level " .. (lvl > 0 and lvl or "??") end
+        if type(kind) == "string" and not secret(kind) and kind ~= "" then bits[#bits + 1] = kind end
+        sh:SetSubtitle(table.concat(bits, " "))
+        return
+    end
+    for _, b in pairs(self.mode == "gear" and tiles or {}) do
         local tex = call(GetInventoryItemTexture, unit, b.slot)
         b.icon:SetTexture(tex or b.empty)
         b.icon:SetDesaturated(not tex)
@@ -161,7 +526,7 @@ end
 
 local function build()
     win = CreateFrame("Frame", "MinimalUIInspect", UIParent)
-    win:SetSize(W, H)
+    win:SetSize(W + INFO_W, H)
     win:SetFrameStrata("HIGH")
     win:SetToplevel(true)
     win:SetClampedToScreen(true)
@@ -206,6 +571,26 @@ local function build()
         b:SetPoint("TOPLEFT", page, "TOPLEFT", cx - rowW / 2 + (i - 1) * (TILE + GAP), top - 8 * (TILE + GAP))
     end
     win.model = makeModel(page, 20 + TILE + 10, top, GEAR_W - TILE - 10, top - 8 * (TILE + GAP) + 6)
+    -- With no gear to show (a creature, someone out of reach) the tiles go
+    -- and the model has the whole of their side.
+    win.setMode = function(mode)
+        I.mode = mode
+        for _, b in pairs(tiles) do b:SetShown(mode == "gear") end
+        local m = win.model
+        m:ClearAllPoints()
+        if mode == "gear" then
+            m:SetPoint("TOPLEFT", page, "TOPLEFT", 20 + TILE + 10, top - 24)
+            m:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", GEAR_W - TILE - 10, top - 8 * (TILE + GAP) + 6 - 24)
+        else
+            m:SetPoint("TOPLEFT", page, "TOPLEFT", 20, top - 10)
+            m:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", GEAR_W, top - 8 * (TILE + GAP) - TILE)
+        end
+    end
+    local card = CreateFrame("Frame", nil, page)
+    card:SetPoint("TOPLEFT", page, "TOPLEFT", W, 0)
+    card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 20)
+    ns.RoundedRect(card, -6, 0, 10, 1, 1, 1, 0.035)
+    info = { card = card, rows = {}, icons = {}, n = 0, ni = 0, y = -14 }
 
     win:SetScript("OnHide", function()
         win.shell:ClearModel()
@@ -215,9 +600,10 @@ local function build()
     end)
 end
 
-local function open(unit)
+local function open(unit, mode)
     if not unit or not UnitExists(unit) then return end
     if not win then build() end
+    win.setMode(mode or "gear")
     I.unit = unit
     I.guid = UnitGUID(unit)
     win.shell:SetUnit(unit)
@@ -231,6 +617,21 @@ local function open(unit)
     if not win:IsShown() then win:Show() end
     I:Refresh()
 end
+
+-- Open on your target, whatever it is (the button by the target frame,
+-- /men inspect); again to close. A player in reach goes through the game's
+-- own inspect (which brings their gear); anything else is shown as it is.
+function I:Open()
+    if win and win:IsShown() then win:Hide() return end
+    if not UnitExists("target") then return ns:Print("Nothing targeted to inspect.") end
+    if isTrue(call(UnitIsPlayer, "target")) and isTrue(call(CanInspect, "target")) and type(InspectUnit) == "function" then
+        pcall(InspectUnit, "target")
+        if win and win:IsShown() then return end
+    end
+    open("target", "plain")
+end
+ns.commands = ns.commands or {}
+ns.commands.inspect = function() I:Open() end
 
 local function close()
     if win and win:IsShown() then
@@ -259,13 +660,41 @@ function I:OnInit(db)
     hookFrame()
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "ADDON_LOADED", "INSPECT_READY", "UNIT_INVENTORY_CHANGED", "GET_ITEM_INFO_RECEIVED",
-                         "UNIT_MODEL_CHANGED" }) do
+                         "UNIT_MODEL_CHANGED", "PLAYER_TARGET_CHANGED", "LOOT_OPENED" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
+    for _, e in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_HEALTH", "UNIT_AURA", "UNIT_TARGET" }) do
+        pcall(ev.RegisterUnitEvent, ev, e, "target")
+    end
     local dirty, acc = false, 0
-    ev:SetScript("OnEvent", function(_, e, arg)
+    ev:SetScript("OnEvent", function(_, e, arg, _, spellID)
         if e == "ADDON_LOADED" then hookFrame(); return end
-        if not win or not win:IsShown() then return end
+        -- What is seen of creatures is noted whether the window is open or not.
+        local shown = win and win:IsShown()
+        if e == "PLAYER_TARGET_CHANGED" then
+            pcall(noteTarget)
+            -- (Showing a creature, or someone out of reach: it follows your target.)
+            if shown and I.mode == "plain" then
+                if UnitExists("target") then open("target", "plain") else win:Hide() end
+            end
+            return
+        elseif e == "LOOT_OPENED" then
+            pcall(noteLoot)
+            if shown and I.mode == "plain" then dirty = true end
+            return
+        elseif e == "UNIT_SPELLCAST_START" or e == "UNIT_SPELLCAST_CHANNEL_START" then
+            local ok, new = pcall(noteCast, spellID)
+            if ok and new and shown and I.mode == "plain" then dirty = true end
+            return
+        elseif e == "UNIT_HEALTH" then
+            local ok, new = pcall(noteDeath)
+            if ok and new and shown and I.mode == "plain" then dirty = true end
+            return
+        elseif e == "UNIT_AURA" or e == "UNIT_TARGET" then
+            if shown and I.unit == "target" then dirty = true end
+            return
+        end
+        if not shown then return end
         if e == "INSPECT_READY" and arg and I.guid and arg ~= I.guid then return end
         if (e == "UNIT_INVENTORY_CHANGED" or e == "UNIT_MODEL_CHANGED") and arg ~= I.unit then return end
         if e == "UNIT_MODEL_CHANGED" then win.model:SetUnit(I.unit) end
@@ -277,5 +706,16 @@ function I:OnInit(db)
         if acc < 0.15 then return end
         acc, dirty = 0, false
         I:Refresh()
+    end)
+    -- "Inspect" beside the target frame (to its left, level with it): there
+    -- whenever you have a target, since it is the frame's child.
+    C_Timer.After(1, function()
+        local UFm = ns.modules.UnitFrames
+        local tf = UFm and UFm.target
+        if not (tf and ns.Pill) or InCombatLockdown() or db.button == false then return end
+        local b = ns.Pill(tf, "Inspect", function() I:Open() end, { h = 16, font = 9, pad = 16, ring = true, dimIdle = true })
+        b:SetPoint("RIGHT", tf, "LEFT", -8, 0)
+        b:SetFrameLevel(tf:GetFrameLevel() + 5)
+        I.button = b
     end)
 end
