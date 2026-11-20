@@ -679,6 +679,99 @@ local function buildNumbers()
     local SHADES = { soft = 0.42, medium = 0.62, strong = 0.80 }
     local function sizeMul() return SIZES[NP.db and NP.db.numbersSize or "large"] or 1.2 end
     local function shade() return SHADES[NP.db and NP.db.numbersShade or "medium"] or 0.62 end
+    -- A critical is celebrated (0.1.523), two ways:
+    --   * it lands white-hot and cools to its own colour in a third of a
+    --     second;
+    --   * a scatter of sparks is shaken out of it, as from the Quick Buff
+    --     pill when it is cast: tiny, white and a pale tint of the number's
+    --     colour, thrown out and falling, each mostly dim and catching the
+    --     light in short glints (a few with a thin cross of light).
+    -- The sparks are textures of the number's own frame, so a hit for
+    -- nothing hides them with the rest.
+    local SPARKS, GLINTS, SPARK_FALL = 16, 5, 80
+    local rnd = math.random
+    local SPOT = "Interface/AddOns/Meniscus/Media/spot.tga"
+    local function sparksOff(f)
+        f.sparkOn = nil
+        if not f.sparks then return end
+        for n = 1, #f.sparks do
+            local q = f.sparks[n]
+            q.tx:SetAlpha(0)
+            if q.h then q.h:SetAlpha(0); q.v:SetAlpha(0) end
+        end
+    end
+    local function sparksGo(f, r, g, b)
+        if not f.sparks then
+            f.sparks = {}
+            for n = 1, SPARKS do
+                local q = { tx = f.body:CreateTexture(nil, "OVERLAY", nil, 2) }
+                q.tx:SetTexture(SPOT)
+                q.tx:SetBlendMode("ADD")
+                if n <= GLINTS then
+                    q.h = f.body:CreateTexture(nil, "OVERLAY", nil, 2)
+                    q.v = f.body:CreateTexture(nil, "OVERLAY", nil, 2)
+                    q.h:SetTexture(SPOT); q.v:SetTexture(SPOT)
+                    q.h:SetBlendMode("ADD"); q.v:SetBlendMode("ADD")
+                    q.h:SetPoint("CENTER", q.tx, "CENTER"); q.v:SetPoint("CENTER", q.tx, "CENTER")
+                end
+                f.sparks[n] = q
+            end
+        end
+        for n = 1, SPARKS do
+            local q = f.sparks[n]
+            q.x, q.y = (rnd() - 0.5) * SIZE * 2.6, (rnd() - 0.5) * SIZE * 0.7
+            q.vx, q.vy = (rnd() - 0.5) * 120, -6 + rnd() * 62 -- thrown out, most a little upward
+            q.life = 0.55 + rnd() * 0.75
+            q.size = q.h and (3 + rnd() * 2) or (1.6 + rnd() * 2.6)
+            q.wink, q.at = 7 + rnd() * 10, rnd() * 6
+            q.arm = 8 + rnd() * 9
+            -- White, or a pale tint of the number's colour.
+            local k = rnd() > 0.5 and 0.55 or 1
+            local cr, cg, cb = r + (1 - r) * k, g + (1 - g) * k, b + (1 - b) * k
+            q.tx:SetVertexColor(cr, cg, cb)
+            q.tx:SetSize(q.size, q.size)
+            q.tx:SetAlpha(0)
+            if q.h then
+                q.h:SetVertexColor(cr, cg, cb); q.v:SetVertexColor(cr, cg, cb)
+                q.h:SetAlpha(0); q.v:SetAlpha(0)
+            end
+            q.done = false
+        end
+        f.sparkOn = true
+    end
+    local function sparksStep(f, sc)
+        local t = f.age
+        -- (The number is over its size as it lands; the sparks are kept to
+        -- the size it settles at.)
+        local inv = f.scale / sc
+        local slow = (1 - math.exp(-2.2 * t)) / 2.2
+        local any = false
+        for n = 1, SPARKS do
+            local q = f.sparks[n]
+            if not q.done then
+                local e = t / q.life
+                if e >= 1 then
+                    q.done = true
+                    q.tx:SetAlpha(0)
+                    if q.h then q.h:SetAlpha(0); q.v:SetAlpha(0) end
+                else
+                    any = true
+                    q.tx:SetPoint("CENTER", f.body, "CENTER", (q.x + q.vx * slow) * inv,
+                                  (q.y + q.vy * t - 0.5 * SPARK_FALL * t * t) * inv)
+                    local s = 0.5 + 0.5 * math.sin(t * q.wink + q.at)
+                    local flash = s ^ 8
+                    local fade = 1 - e * e
+                    q.tx:SetAlpha(fade * (0.30 + 0.70 * flash))
+                    if q.h then
+                        local arm = q.arm * (0.4 + 0.6 * flash)
+                        q.h:SetSize(arm, 1.8); q.v:SetSize(1.8, arm)
+                        q.h:SetAlpha(fade * flash); q.v:SetAlpha(fade * flash)
+                    end
+                end
+            end
+        end
+        if not any then f.sparkOn = nil end
+    end
     local function item()
         for i = 1, #items do if not items[i].live then return items[i] end end
         if #items >= NUM_POOL then return nil end
@@ -808,6 +901,18 @@ local function buildNumbers()
                     end
                     f:SetAlpha(k < 0.66 and 1 or (1 - k) / 0.34)
                     if f.crit then
+                        -- White-hot as it lands, cooling to its own colour.
+                        if f.age < 0.36 then
+                            local h = 1 - f.age / 0.36
+                            local mix = 0.9 * h * h
+                            local r, g, b = f.cr + (1 - f.cr) * mix, f.cg + (1 - f.cg) * mix, f.cb + (1 - f.cb) * mix
+                            if f.zeroSeen == nil or not pcall(f.fs.SetTextColor, f.fs, r, g, b, f.zeroSeen) then f.fs:SetTextColor(r, g, b, 1) end
+                            f.hot = true
+                        elseif f.hot then
+                            f.hot = nil
+                            if f.zeroSeen == nil or not pcall(f.fs.SetTextColor, f.fs, f.cr, f.cg, f.cb, f.zeroSeen) then f.fs:SetTextColor(f.cr, f.cg, f.cb, 1) end
+                        end
+                        if f.sparkOn then sparksStep(f, sc) end
                         -- The fringe: wide apart as it lands, closing in under a
                         -- second to a narrow one that it keeps for the rest of
                         -- its life (it used to close fully and leave a plain
@@ -847,7 +952,7 @@ local function buildNumbers()
     local showUnit -- (the unit the hit being shown is on; set by the event below)
     local WIDE_ORDER = { 0, 2, -2, 1, -1, 3, -3 }
     local zeroCurve, zeroBack, zeroBackFor
-    local function show(rel, x, y, value, r, g, b, crit, small, kind)
+    local function show(rel, x, y, value, r, g, b, crit, small, kind, grim)
         local f = item()
         if not f then return end
         if f.gauges then for i = 1, #f.gauges do f.gauges[i].win:Hide() end end
@@ -954,6 +1059,9 @@ local function buildNumbers()
         f.burst:SetVertexColor(r + (1 - r) * 0.45, g + (1 - g) * 0.45, b + (1 - b) * 0.45, 1)
         f.burst:SetAlpha(0)
         f.crit, f.scale = crit, scale
+        f.cr, f.cg, f.cb, f.hot = r, g, b, nil
+        -- (grim: a critical you took. Nothing to celebrate.)
+        if crit and not grim and not (NP.db and NP.db.numbersCritSparks == false) then sparksGo(f, r, g, b) else sparksOff(f) end
         -- A critical stays up most of a second longer than an ordinary
         -- hit, and its colour fringe takes longer to close.
         f.life = crit and (NUM_LIFE + 0.9) or NUM_LIFE
@@ -1290,7 +1398,7 @@ local function buildNumbers()
             return show(rel, x, y, amount, 0.42, 0.92, 0.50, crit)
         elseif action == "WOUND" then
             if mine then
-                return show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind)
+                return show(rel, x, y, amount, 0.96, 0.42, 0.38, crit, nil, kind, true)
             elseif petShown then
                 -- Your pet's: its own kind, whatever the school. A paw, a
                 -- sandy colour, and a size down so your own hits lead.
