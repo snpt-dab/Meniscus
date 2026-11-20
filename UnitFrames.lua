@@ -1992,6 +1992,7 @@ function UF:SeatTargetAuras()
     if okA and type(ap) == "string" and not issecretvalue(ap) and ap ~= "" then corner = ap end
     local right = corner:find("RIGHT") ~= nil
     local down = corner:find("TOP") ~= nil
+    self.targetAurasRight = right -- (the Inspect button takes the other side of the portrait)
     if self.targetStrip then
         -- Console strip: under the health pill, beside the portrait that
         -- hangs from its middle (the user's preferred spot). Blizzard's
