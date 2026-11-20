@@ -210,6 +210,62 @@ local function auras(rows, unit, filter, max)
     end
     return shown
 end
+-- What someone's buffs add, read from the buffs' own tooltips (the game
+-- gives no numbers with a buff here, but the tooltip says "Increases
+-- Stamina by 54." and can be had for anyone's buff out of a fight).
+-- English wording; a percentage, or anything that reduces, is left out.
+-- Kept by the buff's instance until another unit is shown.
+local STAT_WORDS = { "strength", "agility", "stamina", "intellect", "spirit" }
+local RES_WORDS = { [2] = "fire", [3] = "nature", [4] = "frost", [5] = "shadow", [6] = "arcane" }
+local auraCache = {}
+local function numIn(low, pat)
+    local _, e, v = low:find(pat)
+    if v and low:sub(e + 1, e + 1) ~= "%" then return tonumber(v) end
+end
+local function auraGives(unit, id) -- { [1..5] = attribute, [12..16] = resistance by school + 10 } or false
+    if id == nil or secret(id) then return false end
+    local c = auraCache[id]
+    if c ~= nil then return c end
+    c = false
+    local TI = C_TooltipInfo
+    local d = TI and TI.GetUnitBuffByAuraInstanceID and call(TI.GetUnitBuffByAuraInstanceID, unit, id)
+    local line = type(d) == "table" and type(d.lines) == "table" and d.lines[2]
+    local txt = type(line) == "table" and line.leftText
+    if type(txt) == "string" and not secret(txt) and txt ~= "" then
+        local low = txt:lower()
+        if not low:find("reduc") and not low:find("decreas") then
+            local all = numIn(low, "all attributes[^%.%d]*by (%d+)") or numIn(low, "all stats[^%.%d]*by (%d+)")
+            local allR = numIn(low, "all[%a ]*resistances?[^%.%d]*by (%d+)")
+            local g, any = {}, false
+            for i, w in ipairs(STAT_WORDS) do
+                local v = all or numIn(low, w .. "[^%.%d]*by (%d+)")
+                if v then g[i] = v; any = true end
+            end
+            for school, w in pairs(RES_WORDS) do
+                local v = allR or numIn(low, w .. " resistance[^%.%d]*by (%d+)")
+                if v then g[10 + school] = v; any = true end
+            end
+            if any then c = g end
+        end
+    end
+    auraCache[id] = c
+    return c
+end
+local function buffSums(unit)
+    local U = C_UnitAuras
+    if not (U and U.GetAuraDataByIndex) then return end
+    local sum
+    for i = 1, 40 do
+        local ok, a = pcall(U.GetAuraDataByIndex, unit, i, "HELPFUL")
+        if not ok or type(a) ~= "table" then break end
+        local g = auraGives(unit, a.auraInstanceID)
+        if g then
+            sum = sum or {}
+            for k, v in pairs(g) do sum[k] = (sum[k] or 0) + v end
+        end
+    end
+    return sum
+end
 local function fillPlayer(unit)
     local rows, base, gear, res = {}, nil, nil, nil
     local read = 0
@@ -238,13 +294,20 @@ local function fillPlayer(unit)
         local b = baseFor(unit, i)
         if b then base = base or {}; base[i] = b end
     end
+    local buff = buffSums(unit)
+    if buff then
+        for school = 2, 6 do
+            local v = buff[10 + school]
+            if v then res = res or {}; res[school] = (res[school] or 0) + v end
+        end
+    end
     head(rows, "About", "micro_character.tga")
     local _, real = call(UnitStat, unit, 1)
     if not (plain(real) and real > 0) then
         if I.mode ~= "gear" then note(rows, "Out of reach: their gear is not shown")
         elseif read == 0 then note(rows, "Their gear has not arrived yet")
-        elseif base then note(rows, "Attributes: class and race, plus gear")
-        else note(rows, "Attributes: from their gear alone") end
+        elseif base then note(rows, "Attributes: class and race, gear, buffs")
+        else note(rows, "Attributes: from their gear and buffs") end
     end
     local armor = gear and gearSum.RESISTANCE0_NAME
     if armor and armor > 0 then stat(rows, "Armor from gear", string.format("%d", armor)) end
@@ -256,7 +319,7 @@ local function fillPlayer(unit)
     stat(rows, "Targeting", (call(UnitName, unit .. "target")))
     head(rows, "Buffs", "micro_buff.tga")
     if auras(rows, unit, "HELPFUL", 24) == 0 then note(rows, InCombatLockdown() and "Not readable in a fight" or "None") end
-    return rows, base, gear, res
+    return rows, base, gear, res, buff
 end
 local function fillCreature(unit)
     local rows = {}
@@ -307,9 +370,9 @@ end
 local function fillInfo(unit)
     local Cm = ns.modules.Character
     if not (win and win.card and Cm and Cm.FillOtherCard) then return end
-    local rows, base, gear, res
-    if isTrue(call(UnitIsPlayer, unit)) then rows, base, gear, res = fillPlayer(unit) else rows = fillCreature(unit) end
-    Cm.FillOtherCard(win.card, unit, base, gear, rows, res)
+    local rows, base, gear, res, buff
+    if isTrue(call(UnitIsPlayer, unit)) then rows, base, gear, res, buff = fillPlayer(unit) else rows = fillCreature(unit) end
+    Cm.FillOtherCard(win.card, unit, base, gear, rows, res, buff)
 end
 
 local function makeTile(parent, slotName)
@@ -523,6 +586,8 @@ local function open(unit, mode)
     if not unit or not UnitExists(unit) then return end
     if not win then build() end
     win.setMode(mode or "gear")
+    local og = UnitGUID(unit)
+    if secret(og) or secret(I.guid) or I.guid ~= og then wipe(auraCache) end
     I.unit = unit
     I.guid = UnitGUID(unit)
     win.shell:SetUnit(unit)
