@@ -525,8 +525,14 @@ function I:Refresh()
     local guild = call(GetGuildInfo, unit)
     if guild and not secret(guild) then table.insert(parts, guild) end
     sh:SetSubtitle(table.concat(parts, "  ·  "))
-    local avg = C_PaperDollInfo and C_PaperDollInfo.GetInspectItemLevel and call(C_PaperDollInfo.GetInspectItemLevel, unit)
-    if not (plain(avg) and avg > 0) then avg = n > 0 and sum / n or nil end
+    -- The average of the pieces worn, as your own window has it. (The
+    -- game's inspect figure read 9 for someone whose pieces averaged 17:
+    -- it seems to count empty slots as nothing. Used only with no tiles.)
+    local avg = n > 0 and sum / n or nil
+    if not avg then
+        avg = C_PaperDollInfo and C_PaperDollInfo.GetInspectItemLevel and call(C_PaperDollInfo.GetInspectItemLevel, unit)
+        if not (plain(avg) and avg > 0) then avg = nil end
+    end
     if avg then sh:SetChip(string.format("Item level %d", math.floor(avg + 0.5)), T.accent) else sh:SetChip(nil) end
 end
 
