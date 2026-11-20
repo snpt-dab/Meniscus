@@ -298,6 +298,8 @@ def icons():
     # The same for ore: a diamond in a thin diamond (a herb keeps the ring).
     I['node_ore'] = (Icon().line([(12, 2.6), (21.4, 12), (12, 21.4), (2.6, 12)], close=True, w=1.6)
                      .line([(12, 10.4), (13.6, 12), (12, 13.6), (10.4, 12)], close=True, w=4.0))
+    # Inspect (by the target frame): a magnifying glass.
+    I['inspect'] = Icon().ring(10.2, 10.2, 6.2, w=2.0).line([(15.0, 15.0), (20.2, 20.2)], w=2.6)
     return I
 
 

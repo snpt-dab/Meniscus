@@ -611,6 +611,14 @@ function I:Open()
     if isTrue(call(UnitIsPlayer, "target")) and isTrue(call(CanInspect, "target")) and type(InspectUnit) == "function" then
         pcall(InspectUnit, "target")
         if win and win:IsShown() then return end
+        -- The game's inspect window can take a moment to come up (and ours
+        -- with it). Opening the plain view meanwhile showed for an instant:
+        -- a larger model and an empty card, then the real thing. Wait for
+        -- it; the plain view only if it has not come.
+        C_Timer.After(0.8, function()
+            if not (win and win:IsShown()) and UnitExists("target") then open("target", "plain") end
+        end)
+        return
     end
     open("target", "plain")
 end
@@ -696,8 +704,39 @@ function I:OnInit(db)
     C_Timer.After(1, function()
         local UFm = ns.modules.UnitFrames
         local tf = UFm and UFm.target
-        if not (tf and ns.Pill) or InCombatLockdown() or db.button == false then return end
-        local b = ns.Pill(tf, "Inspect", function() I:Open() end, { h = 16, font = 9, pad = 16, ring = true, dimIdle = true })
+        if not tf or InCombatLockdown() or db.button == false then return end
+        -- A small round button with a magnifying glass (it was a pill with
+        -- the word).
+        local b = CreateFrame("Button", nil, tf)
+        b:SetSize(22, 22)
+        local ring = b:CreateTexture(nil, "BACKGROUND")
+        ring:SetTexture(MEDIA .. "circle.tga")
+        ring:SetAllPoints()
+        ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+        local fill = b:CreateTexture(nil, "BORDER")
+        fill:SetTexture(MEDIA .. "circle.tga")
+        fill:SetPoint("TOPLEFT", 1, -1)
+        fill:SetPoint("BOTTOMRIGHT", -1, 1)
+        fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+        local icon = b:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(15, 15)
+        icon:SetPoint("CENTER")
+        -- (A new file: until the game has been restarted, the character icon.)
+        if icon:SetTexture(MEDIA .. "micro_inspect.tga") == false then icon:SetTexture(MEDIA .. "micro_character.tga") end
+        icon:SetVertexColor(DIM[1], DIM[2], DIM[3], 1)
+        b:SetScript("OnEnter", function(self)
+            icon:SetVertexColor(T.text[1], T.text[2], T.text[3], 1)
+            fill:SetVertexColor(0.13, 0.13, 0.15, 1)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Inspect", 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function()
+            icon:SetVertexColor(DIM[1], DIM[2], DIM[3], 1)
+            fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+            GameTooltip:Hide()
+        end)
+        b:SetScript("OnClick", function() I:Open() end)
         -- (Above its left end: to the left of it is the power orb.)
         b:SetPoint("BOTTOMLEFT", tf, "TOPLEFT", 14, 5)
         b:SetFrameLevel(tf:GetFrameLevel() + 5)
