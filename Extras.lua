@@ -1326,11 +1326,68 @@ end
 -- ── Node memory ───────────────────────────────────────────────────────────
 -- Where you have picked herbs and mined ore is remembered (the spot, what
 -- it was), and shown on the world map as dots (and, optionally, faintly on
--- the minimap): green for herbs, amber for ore. They are places a node has been, not nodes that are up now.
+-- the minimap). They are places a node has been, not nodes that are up now.
+-- Each kind of ore and herb has its own colour (0.1.528: all ore was amber
+-- and every herb green, so tin could not be told from copper), ore is a
+-- diamond and a herb a ring, and the world map lists what is on it: click
+-- a name there to see only that.
 -- MinimalUIDB.nodes[instance] = { { x, y, kind, name }, ... }; a node
 -- within 15 yards of one already known is the same node.
 local NODE_SPELL = { ["Mining"] = "ore", ["Herb Gathering"] = "herb", ["Herbalism"] = "herb" }
 local NODE_TINT = { ore = { 0.95, 0.72, 0.32 }, herb = { 0.50, 0.85, 0.45 } }
+-- By a word in the node's name, first match wins (so "dark iron" is ahead
+-- of "iron"). A name not here (another language, a new node) gets its
+-- kind's plain colour above.
+local NODE_HUES = {
+    ore = {
+        { "dark iron", 0.80, 0.30, 0.24 }, { "truesilver", 0.62, 0.95, 0.88 }, { "copper", 0.90, 0.52, 0.28 },
+        { "tin", 0.74, 0.86, 0.96 }, { "silver", 1.00, 1.00, 1.00 }, { "iron", 0.56, 0.60, 0.70 },
+        { "gold", 1.00, 0.84, 0.22 }, { "mithril", 0.42, 0.72, 1.00 }, { "thorium", 0.40, 0.88, 0.52 },
+        { "incendicite", 1.00, 0.45, 0.18 }, { "bloodstone", 0.78, 0.16, 0.22 }, { "indurium", 0.70, 0.55, 0.90 },
+    },
+    herb = {
+        { "silversage", 0.82, 0.88, 0.94 }, { "golden sansam", 1.00, 0.76, 0.28 }, { "black lotus", 0.50, 0.38, 0.62 },
+        { "purple lotus", 0.72, 0.40, 0.92 }, { "peacebloom", 0.98, 0.96, 0.84 }, { "silverleaf", 0.66, 0.90, 0.80 },
+        { "earthroot", 0.76, 0.56, 0.36 }, { "mageroyal", 0.92, 0.46, 0.78 }, { "briarthorn", 0.60, 0.74, 0.26 },
+        { "stranglekelp", 0.22, 0.68, 0.62 }, { "bruiseweed", 0.60, 0.52, 0.90 }, { "steelbloom", 0.64, 0.72, 0.82 },
+        { "grave moss", 0.46, 0.58, 0.42 }, { "kingsblood", 0.94, 0.34, 0.34 }, { "liferoot", 0.40, 0.88, 0.44 },
+        { "fadeleaf", 0.58, 0.76, 0.72 }, { "goldthorn", 0.96, 0.82, 0.34 }, { "whisker", 0.70, 0.80, 0.98 },
+        { "wintersbite", 0.80, 0.93, 1.00 }, { "firebloom", 1.00, 0.50, 0.22 }, { "sungrass", 0.96, 0.92, 0.44 },
+        { "blindweed", 0.58, 0.46, 0.64 }, { "mushroom", 0.74, 0.86, 0.92 }, { "gromsblood", 0.78, 0.20, 0.26 },
+        { "arthas", 0.66, 0.56, 0.98 }, { "dreamfoil", 0.48, 0.80, 0.98 }, { "plaguebloom", 0.68, 0.78, 0.24 },
+        { "icecap", 0.74, 0.96, 1.00 },
+    },
+}
+local hueOf = {} -- name -> its row above, or false
+local function nodeTint(n)
+    local name = n[4]
+    if type(name) == "string" then
+        local h = hueOf[name]
+        if h == nil then
+            h = false
+            local low = name:lower()
+            for _, row in ipairs(NODE_HUES[n[3]] or NODE_HUES.ore) do
+                if low:find(row[1], 1, true) then h = row break end
+            end
+            hueOf[name] = h
+        end
+        if h then return h[2], h[3], h[4] end
+    end
+    local c = NODE_TINT[n[3]] or NODE_TINT.ore
+    return c[1], c[2], c[3]
+end
+-- What a node is called in the list on the map, and what "only this" is
+-- kept as (EX.db.nodeOnly).
+local function nodeKey(n) return type(n[4]) == "string" and n[4] or (n[3] == "herb" and "Herb" or "Ore") end
+local function nodeTex(tex, kind)
+    local path = MEDIA .. (kind == "ore" and "micro_node_ore.tga" or "micro_node.tga")
+    if tex.__path == path then return end
+    tex.__path = path
+    -- (The diamond is a new file: until the game has been restarted once,
+    -- the ring stands in.)
+    if tex:SetTexture(path) == false then tex:SetTexture(MEDIA .. "micro_node.tga") end
+end
+local nodeOnlyRev = 0
 local YARDS_OUT = { 466.67, 400, 333.33, 266.67, 200, 133.33 }
 local YARDS_IN = { 300, 240, 180, 120, 80, 50 }
 local function playerPos()
@@ -1359,7 +1416,6 @@ local function buildNodeMap(db)
             d = CreateFrame("Frame", nil, layer)
             d.tex = d:CreateTexture(nil, "OVERLAY")
             d.tex:SetAllPoints()
-            d.tex:SetTexture(MEDIA .. "micro_node.tga") -- a dot in a ring
             -- Hover only: clicks go through to the map.
             d:EnableMouse(true)
             if d.SetMouseClickEnabled then pcall(d.SetMouseClickEnabled, d, false) end
@@ -1374,7 +1430,64 @@ local function buildNodeMap(db)
         end
         return d
     end
-    local lastMap, lastRev, lastScale, lastW
+    -- What is on the open map, listed up its lower left corner: a pill for
+    -- each kind with its colour and how many. Click one to see only that
+    -- (larger, brighter), click it again for everything.
+    local host = WM.ScrollContainer or WM
+    local holder = CreateFrame("Frame", nil, host)
+    holder:SetAllPoints()
+    holder:SetFrameLevel(math.min(9000, canvas:GetFrameLevel() + 2600))
+    local rows, counts, order = {}, {}, {}
+    local function rowClick(self)
+        local same = EX.db.nodeOnly == self.key
+        EX.db.nodeOnly = (not same) and self.key or nil
+        EX.db.nodeOnlyKind = (not same) and self.kind or nil
+        nodeOnlyRev = nodeOnlyRev + 1
+    end
+    local function legend()
+        wipe(counts); wipe(order)
+        for i = 3, #placed, 3 do
+            local n = placed[i]
+            local k = nodeKey(n)
+            local c = counts[k]
+            if not c then c = { n = 0, node = n, key = k }; counts[k] = c; order[#order + 1] = c end
+            c.n = c.n + 1
+        end
+        local only = EX.db.nodeOnly
+        if only and not counts[only] then -- (asked for, none on this map: say so)
+            order[#order + 1] = { n = 0, key = only, node = { 0, 0, EX.db.nodeOnlyKind or "ore", only } }
+        end
+        table.sort(order, function(x, y)
+            if x.node[3] ~= y.node[3] then return x.node[3] == "ore" end
+            return x.key < y.key
+        end)
+        local shown = math.min(#order, 16)
+        for i = 1, shown do
+            local c = order[i]
+            local r = rows[i]
+            if not r then
+                r = ns.Pill(holder, "", rowClick, { h = 18, font = 10, pad = 36, ring = true, dimIdle = true })
+                r.__muiSkin = true
+                r.dot = r:CreateTexture(nil, "OVERLAY")
+                r.dot:SetSize(13, 13)
+                r.dot:SetPoint("LEFT", 5, 0)
+                r.fs:ClearAllPoints()
+                r.fs:SetPoint("CENTER", 7, 0)
+                rows[i] = r
+            end
+            r.key, r.kind = c.key, c.node[3]
+            nodeTex(r.dot, c.node[3])
+            r.dot:SetVertexColor(nodeTint(c.node))
+            r:SetLabel(c.key .. "  " .. c.n)
+            r.selected = (c.key == only)
+            r:Repaint()
+            r:ClearAllPoints()
+            r:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38 + 26 + (shown - i) * 21)
+            r:Show()
+        end
+        for i = shown + 1, #rows do rows[i]:Hide() end
+    end
+    local lastMap, lastRev, lastScale, lastW, lastOnly
     local function place()
         local mapID = WM:GetMapID()
         local cw, ch = canvas:GetSize()
@@ -1399,23 +1512,32 @@ local function buildNodeMap(db)
                 end
             end
             if MinimalUIDB then MinimalUIDB.nodemap = { map = mapID, known = seenAny, shown = #placed / 3 } end
+            lastOnly = nil
+        end
+        if nodeOnlyRev ~= lastOnly then
+            lastOnly, lastW = nodeOnlyRev, nil
+            pcall(legend)
         end
         if cw == lastW and scale == lastScale then return end
         lastW, lastScale = cw, scale
         -- The canvas grows as you zoom in: the dots keep their size on screen.
-        local size = 20 / scale -- (the ring's width; the dot inside is about 6)
+        local only = EX.db.nodeOnly
+        local size = (only and 26 or 20) / scale -- (the ring's width; the dot inside is about 6)
         local used = 0
         for i = 1, #placed, 3 do
-            used = used + 1
-            local d = dotAt(used)
             local n = placed[i + 2]
-            local c = NODE_TINT[n[3]] or NODE_TINT.ore
-            d.kind, d.name = n[3], n[4]
-            d.tex:SetVertexColor(c[1], c[2], c[3], 0.62)
-            d:SetSize(size, size)
-            d:ClearAllPoints()
-            d:SetPoint("CENTER", canvas, "TOPLEFT", placed[i] * cw, -placed[i + 1] * ch)
-            d:Show()
+            if not only or nodeKey(n) == only then
+                used = used + 1
+                local d = dotAt(used)
+                local r, g, b = nodeTint(n)
+                d.kind, d.name = n[3], n[4]
+                nodeTex(d.tex, n[3])
+                d.tex:SetVertexColor(r, g, b, only and 1 or 0.8)
+                d:SetSize(size, size)
+                d:ClearAllPoints()
+                d:SetPoint("CENTER", canvas, "TOPLEFT", placed[i] * cw, -placed[i + 1] * ch)
+                d:Show()
+            end
         end
         for i = used + 1, #pool do pool[i]:Hide() end
     end
@@ -1428,11 +1550,11 @@ local function buildNodeMap(db)
     end)
     -- On the map itself, a pill to hide them and bring them back (it names
     -- what a click will do). Kept between sessions.
-    local host = WM.ScrollContainer or WM
     local pill
     local function sync()
         local on = EX.db.nodesShown ~= false
         layer:SetShown(on)
+        holder:SetShown(on)
         if on then acc = 1 end
         if pill then pill:SetLabel(on and "Hide nodes" or "Show nodes") end
     end
@@ -1506,7 +1628,7 @@ local function buildNodes()
         end
         return d
     end
-    local lx, ly, lz, lf
+    local lx, ly, lz, lf, lr
     local acc = 0
     layer:SetScript("OnUpdate", function(_, dt)
         acc = acc + dt
@@ -1520,8 +1642,10 @@ local function buildNodes()
             local rotate = GetCVar and GetCVar("rotateMinimap") == "1"
             local facing = rotate and GetPlayerFacing and GetPlayerFacing() or 0
             if secret(facing) or type(facing) ~= "number" then facing = 0 end
-            if not dirty and x == lx and y == ly and zoom == lz and facing == lf then return end
-            dirty, lx, ly, lz, lf = false, x, y, zoom, facing
+            if not dirty and x == lx and y == ly and zoom == lz and facing == lf and nodeOnlyRev == lr then return end
+            dirty, lx, ly, lz, lf, lr = false, x, y, zoom, facing, nodeOnlyRev
+            -- (The map's "only this" holds here too.)
+            local only = EX.db.nodeOnly
             local indoors = IsIndoors and IsIndoors()
             local yards = ((indoors and YARDS_IN or YARDS_OUT)[(num(zoom) and zoom or 0) + 1] or 466.67) / 2
             local half = Minimap:GetWidth() / 2
@@ -1529,12 +1653,13 @@ local function buildNodes()
             local reach = (yards * 0.94) ^ 2
             for _, n in ipairs(list) do
                 local dx, dy = x - n[1], y - n[2]
-                if dx * dx + dy * dy < reach then
+                if dx * dx + dy * dy < reach and (not only or nodeKey(n) == only) then
                     if rotate then dx, dy = dx * cos - dy * sin, dx * sin + dy * cos end
                     used = used + 1
                     local d = dotAt(used)
-                    local c = NODE_TINT[n[3]] or NODE_TINT.ore
-                    d:SetVertexColor(c[1], c[2], c[3], 0.55)
+                    local r, g, b = nodeTint(n)
+                    d:SetVertexColor(r, g, b, only and 0.95 or 0.7)
+                    d:SetSize(only and 7 or 5, only and 7 or 5)
                     d:ClearAllPoints()
                     d:SetPoint("CENTER", Minimap, "CENTER", dx / yards * half, -dy / yards * half)
                     d:Show()

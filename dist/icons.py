@@ -295,6 +295,9 @@ def icons():
     I['eye'] = Icon().arc(12, 15.9, 8.9, 26, 154, w=2.0).arc(12, 8.1, 8.9, 206, 334, w=2.0)
     # A remembered gathering node on the world map: a dot in a thin ring.
     I['node'] = Icon().dot(12, 12, 3.4).ring(12, 12, 8.6, w=1.6)
+    # The same for ore: a diamond in a thin diamond (a herb keeps the ring).
+    I['node_ore'] = (Icon().line([(12, 2.6), (21.4, 12), (12, 21.4), (2.6, 12)], close=True, w=1.6)
+                     .line([(12, 10.4), (13.6, 12), (12, 13.6), (10.4, 12)], close=True, w=4.0))
     return I
 
 
