@@ -19,6 +19,8 @@ local T = ns.Theme
 --          gnoll, a troll, a human... and still the one creature to the
 --          game, with one set of numbers),
 --     hp = { [level] = health }         its full health at that level,
+--     he = { [level] = health worked out from your damage (the least seen) },
+--     hn = { [level] = kills that went into he }   (0.1.577, below),
 --     c  = { [spell name] = spell id or true }   what it casts (16),
 --     hit = { [attack name] = hardest hit on you } (from death recaps),
 --     q  = { { t = what it said, k = "yell" / "emote" / nil (said),
@@ -129,6 +131,15 @@ local function view(id)
                 if have == nil or have == true or (type(val) == "number" and type(have) == "number" and val > have) then t[k] = val end
             end
             v[key] = t
+        end
+    end
+    if own.he or sh.he then
+        v.he, v.hn = {}, {}
+        for _, src in ipairs({ sh, own }) do
+            for l, h in pairs(src.he or {}) do
+                if not v.he[l] or h < v.he[l] then v.he[l] = h end
+                v.hn[l] = (v.hn[l] or 0) + (src.hn and src.hn[l] or 1)
+            end
         end
     end
     if own.q or sh.q then
@@ -255,6 +266,12 @@ local function observe(unit)
     -- Its full health: only out of a fight will the game say (a hidden
     -- value otherwise), so it is asked again each time it is looked at.
     local hp = call(UnitHealthMax, unit)
+    if first and MinimalUIDB then
+        local dg = MinimalUIDB.hpdiag or {}
+        MinimalUIDB.hpdiag = dg
+        local key = (secret(hp) and "hidden" or type(hp)) .. (InCombatLockdown() and ", in a fight" or ", out of a fight")
+        dg[key] = (dg[key] or 0) + 1
+    end
     if okLvl and plain(hp) and hp > 0 then
         r.hp = r.hp or {}
         if (r.hp[lvl] or 0) < hp then r.hp[lvl] = hp; new = true end
@@ -318,6 +335,7 @@ local function noteCast(unit, spellID)
 end
 
 local seenDead, seenLoot, nDead, nLoot = {}, {}, 0, 0
+local fightKills = {} -- (what died to you in the fight going on)
 local function noteDeath()
     if not isTrue(call(UnitIsDead, "target")) then return end
     local id, guid = npcID("target")
@@ -328,7 +346,59 @@ local function noteDeath()
     local r = record(id, true)
     r.k = (r.k or 0) + 1
     r.lk = (r.lk or 0) + 1
+    local lvl = call(UnitLevel, "target")
+    fightKills[#fightKills + 1] = { id = id, lvl = plain(lvl) and lvl > 0 and lvl or nil }
     changed(id)
+end
+
+-- Health, worked out (0.1.577). The game hides a creature's health from
+-- addons, so it is never simply read. But its own damage meter keeps your
+-- running total, which can be read between fights: what it went up by in
+-- a fight where you (and your pet) killed exactly one creature, alone, is
+-- about that creature's health. A little over (the last blow's excess),
+-- or under if it was already hurt or someone helped, so the least of the
+-- samples is kept and it is shown as "about".
+local dmgBefore, petBefore
+local function dmgTotal()
+    local get = C_DamageMeter and C_DamageMeter.GetCombatSessionSourceFromType
+    if not get then return end
+    local sum = 0
+    local pet = call(UnitGUID, "pet")
+    for _, g in ipairs({ call(UnitGUID, "player"), pet }) do
+        if str(g) then
+            local src = call(get, 0, 0, g)
+            if type(src) == "table" then
+                local t = src.totalAmount
+                if secret(t) then return end
+                if type(t) == "number" then sum = sum + t end
+            end
+        end
+    end
+    return sum, str(pet) and pet or "none"
+end
+local function fightStart()
+    wipe(fightKills)
+    local ok, t, pet = pcall(dmgTotal)
+    if ok and plain(t) then dmgBefore, petBefore = t, pet end
+end
+local function fightEnd()
+    if InCombatLockdown() then return end
+    local ok, now, pet = pcall(dmgTotal)
+    if not ok then now = nil end
+    if plain(now) and plain(dmgBefore) and pet == petBefore and #fightKills == 1
+        and not (IsInGroup and isTrue(call(IsInGroup))) then
+        local k = fightKills[1]
+        local d = math.floor(now - dmgBefore + 0.5)
+        local r = record(k.id)
+        if r and k.lvl and d > 0 and not (r.hp and r.hp[k.lvl]) then
+            r.he, r.hn = r.he or {}, r.hn or {}
+            if not r.he[k.lvl] or d < r.he[k.lvl] then r.he[k.lvl] = d end
+            r.hn[k.lvl] = (r.hn[k.lvl] or 0) + 1
+            changed(k.id)
+        end
+    end
+    if plain(now) then dmgBefore, petBefore = now, pet end
+    wipe(fightKills)
 end
 
 -- Its loot table (0.1.569): every item on every corpse you open, and how
@@ -512,13 +582,34 @@ function B.Rows(rows, id, full)
     end
     if r.kd then stat(rows, "Killed you", string.format("%d", r.kd), RED) end
     -- health, by level
-    if r.hp and next(r.hp) then
-        local lv = {}
-        for l in pairs(r.hp) do lv[#lv + 1] = l end
+    do
+        local seenLv, lv = {}, {}
+        for l in pairs(r.hp or {}) do seenLv[l] = true end
+        for l in pairs(r.he or {}) do seenLv[l] = true end
+        for l in pairs(seenLv) do lv[#lv + 1] = l end
         table.sort(lv)
-        for _, l in ipairs(lv) do stat(rows, "Health at " .. l, BreakUpLargeNumbers and BreakUpLargeNumbers(r.hp[l]) or tostring(r.hp[l])) end
-    else
-        rows[#rows + 1] = { kind = "stat", label = "Health", value = "not learned yet", color = T.textDim }
+        local function big(n) return BreakUpLargeNumbers and BreakUpLargeNumbers(n) or tostring(n) end
+        for _, l in ipairs(lv) do
+            if r.hp and r.hp[l] then
+                stat(rows, "Health at " .. l, big(r.hp[l]))
+            else
+                local n = r.hn and r.hn[l] or 1
+                rows[#rows + 1] = { kind = "stat", label = "Health at " .. l, value = "about " .. big(r.he[l]),
+                    tooltip = function(tip)
+                        tip:SetText("Health at level " .. l, 1, 1, 1)
+                        tip:AddLine("The game hides a creature's health from addons. This is worked out from the damage it took to kill one alone ("
+                            .. n .. (n == 1 and " kill" or " kills") .. " so far; the least is kept).", 0.86, 0.86, 0.89, true)
+                    end }
+            end
+        end
+        if #lv == 0 then
+            rows[#rows + 1] = { kind = "stat", label = "Health", value = "not learned yet", color = T.textDim,
+                tooltip = function(tip)
+                    tip:SetText("Health", 1, 1, 1)
+                    tip:AddLine("The game hides a creature's health from addons. It is worked out when you kill one by yourself, in a fight with nothing else in it.",
+                        0.86, 0.86, 0.89, true)
+                end }
+        end
     end
     -- what it does
     local names = {}
@@ -1095,7 +1186,7 @@ function B:OnInit(db)
     end)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED", "LOOT_OPENED",
-                         "PLAYER_REGEN_ENABLED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
+                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
                          "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL", "CHAT_MSG_MONSTER_EMOTE" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
@@ -1106,6 +1197,9 @@ function B:OnInit(db)
             pcall(noteSpeech, SPEECH[e] ~= "say" and SPEECH[e] or nil, a1, a2, a3)
             return
         end
+        if e == "PLAYER_REGEN_DISABLED" then pcall(fightStart) return end
+        if e == "PLAYER_ENTERING_WORLD" then C_Timer.After(3, function() if not InCombatLockdown() then pcall(fightStart) end end) return end
+        if e == "PLAYER_REGEN_ENABLED" then C_Timer.After(0.6, function() pcall(fightEnd) end) end
         if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target"); pcall(noteLook)
         elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover")
         elseif e == "NAME_PLATE_UNIT_ADDED" then if type(a1) == "string" then pcall(observe, a1) end
