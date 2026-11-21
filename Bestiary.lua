@@ -20,7 +20,10 @@ local T = ns.Theme
 --     q  = { { t = what it said, k = "yell" / "emote" / nil (said),
 --              l = language, u = true when you did not understand it } } (12),
 --     k  = kills,           kd = times it killed you,
---     d  = { [itemID] = times }         quest items and green or better (8)
+--     ln = corpses of it you have looted,
+--     l  = { [itemID] = corpses that had it }   its loot table (60 items),
+--     d  = { [itemID] = times }         older tallies, from before corpses
+--                                       were counted (quest items, green+)
 --   }
 -- Where it comes from: whatever you target, point at, or see a nameplate
 -- of (name, level, kind, health when the game will say it); cast bars on
@@ -172,26 +175,41 @@ local function noteDeath()
     changed(id)
 end
 
+-- Its loot table (0.1.569): every item on every corpse you open, and how
+-- many corpses of it you have opened, so each item has a rate: corpses
+-- that had it out of corpses looted. A corpse is counted once (seenLoot by
+-- its id), an item once per corpse whatever the stack. A slot can come
+-- from several corpses at once (looting a heap): each is credited.
+-- A corpse with nothing on it can't be opened, so it is never counted:
+-- the rates are "of those that had anything", a little high.
+local function creditLoot(item, guid, ...)
+    if guid == nil then return end
+    local id = npcOf(guid)
+    if id then
+        local r = record(id, true)
+        if not seenLoot[guid] then
+            if nLoot > 600 then wipe(seenLoot); nLoot = 0 end
+            seenLoot[guid] = {}; nLoot = nLoot + 1
+            r.ln = (r.ln or 0) + 1
+            changed(id)
+        end
+        local had = seenLoot[guid]
+        if item and not had[item] then
+            had[item] = true
+            r.l = r.l or {}
+            if r.l[item] or count(r.l) < 60 then r.l[item] = (r.l[item] or 0) + 1; changed(id) end
+        end
+    end
+    return creditLoot(item, select(2, ...)) -- (guid, quantity, guid, quantity...)
+end
 local function noteLoot()
-    if not (GetNumLootItems and GetLootSourceInfo and GetLootSlotLink and GetLootSlotInfo) then return end
+    if not (GetNumLootItems and GetLootSourceInfo and GetLootSlotLink) then return end
     local n = call(GetNumLootItems)
     if not plain(n) then return end
     for slot = 1, n do
         local link = call(GetLootSlotLink, slot)
-        local _, _, _, _, quality, _, isQuest = call(GetLootSlotInfo, slot)
-        local guid = call(GetLootSourceInfo, slot)
-        local id = npcOf(guid)
-        local item = str(link) and tonumber(link:match("item:(%d+)"))
-        if id and item and (isTrue(isQuest) or (plain(quality) and quality >= 2)) then
-            local key = guid .. ":" .. item
-            if not seenLoot[key] then
-                if nLoot > 300 then wipe(seenLoot); nLoot = 0 end
-                seenLoot[key] = true; nLoot = nLoot + 1
-                local r = record(id, true)
-                r.d = r.d or {}
-                if r.d[item] or count(r.d) < 8 then r.d[item] = (r.d[item] or 0) + 1; changed(id) end
-            end
-        end
+        local item = str(link) and tonumber(link:match("item:(%d+)")) or nil
+        pcall(function() creditLoot(item, GetLootSourceInfo(slot)) end)
     end
 end
 
@@ -336,18 +354,38 @@ function B.Rows(rows, id, full)
                 tooltip = sid and function(tip) pcall(tip.SetSpellByID, tip, sid) end or nil }
         end
     end
-    if r.d and next(r.d) then
-        head(rows, "Drops", "micro_journal.tga")
+    if (r.l and next(r.l)) or (r.d and next(r.d)) then
+        local ln = r.ln or 0
+        head(rows, ln > 0 and ("Loot   (" .. ln .. (ln == 1 and " corpse)" or " corpses)")) or "Loot", "micro_journal.tga")
         local ids = {}
-        for item in pairs(r.d) do ids[#ids + 1] = item end
-        table.sort(ids)
+        for item in pairs(r.l or {}) do ids[#ids + 1] = item end
+        for item in pairs(r.d or {}) do if not (r.l and r.l[item]) then ids[#ids + 1] = item end end
+        local function share(item) return r.l and r.l[item] or -1 end
+        table.sort(ids, function(a, b) if share(a) ~= share(b) then return share(a) > share(b) end return a < b end)
         for _, item in ipairs(ids) do
             local _, link = nil, nil
             if C_Item and C_Item.GetItemInfo then _, link = call(C_Item.GetItemInfo, item) end
             local icon = C_Item and C_Item.GetItemIconByID and call(C_Item.GetItemIconByID, item)
+            local n = r.l and r.l[item]
+            local value, color
+            if n and ln > 0 then
+                value = string.format("%d%%   %d of %d", math.floor(n / ln * 100 + 0.5), n, ln)
+            else
+                value, color = "seen" .. (r.d[item] > 1 and (" x" .. r.d[item]) or ""), T.textDim
+            end
             rows[#rows + 1] = { kind = "stat", label = str(link) and link or ("Item " .. item),
-                labelColor = T.text, icon = icon, value = r.d[item] > 1 and ("x" .. r.d[item]) or "",
-                tooltip = function(tip) pcall(tip.SetHyperlink, tip, "item:" .. item) end }
+                labelColor = T.text, icon = icon, value = value, color = color,
+                tooltip = function(tip)
+                    pcall(tip.SetHyperlink, tip, "item:" .. item)
+                    tip:AddLine(" ")
+                    if n and ln > 0 then
+                        tip:AddLine(string.format("On %d of the %d corpses you have looted.", n, ln), 0.6, 0.6, 0.65, true)
+                        if ln < 20 then tip:AddLine("Few corpses so far: the rate will settle.", 0.6, 0.6, 0.65, true) end
+                    else
+                        tip:AddLine("Seen before corpses were counted: no rate yet.", 0.6, 0.6, 0.65, true)
+                    end
+                    tip:Show()
+                end }
         end
     end
     if r.q and #r.q > 0 then
@@ -410,7 +448,10 @@ local function haystack(id, r)
     for name in pairs(r.c or {}) do bits[#bits + 1] = name end
     for name in pairs(r.hit or {}) do bits[#bits + 1] = name end
     for _, line in ipairs(r.q or {}) do bits[#bits + 1] = line.t end
-    for item in pairs(r.d or {}) do
+    local drops = {}
+    for item in pairs(r.d or {}) do drops[item] = true end
+    for item in pairs(r.l or {}) do drops[item] = true end
+    for item in pairs(drops) do
         local name = C_Item and C_Item.GetItemNameByID and call(C_Item.GetItemNameByID, item)
         if str(name) then bits[#bits + 1] = name end
     end
