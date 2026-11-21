@@ -1108,7 +1108,9 @@ local function buildWaypoint()
         if secret(valid) or not valid then sx = nil return end
         local dist = NV.GetDistance and NV.GetDistance()
         local a = self:GetAlpha()
-        if not secret(a) and a < 0.9 and not (num(dist) and dist < ARRIVED) then self:SetAlpha(1) end
+        -- (Every frame, not only once it has sunk: the game pulls it down a
+        -- little each frame, and it shimmered between 0.9 and 1.)
+        if not secret(a) and a < 1 and not (num(dist) and dist < ARRIVED) then self:SetAlpha(1) end
         local clamped = NV.WasClampedToScreen and NV.WasClampedToScreen()
         if secret(clamped) or not (clamped or (num(dist) and dist > FAR)) then sx = nil return end
         local x, y = self:GetCenter()
