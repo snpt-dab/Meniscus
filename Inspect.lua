@@ -20,12 +20,8 @@ local T = ns.Theme
 --
 -- What you have seen of a creature: one small record for each kind of
 -- creature (not each one), written only when something happens:
---   MinimalUIDB.bestiary[npcID] = { n = name, k = kills, lo, hi = levels
---     seen, c = { [spell name] = true } (casts with a cast bar, 12 at most),
---     d = { [itemID] = times } (quest items and green or better, 8) }
--- A kill is one that died while you had it targeted and it was yours.
--- There is no combat log for addons here, so what it does without a cast
--- bar is not known.
+--   MinimalUIDB.bestiary[npcID]: kept and described in Bestiary.lua (since
+--   0.1.560; it began here).
 
 local I = ns:NewModule("Inspect", { enabled = true })
 
@@ -70,89 +66,15 @@ local function qualityColor(q)
 end
 
 -- ── What you have seen of a creature ─────────────────────────────────────
-local function npcOf(guid)
-    if type(guid) ~= "string" or secret(guid) then return end
-    local kind, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)%-")
-    if kind == "Creature" or kind == "Vehicle" then return tonumber(id) end
+-- (Kept by Bestiary.lua, which is loaded first: the records, and the rows
+-- that show one.)
+local Bst = ns.Bestiary
+if not Bst then -- (a new file: not there until the game is restarted)
+    local none = function() end
+    Bst = { npcID = none, record = none, OnChange = none, Open = none, Rows = function(rows) return rows end }
 end
-local function npcID(unit)
-    local g = call(UnitGUID, unit)
-    local id = npcOf(g)
-    if id then return id, g end
-end
-local function record(id, make)
-    if not (id and MinimalUIDB) then return end
-    local all = MinimalUIDB.bestiary
-    if not all then
-        if not make then return end
-        all = {}; MinimalUIDB.bestiary = all
-    end
-    local r = all[id]
-    if not r and make then r = {}; all[id] = r end
-    return r
-end
-local function count(t) local n = 0; for _ in pairs(t) do n = n + 1 end return n end
+local npcID, record = Bst.npcID, Bst.record
 local function isTrue(v) return not secret(v) and v == true end
-local seenDead, seenLoot, nDead, nLoot = {}, {}, 0, 0
-local function noteTarget()
-    local id = npcID("target")
-    if not id or not isTrue(call(UnitCanAttack, "player", "target")) then return end
-    local r = record(id, true)
-    local name = call(UnitName, "target")
-    if type(name) == "string" and not secret(name) then r.n = name end
-    local lvl = call(UnitLevel, "target")
-    if plain(lvl) and lvl > 0 then
-        if not r.lo or lvl < r.lo then r.lo = lvl end
-        if not r.hi or lvl > r.hi then r.hi = lvl end
-    end
-end
-local function noteCast(spellID)
-    local id = npcID("target")
-    if not id then return end
-    local name
-    if plain(spellID) and C_Spell and C_Spell.GetSpellName then name = call(C_Spell.GetSpellName, spellID) end
-    if type(name) ~= "string" or secret(name) then
-        name = call(UnitCastingInfo, "target")
-        if type(name) ~= "string" or secret(name) then name = call(UnitChannelInfo, "target") end
-    end
-    if type(name) ~= "string" or secret(name) or name == "" then return end
-    local r = record(id, true)
-    r.c = r.c or {}
-    if not r.c[name] and count(r.c) < 12 then r.c[name] = true; return true end
-end
-local function noteDeath()
-    if not isTrue(call(UnitIsDead, "target")) then return end
-    local id, guid = npcID("target")
-    if not id or seenDead[guid] then return end
-    if isTrue(call(UnitIsTapDenied, "target")) then return end
-    if nDead > 300 then wipe(seenDead); nDead = 0 end
-    seenDead[guid] = true; nDead = nDead + 1
-    local r = record(id, true)
-    r.k = (r.k or 0) + 1
-    return true
-end
-local function noteLoot()
-    if not (GetNumLootItems and GetLootSourceInfo and GetLootSlotLink and GetLootSlotInfo) then return end
-    local n = call(GetNumLootItems)
-    if not plain(n) then return end
-    for slot = 1, n do
-        local link = call(GetLootSlotLink, slot)
-        local _, _, _, _, quality, _, isQuest = call(GetLootSlotInfo, slot)
-        local guid = call(GetLootSourceInfo, slot)
-        local id = npcOf(guid)
-        local item = type(link) == "string" and not secret(link) and tonumber(link:match("item:(%d+)"))
-        if id and item and (isTrue(isQuest) or (plain(quality) and quality >= 2)) then
-            local key = guid .. ":" .. item
-            if not seenLoot[key] then
-                if nLoot > 300 then wipe(seenLoot); nLoot = 0 end
-                seenLoot[key] = true; nLoot = nLoot + 1
-                local r = record(id, true)
-                r.d = r.d or {}
-                if r.d[item] or count(r.d) < 8 then r.d[item] = (r.d[item] or 0) + 1 end
-            end
-        end
-    end
-end
 
 -- ── Window ────────────────────────────────────────────────────────────────
 local win, tiles = nil, {}
@@ -338,32 +260,11 @@ local function fillCreature(unit)
         note(rows, InCombatLockdown() and "Not readable in a fight" or "Nothing")
     end
     local id = npcID(unit)
-    local r = id and record(id)
     head(rows, "What you have seen", "micro_journal.tga")
-    if not r then
-        note(rows, id and "Nothing yet: it fills in as you fight it" or "Nothing is kept for this one")
-        return rows
-    end
-    stat(rows, "Kills", string.format("%d", r.k or 0))
-    if r.lo then stat(rows, "Levels", r.lo == r.hi and tostring(r.lo) or (r.lo .. " to " .. r.hi)) end
-    if r.c and next(r.c) then
-        local names = {}
-        for name in pairs(r.c) do names[#names + 1] = name end
-        table.sort(names)
-        for n, name in ipairs(names) do stat(rows, n == 1 and "Casts" or "", name) end
-    end
-    if r.d and next(r.d) then
-        local ids = {}
-        for item in pairs(r.d) do ids[#ids + 1] = item end
-        table.sort(ids)
-        for _, item in ipairs(ids) do
-            local _, link = nil, nil
-            if C_Item and C_Item.GetItemInfo then _, link = call(C_Item.GetItemInfo, item) end
-            local icon = C_Item and C_Item.GetItemIconByID and call(C_Item.GetItemIconByID, item)
-            rows[#rows + 1] = { kind = "stat", label = type(link) == "string" and link or ("Item " .. item),
-                labelColor = T.text, icon = icon, value = r.d[item] > 1 and ("x" .. r.d[item]) or "",
-                tooltip = function(tip) pcall(tip.SetHyperlink, tip, "item:" .. item) end }
-        end
+    Bst.Rows(rows, id)
+    if id and record(id) then
+        rows[#rows + 1] = { kind = "stat", label = "Open the bestiary", labelColor = T.accent, value = "",
+            onClick = function() Bst:Open(id) end }
     end
     return rows
 end
@@ -659,29 +560,20 @@ function I:OnInit(db)
         pcall(ev.RegisterUnitEvent, ev, e, "target")
     end
     local dirty, acc = false, 0
+    Bst.OnChange(function() if win and win:IsShown() and I.mode == "plain" then dirty = true end end)
     ev:SetScript("OnEvent", function(_, e, arg, _, spellID)
         if e == "ADDON_LOADED" then hookFrame(); return end
         -- What is seen of creatures is noted whether the window is open or not.
         local shown = win and win:IsShown()
         if e == "PLAYER_TARGET_CHANGED" then
-            pcall(noteTarget)
             -- (Showing a creature, or someone out of reach: it follows your target.)
             if shown and I.mode == "plain" then
                 if UnitExists("target") then open("target", "plain") else win:Hide() end
             end
             return
-        elseif e == "LOOT_OPENED" then
-            pcall(noteLoot)
-            if shown and I.mode == "plain" then dirty = true end
-            return
-        elseif e == "UNIT_SPELLCAST_START" or e == "UNIT_SPELLCAST_CHANNEL_START" then
-            local ok, new = pcall(noteCast, spellID)
-            if ok and new and shown and I.mode == "plain" then dirty = true end
-            return
-        elseif e == "UNIT_HEALTH" then
-            local ok, new = pcall(noteDeath)
-            if ok and new and shown and I.mode == "plain" then dirty = true end
-            return
+        elseif e == "LOOT_OPENED" or e == "UNIT_SPELLCAST_START" or e == "UNIT_SPELLCAST_CHANNEL_START"
+            or e == "UNIT_HEALTH" then
+            return -- (the bestiary notes these, and says when a record changed: below)
         elseif e == "UNIT_AURA" or e == "UNIT_TARGET" then
             if shown and I.unit == "target" then dirty = true end
             return

@@ -240,6 +240,7 @@ function DR:Open(recapID)
         e.first = i == 1
         e.ago = (t0 and e.time) and math.abs(t0 - e.time) or nil
     end
+    if ns.Bestiary and ns.Bestiary.Recap then pcall(ns.Bestiary.Recap, data) end
     offset = 0
     local kb = data[1]
     local sh = win.shell

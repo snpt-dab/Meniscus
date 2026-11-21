@@ -373,6 +373,7 @@ local function makeList(parent, w, h, rowH, barW)
     function L:SetData(data) self.data = data; self:SetOffset(self.offset) end
     return L
 end
+C.MakeList = makeList -- (the bestiary's two lists)
 
 -- ── Gear tiles ────────────────────────────────────────────────────────────
 local tiles = {}

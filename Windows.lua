@@ -22,7 +22,7 @@ local MANAGED = {
     MinimalUICharacter = "left", MinimalUISpellbook = "left", MinimalUIQuestLog = "left",
     MinimalUIDialog = "left", MinimalUIMerchant = "left", MinimalUITrainer = "left",
     MinimalUIProfessions = "left", MinimalUIProfessionsBook = "left",
-    MinimalUIBank = "left", MinimalUIMail = "left",
+    MinimalUIBank = "left", MinimalUIMail = "left", MinimalUIBestiary = "left",
     MinimalUIInspect = "right", MinimalUIBags = "right",
     -- Blizzard windows we restyle in place.
     CollectionsJournal = "left", SocialUIFrame = "left", FriendsFrame = "left", CharacterFrame = "left",
