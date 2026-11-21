@@ -247,14 +247,14 @@ local function fillCreature(unit)
     local rows = {}
     head(rows, "About", "micro_character.tga")
     local kind = call(UnitCreatureType, unit)
-    if kind and (secret(kind) or kind ~= "") then stat(rows, "Type", kind) end
+    -- (Its type is in the header line; rank and disposition are icons now.)
     local family = call(UnitCreatureFamily, unit)
     if family and (secret(family) or family ~= "") then stat(rows, "Family", family) end
     local cls = call(UnitClassification, unit)
-    if type(cls) == "string" and not secret(cls) and RANK[cls] then stat(rows, "Rank", RANK[cls], T.accent) end
     if isTrue(call(UnitIsTapDenied, unit)) then stat(rows, "Claimed", "By someone else", DIM) end
     if isTrue(call(UnitIsDead, unit)) then stat(rows, "State", "Dead", DIM) end
     stat(rows, "Targeting", (call(UnitName, unit .. "target")))
+    if rows[#rows].kind == "header" then rows[#rows] = nil end -- (nothing to say under "About")
     -- (With none on it the section is left out; in a fight they can't be read, and it says so.)
     head(rows, "Buffs and debuffs", "micro_buff.tga")
     if auras(rows, unit, "HELPFUL", 16) + auras(rows, unit, "HARMFUL", 16) == 0 then
@@ -283,6 +283,12 @@ local function fillInfo(unit)
     end
     if beast then
         beast.list:SetData(fillCreature(unit))
+        if beast.strip then
+            -- (one row of icons or two: the list sits right under them)
+            local rowsOf = beast.strip:Set((npcID(unit)))
+            beast.list:ClearAllPoints()
+            beast.list:SetPoint("TOPLEFT", 2, -8 - (rowsOf > 0 and (rowsOf * 28 + 6) or 0))
+        end
         return
     end
     if isTrue(call(UnitIsPlayer, unit)) then rows, base, gear, res, buff = fillPlayer(unit) else rows = fillCreature(unit) end
@@ -493,7 +499,13 @@ local function build()
             beast:SetPoint("TOPLEFT", page, "TOPLEFT", W, 0)
             beast:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
             ns.RoundedRect(beast, -6, 0, 10, 0.085, 0.085, 0.095, 1)
-            local rowsFit = math.floor((ch - 16 - 30) / 20) -- (room for "Refresh" under the list)
+            -- (the bestiary's trait icons across the top, 0.1.594; the list under them)
+            local STRIP = Bst.MakeStrip and 62 or 0
+            local rowsFit = math.floor((ch - 16 - 30 - STRIP) / 20) -- (room for "Refresh" under the list)
+            if Bst.MakeStrip then
+                beast.strip = Bst.MakeStrip(beast, 8)
+                beast.strip:SetPoint("TOPLEFT", beast, "TOPLEFT", 14, -12)
+            end
             -- Refresh (0.1.583): shows whatever you have targeted now, and
             -- reads it again. For when the window has not followed.
             local rf = ns.Pill(beast, "Refresh", function()
@@ -501,7 +513,7 @@ local function build()
             end, { h = 22, pad = 22, minW = 0 })
             rf:SetPoint("BOTTOMRIGHT", beast, "BOTTOMRIGHT", -10, 8)
             beast.list = Cm.MakeList(beast, cw - 12, rowsFit * 20, 20, 100)
-            beast.list:SetPoint("TOPLEFT", 2, -8)
+            beast.list:SetPoint("TOPLEFT", 2, -8 - STRIP)
             beast:Hide()
             win.beast = beast
         end

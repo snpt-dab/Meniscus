@@ -1137,13 +1137,11 @@ function B.Rows(rows, id, full)
         end
     end
     -- what a kill is worth
-    if r.xp then stat(rows, "Experience", r.xp .. (r.xl and ("   at your level " .. r.xl) or "")) end
+    -- (Experience for a kill was a row: not wanted, 0.1.594. Reputation and
+    -- behavior are icons in the strip, in both windows, and no longer rows.)
     do
         local base = r.cb or math.max(r.lk or 0, r.ln or 0)
         if r.cn and base > 0 then stat(rows, "Coin per kill", coins(r.cn / base)) end
-    end
-    if not full then
-        for f, n in pairs(r.rep or {}) do stat(rows, "Reputation", f .. " " .. (n > 0 and "+" or "") .. n) end
     end
     -- what it does
     local names = {}
@@ -1227,11 +1225,19 @@ function B.Rows(rows, id, full)
             else
                 value, color = "seen" .. (r.d and (r.d[item] or 0) > 1 and (" x" .. r.d[item]) or ""), T.textDim
             end
+            -- (a quest item: marked as one, 0.1.594: "!" before the rate, in the quest gold)
+            local isQuest = false
+            if C_Item and C_Item.GetItemInfoInstant then
+                local _, _, _, _, _, classID = call(C_Item.GetItemInfoInstant, item)
+                isQuest = classID == 12
+            end
+            if isQuest then value = "|cfff2cc59Quest|r   " .. value end
             rows[#rows + 1] = { kind = "stat", label = str(link) and link or ("Item " .. item),
                 labelColor = T.text, icon = icon, value = value, color = color,
                 tooltip = function(tip)
                     pcall(tip.SetHyperlink, tip, "item:" .. item)
                     tip:AddLine(" ")
+                    if isQuest then tip:AddLine("A quest item: it only drops while you are on its quest.", 0.95, 0.80, 0.35, true) end
                     if n and ln > 0 then
                         tip:AddLine(string.format("On %d of %d kills%s.", n, ln, r.shared and ", yours and other players'" or ""), 0.6, 0.6, 0.65, true)
                         if ln < 20 then tip:AddLine("Few kills so far: the rate will settle.", 0.6, 0.6, 0.65, true) end
@@ -1258,30 +1264,6 @@ function B.Rows(rows, id, full)
             if not does[b] then does[b] = line; does[#does + 1] = b end
         else
             says[#says + 1] = line
-        end
-    end
-    local warns = {}
-    for name, kind in pairs(r.cc or {}) do warns[#warns + 1] = { name = name, word = CONTROL[kind] or kind } end
-    table.sort(warns, function(a, b) return a.name < b.name end)
-    if not full and (#does > 0 or #warns > 0) then -- (the bestiary's own window says these with icons)
-        head(rows, "Behavior", "micro_eye.tga")
-        for _, w in ipairs(warns) do
-            rows[#rows + 1] = { kind = "stat", label = w.word .. " you", labelColor = RED, value = w.name, color = T.textDim,
-                tooltip = function(tip)
-                    tip:SetText(w.word .. " you", 1, 1, 1)
-                    tip:AddLine("With " .. w.name .. ": you lose control of your character.", 0.86, 0.86, 0.89, true)
-                end }
-        end
-        for _, b in ipairs(does) do
-            local heard = does[b].t
-            if r.n then heard = heard:gsub("%%s", (r.n:gsub("%%", "%%%%"))) end
-            rows[#rows + 1] = { kind = "stat", wide = true, label = b[2], labelColor = T.text, value = "",
-                tooltip = function(tip)
-                    tip:SetText(b[2], 1, 1, 1)
-                    tip:AddLine(b[3], 0.86, 0.86, 0.89, true)
-                    tip:AddLine(" ")
-                    tip:AddLine("Seen as: " .. heard, 0.6, 0.6, 0.65, true)
-                end }
         end
     end
     if #says > 0 then
@@ -1560,47 +1542,61 @@ local function showModel(id, form)
     end
 end
 
-local function showTraits(id)
-    local list = id and B.Traits(id) or {}
-    for i = 1, math.max(#list, #win.traitBtns) do
-        local b, d = win.traitBtns[i], list[i]
-        if d and i <= 14 then
-            if not b then
-                b = CreateFrame("Button", nil, win.top)
-                b:SetSize(24, 24)
-                b.rim = b:CreateTexture(nil, "ARTWORK", nil, 0)
-                b.rim:SetTexture(MEDIA .. "circle.tga")
-                b.rim:SetAllPoints()
-                b.fill = b:CreateTexture(nil, "ARTWORK", nil, 1)
-                b.fill:SetTexture(MEDIA .. "circle.tga")
-                b.fill:SetPoint("TOPLEFT", 1.5, -1.5)
-                b.fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
-                b.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
-                b.icon = b:CreateTexture(nil, "OVERLAY")
-                b.icon:SetSize(14, 14)
-                b.icon:SetPoint("CENTER")
-                b:SetPoint("TOPLEFT", win.sub, "BOTTOMLEFT", ((i - 1) % 7) * 28, -10 - math.floor((i - 1) / 7) * 28)
-                b:SetScript("OnEnter", function(self)
-                    local d2 = self.d
-                    if not d2 then return end
-                    self.fill:SetVertexColor(0.13, 0.13, 0.15, 1)
-                    ns.TipAnchor(self)
-                    GameTooltip:SetText(d2.title, d2.c[1], d2.c[2], d2.c[3])
-                    if d2.text then GameTooltip:AddLine(d2.text, 0.86, 0.86, 0.89, true) end
-                    GameTooltip:Show()
-                end)
-                b:SetScript("OnLeave", function(self) self.fill:SetVertexColor(0.06, 0.06, 0.07, 1); GameTooltip:Hide() end)
-                win.traitBtns[i] = b
+-- The strip of trait icons, for either window: f:Set(id) fills it and
+-- says how many rows of icons it came to.
+function B.MakeStrip(parent, perRow)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(perRow * 28, 24)
+    f.btns = {}
+    function f:Set(id)
+        local list = id and B.Traits(id) or {}
+        local shown = 0
+        for i = 1, math.max(#list, #self.btns) do
+            local b, d = self.btns[i], list[i]
+            if d and i <= perRow * 2 then
+                if not b then
+                    b = CreateFrame("Button", nil, self)
+                    b:SetSize(24, 24)
+                    b.rim = b:CreateTexture(nil, "ARTWORK", nil, 0)
+                    b.rim:SetTexture(MEDIA .. "circle.tga")
+                    b.rim:SetAllPoints()
+                    b.fill = b:CreateTexture(nil, "ARTWORK", nil, 1)
+                    b.fill:SetTexture(MEDIA .. "circle.tga")
+                    b.fill:SetPoint("TOPLEFT", 1.5, -1.5)
+                    b.fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+                    b.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+                    b.icon = b:CreateTexture(nil, "OVERLAY")
+                    b.icon:SetSize(14, 14)
+                    b.icon:SetPoint("CENTER")
+                    b:SetPoint("TOPLEFT", self, "TOPLEFT", ((i - 1) % perRow) * 28, -math.floor((i - 1) / perRow) * 28)
+                    b:SetScript("OnEnter", function(btn)
+                        local d2 = btn.d
+                        if not d2 then return end
+                        btn.fill:SetVertexColor(0.13, 0.13, 0.15, 1)
+                        ns.TipAnchor(btn)
+                        GameTooltip:SetText(d2.title, d2.c[1], d2.c[2], d2.c[3])
+                        if d2.text then GameTooltip:AddLine(d2.text, 0.86, 0.86, 0.89, true) end
+                        GameTooltip:Show()
+                    end)
+                    b:SetScript("OnLeave", function(btn) btn.fill:SetVertexColor(0.06, 0.06, 0.07, 1); GameTooltip:Hide() end)
+                    self.btns[i] = b
+                end
+                b.d = d
+                b.icon:SetTexture(d.tex)
+                b.icon:SetVertexColor(d.c[1], d.c[2], d.c[3], 1)
+                b.rim:SetVertexColor(d.c[1] * 0.55, d.c[2] * 0.55, d.c[3] * 0.55, 1)
+                b:Show()
+                shown = i
+            elseif b then
+                b:Hide()
             end
-            b.d = d
-            b.icon:SetTexture(d.tex)
-            b.icon:SetVertexColor(d.c[1], d.c[2], d.c[3], 1)
-            b.rim:SetVertexColor(d.c[1] * 0.55, d.c[2] * 0.55, d.c[3] * 0.55, 1)
-            b:Show()
-        elseif b then
-            b:Hide()
         end
+        return math.ceil(shown / perRow)
     end
+    return f
+end
+local function showTraits(id)
+    if win.strip then win.strip:Set(id) end
 end
 
 function B:Pick(id)
@@ -1770,7 +1766,9 @@ local function build()
     win.sub:SetPoint("TOPLEFT", win.name, "BOTTOMLEFT", 0, -6)
     win.sub:SetPoint("RIGHT", top, "RIGHT", -12, 0)
     win.sub:SetWordWrap(true)
-    win.top, win.formPills, win.traitBtns = top, {}, {}
+    win.top, win.formPills = top, {}
+    win.strip = B.MakeStrip(top, 7)
+    win.strip:SetPoint("TOPLEFT", win.sub, "BOTTOMLEFT", 0, -10)
     -- "My target": the book opens on what you have targeted; this turns
     -- to it again without closing the window (0.1.583).
     local mine = ns.Pill(top, "My target", function()
