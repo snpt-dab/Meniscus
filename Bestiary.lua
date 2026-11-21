@@ -1206,10 +1206,8 @@ function B.Rows(rows, id, full)
                 tip:AddLine("About " .. coin .. " on each one you kill (averaged over " .. base .. (base == 1 and " kill)." or " kills)."), 0.86, 0.86, 0.89, true)
             end
         end
-        if ln > looted then
-            rows[#rows + 1] = { kind = "stat", label = "Nothing on it", labelColor = T.textDim, color = T.textDim,
-                value = string.format("%d%%", math.floor((ln - looted) / ln * 100 + 0.5)) }
-        end
+        -- (A row "Nothing on it  50%" stood here: not wanted, 0.1.605. Each
+        -- item's rate is out of kills already, empty corpses included.)
         local ids = {}
         for item in pairs(r.l or {}) do ids[#ids + 1] = item end
         for item in pairs(r.d or {}) do if not (r.l and r.l[item]) then ids[#ids + 1] = item end end
