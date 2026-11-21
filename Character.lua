@@ -1009,9 +1009,17 @@ local function statsData(unit)
         local lines = { "Each point makes you a little harder to hit and to critically hit, and adds to your dodge, parry and block." }
         local lvl = UnitLevel("player")
         if plain(lvl) then
-            local over = def - lvl * 5
-            lines[#lines + 1] = { "Against your level (" .. (lvl * 5) .. ")", string.format("%+d", over) }
-            if over ~= 0 then lines[#lines + 1] = { "Chance to be hit, crit", string.format("%+.2f%%", -over * 0.04) } end
+            -- (It read "Against your level (100)   -2", which said little.)
+            local full = lvl * 5
+            local over = def - full
+            lines[#lines + 1] = { "Yours", string.format("%d", def) }
+            lines[#lines + 1] = { "Full for level " .. lvl, string.format("%d", full) }
+            if over == 0 then
+                lines[#lines + 1] = "You are at full: an enemy of your level hits and crits you at the normal rate."
+            else
+                lines[#lines + 1] = string.format("You are %d %s, so an enemy of your level hits you and crits you %.2f%% %s often than normal.",
+                    math.abs(over), over < 0 and "short" or "over", math.abs(over) * 0.04, over < 0 and "more" or "less")
+            end
         end
         stat(rows, "Defense", string.format("%d", def), nil, statTip("Defense", lines))
     end

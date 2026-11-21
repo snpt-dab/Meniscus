@@ -424,6 +424,33 @@ function B:Refresh()
     end
 end
 
+-- The journal's two tabs (0.1.564): "Quests" and "Bestiary", in the same
+-- place on the header band of the quest log and of this window, the one
+-- you are on lit. They are two windows, each put away as the other comes
+-- up (in the same dock), so L opens the journal on Quests and the
+-- bestiary is one click from there.
+function B.JournalTabs(w, here)
+    if not B.db then return end -- (the bestiary is switched off)
+    local opts = { h = 22, pad = 22, minW = 0 }
+    local function go(which)
+        if which == here then return end
+        w:Hide()
+        if which == "bestiary" then
+            B:Open()
+        else
+            local Q = ns.modules.QuestLog
+            if Q and Q.Open then pcall(Q.Open, Q) end
+        end
+    end
+    local bst = ns.Pill(w, "Bestiary", function() go("bestiary") end, opts)
+    bst:SetPoint("TOPRIGHT", w, "TOPRIGHT", -20, -((ns.SHELL_H or 92) - 32))
+    local qst = ns.Pill(w, QUESTS_LABEL or "Quests", function() go("quests") end, opts)
+    qst:SetPoint("RIGHT", bst, "LEFT", -6, 0)
+    bst.selected, qst.selected = here == "bestiary", here == "quests"
+    bst:Repaint(); qst:Repaint()
+    if w.shell and w.shell.Lift then w.shell:Lift(bst, qst) end
+end
+
 local function build()
     local Cm = ns.modules.Character
     if not (Cm and Cm.MakeList) then return false end
@@ -445,6 +472,8 @@ local function build()
     win.shell = ns:CreateShell(win)
     win.shell:SetTitle("Bestiary")
     win.shell:SetIcon("Interface/Icons/INV_Misc_Book_09")
+    local Qm = ns.modules.QuestLog
+    if Qm and Qm.db and Qm.Open then B.JournalTabs(win, "bestiary") end
 
     local left = card(win, LIST_W, LIST_H + 12)
     left:SetPoint("TOPLEFT", 14, -PAGE_TOP)
