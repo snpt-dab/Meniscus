@@ -19,8 +19,8 @@ local T = ns.Theme
 --          gnoll, a troll, a human... and still the one creature to the
 --          game, with one set of numbers),
 --     hp = { [level] = health }         its full health at that level,
---     he = { [level] = health worked out from your damage (the least seen) },
---     hn = { [level] = kills that went into he }   (0.1.577, below),
+--     hs = { [level] = { [health worked out] = times } }  the samples,
+--     he = { [level] = the one most often seen },  hn = how often (below),
 --     c  = { [spell name] = spell id or true }   what it casts (16): cast
 --          bars, and since 0.1.579 casts with no bar (instant ones) where
 --          the game says what they were,
@@ -142,8 +142,8 @@ local function view(id)
         v.he, v.hn = {}, {}
         for _, src in ipairs({ sh, own }) do
             for l, h in pairs(src.he or {}) do
-                if not v.he[l] or h < v.he[l] then v.he[l] = h end
-                v.hn[l] = (v.hn[l] or 0) + (src.hn and src.hn[l] or 1)
+                local n = src.hn and src.hn[l] or 1
+                if not v.he[l] or n > v.hn[l] or (n == v.hn[l] and h < v.he[l]) then v.he[l], v.hn[l] = h, n end
             end
         end
     end
@@ -460,54 +460,135 @@ local function noteXP(text)
     addKill(id, lvl, true)
 end
 
--- Health, worked out (0.1.577). The game hides a creature's health from
--- addons, so it is never simply read. But its own damage meter keeps your
--- running total, which can be read between fights: what it went up by in
--- a fight where you (and your pet) killed exactly one creature, alone, is
--- about that creature's health. A little over (the last blow's excess),
--- or under if it was already hurt or someone helped, so the least of the
--- samples is kept and it is shown as "about".
-local dmgBefore, petBefore
-local function dmgTotal()
-    local get = C_DamageMeter and C_DamageMeter.GetCombatSessionSourceFromType
-    if not get then return end
-    local sum = 0
-    local pet = call(UnitGUID, "pet")
-    for _, g in ipairs({ call(UnitGUID, "player"), pet }) do
-        if str(g) then
-            local src = call(get, 0, 0, g)
-            if type(src) == "table" then
-                local t = src.totalAmount
-                if secret(t) then return end
-                if type(t) == "number" then sum = sum + t end
-            end
+-- Health, worked out. The game hides a creature's health from addons, but
+-- its own damage meter can be read once a fight is over, and it keeps the
+-- fight just ended apart ("session 1").
+-- 0.1.577 took how much your damage total went up by in a fight with one
+-- kill. That was far off (764 for a creature of 427): anything else you
+-- hit in the fight was in the sum, and kills were being missed, so a
+-- fight with two looked like a fight with one.
+-- 0.1.585: the meter's "enemy damage taken", where this client has it: one
+-- line per enemy with what that one took and whether it died, which for
+-- one that died from full is its health. Failing that, your and your
+-- pet's damage in a fight with one kill, as before. Less the last blow's
+-- excess when only one died (the meter keeps it apart). Every sample is
+-- kept by its value (hs), and what is shown is the value seen most often,
+-- the lower of two seen as often: an already hurt creature or a second
+-- enemy gives an odd number once, the true figure comes up again and again.
+-- The same reading says what hit you: the meter's "damage taken" lists
+-- each attack with the creature that made it, which is how attacks with
+-- no cast bar (and plain melee) get into the book without a death recap.
+local function meterLog(line)
+    if not MinimalUIDB then return end
+    local dg = MinimalUIDB.meterdiag or {}
+    MinimalUIDB.meterdiag = dg
+    dg.log = dg.log or {}
+    if #dg.log < 40 then dg.log[#dg.log + 1] = line end
+end
+local function healthSample(id, lvl, value)
+    local r = record(id)
+    local L = lvl or 0 -- (0: which level it was is not known)
+    if not r or value <= 0 or (r.hp and r.hp[L]) then return end
+    r.hs = r.hs or {}
+    local h = r.hs[L] or {}
+    r.hs[L] = h
+    h[value] = (h[value] or 0) + 1
+    if count(h) > 8 then -- (the rarest goes, the largest of those)
+        local drop
+        for v, n in pairs(h) do
+            if v ~= value and (not drop or n < h[drop] or (n == h[drop] and v > drop)) then drop = v end
         end
+        if drop then h[drop] = nil end
     end
-    return sum, str(pet) and pet or "none"
+    local best
+    for v, n in pairs(h) do
+        if not best or n > h[best] or (n == h[best] and v < best) then best = v end
+    end
+    r.he, r.hn = r.he or {}, r.hn or {}
+    r.he[L], r.hn[L] = best, h[best]
+    changed(id)
 end
 local function fightStart()
     wipe(fightKills)
-    local ok, t, pet = pcall(dmgTotal)
-    if ok and plain(t) then dmgBefore, petBefore = t, pet end
 end
 local function fightEnd()
     if InCombatLockdown() then return end
-    local ok, now, pet = pcall(dmgTotal)
-    if not ok then now = nil end
-    if plain(now) and plain(dmgBefore) and pet == petBefore and #fightKills == 1
-        and not (IsInGroup and isTrue(call(IsInGroup))) then
-        local k = fightKills[1]
-        local d = math.floor(now - dmgBefore + 0.5)
-        local r = record(k.id)
-        local L = k.lvl or 0 -- (0: which level it was is not known)
-        if r and d > 0 and not (r.hp and r.hp[L]) then
-            r.he, r.hn = r.he or {}, r.hn or {}
-            if not r.he[L] or d < r.he[L] then r.he[L] = d end
-            r.hn[L] = (r.hn[L] or 0) + 1
-            changed(k.id)
+    pcall(function()
+        local DM, T = C_DamageMeter, Enum and Enum.DamageMeterType
+        if not (DM and DM.GetCombatSessionSourceFromType) then return end
+        if MinimalUIDB and T and not (MinimalUIDB.meterdiag and MinimalUIDB.meterdiag.types) then
+            local names = {}
+            for k, v in pairs(T) do names[#names + 1] = tostring(k) .. "=" .. tostring(v) end
+            table.sort(names)
+            MinimalUIDB.meterdiag = MinimalUIDB.meterdiag or {}
+            MinimalUIDB.meterdiag.types = table.concat(names, ", ")
         end
-    end
-    if plain(now) then dmgBefore, petBefore = now, pet end
+        local levelOf, killed, nKilled = {}, {}, #fightKills
+        for _, k in ipairs(fightKills) do
+            levelOf[k.id] = k.lvl or levelOf[k.id]
+            killed[k.id] = true
+        end
+        -- what you and your pet did in the fight, and the excess of the last blows
+        local done, over = 0, 0
+        local me = call(UnitGUID, "player")
+        for _, g in ipairs({ me, call(UnitGUID, "pet") }) do
+            local src = str(g) and call(DM.GetCombatSessionSourceFromType, 1, 0, g)
+            if type(src) == "table" then
+                if plain(src.totalAmount) then done = done + src.totalAmount end
+                for _, sp in ipairs(type(src.combatSpells) == "table" and src.combatSpells or {}) do
+                    if plain(sp.overkillAmount) then over = over + sp.overkillAmount end
+                end
+            end
+        end
+        local sampled = false
+        local ses = T and T.EnemyDamageTaken and DM.GetCombatSessionFromType
+            and call(DM.GetCombatSessionFromType, 1, T.EnemyDamageTaken)
+        if type(ses) == "table" and type(ses.combatSources) == "table" then
+            local dead = 0
+            for _, src in ipairs(ses.combatSources) do
+                if plain(src.deathTimeSeconds) and src.deathTimeSeconds > 0 then dead = dead + 1 end
+            end
+            for _, src in ipairs(ses.combatSources) do
+                local id = npcOf(src.sourceGUID)
+                local total = src.totalAmount
+                local died = (plain(src.deathTimeSeconds) and src.deathTimeSeconds > 0) or (id and killed[id] and dead == 0)
+                meterLog("enemy " .. tostring(str(src.name) and src.name or "?") .. " id " .. tostring(id) .. " took "
+                    .. tostring(plain(total) and total or "?") .. " died " .. tostring(died and true or false)
+                    .. " (you did " .. done .. ", excess " .. over .. ", kills noted " .. nKilled .. ")")
+                if id and plain(total) and total > 0 and died then
+                    local v = total
+                    if math.max(dead, nKilled) == 1 and over < v then v = v - over end
+                    healthSample(id, levelOf[id], math.floor(v + 0.5))
+                    sampled = true
+                end
+            end
+        end
+        if not sampled and nKilled == 1 and done > over and not (IsInGroup and isTrue(call(IsInGroup))) then
+            meterLog("one kill, id " .. fightKills[1].id .. ": you did " .. done .. ", excess " .. over)
+            healthSample(fightKills[1].id, fightKills[1].lvl, math.floor(done - over + 0.5))
+        end
+        -- what hit you
+        local taken = T and T.DamageTaken and str(me) and call(DM.GetCombatSessionSourceFromType, 1, T.DamageTaken, me)
+        for _, sp in ipairs(type(taken) == "table" and type(taken.combatSpells) == "table" and taken.combatSpells or {}) do
+            local sid = sp.spellID
+            local who = str(sp.creatureName) and sp.creatureName
+                or (type(sp.combatSpellDetails) == "table" and str(sp.combatSpellDetails.unitName) and sp.combatSpellDetails.unitName) or nil
+            local id = (who and idByName(who)) or (not who and nKilled == 1 and fightKills[1].id) or nil
+            meterLog("hit by " .. tostring(who) .. " spell " .. tostring(plain(sid) and sid or "?") .. " total "
+                .. tostring(plain(sp.totalAmount) and sp.totalAmount or "?"))
+            local r = id and record(id)
+            if r and plain(sid) then
+                local name = sid == 6603 and "Melee" or (C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, sid))
+                if str(name) then
+                    r.c = r.c or {}
+                    if r.c[name] == nil and count(r.c) < 16 or r.c[name] == true then
+                        r.c[name] = sid
+                        changed(id)
+                    end
+                end
+            end
+        end
+    end)
     -- What it left on you: your debuffs, now that they can be read. One
     -- the game ties to a creature still about goes to that creature; one
     -- with no owner left goes to what you killed, if that was one thing.
@@ -723,8 +804,8 @@ function B.Rows(rows, id, full)
                 rows[#rows + 1] = { kind = "stat", label = l > 0 and ("Health at " .. l) or "Health", value = "about " .. big(r.he[l]),
                     tooltip = function(tip)
                         tip:SetText(l > 0 and ("Health at level " .. l) or "Health", 1, 1, 1)
-                        tip:AddLine("The game hides a creature's health from addons. This is worked out from the damage it took to kill one alone ("
-                            .. n .. (n == 1 and " kill" or " kills") .. " so far; the least is kept).", 0.86, 0.86, 0.89, true)
+                        tip:AddLine("The game hides a creature's health from addons. This is worked out from the damage it took to kill one: the figure that has come up most often ("
+                            .. n .. (n == 1 and " time so far, so not yet sure)." or " times)."), 0.86, 0.86, 0.89, true)
                     end }
             end
         end
@@ -732,7 +813,7 @@ function B.Rows(rows, id, full)
             rows[#rows + 1] = { kind = "stat", label = "Health", value = "not learned yet", color = T.textDim,
                 tooltip = function(tip)
                     tip:SetText("Health", 1, 1, 1)
-                    tip:AddLine("The game hides a creature's health from addons. It is worked out when you kill one by yourself, in a fight with nothing else in it.",
+                    tip:AddLine("The game hides a creature's health from addons. It is worked out from the damage it takes when you kill one.",
                         0.86, 0.86, 0.89, true)
                 end }
         end
@@ -1335,6 +1416,10 @@ function B:OnInit(db)
         MinimalUIDB.hpdiag, MinimalUIDB.castdiag, MinimalUIDB.lookdiag = nil, nil, nil
         MinimalUIDB.bestiaryRev = 2
         nameIndex = nil
+    end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 2 then -- (0.1.585: the first health estimates were far off)
+        for _, r in pairs(MinimalUIDB.bestiary or {}) do r.he, r.hn, r.hs = nil, nil, nil end
+        MinimalUIDB.bestiaryRev = 3
     end
     B.OnChange(function(id)
         if id then hay[id] = nil end
