@@ -20,7 +20,8 @@ local T = ns.Theme
 --     q  = { { t = what it said, k = "yell" / "emote" / nil (said),
 --              l = language, u = true when you did not understand it } } (12),
 --     k  = kills,           kd = times it killed you,
---     ln = corpses of it you have looted,
+--     ln = corpses of it you have looted,   lk = kills since loot was
+--          counted (0.1.571): the loot rates are out of the larger,
 --     l  = { [itemID] = corpses that had it }   its loot table (60 items),
 --     d  = { [itemID] = times }         older tallies, from before corpses
 --                                       were counted (quest items, green+)
@@ -73,11 +74,130 @@ local function record(id, make)
 end
 B.npcID, B.record = npcID, record
 
+-- ── What other players have learned ───────────────────────────────────────
+-- (0.1.571) BestiaryData.lua, shipped with the addon, is everyone's
+-- records put together (dist/bestiary_merge.py, from the files players
+-- send: "/men bestiary export", then "Share Bestiary.bat"). It is read
+-- only. What is shown of a creature is that and your own record as one:
+-- names and kinds from yours first, levels and health the widest, attacks,
+-- zones and speech together, loot counts added up. Your kills, your
+-- deaths and the list of what you have met stay your own.
+-- Your own counts must not be added twice once your file is part of the
+-- shipped data: the data names who is in it and which export of theirs
+-- (from[who] = time of export), and each export leaves a note here of the
+-- counts it sent (MinimalUIDB.bestiarySent[time]), which are taken off.
+local SH = ns.BestiaryShared or {}
+SH.r, SH.from = SH.r or {}, SH.from or {}
+local views = {}
+local function sentCounts()
+    local who = MinimalUIDB and MinimalUIDB.bestiaryWho
+    local at = who and SH.from[who]
+    if not at then return nil, false end
+    return MinimalUIDB.bestiarySent and MinimalUIDB.bestiarySent[at] or nil, true
+end
+local function addCount(own, shared, sent, included)
+    own, shared = own or 0, shared or 0
+    if not included then return own + shared end
+    if sent then return math.max(own, own + shared - sent) end
+    return math.max(own, shared) -- (yours is in there, how much is not known)
+end
+local function view(id)
+    local own = record(id)
+    local sh = SH.r[id]
+    if not sh then return own end
+    local v = views[id]
+    if v then return v end
+    local met = own ~= nil and own.n ~= nil
+    own = own or {}
+    local sent, included = sentCounts()
+    local s = sent and (sent[id] or {})
+    v = { shared = true, met = met, n = own.n or sh.n, t = own.t or sh.t, f = own.f or sh.f,
+          cl = own.cl or sh.cl, ag = own.ag or sh.ag, k = own.k, kd = own.kd, d = own.d }
+    v.lo = (own.lo and sh.lo) and math.min(own.lo, sh.lo) or own.lo or sh.lo
+    v.hi = (own.hi and sh.hi) and math.max(own.hi, sh.hi) or own.hi or sh.hi
+    if not v.hi then v.lo = nil end
+    for _, key in ipairs({ "z", "c", "hp", "hit" }) do
+        if own[key] or sh[key] then
+            local t = {}
+            for k, val in pairs(sh[key] or {}) do t[k] = val end
+            for k, val in pairs(own[key] or {}) do
+                local have = t[k]
+                if have == nil or have == true or (type(val) == "number" and type(have) == "number" and val > have) then t[k] = val end
+            end
+            v[key] = t
+        end
+    end
+    if own.q or sh.q then
+        local q, has = {}, {}
+        for _, list in ipairs({ own.q or {}, sh.q or {} }) do
+            for _, line in ipairs(list) do
+                if not has[line.t] and #q < 16 then has[line.t] = true; q[#q + 1] = line end
+            end
+        end
+        v.q = q
+    end
+    v.ln = addCount(own.ln, sh.ln, s and (s.ln or 0), included)
+    v.lk = addCount(own.lk, sh.lk, s and (s.lk or 0), included)
+    if own.l or sh.l then
+        v.l = {}
+        for item in pairs(sh.l or {}) do v.l[item] = true end
+        for item in pairs(own.l or {}) do v.l[item] = true end
+        for item in pairs(v.l) do
+            v.l[item] = addCount(own.l and own.l[item], sh.l and sh.l[item], s and (s.l and s.l[item] or 0), included)
+        end
+    end
+    views[id] = v
+    return v
+end
+B.view = view
+
 -- Something was learned: whoever shows it redraws (soon, not now).
 local listeners = {}
 function B.OnChange(fn) listeners[#listeners + 1] = fn end
 local function changed(id)
+    if id then views[id] = nil else wipe(views) end
     for _, fn in ipairs(listeners) do pcall(fn, id) end
+end
+
+-- "/men bestiary export": your records, without your kills and deaths, set
+-- down where "Share Bestiary.bat" can lift them out of the saved file
+-- (MinimalUIDB.bestiaryOut, written at the next reload or logout), under a
+-- made-up id that says only "the same sender as before".
+local function copy(t)
+    local c = {}
+    for k, v in pairs(t) do c[k] = type(v) == "table" and copy(v) or v end
+    return c
+end
+local function export()
+    local all = MinimalUIDB and MinimalUIDB.bestiary
+    if not all or not next(all) then return ns:Print("Nothing in the bestiary to share yet.") end
+    local who = MinimalUIDB.bestiaryWho
+    if not who then
+        who = string.format("%06x%06x%06x", math.random(0, 0xffffff), math.random(0, 0xffffff), math.random(0, 0xffffff))
+        MinimalUIDB.bestiaryWho = who
+    end
+    local at = time()
+    local out, snap, n = {}, {}, 0
+    for id, r in pairs(all) do
+        if r.n then
+            local c = {}
+            for k, v in pairs(r) do
+                if k ~= "k" and k ~= "kd" and k ~= "d" then c[k] = type(v) == "table" and copy(v) or v end
+            end
+            out[id] = c
+            n = n + 1
+            if r.ln or r.lk or r.l then snap[id] = { ln = r.ln, lk = r.lk, l = r.l and copy(r.l) or nil } end
+        end
+    end
+    MinimalUIDB.bestiaryOut = { v = 1, who = who, at = at, r = out }
+    local sent = MinimalUIDB.bestiarySent or {}
+    MinimalUIDB.bestiarySent = sent
+    sent[at] = snap
+    local stamps = {}
+    for t in pairs(sent) do stamps[#stamps + 1] = t end
+    table.sort(stamps)
+    for i = 1, #stamps - 4 do sent[stamps[i]] = nil end -- (the last four exports' notes are kept)
+    ns:Print(n .. " creatures set down for sharing. Reload (/reload) or log out, then double-click \"Share Bestiary.bat\" in the Meniscus folder.")
 end
 
 local function zoneNow()
@@ -172,6 +292,7 @@ local function noteDeath()
     seenDead[guid] = true; nDead = nDead + 1
     local r = record(id, true)
     r.k = (r.k or 0) + 1
+    r.lk = (r.lk or 0) + 1
     changed(id)
 end
 
@@ -309,7 +430,7 @@ local function stat(rows, label, value, color)
     rows[#rows + 1] = { kind = "stat", label = label, value = value, color = color }
 end
 function B.Rows(rows, id, full)
-    local r = id and record(id)
+    local r = id and view(id)
     if not r then
         rows[#rows + 1] = { kind = "stat", value = "",
             label = id and "Nothing yet: it fills in as you meet it" or "Nothing is kept for this one" }
@@ -324,7 +445,11 @@ function B.Rows(rows, id, full)
     elseif r.lo then
         stat(rows, levelLabel(r), levels(r))
     end
-    stat(rows, "Kills", string.format("%d", r.k or 0))
+    if r.shared and not r.met then
+        rows[#rows + 1] = { kind = "stat", label = "Met by you", value = "not yet", color = T.textDim }
+    else
+        stat(rows, "Kills", string.format("%d", r.k or 0))
+    end
     if r.kd then stat(rows, "Killed you", string.format("%d", r.kd), RED) end
     -- health, by level
     if r.hp and next(r.hp) then
@@ -355,8 +480,16 @@ function B.Rows(rows, id, full)
         end
     end
     if (r.l and next(r.l)) or (r.d and next(r.d)) then
-        local ln = r.ln or 0
-        head(rows, ln > 0 and ("Loot   (" .. ln .. (ln == 1 and " corpse)" or " corpses)")) or "Loot", "micro_journal.tga")
+        -- (Out of kills, where those were counted: a corpse with nothing
+        -- on it can't be opened, so corpses looted alone runs high. A kill
+        -- you walked away from without looting counts as nothing found.)
+        local looted = r.ln or 0
+        local ln = math.max(looted, r.lk or 0)
+        head(rows, ln > 0 and ("Loot   (" .. ln .. (ln == 1 and " kill)" or " kills)")) or "Loot", "micro_journal.tga")
+        if ln > looted then
+            rows[#rows + 1] = { kind = "stat", label = "Nothing on it", labelColor = T.textDim, color = T.textDim,
+                value = string.format("%d%%   %d of %d", math.floor((ln - looted) / ln * 100 + 0.5), ln - looted, ln) }
+        end
         local ids = {}
         for item in pairs(r.l or {}) do ids[#ids + 1] = item end
         for item in pairs(r.d or {}) do if not (r.l and r.l[item]) then ids[#ids + 1] = item end end
@@ -371,7 +504,7 @@ function B.Rows(rows, id, full)
             if n and ln > 0 then
                 value = string.format("%d%%   %d of %d", math.floor(n / ln * 100 + 0.5), n, ln)
             else
-                value, color = "seen" .. (r.d[item] > 1 and (" x" .. r.d[item]) or ""), T.textDim
+                value, color = "seen" .. (r.d and (r.d[item] or 0) > 1 and (" x" .. r.d[item]) or ""), T.textDim
             end
             rows[#rows + 1] = { kind = "stat", label = str(link) and link or ("Item " .. item),
                 labelColor = T.text, icon = icon, value = value, color = color,
@@ -379,8 +512,8 @@ function B.Rows(rows, id, full)
                     pcall(tip.SetHyperlink, tip, "item:" .. item)
                     tip:AddLine(" ")
                     if n and ln > 0 then
-                        tip:AddLine(string.format("On %d of the %d corpses you have looted.", n, ln), 0.6, 0.6, 0.65, true)
-                        if ln < 20 then tip:AddLine("Few corpses so far: the rate will settle.", 0.6, 0.6, 0.65, true) end
+                        tip:AddLine(string.format("On %d of %d kills%s.", n, ln, r.shared and ", yours and other players'" or ""), 0.6, 0.6, 0.65, true)
+                        if ln < 20 then tip:AddLine("Few kills so far: the rate will settle.", 0.6, 0.6, 0.65, true) end
                     else
                         tip:AddLine("Seen before corpses were counted: no rate yet.", 0.6, 0.6, 0.65, true)
                     end
@@ -495,7 +628,11 @@ local function listData()
         words = {}
         for w in query:gmatch("%S+") do words[#words + 1] = w end
     end
-    for id, r in pairs(all) do
+    local ids = {}
+    for id in pairs(all) do ids[id] = true end
+    for id in pairs(SH.r) do ids[id] = true end
+    for id in pairs(ids) do
+        local r = view(id) or {}
         if r.n then
             total = total + 1
             kills = kills + (r.k or 0)
@@ -522,13 +659,14 @@ local function listData()
         if not col then
             local ids = zones[z]
             table.sort(ids, function(a, b)
-                local ra, rb = all[a], all[b]
+                local ra, rb = view(a), view(b)
                 if (ra.lo or 0) ~= (rb.lo or 0) then return (ra.lo or 0) < (rb.lo or 0) end
                 return ra.n < rb.n
             end)
             for _, id in ipairs(ids) do
-                local r = all[id]
+                local r = view(id)
                 local c = id == picked and T.accent
+                    or (r.shared and not r.met and T.textDim)
                     or ((r.cl == "elite" or r.cl == "worldboss" or r.cl == "rareelite") and ELITE)
                     or (r.cl == "rare" and RARE) or T.text
                 table.insert(d, { kind = "stat", label = r.n, labelColor = c, indent = 10,
@@ -571,8 +709,8 @@ function B:Refresh()
     win.list.empty:SetText(found and "Nothing in the book matches that." or "Nothing met yet. Target or point at a creature.")
     win.shell:SetSubtitle(total == 0 and "Nothing met yet"
         or (found and string.format("%d of %d kinds of creature match", found, total))
-        or string.format("%d kinds of creature met   ·   %d killed", total, kills))
-    local r = picked and record(picked)
+        or string.format("%d kinds of creature known   ·   %d killed by you", total, kills))
+    local r = picked and view(picked)
     if r then
         win.name:SetText(r.n or "")
         local c = ((r.cl == "elite" or r.cl == "worldboss" or r.cl == "rareelite") and ELITE) or (r.cl == "rare" and RARE) or T.text
@@ -734,7 +872,7 @@ local function build()
     win:SetScript("OnShow", function()
         -- what you have targeted, if it is in the book; else the last pick
         local id = npcID("target")
-        if id and record(id) then picked = id end
+        if id and view(id) then picked = id end
         showModel(picked)
         B:Refresh()
     end)
@@ -757,7 +895,10 @@ function B:Open(id)
     if win:IsShown() then showModel(picked); self:Refresh() else win:Show() end
 end
 ns.commands = ns.commands or {}
-ns.commands.bestiary = function() B:Open() end
+ns.commands.bestiary = function(rest)
+    if type(rest) == "string" and rest:find("^%s*export") then return export() end
+    B:Open()
+end
 
 function B:OnInit(db)
     self.db = db

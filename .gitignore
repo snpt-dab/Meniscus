@@ -1,3 +1,5 @@
 # built tester zips and snapshots (rebuild with: python dist/build.py)
 dist/*.zip
 dist/snapshots/
+# what players send in for the shared bestiary (merged by dist/bestiary_merge.py)
+dist/bestiary/
