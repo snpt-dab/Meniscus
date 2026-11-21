@@ -990,7 +990,8 @@ end
 local BEHAVIORS = {
     { { "run away in fear", "attempts to flee", "flees" }, "Runs away in fear",
       "Runs when badly hurt, and may come back with others.", "micro_pointer.tga" },
-    { { "calls for help", "call for help", "calls for aid" }, "Calls for help",
+    -- ("lets out a shriek, calling for help!": the Sunscale Screecher, 0.1.603)
+    { { "for help", "for aid", "for assistance", "calls for reinforcements" }, "Calls for help",
       "Brings nearby allies into the fight.", "micro_group.tga" },
     { { "enrage" }, "Enrages", "Hits harder or faster once it is hurt.", "micro_stat_str.tga" },
     { { "frenzy" }, "Goes into a frenzy", "Attacks faster for a while.", "micro_stat_str.tga" },
