@@ -580,7 +580,11 @@ local function creditControl(id, name, kind, sid)
     local r = id and record(id)
     if not r then return end
     r.cc = r.cc or {}
-    if r.cc[name] == nil and count(r.cc) < 8 then r.cc[name] = kind; changed(id) end
+    -- (a kind learned later replaces "unknown"; a name learned later replaces "?")
+    if name ~= "?" and r.cc["?"] then r.cc["?"] = nil end
+    if (r.cc[name] == nil and count(r.cc) < 8) or (r.cc[name] == "UNKNOWN" and kind ~= "UNKNOWN") then
+        if not (name == "?" and next(r.cc)) then r.cc[name] = kind; changed(id) end
+    end
     r.c = r.c or {}
     if plain(sid) and (r.c[name] == nil or r.c[name] == true) then r.c[name] = sid end
 end
@@ -595,10 +599,23 @@ local function noteControl()
         if type(d) ~= "table" then diag("ccdiag", "nothing given")
         else
             local kind, sid = d.locType, d.spellID
-            if not str(kind) then diag("ccdiag", secret(kind) and "kind hidden" or "no kind")
-            else
+            -- (0.1.599) In a fight the game hides what kind it was (a kodo's
+            -- knock-down came through as "kind hidden", twice). That it
+            -- happened at all is still worth an icon: kept as UNKNOWN, with
+            -- the spell's name if that much is given. Which of the notice's
+            -- fields can be read is counted, to see what else there is.
+            if not str(kind) then
+                diag("ccdiag", secret(kind) and "kind hidden" or "no kind")
+                for _, f in ipairs({ "spellID", "displayText", "iconTexture", "duration", "lockoutSchool", "priority" }) do
+                    local v = d[f]
+                    diag("ccdiag", f .. (secret(v) and " hidden" or (v == nil and " absent" or " readable")))
+                end
+                kind = "UNKNOWN"
+            end
+            do
                 local name = plain(sid) and C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, sid)
-                if not str(name) then name = str(d.displayText) and d.displayText or kind end
+                if not str(name) then name = str(d.displayText) and d.displayText or (kind == "UNKNOWN" and "?" or kind) end
+                if not plain(sid) then sid = nil end
                 diag("ccdiag", "got " .. kind)
                 local id = npcID("target")
                 if id and isTrue(call(UnitCanAttack, "player", "target")) then
@@ -1021,8 +1038,14 @@ function B.Traits(id)
     for name, kind in pairs(r.cc or {}) do
         local word = B.ControlWord(kind)
         local verb = VERB[word] or (not word:find(" ") and word:lower():gsub("s$", "")) or nil
-        add("micro_stat_resist.tga", RED, word, verb and ("Can " .. verb .. " you with " .. name .. ".") or (word .. ", with " .. name .. "."))
-        said[name] = true
+        if kind == "UNKNOWN" then
+            add("micro_stat_resist.tga", RED, "Disables you",
+                "Can stun you, knock you down or otherwise take control of your character" .. (name ~= "?" and (" with " .. name) or "")
+                .. ". The game does not say which in a fight.")
+        else
+            add("micro_stat_resist.tga", RED, word, verb and ("Can " .. verb .. " you with " .. name .. ".") or (word .. ", with " .. name .. "."))
+        end
+        if name ~= "?" then said[name] = true end
     end
     local byKind = {}
     for name, kind in pairs(r.dbt or {}) do
