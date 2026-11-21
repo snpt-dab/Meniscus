@@ -2086,6 +2086,47 @@ local function buildFlight()
     end
     local onTaxi, finish
     local poll = 0
+    -- "Request stop" (0.1.616): the game's own button for landing at the
+    -- next flight point is a red arrow on a wooden square, out on the
+    -- field. Ours is a small round one at the end of the timer, and the
+    -- game's is faded out for the length of the flight.
+    local M = "Interface/AddOns/Meniscus/Media/"
+    local stop = CreateFrame("Button", nil, bar)
+    stop:SetSize(20, 20)
+    stop:SetPoint("LEFT", bar, "RIGHT", 8, 0)
+    local rim = stop:CreateTexture(nil, "ARTWORK", nil, 0)
+    rim:SetTexture(M .. "circle.tga"); rim:SetAllPoints()
+    local disc = stop:CreateTexture(nil, "ARTWORK", nil, 1)
+    disc:SetTexture(M .. "circle.tga")
+    disc:SetPoint("TOPLEFT", 1.5, -1.5); disc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local arrow = stop:CreateTexture(nil, "OVERLAY")
+    arrow:SetTexture(M .. "micro_up.tga")
+    arrow:SetTexCoord(0, 1, 1, 0) -- (pointing down: to land)
+    arrow:SetSize(12, 12); arrow:SetPoint("CENTER")
+    local asked = false
+    local function paintStop(hover)
+        rim:SetVertexColor(hover and 0.42 or T.border[1], hover and 0.42 or T.border[2], hover and 0.47 or T.border[3], 1)
+        disc:SetVertexColor(hover and 0.13 or 0.06, hover and 0.13 or 0.06, hover and 0.15 or 0.07, 1)
+        if asked then arrow:SetVertexColor(0.95, 0.80, 0.35, 1) else arrow:SetVertexColor(0.86, 0.86, 0.89, hover and 1 or 0.8) end
+    end
+    local function stopTip()
+        GameTooltip:SetOwner(stop, "ANCHOR_TOP", 0, 6)
+        GameTooltip:SetText(asked and "Landing at the next stop" or "Land at the next stop", 1, 1, 1)
+        GameTooltip:Show()
+    end
+    stop:SetScript("OnEnter", function() paintStop(true); stopTip() end)
+    stop:SetScript("OnLeave", function() paintStop(false); GameTooltip:Hide() end)
+    stop:SetScript("OnClick", function()
+        if asked or not _G.TaxiRequestEarlyLanding then return end
+        if pcall(_G.TaxiRequestEarlyLanding) then asked = true; paintStop(true); stopTip() end
+    end)
+    stop:SetShown(_G.TaxiRequestEarlyLanding ~= nil)
+    local function theirs(hide)
+        local b = _G.MainMenuBarVehicleLeaveButton
+        if not (b and _G.TaxiRequestEarlyLanding) then return end
+        pcall(b.SetAlpha, b, hide and 0 or 1)
+        if not InCombatLockdown() then pcall(b.EnableMouse, b, not hide) end
+    end
     bar:SetScript("OnUpdate", function(self, dt)
         if not started then self:Hide(); timerLayout() return end
         local flown = GetTime() - started
@@ -2125,6 +2166,7 @@ local function buildFlight()
         local took = started and (GetTime() - started) or 0
         if key and took > 8 then db.flights[key] = math.floor(took) end
         started, src, dst, known, key = nil, nil, nil, nil, nil
+        theirs(false)
         bar:Hide()
         timerLayout()
     end
@@ -2140,6 +2182,9 @@ local function buildFlight()
                 -- Just the place, without ", Zone".
                 if dst then dst = dst:match("^([^,]+)") or dst end
                 label:SetText(dst or "Flight")
+                asked = false; paintStop(false)
+                theirs(true)
+                C_Timer.After(1, function() if started then theirs(true) end end) -- (it is shown a moment after take-off)
                 shownSec = nil
                 bar:Show()
                 timerLayout()
