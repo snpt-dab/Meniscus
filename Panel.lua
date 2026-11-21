@@ -638,7 +638,7 @@ local PAGES = {
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.aggro ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.aggro = d.aggro == false end end },
             { "Rare alert", kind = "switch", reload = true,
-              note = "A banner, flashing screen edges and a warning sound when a rare is near; the quest dot points at it when it can",
+              note = "A banner that flashes and a warning sound when a rare is near; the quest dot points at it when it can",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.rare ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.rare = d.rare == false end end },
         } },
