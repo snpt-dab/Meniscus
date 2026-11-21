@@ -1202,8 +1202,55 @@ local function buildWaypoint()
         add("screen", function() return UIParent:GetWidth(), UIParent:GetHeight(), UIParent:GetEffectiveScale() end)
         add("dot alpha/shown", function() return dot:GetAlpha(), dot:IsShown(), dot:IsVisible() end)
         add("world map open", function() return _G.WorldMapFrame and _G.WorldMapFrame:IsShown() end)
+        -- Where the quest is on the map, by every way this client has of
+        -- saying it, and where you are and which way you face.
+        local q = ns.QuestFocus.Get()
+        local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+        add("map", function() return map end)
+        add("you at", function()
+            local p = C_Map.GetPlayerMapPosition(map, "player")
+            local x, y = p:GetXY()
+            return x, y, GetPlayerFacing()
+        end)
+        add("C_QuestLog.GetNextWaypoint", function() return C_QuestLog.GetNextWaypoint(q) end)
+        add("C_QuestLog.GetNextWaypointForMap", function() return C_QuestLog.GetNextWaypointForMap(q, map) end)
+        add("C_SuperTrack.GetNextWaypointForMap", function() return ST.GetNextWaypointForMap(map) end)
+        add("C_Navigation.GetNextWaypointForMap", function() return NV.GetNextWaypointForMap(map) end)
+        add("Nav.HasValidScreenPosition", function() return NV.HasValidScreenPosition() end)
+        add("on map", function()
+            for _, e in ipairs(C_QuestLog.GetQuestsOnMap(map) or {}) do
+                if e.questID == q then return e.x, e.y, e.type, e.inProgress end
+            end
+            return "not listed"
+        end)
+        add("is complete / objectives", function()
+            local n = 0
+            for _ in ipairs(C_QuestLog.GetQuestObjectives(q) or {}) do n = n + 1 end
+            return C_QuestLog.IsComplete(q), n
+        end)
         if MinimalUIDB then MinimalUIDB.dotprobe = out end
         for _, l in ipairs(out) do ns:Print(l) end
+        -- And six seconds of the game's marker, ten times a second: where
+        -- its frame is, whether held at the edge, how far, how it rates
+        -- the target, and the marker's opacity.
+        local trace, n = {}, 0
+        if MinimalUIDB then MinimalUIDB.dottrace = trace end
+        local tk
+        tk = C_Timer.NewTicker(0.1, function()
+            n = n + 1
+            pcall(function()
+                local nav = NV.GetFrame()
+                local x, y = 0, 0
+                if nav then x, y = nav:GetCenter() end
+                local fx, fy = F:GetCenter()
+                trace[#trace + 1] = string.format("%.1f nav %s,%s clamp %s dist %s state %s valid %s alpha %s marker %s,%s",
+                    n / 10, show(x and math.floor(x)), show(y and math.floor(y)), show(NV.WasClampedToScreen()),
+                    show(NV.GetDistance()), show(NV.GetTargetState and NV.GetTargetState()),
+                    show(NV.HasValidScreenPosition and NV.HasValidScreenPosition()), show(F:GetAlpha()),
+                    show(fx and math.floor(fx)), show(fy and math.floor(fy)))
+            end)
+            if n >= 60 then tk:Cancel(); ns:Print("Dot trace done: /reload to save it.") end
+        end)
     end
     function ns.QuestFocus.Override(guid, seconds)
         override = { guid = guid, till = GetTime() + (seconds or 60) }
