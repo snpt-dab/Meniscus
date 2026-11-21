@@ -1103,7 +1103,16 @@ local function buildWaypoint()
     -- screen it is left exactly where the game has it.
     local ARRIVED, EASE = 12, 0.22
     local sx, sy, sAt = nil, nil, 0
+    -- (0.1.557: off unless /men dotforce turns it on, to see what the game
+    -- does by itself after a restart. The switch is kept in db.dotForce and
+    -- takes effect at once.)
+    ns.commands.dotforce = function()
+        EX.db.dotForce = not EX.db.dotForce
+        sx = nil
+        ns:Print("Quest dot: " .. (EX.db.dotForce and "kept visible by Meniscus (forced)." or "left to the game (as before tonight)."))
+    end
     pcall(F.HookScript, F, "OnUpdate", function(self)
+        if not EX.db.dotForce then return end
         local valid = NV.GetFrame and NV.GetFrame() and NV.HasValidScreenPosition and NV.HasValidScreenPosition()
         if secret(valid) or not valid then sx = nil return end
         local dist = NV.GetDistance and NV.GetDistance()
@@ -1222,6 +1231,7 @@ local function buildWaypoint()
                 ST.IsSuperTrackingCorpse and ST.IsSuperTrackingCorpse()
         end)
         add("override", function() return override ~= nil end)
+        add("forced by Meniscus", function() return EX.db.dotForce and true or false end)
         add("cvar showInGameNavigation", function() return GetCVar("showInGameNavigation") end)
         add("nav frame", function() local n = NV.GetFrame(); return n ~= nil, n and n:IsShown(), n and n:GetCenter() end)
         add("nav distance", function() return NV.GetDistance() end)
