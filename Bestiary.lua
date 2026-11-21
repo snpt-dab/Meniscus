@@ -17,6 +17,8 @@ local T = ns.Theme
 --     hp = { [level] = health }         its full health at that level,
 --     c  = { [spell name] = spell id or true }   what it casts (16),
 --     hit = { [attack name] = hardest hit on you } (from death recaps),
+--     q  = { { t = what it said, k = "yell" / "emote" / nil (said),
+--              l = language, u = true when you did not understand it } } (12),
 --     k  = kills,           kd = times it killed you,
 --     d  = { [itemID] = times }         quest items and green or better (8)
 --   }
@@ -99,7 +101,7 @@ local function observe(unit)
     end
     local new = false
     local r = MinimalUIDB and MinimalUIDB.bestiary and MinimalUIDB.bestiary[id]
-    if not r then r = record(id, true); new = true end
+    if not r then r = record(id, true); new = true; nameIndex = nil end
     if not r then return end
     local lvl = call(UnitLevel, unit)
     local okLvl = plain(lvl) and lvl > 0
@@ -193,6 +195,55 @@ local function noteLoot()
     end
 end
 
+-- What it says (0.1.568): a creature's say, yell and emote lines, for one
+-- already in the book (the line comes with the speaker's name only, so it
+-- is matched by name). Your own name in a line is kept as $N. A line in a
+-- language you don't speak arrives already scrambled by the game, and the
+-- scramble can't be undone later: it is kept as heard, marked as not
+-- understood, with the language's name. Once you know the language and
+-- hear the creature again, its lines come in clear, and the scrambled
+-- ones in that language are dropped then.
+local nameIndex
+local function idByName(name)
+    local all = MinimalUIDB and MinimalUIDB.bestiary
+    if not all then return end
+    if not nameIndex then
+        nameIndex = {}
+        for id, r in pairs(all) do if r.n then nameIndex[r.n] = id end end
+    end
+    return nameIndex[name]
+end
+local function understood(lang)
+    if not str(lang) then return true end
+    if not (GetNumLanguages and GetLanguageByIndex) then return true end
+    local n = call(GetNumLanguages)
+    if not plain(n) or n == 0 then return true end
+    for i = 1, n do
+        local name = call(GetLanguageByIndex, i)
+        if str(name) and name == lang then return true end
+    end
+    return false
+end
+local function noteSpeech(kind, text, who, lang)
+    if not (str(text) and str(who)) then return end
+    local id = idByName(who)
+    local r = id and record(id)
+    if not r then return end
+    local me = call(UnitName, "player")
+    if str(me) then text = text:gsub(me:gsub("%p", "%%%0"), "$N") end
+    local clear = understood(lang)
+    r.q = r.q or {}
+    for _, line in ipairs(r.q) do if line.t == text then return end end
+    if clear and str(lang) then
+        for i = #r.q, 1, -1 do
+            if r.q[i].u and r.q[i].l == lang then table.remove(r.q, i) end
+        end
+    end
+    if #r.q >= 12 then return end
+    r.q[#r.q + 1] = { t = text, k = kind, l = str(lang) and lang or nil, u = (not clear) or nil }
+    changed(id)
+end
+
 -- The death recap (DeathRecap.lua hands it over when it is opened): who
 -- hit you, with what, and how hard. It names the attacker and nothing
 -- else, so it is matched to a record by name; the killing blow is first.
@@ -231,8 +282,9 @@ end
 -- facts too (the inspect window has those from the creature itself).
 local function levels(r)
     if not r.lo then return nil end
-    return r.lo == r.hi and tostring(r.lo) or (r.lo .. " to " .. r.hi)
+    return r.lo == r.hi and tostring(r.lo) or (r.lo .. "-" .. r.hi)
 end
+local function levelLabel(r) return r.lo ~= r.hi and "Level range" or "Level" end
 local function head(rows, title, glyph) rows[#rows + 1] = { kind = "header", text = title, glyph = glyph } end
 local function stat(rows, label, value, color)
     if value == nil then return end
@@ -247,12 +299,12 @@ function B.Rows(rows, id, full)
     end
     if full then
         head(rows, "About", "micro_character.tga")
-        stat(rows, "Kind", r.t and (r.f and (r.t .. ", " .. r.f) or r.t) or nil)
+        stat(rows, "Type", r.t and (r.f and (r.t .. ", " .. r.f) or r.t) or nil)
         stat(rows, "Rank", r.cl and RANK[r.cl] or nil, T.accent)
-        if r.ag then stat(rows, "Temper", r.ag == 1 and "Hostile" or "Neutral", r.ag == 1 and RED or { 0.92, 0.82, 0.36, 1 }) end
-        stat(rows, "Levels", levels(r))
+        if r.ag then stat(rows, "Disposition", r.ag == 1 and "Hostile" or "Neutral", r.ag == 1 and RED or { 0.92, 0.82, 0.36, 1 }) end
+        if r.lo then stat(rows, levelLabel(r), levels(r)) end
     elseif r.lo then
-        stat(rows, "Levels", levels(r))
+        stat(rows, levelLabel(r), levels(r))
     end
     stat(rows, "Kills", string.format("%d", r.k or 0))
     if r.kd then stat(rows, "Killed you", string.format("%d", r.kd), RED) end
@@ -298,6 +350,27 @@ function B.Rows(rows, id, full)
                 tooltip = function(tip) pcall(tip.SetHyperlink, tip, "item:" .. item) end }
         end
     end
+    if r.q and #r.q > 0 then
+        head(rows, "Says", "micro_chat.tga")
+        local me = call(UnitName, "player")
+        for _, line in ipairs(r.q) do
+            local said = str(me) and line.t:gsub("%$N", me) or line.t
+            local how = line.k == "yell" and "Yells" or (line.k == "emote" and "Emote") or "Says"
+            rows[#rows + 1] = { kind = "stat", wide = true, value = "",
+                label = line.k == "emote" and said or ("\"" .. said .. "\""),
+                labelColor = line.u and T.textDim or T.text,
+                tooltip = function(tip)
+                    tip:SetText(how .. (line.l and (", in " .. line.l) or ""), 1, 1, 1)
+                    tip:AddLine(said, 0.86, 0.86, 0.89, true)
+                    if line.u then
+                        tip:AddLine(" ")
+                        tip:AddLine("You don't speak " .. (line.l or "this language") .. ": this is how it sounded to you. "
+                            .. "It is replaced with the real words when you hear this creature after learning the language.",
+                            0.6, 0.6, 0.65, true)
+                    end
+                end }
+        end
+    end
     if full and r.z and next(r.z) then
         head(rows, "Found in", "micro_journal.tga")
         local zs = {}
@@ -321,6 +394,47 @@ local MODEL_H = 154
 local W, H = 14 + LIST_W + 10 + CARD_W + 14, PAGE_TOP + LIST_H + 12 + 14
 local ELSEWHERE = "Met before zones were kept"
 local win, picked, stale
+-- Search (0.1.568): every word typed must be found somewhere in what is
+-- known of the creature: its name, type and family, rank, disposition, the
+-- zones, its attacks, what it says, what it drops. A number is a level
+-- (12 finds everything whose range takes in 12; 14-18 everything that
+-- overlaps that). The text searched is put together once for a record
+-- and thrown away when the record changes.
+local query, hay = "", {}
+local function haystack(id, r)
+    local h = hay[id]
+    if h then return h end
+    local bits = { r.n or "", r.t or "", r.f or "", r.cl and RANK[r.cl] or "",
+                   r.ag == 1 and "hostile" or (r.ag == 0 and "neutral" or "") }
+    for z in pairs(r.z or {}) do bits[#bits + 1] = z end
+    for name in pairs(r.c or {}) do bits[#bits + 1] = name end
+    for name in pairs(r.hit or {}) do bits[#bits + 1] = name end
+    for _, line in ipairs(r.q or {}) do bits[#bits + 1] = line.t end
+    for item in pairs(r.d or {}) do
+        local name = C_Item and C_Item.GetItemNameByID and call(C_Item.GetItemNameByID, item)
+        if str(name) then bits[#bits + 1] = name end
+    end
+    h = table.concat(bits, "\n"):lower()
+    hay[id] = h
+    return h
+end
+local function matches(id, r, words)
+    local h
+    for _, w in ipairs(words) do
+        local a, b = w:match("^(%d+)%-(%d+)$")
+        local n = tonumber(w)
+        if a then
+            a, b = tonumber(a), tonumber(b)
+            if not (r.lo and r.hi >= math.min(a, b) and r.lo <= math.max(a, b)) then return false end
+        elseif n then
+            if not (r.lo and n >= r.lo and n <= r.hi) then return false end
+        else
+            h = h or haystack(id, r)
+            if not h:find(w, 1, true) then return false end
+        end
+    end
+    return true
+end
 
 local function card(parent, w, h)
     local f = CreateFrame("Frame", nil, parent)
@@ -334,11 +448,19 @@ local function listData()
     local d = {}
     local all = MinimalUIDB and MinimalUIDB.bestiary or {}
     local here = zoneNow()
-    local zones, total, kills = {}, 0, 0
+    local zones, total, kills, found = {}, 0, 0, 0
+    local words
+    if query ~= "" then
+        words = {}
+        for w in query:gmatch("%S+") do words[#words + 1] = w end
+    end
     for id, r in pairs(all) do
         if r.n then
             total = total + 1
             kills = kills + (r.k or 0)
+        end
+        if r.n and (not words or matches(id, r, words)) then
+            found = found + 1
             if r.z and next(r.z) then
                 for z in pairs(r.z) do zones[z] = zones[z] or {}; table.insert(zones[z], id) end
             else
@@ -353,6 +475,7 @@ local function listData()
     for _, z in ipairs(names) do
         local col = B.db.collapsed[z]
         if col == nil then col = z ~= here end
+        if words then col = false end -- (a search shows what it found)
         table.insert(d, { kind = "header", text = z .. "   |cff7d7d88" .. #zones[z] .. "|r", collapsed = col,
             onClick = function() B.db.collapsed[z] = not col; B:Refresh() end })
         if not col then
@@ -373,7 +496,7 @@ local function listData()
             end
         end
     end
-    return d, total, kills
+    return d, total, kills, words and found or nil
 end
 
 local function showModel(id)
@@ -402,9 +525,11 @@ end
 function B:Refresh()
     if not win or not win:IsShown() then return end
     stale = false
-    local d, total, kills = listData()
+    local d, total, kills, found = listData()
     win.list:SetData(d)
+    win.list.empty:SetText(found and "Nothing in the book matches that." or "Nothing met yet. Target or point at a creature.")
     win.shell:SetSubtitle(total == 0 and "Nothing met yet"
+        or (found and string.format("%d of %d kinds of creature match", found, total))
         or string.format("%d kinds of creature met   ·   %d killed", total, kills))
     local r = picked and record(picked)
     if r then
@@ -449,6 +574,7 @@ function B.JournalTabs(w, here)
     bst.selected, qst.selected = here == "bestiary", here == "quests"
     bst:Repaint(); qst:Repaint()
     if w.shell and w.shell.Lift then w.shell:Lift(bst, qst) end
+    return qst
 end
 
 local function build()
@@ -473,7 +599,34 @@ local function build()
     win.shell:SetTitle("Bestiary")
     win.shell:SetIcon("Interface/Icons/INV_Misc_Book_09")
     local Qm = ns.modules.QuestLog
-    if Qm and Qm.db and Qm.Open then B.JournalTabs(win, "bestiary") end
+    local tabs = Qm and Qm.db and Qm.Open and B.JournalTabs(win, "bestiary") or nil
+    local box = CreateFrame("EditBox", nil, win)
+    box:SetAutoFocus(false)
+    box:SetSize(250, 22)
+    if tabs then box:SetPoint("RIGHT", tabs, "LEFT", -10, 0)
+    else box:SetPoint("TOPRIGHT", win, "TOPRIGHT", -20, -((ns.SHELL_H or 92) - 32)) end
+    box:SetTextInsets(10, 10, 0, 0)
+    ns:SetFont(box, 11, "")
+    box:SetTextColor(unpack(T.text))
+    ns.RoundedRect(box, -8, 0, 11, T.border[1], T.border[2], T.border[3], 1)
+    ns.RoundedRect(box, -7, 1, 10, 0.05, 0.05, 0.06, 1)
+    local hint = box:CreateFontString(nil, "OVERLAY")
+    ns:SetFont(hint, 11, "")
+    hint:SetTextColor(unpack(T.textDim))
+    hint:SetPoint("LEFT", 10, 0)
+    hint:SetText("Search: name, type, zone, level, attack...")
+    box:SetScript("OnEscapePressed", function(self) self:SetText(""); self:ClearFocus() end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnTextChanged", function(self)
+        local t = self:GetText() or ""
+        hint:SetShown(t == "" and not self:HasFocus())
+        query = t:lower():gsub("^%s+", ""):gsub("%s+$", "")
+        if win.list then win.list.offset = 0 end
+        B:Refresh()
+    end)
+    box:SetScript("OnEditFocusGained", function() hint:Hide() end)
+    box:SetScript("OnEditFocusLost", function(self) hint:SetShown((self:GetText() or "") == "") end)
+    win.shell:Lift(box)
 
     local left = card(win, LIST_W, LIST_H + 12)
     left:SetPoint("TOPLEFT", 14, -PAGE_TOP)
@@ -568,13 +721,23 @@ ns.commands.bestiary = function() B:Open() end
 function B:OnInit(db)
     self.db = db
     db.collapsed = db.collapsed or {}
-    B.OnChange(function() if win and win:IsShown() then stale = true end end)
+    B.OnChange(function(id)
+        if id then hay[id] = nil end
+        if win and win:IsShown() then stale = true end
+    end)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED", "LOOT_OPENED",
-                         "PLAYER_REGEN_ENABLED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START" }) do
+                         "PLAYER_REGEN_ENABLED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
+                         "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL", "CHAT_MSG_MONSTER_EMOTE" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
-    ev:SetScript("OnEvent", function(_, e, a1, _, a3)
+    local SPEECH = { CHAT_MSG_MONSTER_SAY = "say", CHAT_MSG_MONSTER_YELL = "yell", CHAT_MSG_MONSTER_EMOTE = "emote" }
+    ev:SetScript("OnEvent", function(_, e, a1, a2, a3)
+        if SPEECH[e] then
+            -- (text, speaker, language)
+            pcall(noteSpeech, SPEECH[e] ~= "say" and SPEECH[e] or nil, a1, a2, a3)
+            return
+        end
         if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target")
         elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover")
         elseif e == "NAME_PLATE_UNIT_ADDED" then if type(a1) == "string" then pcall(observe, a1) end
