@@ -24,6 +24,10 @@ local T = ns.Theme
 --     c  = { [spell name] = spell id or true }   what it casts (16): cast
 --          bars, and since 0.1.579 casts with no bar (instant ones) where
 --          the game says what they were,
+--     cc = { [spell name] = kind }      how it takes control of you: STUN,
+--          FEAR, ROOT, SILENCE... (0.1.588, from the game's own "loss of
+--          control" notice, with the spell kept in c),
+--     dbt = { [debuff name] = Magic / Poison / Disease / Curse },
 --     db = { [debuff name] = spell id or true }  what it leaves on you (12):
 --          the debuffs found on you when a fight with it ends,
 --     hit = { [attack name] = hardest hit on you } (from death recaps),
@@ -127,7 +131,7 @@ local function view(id)
     v.lo = (own.lo and sh.lo) and math.min(own.lo, sh.lo) or own.lo or sh.lo
     v.hi = (own.hi and sh.hi) and math.max(own.hi, sh.hi) or own.hi or sh.hi
     if not v.hi then v.lo = nil end
-    for _, key in ipairs({ "z", "c", "hp", "hit", "dsp", "db" }) do
+    for _, key in ipairs({ "z", "c", "hp", "hit", "dsp", "db", "cc", "dbt" }) do
         if own[key] or sh[key] then
             local t = {}
             for k, val in pairs(sh[key] or {}) do t[k] = val end
@@ -460,6 +464,53 @@ local function noteXP(text)
     addKill(id, lvl, true)
 end
 
+-- Stuns, fears and the like (0.1.588). When you lose control of your
+-- character the game says so, with what did it and what kind it is (this
+-- is what its own "Stunned" banner is drawn from). It does not say who:
+-- it is put down to your target if that is a creature you are fighting,
+-- else kept until the fight ends and given to what you killed, if that
+-- was one thing.
+local CONTROL = { STUN = "Stuns", STUN_MECHANIC = "Stuns", FEAR = "Fears", FEAR_MECHANIC = "Fears", ROOT = "Roots",
+                  SILENCE = "Silences", DISARM = "Disarms", CONFUSE = "Confuses", CHARM = "Charms", POSSESS = "Takes you over",
+                  PACIFY = "Pacifies", PACIFYSILENCE = "Pacifies", SCHOOL_INTERRUPT = "Interrupts your casting",
+                  DISORIENT = "Disorients", INCAPACITATE = "Incapacitates", SAP = "Incapacitates", CYCLONE = "Lifts you out of the fight",
+                  BANISH = "Banishes", SNARE = "Slows", DAZE = "Dazes", SLEEP = "Puts you to sleep", HORROR = "Fears", POLYMORPH = "Polymorphs" }
+local controlWait = {}
+local function creditControl(id, name, kind, sid)
+    local r = id and record(id)
+    if not r then return end
+    r.cc = r.cc or {}
+    if r.cc[name] == nil and count(r.cc) < 8 then r.cc[name] = kind; changed(id) end
+    r.c = r.c or {}
+    if plain(sid) and (r.c[name] == nil or r.c[name] == true) then r.c[name] = sid end
+end
+local function noteControl()
+    local L = C_LossOfControl
+    local get = L and (L.GetActiveLossOfControlData or L.GetEventInfo)
+    local n = L and L.GetActiveLossOfControlDataCount and call(L.GetActiveLossOfControlDataCount) or 1
+    if not get then diag("ccdiag", "no way to ask") return end
+    if not plain(n) then diag("ccdiag", "count hidden") return end
+    for i = 1, math.min(n, 4) do
+        local d = call(get, i)
+        if type(d) ~= "table" then diag("ccdiag", "nothing given")
+        else
+            local kind, sid = d.locType, d.spellID
+            if not str(kind) then diag("ccdiag", secret(kind) and "kind hidden" or "no kind")
+            else
+                local name = plain(sid) and C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, sid)
+                if not str(name) then name = str(d.displayText) and d.displayText or kind end
+                diag("ccdiag", "got " .. kind)
+                local id = npcID("target")
+                if id and isTrue(call(UnitCanAttack, "player", "target")) then
+                    creditControl(id, name, kind, sid)
+                elseif #controlWait < 8 then
+                    controlWait[#controlWait + 1] = { name = name, kind = kind, sid = sid }
+                end
+            end
+        end
+    end
+end
+
 -- Health, worked out. The game hides a creature's health from addons, but
 -- its own damage meter can be read once a fight is over, and it keeps the
 -- fight just ended apart ("session 1").
@@ -616,6 +667,10 @@ local function fightEnd(kills, try)
         return
     end
     local fightKills = kills
+    if #kills == 1 then
+        for _, w in ipairs(controlWait) do creditControl(kills[1].id, w.name, w.kind, w.sid) end
+    end
+    wipe(controlWait)
     -- What it left on you: your debuffs, now that they can be read. One
     -- the game ties to a creature still about goes to that creature; one
     -- with no owner left goes to what you killed, if that was one thing.
@@ -636,6 +691,10 @@ local function fightEnd(kills, try)
                     if r.db[name] == nil and count(r.db) < 12 then
                         r.db[name] = plain(a.spellId) and a.spellId or true
                         changed(id)
+                    end
+                    if str(a.dispelName) and r.db[name] ~= nil then
+                        r.dbt = r.dbt or {}
+                        r.dbt[name] = a.dispelName
                     end
                 end
             end
@@ -879,6 +938,7 @@ function B.Rows(rows, id, full)
     for name in pairs(r.c or {}) do names[name] = true end
     for name in pairs(r.hit or {}) do names[name] = true end
     for name in pairs(r.db or {}) do names[name] = true end
+    for name in pairs(r.cc or {}) do names[name] = true end
     if next(names) then
         head(rows, "Attacks and abilities", "micro_spell.tga")
         local list = {}
@@ -888,16 +948,23 @@ function B.Rows(rows, id, full)
             local sid = r.c and type(r.c[name]) == "number" and r.c[name]
                 or (r.db and type(r.db[name]) == "number" and r.db[name]) or nil
             local debuff = r.db and r.db[name] ~= nil
+            local ctl = r.cc and r.cc[name] and (CONTROL[r.cc[name]] or r.cc[name]) or nil
+            local kindOf = r.dbt and r.dbt[name] or nil
+            local tags = {}
+            if ctl then tags[#tags + 1] = "|cffeb6159" .. ctl .. "|r" end
+            if hit then tags[#tags + 1] = "up to " .. hit end
+            if debuff then tags[#tags + 1] = kindOf or "debuff" end
             local icon = name == "Melee" and MELEE_ICON
                 or (sid and C_Spell and C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, sid)) or nil
             local hit = r.hit and r.hit[name]
             rows[#rows + 1] = { kind = "stat", label = name, labelColor = T.text, icon = str(icon) and icon or (plain(icon) and icon) or nil,
-                value = (hit and ("up to " .. hit) or "") .. (debuff and ((hit and "   ·   " or "") .. "debuff") or ""), color = T.textDim,
+                value = table.concat(tags, "   ·   "), color = T.textDim,
                 tooltip = function(tip)
                     if not (sid and pcall(tip.SetSpellByID, tip, sid)) then tip:SetText(name, 1, 1, 1) end
                     tip:AddLine(" ")
                     if r.c and r.c[name] ~= nil then tip:AddLine("Seen it use this.", 0.6, 0.6, 0.65) end
-                    if debuff then tip:AddLine("Found on you after a fight with it.", 0.6, 0.6, 0.65) end
+                    if ctl then tip:AddLine(ctl .. " you: you lose control of your character.", 0.92, 0.38, 0.35) end
+                    if debuff then tip:AddLine("Found on you after a fight with it" .. (kindOf and (" (" .. kindOf .. ")") or "") .. ".", 0.6, 0.6, 0.65) end
                     if hit then tip:AddLine("Hardest hit on you: " .. hit .. " (from a death recap).", 0.6, 0.6, 0.65) end
                     tip:Show()
                 end }
@@ -956,8 +1023,18 @@ function B.Rows(rows, id, full)
             says[#says + 1] = line
         end
     end
-    if #does > 0 then
+    local warns = {}
+    for name, kind in pairs(r.cc or {}) do warns[#warns + 1] = { name = name, word = CONTROL[kind] or kind } end
+    table.sort(warns, function(a, b) return a.name < b.name end)
+    if #does > 0 or #warns > 0 then
         head(rows, "Behavior", "micro_eye.tga")
+        for _, w in ipairs(warns) do
+            rows[#rows + 1] = { kind = "stat", label = w.word .. " you", labelColor = RED, value = w.name, color = T.textDim,
+                tooltip = function(tip)
+                    tip:SetText(w.word .. " you", 1, 1, 1)
+                    tip:AddLine("With " .. w.name .. ": you lose control of your character.", 0.86, 0.86, 0.89, true)
+                end }
+        end
         for _, b in ipairs(does) do
             local heard = does[b].t
             if r.n then heard = heard:gsub("%%s", (r.n:gsub("%%", "%%%%"))) end
@@ -1031,6 +1108,8 @@ local function haystack(id, r)
     for z in pairs(r.z or {}) do bits[#bits + 1] = z end
     for name in pairs(r.c or {}) do bits[#bits + 1] = name end
     for name in pairs(r.db or {}) do bits[#bits + 1] = name end
+    for name, kind in pairs(r.cc or {}) do bits[#bits + 1] = name; bits[#bits + 1] = (CONTROL[kind] or kind) end
+    for _, kind in pairs(r.dbt or {}) do bits[#bits + 1] = kind end
     for name in pairs(r.hit or {}) do bits[#bits + 1] = name end
     for _, line in ipairs(r.q or {}) do
         bits[#bits + 1] = line.t
@@ -1467,7 +1546,9 @@ function B:OnInit(db)
     -- A fresh book (0.1.582, agreed): what was kept before kills were
     -- counted properly had loot without kills and tallies from three
     -- different ways of counting. Everything is met again from here.
-    if MinimalUIDB and MinimalUIDB.bestiaryRev ~= 2 then
+    -- (0.1.588: this read "~= 2", so once the number went past 2 it emptied
+    -- the book at every reload: loot, speech and health all gone each time.)
+    if MinimalUIDB and (MinimalUIDB.bestiaryRev or 0) < 2 then
         MinimalUIDB.bestiary, MinimalUIDB.bestiaryOut, MinimalUIDB.bestiarySent = nil, nil, nil
         MinimalUIDB.hpdiag, MinimalUIDB.castdiag, MinimalUIDB.lookdiag = nil, nil, nil
         MinimalUIDB.bestiaryRev = 2
@@ -1484,7 +1565,7 @@ function B:OnInit(db)
     end)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED", "LOOT_OPENED",
-                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
+                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "LOSS_OF_CONTROL_ADDED", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
                          "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL", "CHAT_MSG_MONSTER_EMOTE" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
@@ -1498,6 +1579,7 @@ function B:OnInit(db)
         if e == "PLAYER_REGEN_DISABLED" then pcall(fightStart) return end
         if e == "PLAYER_ENTERING_WORLD" then C_Timer.After(3, function() if not InCombatLockdown() then pcall(fightStart) end end) return end
         if e == "CHAT_MSG_COMBAT_XP_GAIN" then pcall(noteXP, a1) return end
+        if e == "LOSS_OF_CONTROL_ADDED" then pcall(noteControl) return end
         if e == "PLAYER_REGEN_ENABLED" then
             C_Timer.After(0.3, function() pcall(noteDeath, "target") end)
             C_Timer.After(0.6, function()
