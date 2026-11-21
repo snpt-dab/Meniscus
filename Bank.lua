@@ -817,8 +817,11 @@ function BK:PaintSlots()
             pcall(hideArt, b, sk)
             local t = tabs and tabs[i + 1]
             local inv = t and t.ID and call(CC.ContainerIDToInventoryID, t.ID)
+            -- (the button's own word for which slot it is, when it has one)
+            local own = b.GetInventorySlot and call(b.GetInventorySlot, b)
+            if num(own) and own > 0 then inv = own end
             local tex = inv and GetInventoryItemTexture("player", inv)
-            sk.locked = not t
+            sk.locked = not t and not tex
             sk.icon:SetTexture(tex or nil)
             sk.icon:SetShown(tex and true or false)
             sk.lock:SetShown(sk.locked)
@@ -878,6 +881,28 @@ function adopt()
     local sortable = #slots > 1
     for _, k in ipairs(slots) do if not slotPos[k] then sortable = false end end
     if sortable then table.sort(slots, bySlotPos) end
+    -- (0.1.611) The bag was drawn on the first button, and that button
+    -- said "Purchasable bag slot" and would not take a bag: the buttons
+    -- were not in the order supposed. Each has its own number from the
+    -- game: when they all have one, and no two the same, that is the order.
+    do
+        local ids, okIDs, seenID = {}, #slots > 1, {}
+        for _, k in ipairs(slots) do
+            local id = k.GetID and call(k.GetID, k)
+            if not num(id) or id <= 0 or seenID[id] then okIDs = false break end
+            seenID[id] = true; ids[k] = id
+        end
+        if okIDs then table.sort(slots, function(a, b) return ids[a] < ids[b] end) end
+        if MinimalUIDB then
+            local d = { okIDs and "ordered by the game's numbers" or "ordered by place" }
+            for i, k in ipairs(slots) do
+                local inv = k.GetInventorySlot and call(k.GetInventorySlot, k)
+                d[#d + 1] = i .. ": " .. tostring(k.GetName and k:GetName()) .. " id " .. tostring(k.GetID and call(k.GetID, k))
+                    .. " inv " .. tostring(num(inv) and inv or "?") .. " pos " .. tostring(slotPos[k])
+            end
+            MinimalUIDB.bankslotdiag = d
+        end
+    end
     local x, n = PAD + math.ceil(win.bagLabel:GetStringWidth() or 24) + 8, 0
     local shown = {}
     for _, k in ipairs(slots) do
