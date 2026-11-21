@@ -464,6 +464,31 @@ local function stat(rows, label, value, color)
     if value == nil then return end
     rows[#rows + 1] = { kind = "stat", label = label, value = value, color = color }
 end
+-- Behavior (0.1.576): what a creature is seen to do, read off its emotes
+-- ("%s attempts to run away in fear!"). The emote is kept as it was heard
+-- (in q, with what it says); the label is decided here when it is shown,
+-- so this list can grow and be reworded and what is already written down
+-- follows. An emote that matches nothing stays under "Says".
+--   { words to find in the emote (lower case, any of them), label, what it means }
+local BEHAVIORS = {
+    { { "run away in fear", "attempts to flee", "flees" }, "Runs away in fear",
+      "Runs when badly hurt, and may come back with others." },
+    { { "calls for help", "call for help", "calls for aid" }, "Calls for help",
+      "Brings nearby allies into the fight." },
+    { { "enrage" }, "Enrages", "Hits harder or faster once it is hurt." },
+    { { "frenzy" }, "Goes into a frenzy", "Attacks faster for a while." },
+}
+local function behaviorOf(line)
+    if line.k ~= "emote" or type(line.t) ~= "string" then return end
+    local low = line.t:lower()
+    for _, b in ipairs(BEHAVIORS) do
+        for _, w in ipairs(b[1]) do
+            if low:find(w, 1, true) then return b end
+        end
+    end
+end
+B.BehaviorOf = behaviorOf
+
 function B.Rows(rows, id, full)
     local r = id and view(id)
     if not r then
@@ -556,10 +581,35 @@ function B.Rows(rows, id, full)
                 end }
         end
     end
-    if r.q and #r.q > 0 then
+    -- what it does, then what it says (an emote that is a known behavior
+    -- is listed as that, once)
+    local does, says = {}, {}
+    for _, line in ipairs(r.q or {}) do
+        local b = behaviorOf(line)
+        if b then
+            if not does[b] then does[b] = line; does[#does + 1] = b end
+        else
+            says[#says + 1] = line
+        end
+    end
+    if #does > 0 then
+        head(rows, "Behavior", "micro_eye.tga")
+        for _, b in ipairs(does) do
+            local heard = does[b].t
+            if r.n then heard = heard:gsub("%%s", (r.n:gsub("%%", "%%%%"))) end
+            rows[#rows + 1] = { kind = "stat", wide = true, label = b[2], labelColor = T.text, value = "",
+                tooltip = function(tip)
+                    tip:SetText(b[2], 1, 1, 1)
+                    tip:AddLine(b[3], 0.86, 0.86, 0.89, true)
+                    tip:AddLine(" ")
+                    tip:AddLine("Seen as: " .. heard, 0.6, 0.6, 0.65, true)
+                end }
+        end
+    end
+    if #says > 0 then
         head(rows, "Says", "micro_chat.tga")
         local me = call(UnitName, "player")
-        for _, line in ipairs(r.q) do
+        for _, line in ipairs(says) do
             local said = str(me) and line.t:gsub("%$N", me) or line.t
             if r.n then said = said:gsub("%%s", (r.n:gsub("%%", "%%%%"))) end
             local how = line.k == "yell" and "Yells" or (line.k == "emote" and "Emote") or "Says"
@@ -617,7 +667,11 @@ local function haystack(id, r)
     for z in pairs(r.z or {}) do bits[#bits + 1] = z end
     for name in pairs(r.c or {}) do bits[#bits + 1] = name end
     for name in pairs(r.hit or {}) do bits[#bits + 1] = name end
-    for _, line in ipairs(r.q or {}) do bits[#bits + 1] = line.t end
+    for _, line in ipairs(r.q or {}) do
+        bits[#bits + 1] = line.t
+        local b = behaviorOf(line)
+        if b then bits[#bits + 1] = b[2] end
+    end
     local drops = {}
     for item in pairs(r.d or {}) do drops[item] = true end
     for item in pairs(r.l or {}) do drops[item] = true end
