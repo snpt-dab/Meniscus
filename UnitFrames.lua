@@ -125,9 +125,10 @@ local function setLevel(badge, unit)
     badge.text:SetText(lvl)
     local attackable = UnitCanAttack("player", unit)
     if issecretvalue(attackable) then attackable = false end
-    local c = attackable and GetCreatureDifficultyColor and GetCreatureDifficultyColor(lvl)
-    if type(c) == "table" and c.r then
-        badge.text:SetTextColor(c.r, c.g, c.b)
+    local r, g, b
+    if attackable and ns.CreatureLevelColor then r, g, b = ns.CreatureLevelColor(unit, lvl) end
+    if r then
+        badge.text:SetTextColor(r, g, b)
     else
         badge.text:SetTextColor(unpack(T.text))
     end
