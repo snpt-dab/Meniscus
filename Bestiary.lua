@@ -1060,7 +1060,7 @@ function B.Traits(id)
     end
     if r.tame then add("micro_class_hunter.tga", GREEN, "Tameable", "A hunter can tame it." .. (r.f and (" Family: " .. r.f .. ".") or ""))
     elseif r.t == "Beast" and r.f then add("micro_class_hunter.tga", GREY, "Likely tameable", "A beast of the " .. r.f .. " family. Not confirmed: only a hunter is told.") end
-    if r.sk and GATHER[r.sk] then add(r.sk == "leather" and "micro_profession.tga" or (r.sk == "rock" and "micro_node_ore.tga" or "micro_node.tga"), GOLD, GATHER[r.sk][1], GATHER[r.sk][2]) end
+    if r.sk and GATHER[r.sk] then add(r.sk == "leather" and "micro_skin.tga" or (r.sk == "rock" and "micro_node_ore.tga" or "micro_node.tga"), GOLD, GATHER[r.sk][1], GATHER[r.sk][2]) end
     if r.qs and next(r.qs) then
         local names = {}
         for q in pairs(r.qs) do names[#names + 1] = q end
