@@ -2025,6 +2025,36 @@ local function timerBar()
         timerHolder = CreateFrame("Frame", "MeniscusMirror", UIParent)
         timerHolder:SetSize(TIMER_W, 1)
         timerHolder:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 290)
+        -- With nothing targeted (0.1.615) the room over the map, where the
+        -- target's frame and portrait would be, is empty: the stack comes
+        -- down into it, to just over where your cast bar shows, and goes
+        -- back up when you take a target. It glides, a quarter second.
+        local HIGH, y, goal = 290, 290, 290
+        local function low()
+            local dome = _G.MinimalUI_MinimapDome
+            local top = dome and dome:IsShown() and dome:GetTop()
+            if type(top) ~= "number" or secret(top) then return HIGH end
+            local at = top * dome:GetEffectiveScale() / UIParent:GetEffectiveScale() + 30
+            return at < HIGH and at or HIGH
+        end
+        local mover = CreateFrame("Frame", nil, timerHolder)
+        mover:Hide()
+        mover:SetScript("OnUpdate", function(self, dt)
+            local k = 1 - math.exp(-dt / 0.08)
+            y = y + (goal - y) * k
+            if math.abs(goal - y) < 0.5 then y = goal; self:Hide() end
+            timerHolder:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, y)
+        end)
+        local function aim()
+            local has = UnitExists("target")
+            goal = (secret(has) or has) and HIGH or low()
+            if goal ~= y then mover:Show() end
+        end
+        local tf = CreateFrame("Frame")
+        tf:RegisterEvent("PLAYER_TARGET_CHANGED")
+        tf:RegisterEvent("PLAYER_ENTERING_WORLD")
+        tf:SetScript("OnEvent", function() C_Timer.After(0, aim) end)
+        C_Timer.After(1, aim)
     end
     local b = ns:CreatePillBar(timerHolder, TIMER_W, TIMER_H)
     b.label = ns:CreateText(b, 11, T.text)
