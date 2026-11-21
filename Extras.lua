@@ -980,6 +980,8 @@ local function buildOrbText()
     ev:SetScript("OnEvent", function(_, _, _, action, indicator, amount, school)
         -- (Switched off: the damage and the dodges go, heals stay.)
         if healsOnly and (secret(action) or action ~= "HEAL") then return end
+        -- (Heals on you are drawn up with the other numbers now, 0.1.608.)
+        if not secret(action) and action == "HEAL" and ns.HealsInZone and ns.HealsInZone() then return end
         if secret(action) then
             -- Nothing to go on but the number itself.
             if amount ~= nil then pop(function(fs) fs:SetText(amount) end, 1.0, 0.86, 0.84, false) end

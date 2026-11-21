@@ -915,6 +915,16 @@ local function understood(lang)
     end
     return false
 end
+-- "grabs for her poisoned dagger" and "grabs for his poisoned dagger" are
+-- one line said by two creatures of a kind: kept once, as "their" (0.1.608).
+local THEY = { his = "their", her = "their", himself = "themselves", herself = "themselves" }
+local function neutral(text)
+    return (text:gsub("%f[%a]([Hh][ie]%a+)%f[%A]", function(w)
+        local to = THEY[w:lower()]
+        if not to then return nil end
+        return w:sub(1, 1) == "H" and (to:sub(1, 1):upper() .. to:sub(2)) or to
+    end))
+end
 local function noteSpeech(kind, text, who, lang)
     if not (str(text) and str(who)) then return end
     local id = idByName(who)
@@ -923,6 +933,7 @@ local function noteSpeech(kind, text, who, lang)
     local me = call(UnitName, "player")
     if str(me) then text = text:gsub(me:gsub("%p", "%%%0"), "$N") end
     local clear = understood(lang)
+    if clear then text = neutral(text) end
     r.q = r.q or {}
     for _, line in ipairs(r.q) do if line.t == text then return end end
     if clear and str(lang) then
@@ -1903,6 +1914,19 @@ function B:OnInit(db)
             for L in pairs(r.hs or {}) do settle(r, L) end
         end
         MinimalUIDB.bestiaryRev = 5
+    end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 5 then -- (0.1.608: "his"/"her" lines made one)
+        for _, r in pairs(MinimalUIDB.bestiary or {}) do
+            if type(r.q) == "table" then
+                local have = {}
+                for i = #r.q, 1, -1 do
+                    local line = r.q[i]
+                    if str(line.t) and not line.u then line.t = neutral(line.t) end
+                    if have[line.t] then table.remove(r.q, i) else have[line.t] = true end
+                end
+            end
+        end
+        MinimalUIDB.bestiaryRev = 6
     end
     B.OnChange(function(id)
         if id then hay[id] = nil end

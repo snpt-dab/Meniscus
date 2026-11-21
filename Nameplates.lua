@@ -943,6 +943,32 @@ local function buildNumbers()
                         local bs = SIZE * (4.2 + 2.6 * (1 - bq))
                         f.burst:SetSize(bs * 1.5, bs)
                     end
+                    if f.irid then
+                        -- A heal on you (0.1.608): mother-of-pearl. The number
+                        -- wanders between green, aqua and a pale yellow, and
+                        -- two faint copies of it, one yellow, one blue, turn
+                        -- slowly about it a pixel or two off, so the edges
+                        -- shimmer as oil on water does.
+                        local a = f.age + f.phase
+                        local w, v = math.sin(a * 2.9), math.sin(a * 1.7 + 1.3)
+                        local toA, toY = w > 0 and w * 0.75 or 0, w < 0 and -w * 0.60 or 0
+                        local r = 0.38 - 0.10 * toA + 0.52 * toY
+                        local g = 0.95 - 0.13 * toA + 0.01 * toY
+                        local b = 0.56 + 0.40 * toA - 0.16 * toY
+                        if not (f.crit and f.age < 0.50) then
+                            if f.zeroSeen == nil or not pcall(f.fs.SetTextColor, f.fs, r, g, b, f.zeroSeen) then f.fs:SetTextColor(r, g, b, 1) end
+                        end
+                        if not f.crit then
+                            local pull = 1.5 + 0.5 * v
+                            local lean = a * 1.4
+                            local dx, dy = pull * math.cos(lean), pull * math.sin(lean)
+                            f.warm:SetPoint("CENTER", -dx, dy)
+                            f.cool:SetPoint("CENTER", dx, -dy)
+                            f.warm:SetAlpha(0.55); f.cool:SetAlpha(0.55)
+                        end
+                        f.warm:SetTextColor(0.98, 0.93 + 0.05 * v, 0.40 - 0.10 * v)
+                        f.cool:SetTextColor(0.30 + 0.12 * v, 0.62 - 0.10 * v, 1.00)
+                    end
                 end
             end
         end
@@ -964,6 +990,7 @@ local function buildNumbers()
             f.gate:SetAllPoints(f.bar)
         end
         f.unit = showUnit
+        f.irid = nil
         f.onTarget = false
         if showUnit and showUnit ~= "player" then
             local okT, isT = pcall(UnitIsUnit, showUnit, "target")
@@ -2368,6 +2395,8 @@ local function buildNumbers()
     end
 
     local labHit -- (the pairing's record of the hit in hand, for the lab's marks)
+    -- (Asked by the health orb's own text, Extras: are heals on you shown here?)
+    ns.HealsInZone = function() return NP.db.numbersHealsIn ~= false end
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("UNIT_COMBAT")
     ev:SetScript("OnEvent", function(_, _, unit, action, indicator, amount, school)
@@ -2383,6 +2412,20 @@ local function buildNumbers()
             -- is on (Extras: orbText): not shown a second time here.
             local EX = ns.modules.Extras
             local OR = ns.modules.Orbs
+            -- A heal on you (0.1.608): up where your own hits are shown, in
+            -- its own shimmering colour, and no longer on the health orb.
+            if action == "HEAL" and NP.db.numbersHealsIn ~= false then
+                local hx, hy = railSpot(nil, false)
+                local crit = not secret(indicator) and indicator == "CRITICAL"
+                local f = show(nil, hx, hy, amount, 0.38, 0.95, 0.56, crit)
+                if f then
+                    f.irid, f.phase = true, math.random() * 6.28
+                    pcall(f.fs.SetFormattedText, f.fs, "+%d", amount)
+                    pcall(f.warm.SetFormattedText, f.warm, "+%d", amount)
+                    pcall(f.cool.SetFormattedText, f.cool, "+%d", amount)
+                end
+                return
+            end
             if EX and EX.db and EX.db.orbText ~= false and OR and OR.health and OR.health:IsShown() then return end
             -- Switched off there: off, not moved here. (Beside your
             -- character is only for when there is no health orb to use.)
