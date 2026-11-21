@@ -1075,15 +1075,7 @@ function B.Traits(id)
     end
     return t
 end
-local function coins(c)
-    c = math.floor(c + 0.5)
-    local g, s2, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
-    local out = {}
-    if g > 0 then out[#out + 1] = g .. "g" end
-    if s2 > 0 then out[#out + 1] = s2 .. "s" end
-    if cp > 0 or #out == 0 then out[#out + 1] = cp .. "c" end
-    return table.concat(out, " ")
-end
+local function coins(c) return ns.Money(c) or "" end
 
 local lootOpen = {} -- (creatures whose whole loot list is open: this session)
 function B.Rows(rows, id, full)
@@ -1175,7 +1167,8 @@ function B.Rows(rows, id, full)
     -- behavior are icons in the strip, in both windows, and no longer rows.)
     do
         local base = r.cb or math.max(r.lk or 0, r.ln or 0)
-        if r.cn and base > 0 then stat(rows, "Coin per kill", coins(r.cn / base)) end
+        -- (an average, so "~"; the coin discs as everywhere)
+        if r.cn and base > 0 then stat(rows, "Coin per kill", "~" .. coins(r.cn / base)) end
     end
     -- (What it does was a section of rows here, "Attacks and abilities":
     -- each is an icon in the strip now, 0.1.595.)
