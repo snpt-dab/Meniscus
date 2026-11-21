@@ -81,6 +81,13 @@ def txt(v, n):
 def num(v, lo, hi):
     return v if isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi else None
 RANKS = {'elite', 'rareelite', 'rare', 'worldboss'}
+THEY = {'his': 'their', 'her': 'their', 'himself': 'themselves', 'herself': 'themselves'}
+def neutral(t):
+    def f(m):
+        to = THEY[m.group(1).lower()]
+        return to.capitalize() if m.group(1)[0].isupper() else to
+    return re.sub(r'\b(his|her|himself|herself)\b', f, t, flags=re.I)
+
 def clean(r):
     if not isinstance(r, dict): return None
     o = {}
@@ -152,6 +159,8 @@ def clean(r):
         l = txt(line.get('l'), 30)
         if l: e['l'] = l
         if line.get('u') is True: e['u'] = True
+        else: e['t'] = neutral(e['t'])
+        if any(x['t'] == e['t'] for x in q): continue
         q.append(e)
     if q: o['q'] = q
     ln, lk = num(r.get('ln'), 0, 10**7) or 0, num(r.get('lk'), 0, 10**7) or 0
