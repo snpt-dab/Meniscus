@@ -746,6 +746,16 @@ local MOOD_OFF = { 0.06, 0.06, 0.07 }
 function ns.PetMoodWord(fs, c, i)
     local t, p = c.text[i], ns.PetMoodPct
     fs:SetTextColor(p(t[1]), p(t[2]), p(t[3]), p(c[i]))
+    -- (0.1.542) The word is set again each time: a pet fed up to happy went
+    -- on reading Content until a reload although this runs every two
+    -- seconds, so a colour from a hidden value seems to be taken only when
+    -- the string is drawn afresh.
+    local word = fs.moodWord or fs:GetText()
+    if type(word) == "string" and word ~= "" then
+        fs.moodWord = word
+        fs:SetText("")
+        fs:SetText(word)
+    end
 end
 local HAPPY = (Enum and Enum.PowerType and Enum.PowerType.Happiness) or 27
 function ns.PetMoodPct(c) return UnitPowerPercent("pet", HAPPY, false, c) end
@@ -994,6 +1004,14 @@ function Bars:ApplyPetWell()
             for i = 1, 3 do wordText[i]:SetTextColor(0, 0, 0, 0) end
             local c = w.baseRing
             if c then paintRing(c[1], c[2], c[3], 1) end
+        end
+        -- /men moodfresh: the curves thrown away and made again, for when
+        -- the word is still wrong (if this rights it, the client keeps what
+        -- a curve gave and the curves are what needs renewing).
+        ns.commands.moodfresh = function()
+            moodCurves = nil
+            w.mood()
+            ns:Print("Pet mood: curves rebuilt.")
         end
         -- /men moodprobe: what the curves give and what the words end up at.
         ns.commands.moodprobe = function()
