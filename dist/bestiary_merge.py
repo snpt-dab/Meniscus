@@ -157,8 +157,8 @@ def merge(a, b):
             d[x] = max(d.get(x, 0), v)
     for x, v in b.get('he', {}).items():
         d, n = a.setdefault('he', {}), a.setdefault('hn', {})
-        d[x] = min(d.get(x, v), v)
-        n[x] = n.get(x, 0) + b.get('hn', {}).get(x, 1)
+        bn = b.get('hn', {}).get(x, 1)   # (the figure seen more often wins; equal: the lower)
+        if x not in d or bn > n.get(x, 0) or (bn == n.get(x, 0) and v < d[x]): d[x], n[x] = v, bn
     for key in ('c', 'db'):
         for x, v in b.get(key, {}).items():
             d = a.setdefault(key, {})
