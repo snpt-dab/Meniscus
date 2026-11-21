@@ -267,6 +267,16 @@ local function observe(unit)
     if not r then return end
     local lvl = call(UnitLevel, unit)
     local okLvl = plain(lvl) and lvl > 0
+    -- (The level of the one you last had targeted, kept for its death:
+    -- the game drops your target as it dies, so the kill, counted from the
+    -- experience line, had no level, and its health sample went under
+    -- "level not known": one in five did, and all of some creatures'. 0.1.609)
+    if okLvl and unit == "target" then
+        B.tl = B.tl or {}
+        local e = B.tl[id] or {}
+        B.tl[id] = e
+        e.l, e.t = lvl, GetTime()
+    end
     if first then
         local name = call(UnitName, unit)
         if str(name) then r.n = name end
@@ -559,6 +569,8 @@ local function noteXP(text)
     end
     local r = record(id)
     if not lvl and r and r.lo and r.lo == r.hi then lvl = r.lo end
+    local e = not lvl and B.tl and B.tl[id]
+    if e and GetTime() - e.t < 120 then lvl = e.l end
     diag("killdiag", "counted from the experience line")
     addKill(id, lvl, true)
 end
