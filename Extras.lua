@@ -1343,8 +1343,19 @@ local function buildWaypoint()
         -- that back to the focused quest snapped the list straight back to
         -- it whenever another quest was clicked. So nothing is forced while
         -- the map is up; the focus is put back when it closes.
+        -- (0.1.607: and what you pick there IS the focus from then on. It
+        -- was put back to the old focus, or to none, as the map closed: you
+        -- clicked a quest yellow in the map's list and it did not stay.)
         local wm = _G.WorldMapFrame
-        if wm and wm:IsShown() then rec.left = "map open"; return end
+        if wm and wm:IsShown() then
+            if cur and cur ~= want and C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(cur) then
+                rec.left = "map open: the quest picked there is the focus now"
+                ns.QuestFocus.Set(cur)
+            else
+                rec.left = "map open"
+            end
+            return
+        end
         if want then
             if cur ~= want then pcall(ST.SetSuperTrackedQuestID, want) end
         elseif cur then
@@ -1467,7 +1478,17 @@ local function buildWaypoint()
     end)
     C_Timer.NewTicker(5, soon)
     if _G.WorldMapFrame and _G.WorldMapFrame.HookScript then
-        _G.WorldMapFrame:HookScript("OnHide", soon)
+        _G.WorldMapFrame:HookScript("OnHide", function()
+            -- (a quest picked in the list a moment before closing: taken as
+            -- the focus now, before the focus is put back over it)
+            pcall(function()
+                local cur = ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID()
+                if secret(cur) or not cur or cur == 0 or cur == ns.QuestFocus.Get() then return end
+                if override then return end
+                if C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(cur) then ns.QuestFocus.Set(cur) end
+            end)
+            soon()
+        end)
     end
 end
 
