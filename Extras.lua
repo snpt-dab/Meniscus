@@ -1094,6 +1094,7 @@ local function buildWaypoint()
     -- (ns.QuestFocus.Override).
     local born = GetTime()
     local override, hadOverride
+    local missWant, missAt
     local function apply()
         local rec = { at = date("%H:%M:%S") }
         if MinimalUIDB then MinimalUIDB.waypoint = rec end
@@ -1114,11 +1115,24 @@ local function buildWaypoint()
         local want = ns.QuestFocus.Get()
         -- The quest is no longer in your log: the focus goes with it. (Not
         -- in the first seconds after login, while the log is still empty.)
+        -- (0.1.547: and only once it has been missing for ten seconds on
+        -- end. One look that came up empty, as the log can during a loading
+        -- screen, used to be enough to drop the focus for good.)
         if want and GetTime() - born > 15 and C_QuestLog.GetLogIndexForQuestID
             and not C_QuestLog.GetLogIndexForQuestID(want) then
-            ns.QuestFocus.Set(nil)
+            local now = GetTime()
+            if missWant ~= want then missWant, missAt = want, now end
+            if now - missAt >= 10 then
+                missWant = nil
+                rec.left = "quest gone: focus dropped"
+                ns.QuestFocus.Set(nil)
+            else
+                rec.left = "quest missing: waiting"
+                C_Timer.After(10.5 - (now - missAt), function() if focusApply then focusApply() end end)
+            end
             return
         end
+        missWant = nil
         local cur = ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID()
         if secret(cur) then return end
         if cur == 0 then cur = nil end
