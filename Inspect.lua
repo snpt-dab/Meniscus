@@ -272,6 +272,18 @@ local function fillInfo(unit)
     local Cm = ns.modules.Character
     if not (win and win.card and Cm and Cm.FillOtherCard) then return end
     local rows, base, gear, res, buff
+    -- A creature has no attributes the game will tell (the tiles and the
+    -- graph showed "?" all round, 0.1.573): it gets a plain card, the
+    -- whole height, of what is known of it.
+    local beast = not isTrue(call(UnitIsPlayer, unit)) and win.beast
+    if win.beast then
+        win.beast:SetShown(beast and true or false)
+        win.card:SetShown(not beast)
+    end
+    if beast then
+        beast.list:SetData(fillCreature(unit))
+        return
+    end
     if isTrue(call(UnitIsPlayer, unit)) then rows, base, gear, res, buff = fillPlayer(unit) else rows = fillCreature(unit) end
     Cm.FillOtherCard(win.card, unit, base, gear, rows, res, buff)
 end
@@ -473,6 +485,19 @@ local function build()
         card:SetPoint("TOPLEFT", page, "TOPLEFT", W, 0)
         card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
         win.card = card
+        if Cm.MakeList then
+            local cw = (Cm.CARD_W or INFO_W - 20)
+            local ch = H - PAGE_TOP - 16
+            local beast = CreateFrame("Frame", nil, page)
+            beast:SetPoint("TOPLEFT", page, "TOPLEFT", W, 0)
+            beast:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
+            ns.RoundedRect(beast, -6, 0, 10, 0.085, 0.085, 0.095, 1)
+            local rowsFit = math.floor((ch - 16) / 20)
+            beast.list = Cm.MakeList(beast, cw - 12, rowsFit * 20, 20, 100)
+            beast.list:SetPoint("TOPLEFT", 2, -8)
+            beast:Hide()
+            win.beast = beast
+        end
     end
 
     win:SetScript("OnHide", function()
