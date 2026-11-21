@@ -997,6 +997,7 @@ local DISPEL = { Poison = { "micro_dispel_poison.tga", { 0.45, 0.85, 0.40 } }, D
                  Curse = { "micro_dispel_curse.tga", { 0.72, 0.45, 0.95 } }, Magic = { "micro_dispel_magic.tga", { 0.45, 0.68, 1.00 } } }
 local GATHER = { leather = { "Skinnable", "Its corpse can be skinned." }, herb = { "Herbs on its corpse", "Its corpse can be gathered with Herbalism." },
                  rock = { "Ore on its corpse", "Its corpse can be mined." }, bolts = { "Parts on its corpse", "Its corpse can be salvaged with Engineering." } }
+local VERB = { Pacifies = "pacify", Banishes = "banish" } -- ("Stuns" gives "stun" by itself; these don't)
 function B.Traits(id)
     local r = id and view(id)
     local t = {}
@@ -1016,13 +1017,46 @@ function B.Traits(id)
             add(b[4] or "micro_eye.tga", GREY, b[2], b[3])
         end
     end
+    local said = {} -- (abilities an icon has already spoken for)
     for name, kind in pairs(r.cc or {}) do
-        add("micro_stat_resist.tga", RED, (B.ControlWord(kind)) .. " you", "With " .. name .. ": you lose control of your character.")
+        local word = B.ControlWord(kind)
+        local verb = VERB[word] or (not word:find(" ") and word:lower():gsub("s$", "")) or nil
+        add("micro_stat_resist.tga", RED, word, verb and ("Can " .. verb .. " you with " .. name .. ".") or (word .. ", with " .. name .. "."))
+        said[name] = true
     end
-    local seenD = {}
+    local byKind = {}
     for name, kind in pairs(r.dbt or {}) do
-        local d = DISPEL[kind]
-        if d and not seenD[kind] then seenD[kind] = true; add(d[1], d[2], kind, "Leaves " .. name .. " on you.") end
+        if DISPEL[kind] then
+            byKind[kind] = byKind[kind] or {}
+            table.insert(byKind[kind], name)
+            said[name] = true
+        end
+    end
+    for kind, list in pairs(byKind) do
+        table.sort(list)
+        local same = #list == 1 and list[1]:lower() == kind:lower()
+        add(DISPEL[kind][1], DISPEL[kind][2], kind, "Can apply " .. (same and kind:lower() or (table.concat(list, ", ") .. " (" .. kind:lower() .. ")")) .. ".")
+    end
+    -- its attacks and abilities, each as its own picture (the spell's),
+    -- after the kinds above: what it casts, what hit you, what it applied
+    local names, list = {}, {}
+    for name in pairs(r.c or {}) do names[name] = true end
+    for name in pairs(r.hit or {}) do names[name] = true end
+    for name in pairs(r.db or {}) do names[name] = true end
+    for name in pairs(names) do if not said[name] then list[#list + 1] = name end end
+    table.sort(list, function(a, b) if (a == "Melee") ~= (b == "Melee") then return a == "Melee" end return a < b end)
+    for _, name in ipairs(list) do
+        local sid = (r.c and type(r.c[name]) == "number" and r.c[name]) or (r.db and type(r.db[name]) == "number" and r.db[name]) or nil
+        local hit = r.hit and r.hit[name]
+        local tex = name == "Melee" and MELEE_ICON or (sid and C_Spell and C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, sid)) or nil
+        local bits = {}
+        if r.db and r.db[name] ~= nil then bits[#bits + 1] = "Can apply " .. name .. "." end
+        if r.c and r.c[name] ~= nil and name ~= "Melee" then bits[#bits + 1] = "Seen using it." end
+        if hit then bits[#bits + 1] = "Hardest hit on you: " .. hit .. "." end
+        if name ~= "Melee" or hit then
+            t[#t + 1] = { raw = (str(tex) or plain(tex)) and tex or "Interface/Icons/INV_Misc_QuestionMark", c = { 0.86, 0.86, 0.89 },
+                          title = name, text = table.concat(bits, " "), sid = name ~= "Melee" and sid or nil }
+        end
     end
     if r.tame then add("micro_class_hunter.tga", GREEN, "Tameable", "A hunter can tame it." .. (r.f and (" Family: " .. r.f .. ".") or ""))
     elseif r.t == "Beast" and r.f then add("micro_class_hunter.tga", GREY, "Likely tameable", "A beast of the " .. r.f .. " family. Not confirmed: only a hunter is told.") end
@@ -1143,43 +1177,8 @@ function B.Rows(rows, id, full)
         local base = r.cb or math.max(r.lk or 0, r.ln or 0)
         if r.cn and base > 0 then stat(rows, "Coin per kill", coins(r.cn / base)) end
     end
-    -- what it does
-    local names = {}
-    for name in pairs(r.c or {}) do names[name] = true end
-    for name in pairs(r.hit or {}) do names[name] = true end
-    for name in pairs(r.db or {}) do names[name] = true end
-    for name in pairs(r.cc or {}) do names[name] = true end
-    if next(names) then
-        head(rows, "Attacks and abilities", "micro_spell.tga")
-        local list = {}
-        for name in pairs(names) do list[#list + 1] = name end
-        table.sort(list, function(a, b) if (a == "Melee") ~= (b == "Melee") then return a == "Melee" end return a < b end)
-        for _, name in ipairs(list) do
-            local sid = r.c and type(r.c[name]) == "number" and r.c[name]
-                or (r.db and type(r.db[name]) == "number" and r.db[name]) or nil
-            local debuff = r.db and r.db[name] ~= nil
-            local ctl = r.cc and r.cc[name] and (CONTROL[r.cc[name]] or r.cc[name]) or nil
-            local kindOf = r.dbt and r.dbt[name] or nil
-            local tags = {}
-            if ctl then tags[#tags + 1] = "|cffeb6159" .. ctl .. "|r" end
-            if hit then tags[#tags + 1] = "up to " .. hit end
-            if debuff then tags[#tags + 1] = kindOf or "debuff" end
-            local icon = name == "Melee" and MELEE_ICON
-                or (sid and C_Spell and C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, sid)) or nil
-            local hit = r.hit and r.hit[name]
-            rows[#rows + 1] = { kind = "stat", label = name, labelColor = T.text, icon = str(icon) and icon or (plain(icon) and icon) or nil,
-                value = table.concat(tags, "   ·   "), color = T.textDim,
-                tooltip = function(tip)
-                    if not (sid and pcall(tip.SetSpellByID, tip, sid)) then tip:SetText(name, 1, 1, 1) end
-                    tip:AddLine(" ")
-                    if r.c and r.c[name] ~= nil then tip:AddLine("Seen it use this.", 0.6, 0.6, 0.65) end
-                    if ctl then tip:AddLine(ctl .. " you: you lose control of your character.", 0.92, 0.38, 0.35) end
-                    if debuff then tip:AddLine("Found on you after a fight with it" .. (kindOf and (" (" .. kindOf .. ")") or "") .. ".", 0.6, 0.6, 0.65) end
-                    if hit then tip:AddLine("Hardest hit on you: " .. hit .. " (from a death recap).", 0.6, 0.6, 0.65) end
-                    tip:Show()
-                end }
-        end
-    end
+    -- (What it does was a section of rows here, "Attacks and abilities":
+    -- each is an icon in the strip now, 0.1.595.)
     if (r.l and next(r.l)) or (r.d and next(r.d)) then
         -- (Out of kills, where those were counted: a corpse with nothing
         -- on it can't be opened, so corpses looted alone runs high. A kill
@@ -1568,23 +1567,44 @@ function B.MakeStrip(parent, perRow)
                     b.icon = b:CreateTexture(nil, "OVERLAY")
                     b.icon:SetSize(14, 14)
                     b.icon:SetPoint("CENTER")
+                    -- (an ability's own picture: full colour, cut round)
+                    b.mask = b:CreateMaskTexture()
+                    b.mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                    b.mask:SetPoint("TOPLEFT", 2, -2)
+                    b.mask:SetPoint("BOTTOMRIGHT", -2, 2)
+                    b.pic = b:CreateTexture(nil, "OVERLAY")
+                    b.pic:SetAllPoints(b.mask)
+                    b.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    b.pic:AddMaskTexture(b.mask)
                     b:SetPoint("TOPLEFT", self, "TOPLEFT", ((i - 1) % perRow) * 28, -math.floor((i - 1) / perRow) * 28)
                     b:SetScript("OnEnter", function(btn)
                         local d2 = btn.d
                         if not d2 then return end
                         btn.fill:SetVertexColor(0.13, 0.13, 0.15, 1)
-                        ns.TipAnchor(btn)
-                        GameTooltip:SetText(d2.title, d2.c[1], d2.c[2], d2.c[3])
-                        if d2.text then GameTooltip:AddLine(d2.text, 0.86, 0.86, 0.89, true) end
+                        -- (over the icon it belongs to, not beside the window: 0.1.595)
+                        GameTooltip:SetOwner(btn, "ANCHOR_TOP", 0, 6)
+                        if not (d2.sid and pcall(GameTooltip.SetSpellByID, GameTooltip, d2.sid)) then
+                            GameTooltip:SetText(d2.title, d2.c[1], d2.c[2], d2.c[3])
+                        elseif d2.text and d2.text ~= "" then
+                            GameTooltip:AddLine(" ")
+                        end
+                        if d2.text and d2.text ~= "" then GameTooltip:AddLine(d2.text, 0.86, 0.86, 0.89, true) end
                         GameTooltip:Show()
                     end)
                     b:SetScript("OnLeave", function(btn) btn.fill:SetVertexColor(0.06, 0.06, 0.07, 1); GameTooltip:Hide() end)
                     self.btns[i] = b
                 end
                 b.d = d
-                b.icon:SetTexture(d.tex)
-                b.icon:SetVertexColor(d.c[1], d.c[2], d.c[3], 1)
-                b.rim:SetVertexColor(d.c[1] * 0.55, d.c[2] * 0.55, d.c[3] * 0.55, 1)
+                if d.raw then
+                    b.pic:SetTexture(d.raw)
+                    b.pic:Show(); b.icon:Hide()
+                    b.rim:SetVertexColor(0.30, 0.30, 0.34, 1)
+                else
+                    b.icon:SetTexture(d.tex)
+                    b.icon:SetVertexColor(d.c[1], d.c[2], d.c[3], 1)
+                    b.icon:Show(); b.pic:Hide()
+                    b.rim:SetVertexColor(d.c[1] * 0.55, d.c[2] * 0.55, d.c[3] * 0.55, 1)
+                end
                 b:Show()
                 shown = i
             elseif b then
