@@ -99,6 +99,11 @@ def clean(r):
     if dsp: o['dsp'] = dsp
     hp = {k: v for k, v in (r.get('hp') or {}).items() if num(k, 1, 255) and num(v, 1, 10**9)} if isinstance(r.get('hp'), dict) else {}
     if hp: o['hp'] = hp
+    he = {k: v for k, v in (r.get('he') or {}).items() if num(k, 1, 255) and num(v, 1, 10**9)} if isinstance(r.get('he'), dict) else {}
+    if he:
+        o['he'] = he
+        hn = r.get('hn') if isinstance(r.get('hn'), dict) else {}
+        o['hn'] = {k: (num(hn.get(k), 1, 10**6) or 1) for k in he}
     c = {}
     for k, v in (r.get('c') or {}).items() if isinstance(r.get('c'), dict) else ():
         k = txt(k, 60)
@@ -145,6 +150,10 @@ def merge(a, b):
         for x, v in b.get(k, {}).items():
             d = a.setdefault(k, {})
             d[x] = max(d.get(x, 0), v)
+    for x, v in b.get('he', {}).items():
+        d, n = a.setdefault('he', {}), a.setdefault('hn', {})
+        d[x] = min(d.get(x, v), v)
+        n[x] = n.get(x, 0) + b.get('hn', {}).get(x, 1)
     for x, v in b.get('c', {}).items():
         d = a.setdefault('c', {})
         if x not in d or d[x] is True: d[x] = v

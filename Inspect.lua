@@ -255,9 +255,9 @@ local function fillCreature(unit)
     if isTrue(call(UnitIsTapDenied, unit)) then stat(rows, "Claimed", "By someone else", DIM) end
     if isTrue(call(UnitIsDead, unit)) then stat(rows, "State", "Dead", DIM) end
     stat(rows, "Targeting", (call(UnitName, unit .. "target")))
-    head(rows, "On it", "micro_buff.tga")
+    head(rows, "Buffs and debuffs", "micro_buff.tga")
     if auras(rows, unit, "HELPFUL", 16) + auras(rows, unit, "HARMFUL", 16) == 0 then
-        note(rows, InCombatLockdown() and "Not readable in a fight" or "Nothing")
+        note(rows, InCombatLockdown() and "Not readable in a fight" or "None on it right now")
     end
     local id = npcID(unit)
     head(rows, "What you have seen", "micro_journal.tga")
