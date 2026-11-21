@@ -1800,16 +1800,135 @@ end
 -- minimap marks for rares (where this client has them), in which case the
 -- quest dot is borrowed for a minute and a half to point at it; and any
 -- rare whose nameplate appears, or that you target or point at.
+-- The fanfare (0.1.543, it was a pill and a soft ping, and was missed): the
+-- whole screen flashes once, its edges glow and beat three times in the
+-- rare's colour (silver, or gold for a rare elite) and stay lit while the
+-- banner is up; the banner is the name, large, struck into place under the
+-- top of the screen between two lines of light that run out from the
+-- middle, with what is known of it underneath. The raid warning sound, on
+-- the master channel so it is heard with effects off, and the game's icon
+-- flashes in the taskbar in case you are looking elsewhere. Six seconds.
+-- /men rare shows it.
+local fanfare
+local function rareFanfare(name, kind, note)
+    if not fanfare then
+        local f = CreateFrame("Frame", nil, UIParent)
+        f:SetAllPoints(UIParent)
+        f:SetFrameStrata("HIGH")
+        f:EnableMouse(false)
+        f:Hide()
+        local white = f:CreateTexture(nil, "BACKGROUND")
+        white:SetAllPoints()
+        white:SetColorTexture(1, 1, 1, 1)
+        white:SetBlendMode("ADD")
+        local edges = {}
+        local DEPTH = 190
+        for i, e in ipairs({ { "TOPLEFT", "TOPRIGHT", "VERTICAL", false }, { "BOTTOMLEFT", "BOTTOMRIGHT", "VERTICAL", true },
+                             { "TOPLEFT", "BOTTOMLEFT", "HORIZONTAL", true }, { "TOPRIGHT", "BOTTOMRIGHT", "HORIZONTAL", false } }) do
+            local t = f:CreateTexture(nil, "BORDER")
+            t:SetColorTexture(1, 1, 1, 1)
+            t:SetBlendMode("ADD")
+            t:SetPoint(e[1]); t:SetPoint(e[2])
+            if e[3] == "VERTICAL" then t:SetHeight(DEPTH) else t:SetWidth(DEPTH) end
+            t.dir, t.minLit = e[3], e[4]
+            edges[i] = t
+        end
+        local banner = CreateFrame("Frame", nil, f)
+        banner:SetSize(10, 10)
+        banner:SetPoint("TOP", f, "TOP", 0, -150)
+        local burst = banner:CreateTexture(nil, "BACKGROUND")
+        burst:SetTexture(MEDIA .. "spot.tga")
+        burst:SetBlendMode("ADD")
+        burst:SetSize(760, 200)
+        burst:SetPoint("CENTER", banner, "CENTER", 0, -28)
+        local lines = {}
+        for i = 1, 4 do
+            local t = banner:CreateTexture(nil, "ARTWORK")
+            t:SetColorTexture(1, 1, 1, 1)
+            t:SetHeight(2)
+            local y = i <= 2 and 0 or -62
+            if i % 2 == 1 then t:SetPoint("RIGHT", banner, "TOP", 0, y) else t:SetPoint("LEFT", banner, "TOP", 0, y) end
+            t.left = i % 2 == 1
+            lines[i] = t
+        end
+        local label = ns:CreateText(banner, 11)
+        label:SetPoint("TOP", banner, "TOP", 0, -9)
+        local punch = CreateFrame("Frame", nil, banner)
+        punch:SetSize(10, 10)
+        punch:SetPoint("CENTER", banner, "TOP", 0, -34)
+        local title = ns:CreateText(punch, 28)
+        title:SetPoint("CENTER")
+        title:SetShadowOffset(2, -2)
+        title:SetShadowColor(0, 0, 0, 0.9)
+        local sub = ns:CreateText(banner, 12, T.textDim)
+        sub:SetPoint("TOP", banner, "TOP", 0, -68)
+        for _, fs in ipairs({ label, sub }) do fs:SetShadowOffset(1, -1); fs:SetShadowColor(0, 0, 0, 0.9) end
+        local LIFE, FADE, LINE_W = 6, 0.8, 300
+        local col = { 1, 1, 1 }
+        local t0 = 0
+        local function grad(t, o, r, g, b, a0, a1)
+            if not (CreateColor and pcall(t.SetGradient, t, o, CreateColor(r, g, b, a0), CreateColor(r, g, b, a1))) then
+                t:SetVertexColor(r, g, b, math.max(a0, a1) * 0.4)
+            end
+        end
+        f:SetScript("OnUpdate", function()
+            local t = GetTime() - t0
+            if t >= LIFE then f:Hide() return end
+            local out = t > LIFE - FADE and (LIFE - t) / FADE or 1
+            local r, g, b = col[1], col[2], col[3]
+            -- the flash: gone in a quarter of a second
+            white:SetAlpha(t < 0.25 and 0.30 * (1 - t / 0.25) or 0)
+            -- the edges: three beats, then a slow breath
+            local a
+            if t < 1.8 then a = 0.25 + 0.55 * math.abs(math.sin(t / 0.6 * math.pi))
+            else a = 0.22 + 0.10 * math.sin((t - 1.8) * 2.4) end
+            a = a * out
+            for _, e in ipairs(edges) do
+                if e.minLit then grad(e, e.dir, r, g, b, a, 0) else grad(e, e.dir, r, g, b, 0, a) end
+            end
+            burst:SetVertexColor(r, g, b, (t < 0.5 and 0.75 - t or 0.25) * out)
+            -- the lines run out from the middle (eased)
+            local k = math.min(1, t / 0.45)
+            local w = LINE_W * k * (2 - k)
+            for _, l in ipairs(lines) do
+                l:SetWidth(math.max(1, w))
+                if l.left then grad(l, "HORIZONTAL", r, g, b, 0, 0.9 * out) else grad(l, "HORIZONTAL", r, g, b, 0.9 * out, 0) end
+            end
+            -- the name is struck into place
+            punch:SetScale(t < 0.22 and 1.7 - 0.7 * (t / 0.22) or 1)
+            banner:SetAlpha(math.min(1, t / 0.12) * out)
+        end)
+        function f.play(name, kind, note)
+            local elite = kind == "rareelite"
+            if elite then col[1], col[2], col[3] = 1.00, 0.80, 0.36 else col[1], col[2], col[3] = 0.62, 0.80, 1.00 end
+            label:SetText(elite and "R A R E   E L I T E" or "R A R E   S P A W N")
+            label:SetTextColor(col[1], col[2], col[3], 1)
+            title:SetText(name)
+            sub:SetText(note or "")
+            t0 = GetTime()
+            f:Show()
+        end
+        fanfare = f
+    end
+    fanfare.play(name, kind, note)
+    pcall(PlaySound, (SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
+    C_Timer.After(0.6, function() pcall(PlaySound, 3175, "Master") end)
+    if FlashClientIcon then pcall(FlashClientIcon) end
+end
+ns.commands.rare = function() rareFanfare("Rare Spawn Preview", math.random(2) == 1 and "rare" or "rareelite", "Level 20   ·   nearby") end
+
 local function buildRare()
     local seen = {}
-    local function alert(key, name, guidForDot)
+    local function alert(key, name, guidForDot, kind, level)
         local now = GetTime()
         if seen[key] and now - seen[key] < 600 then return end
         seen[key] = now
-        if ns.FloatWarning then
-            ns.FloatWarning(MEDIA .. "micro_achievement.tga", "Rare: " .. name, guidForDot and "follow the dot" or "nearby")
+        local note = guidForDot and "follow the dot" or "nearby"
+        if type(level) == "number" and not secret(level) and level > 0 then note = "Level " .. level .. "   ·   " .. note end
+        if not pcall(rareFanfare, name, kind, note) and ns.FloatWarning then
+            ns.FloatWarning(MEDIA .. "micro_achievement.tga", "Rare: " .. name, note)
+            pcall(PlaySound, 3175)
         end
-        pcall(PlaySound, 3175)
         if guidForDot and ns.QuestFocus and ns.QuestFocus.Available() then ns.QuestFocus.Override(guidForDot, 90) end
     end
     local V = _G.C_VignetteInfo
@@ -1826,7 +1945,7 @@ local function buildRare()
         if info.isDead then return end
         local a = type(atlas) == "string" and not secret(atlas) and atlas:lower() or ""
         if a:find("kill", 1, true) or a:find("rare", 1, true) or a:find("elite", 1, true) then
-            alert("v:" .. name, name, guid)
+            alert("v:" .. name, name, guid, a:find("elite", 1, true) and "rareelite" or "rare")
         end
     end
     local function unit(u)
@@ -1837,7 +1956,7 @@ local function buildRare()
         local name = UnitName(u)
         if type(name) ~= "string" or secret(name) then return end
         if seen["v:" .. name] then seen[name] = seen["v:" .. name] end
-        alert(name, name)
+        alert(name, name, nil, c, UnitLevel(u))
     end
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "VIGNETTE_MINIMAP_UPDATED", "VIGNETTES_UPDATED", "NAME_PLATE_UNIT_ADDED",
