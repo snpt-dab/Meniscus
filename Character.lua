@@ -703,10 +703,15 @@ local function gearAdvice()
             lean = {}
             for i = 1, 5 do lean[i] = 0.65 * tot[i] / mx + 0.35 * (cw and cw[i] or 0.5) end
             local order = { 1, 2, 3, 4, 5 }
-            table.sort(order, function(x, y) return tot[x] > tot[y] end)
+            -- (0.1.613: named in the order of the weights the pieces are
+            -- judged by, gear and class together, not of the gear's bare
+            -- totals: a warrior with a point more Spirit than Agility on
+            -- their gear was told "Stamina, Strength, Spirit", while the
+            -- judging itself already put Agility ahead.)
+            table.sort(order, function(x, y) return lean[x] > lean[y] end)
             local names = {}
             for _, i in ipairs(order) do
-                if #names < 3 and tot[i] >= mx * 0.25 then names[#names + 1] = ADV_NAME[i] end
+                if #names < 3 and tot[i] > 0 and lean[i] >= lean[order[1]] * 0.25 then names[#names + 1] = ADV_NAME[i] end
             end
             out.favour = table.concat(names, ", ")
             local rs, rn = 0, 0
