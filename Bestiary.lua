@@ -872,6 +872,7 @@ local function behaviorOf(line)
 end
 B.BehaviorOf = behaviorOf
 
+local lootOpen = {} -- (creatures whose whole loot list is open: this session)
 function B.Rows(rows, id, full)
     local r = id and view(id)
     if not r then
@@ -1010,6 +1011,24 @@ function B.Rows(rows, id, full)
         for item in pairs(r.d or {}) do if not (r.l and r.l[item]) then ids[#ids + 1] = item end end
         local function share(item) return r.l and r.l[item] or -1 end
         table.sort(ids, function(a, b) if share(a) ~= share(b) then return share(a) > share(b) end return a < b end)
+        -- The list is kept short (0.1.591): a creature with a rank (elite,
+        -- rare, boss) shows everything it has dropped; any other shows
+        -- what drops at least three times in ten, and quest items, with
+        -- the rest folded under one row that opens.
+        local COMMON = 0.30
+        local whole = r.cl ~= nil or lootOpen[id] == true
+        local all, folded = ids, 0
+        ids = {}
+        for _, item in ipairs(all) do
+            local n = r.l and r.l[item]
+            local common = n and ln > 0 and n / ln >= COMMON
+            local quest = false
+            if not common and not whole and C_Item and C_Item.GetItemInfoInstant then
+                local _, _, _, _, _, classID = call(C_Item.GetItemInfoInstant, item)
+                quest = classID == 12
+            end
+            if whole or common or quest then ids[#ids + 1] = item else folded = folded + 1 end
+        end
         for _, item in ipairs(ids) do
             local _, link = nil, nil
             if C_Item and C_Item.GetItemInfo then _, link = call(C_Item.GetItemInfo, item) end
@@ -1034,6 +1053,13 @@ function B.Rows(rows, id, full)
                     end
                     tip:Show()
                 end }
+        end
+        if folded > 0 or (lootOpen[id] and r.cl == nil and #all > 0) then
+            local open = lootOpen[id] == true
+            rows[#rows + 1] = { kind = "stat", value = "", labelColor = T.textDim,
+                label = open and "Show only the common drops" or (folded .. (folded == 1 and " rarer drop" or " rarer drops") .. " (under 30%)"),
+                folded = not open, indent = 14,
+                onClick = function() lootOpen[id] = not open; changed(id) end }
         end
     end
     -- what it does, then what it says (an emote that is a known behavior
