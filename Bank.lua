@@ -664,6 +664,11 @@ local function build()
     win:SetScript("OnHide", function()
         win.shell:ClearModel()
         box:ClearFocus()
+        if BK.openedBags then
+            BK.openedBags = false
+            local Bg = ns.modules.Bags
+            if Bg and Bg.Close then pcall(Bg.Close, Bg) end
+        end
         BK.showBlizz = false
         unlift()
         applyGhost(_G.BankFrame)
@@ -918,6 +923,17 @@ local function open()
     if fresh then
         win:SetAlpha(0)
         win:Show()
+        -- Your bags come up with the bank (0.1.600), and go away with it
+        -- again if it was the bank that opened them. (Not in a fight: the
+        -- bag window can't be shown then.)
+        local Bg = ns.modules.Bags
+        local bagWin = _G.MinimalUIBags
+        if Bg and Bg.Open and not (bagWin and bagWin:IsShown()) then
+            local ok, shown = pcall(Bg.Open, Bg)
+            BK.openedBags = ok and shown == true
+        else
+            BK.openedBags = false
+        end
     end
     BK:Refresh()
     -- After Blizzard's frame has laid itself out.
