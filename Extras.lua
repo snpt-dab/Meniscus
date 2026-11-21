@@ -3011,12 +3011,14 @@ local function isPotion(id)
     if subID == 1 or subID == 2 or subID == 3 or subID == 7 then return true end
     -- (Older item data files them all under plain "Consumable".)
     local n = itemName(id)
-    return type(n) == "string" and (n:find("Potion") or n:find("Elixir") or n:find("Flask") or n:find("Bandage")) ~= nil
+    return type(n) == "string" and (n:find("Potion") or n:find("Elixir") or n:find("Flask") or n:find("Bandage")
+        or n:find("Healthstone")) ~= nil -- (a warlock's healthstone, 0.1.621)
 end
 -- Healing potions first, then bandages, mana, other potions, and last the
 -- elixirs and flasks; within each, the stronger (later made) first.
 local function potionRank(id)
     local n = itemName(id) or ""
+    if n:find("Healthstone") then return -1 end -- (first: it costs nothing and has its own cooldown)
     if n:find("Elixir") or n:find("Flask") then return 5 end
     if n:find("Bandage") then return 1 end
     return (n:find("Heal") and 0) or (n:find("Mana") and 2) or (n:find("Rejuv") and 3) or 4
