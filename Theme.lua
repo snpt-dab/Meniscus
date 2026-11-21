@@ -976,6 +976,44 @@ function ns.RewardInfo(link, count, usable)
 end
 
 -- Hide a non-secure Blizzard region/frame and keep it hidden.
+-- The colour of a creature's level against yours (0.1.606). The target
+-- frame asked the game's GetCreatureDifficultyColor(level), which on this
+-- client called a level 14 grey to a level 20 while the game's own
+-- nameplate had it green (and it does still give experience). So: the
+-- game's judgement of the creature itself where it offers one (what its
+-- own frames use), else the old game's rule worked out here: red from 5
+-- levels over you, orange from 3, yellow to 2 under, green down to the
+-- level that stops giving experience, grey below that.
+-- ns.CreatureLevelColor(unit, level): r, g, b, or nil when it can't say.
+local function greyLevel(pl)
+    if pl <= 5 then return 0 end
+    if pl <= 39 then return pl - math.floor(pl / 10) - 5 end
+    if pl <= 59 then return pl - math.floor(pl / 5) - 1 end
+    return pl - 9
+end
+function ns.CreatureLevelColor(unit, lvl)
+    local P = C_PlayerInfo
+    if unit and P and P.GetContentDifficultyCreatureForPlayer and GetDifficultyColor then
+        local ok, d = pcall(P.GetContentDifficultyCreatureForPlayer, unit)
+        if ok and d ~= nil and not issecretvalue(d) then
+            local ok2, c = pcall(GetDifficultyColor, d)
+            if ok2 and type(c) == "table" and c.r then
+                if MinimalUIDB then MinimalUIDB.lvldiag = "the game's own judgement of the creature" end
+                return c.r, c.g, c.b
+            end
+        end
+    end
+    local pl = UnitLevel("player")
+    if type(lvl) ~= "number" or issecretvalue(lvl) or type(pl) ~= "number" or issecretvalue(pl) or lvl <= 0 then return nil end
+    if MinimalUIDB then MinimalUIDB.lvldiag = "the old rule, worked out" end
+    local diff = lvl - pl
+    if diff >= 5 then return 1.00, 0.10, 0.10 end
+    if diff >= 3 then return 1.00, 0.50, 0.25 end
+    if diff >= -2 then return 1.00, 0.82, 0.00 end
+    if lvl > greyLevel(pl) then return 0.25, 0.75, 0.25 end
+    return 0.50, 0.50, 0.50
+end
+
 -- Money, the one way (0.1.596): each amount followed by a small disc in
 -- its coin's colour, "2(gold) 42(silver) 36(copper)", parts that are zero
 -- left out. Every window had its own copy of this; the console's Bags
