@@ -14,6 +14,10 @@ local T = ns.Theme
 --     t  = kind (Beast),    f = family (Cat),   cl = rank (elite, rare...),
 --     ag = 1 hostile / 0 neutral,
 --     z  = { [zone] = true }            where (6 at most),
+--     dsp = { [display id] = true }     its looks (0.1.575, 12 at most):
+--          one creature can wear several bodies (a Southsea Brigand is a
+--          gnoll, a troll, a human... and still the one creature to the
+--          game, with one set of numbers),
 --     hp = { [level] = health }         its full health at that level,
 --     c  = { [spell name] = spell id or true }   what it casts (16),
 --     hit = { [attack name] = hardest hit on you } (from death recaps),
@@ -116,7 +120,7 @@ local function view(id)
     v.lo = (own.lo and sh.lo) and math.min(own.lo, sh.lo) or own.lo or sh.lo
     v.hi = (own.hi and sh.hi) and math.max(own.hi, sh.hi) or own.hi or sh.hi
     if not v.hi then v.lo = nil end
-    for _, key in ipairs({ "z", "c", "hp", "hit" }) do
+    for _, key in ipairs({ "z", "c", "hp", "hit", "dsp" }) do
         if own[key] or sh[key] then
             local t = {}
             for k, val in pairs(sh[key] or {}) do t[k] = val end
@@ -259,6 +263,37 @@ local function observe(unit)
         seen[guid] = 1
     end
     if new then changed(id) end
+end
+
+-- Its look: the game does not say which body a creature wears, but a
+-- model frame shown the unit can be asked what it drew. One unseen frame,
+-- pointed at your target; asked a moment later (the model takes a frame
+-- or two to arrive).
+local lookFrame, lookSeen = nil, {}
+local function noteLook()
+    local id, guid = npcID("target")
+    if not id or lookSeen[guid] then return end
+    local r = record(id)
+    if not r then return end
+    if not lookFrame then
+        lookFrame = CreateFrame("PlayerModel", nil, UIParent)
+        lookFrame:SetSize(4, 4)
+        lookFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+        lookFrame:SetAlpha(0)
+        lookFrame:EnableMouse(false)
+    end
+    if not lookFrame.GetDisplayInfo then return end
+    if not pcall(lookFrame.SetUnit, lookFrame, "target") then return end
+    C_Timer.After(0.4, function()
+        local _, g2 = npcID("target")
+        if g2 ~= guid then return end
+        local d = call(lookFrame.GetDisplayInfo, lookFrame)
+        pcall(lookFrame.ClearModel, lookFrame)
+        if not (plain(d) and d > 0) then return end
+        lookSeen[guid] = true
+        r.dsp = r.dsp or {}
+        if not r.dsp[d] and count(r.dsp) < 12 then r.dsp[d] = true; changed(id) end
+    end)
 end
 
 local function noteCast(unit, spellID)
@@ -526,6 +561,7 @@ function B.Rows(rows, id, full)
         local me = call(UnitName, "player")
         for _, line in ipairs(r.q) do
             local said = str(me) and line.t:gsub("%$N", me) or line.t
+            if r.n then said = said:gsub("%%s", (r.n:gsub("%%", "%%%%"))) end
             local how = line.k == "yell" and "Yells" or (line.k == "emote" and "Emote") or "Says"
             rows[#rows + 1] = { kind = "stat", wide = true, value = "",
                 label = line.k == "emote" and said or ("\"" .. said .. "\""),
@@ -691,7 +727,10 @@ local function listData()
                 local j = i
                 while ids[j + 1] and view(ids[j + 1]).n == r.n do j = j + 1 end
                 if j == i then
-                    table.insert(d, { kind = "stat", label = r.n, labelColor = color(r, id == picked), indent = 10,
+                    local nl = 0
+                    for _ in pairs(r.dsp or {}) do nl = nl + 1 end
+                    table.insert(d, { kind = "stat", label = r.n .. (nl > 1 and ("   |cff7d7d88" .. nl .. " forms|r") or ""),
+                        labelColor = color(r, id == picked), indent = 10,
                         value = levels(r) or "", color = T.textDim,
                         onClick = function() B:Pick(id) end })
                 else
@@ -731,13 +770,29 @@ local function listData()
     return d, total, kills, words and found or nil
 end
 
-local function showModel(id)
+local formAt = 1
+local function looksOf(id)
+    local r = id and view(id)
+    local list = {}
+    for d in pairs(r and r.dsp or {}) do list[#list + 1] = d end
+    table.sort(list)
+    return list
+end
+local function showModel(id, form)
     local m = win.model
     local shown = false
+    local looks = looksOf(id)
     if id then
         pcall(m.ClearModel, m)
-        if npcID("target") == id then
+        if form and looks[form] and m.SetDisplayInfo then
+            formAt = form
+            shown = pcall(m.SetDisplayInfo, m, looks[form])
+        elseif npcID("target") == id then
+            formAt = 0 -- (the one in front of you, whichever it is)
             shown = pcall(m.SetUnit, m, "target")
+        elseif looks[1] and m.SetDisplayInfo then
+            formAt = 1
+            shown = pcall(m.SetDisplayInfo, m, looks[1])
         elseif m.SetCreature then
             shown = pcall(m.SetCreature, m, id)
         end
@@ -746,6 +801,25 @@ local function showModel(id)
     m:SetShown(shown)
     win.modelNote:SetShown(not shown)
     win.modelNote:SetText(id and "No picture of it: target one with this open" or "Pick a creature")
+    -- "Forms 1 2 3": the looks known, when there is more than one
+    local many = #looks > 1
+    win.formLabel:SetShown(many)
+    for i = 1, math.max(#looks, #win.formPills) do
+        local b = win.formPills[i]
+        if many and i <= #looks and i <= 8 then
+            if not b then
+                b = ns.Pill(win.top, tostring(i), function() showModel(picked, i) end, { h = 18, pad = 12, minW = 0, font = 10 })
+                if i == 1 then b:SetPoint("LEFT", win.formLabel, "RIGHT", 8, 0)
+                else b:SetPoint("LEFT", win.formPills[i - 1], "RIGHT", 4, 0) end
+                win.formPills[i] = b
+            end
+            b.selected = i == formAt
+            b:Repaint()
+            b:Show()
+        elseif b then
+            b:Hide()
+        end
+    end
 end
 
 function B:Pick(id)
@@ -913,6 +987,11 @@ local function build()
     win.sub:SetPoint("TOPLEFT", win.name, "BOTTOMLEFT", 0, -6)
     win.sub:SetPoint("RIGHT", top, "RIGHT", -12, 0)
     win.sub:SetWordWrap(true)
+    win.top, win.formPills = top, {}
+    win.formLabel = words(10, true, T.textDim)
+    win.formLabel:SetPoint("BOTTOMLEFT", top, "BOTTOMLEFT", 162, 16)
+    win.formLabel:SetText("FORMS")
+    win.formLabel:Hide()
 
     local dh = LIST_H + 12 - MODEL_H - 10
     local bottom = card(win, CARD_W, dh)
@@ -973,7 +1052,7 @@ function B:OnInit(db)
             pcall(noteSpeech, SPEECH[e] ~= "say" and SPEECH[e] or nil, a1, a2, a3)
             return
         end
-        if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target")
+        if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target"); pcall(noteLook)
         elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover")
         elseif e == "NAME_PLATE_UNIT_ADDED" then if type(a1) == "string" then pcall(observe, a1) end
         elseif e == "LOOT_OPENED" then pcall(noteLoot)
