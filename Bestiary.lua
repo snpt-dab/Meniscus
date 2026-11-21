@@ -303,13 +303,20 @@ local function noteLook()
         lookFrame:SetAlpha(0)
         lookFrame:EnableMouse(false)
     end
-    if not lookFrame.GetDisplayInfo then return end
-    if not pcall(lookFrame.SetUnit, lookFrame, "target") then return end
+    local function diag(key)
+        if not MinimalUIDB then return end
+        local dg = MinimalUIDB.lookdiag or {}
+        MinimalUIDB.lookdiag = dg
+        dg[key] = (dg[key] or 0) + 1
+    end
+    if not lookFrame.GetDisplayInfo then diag("no GetDisplayInfo") return end
+    if not pcall(lookFrame.SetUnit, lookFrame, "target") then diag("SetUnit refused") return end
     C_Timer.After(0.4, function()
         local _, g2 = npcID("target")
         if g2 ~= guid then return end
         local d = call(lookFrame.GetDisplayInfo, lookFrame)
         pcall(lookFrame.ClearModel, lookFrame)
+        diag(secret(d) and "hidden" or (plain(d) and (d > 0 and "got one" or "zero") or type(d)))
         if not (plain(d) and d > 0) then return end
         lookSeen[guid] = true
         r.dsp = r.dsp or {}
@@ -346,8 +353,36 @@ local function noteCast(unit, spellID, done)
     end
 end
 
+local nameIndex
+local function idByName(name)
+    local all = MinimalUIDB and MinimalUIDB.bestiary
+    if not all then return end
+    if not nameIndex then
+        nameIndex = {}
+        for id, r in pairs(all) do if r.n then nameIndex[r.n] = id end end
+    end
+    return nameIndex[name]
+end
 local seenDead, seenLoot, nDead, nLoot = {}, {}, 0, 0
 local fightKills = {} -- (what died to you in the fight going on)
+-- A kill (0.1.580: it was only "your target was seen dead", and in a
+-- fight the game mostly would not say so: 13 corpses looted of one
+-- creature and not one kill counted). Two signs now, either of which
+-- counts it, and the other is then let pass:
+--   the game's own line "<name> dies, you gain N experience", which is
+--     yours by definition (nothing for a creature too low to give any);
+--   your target seen dead and not someone else's, asked when its health
+--     changes and again when the fight ends.
+-- One is by name and the other by the creature itself, so they are paired
+-- by name within a fight.
+local owedByXP, owedBySight = {}, {}
+local function addKill(id, lvl)
+    local r = record(id, true)
+    r.k = (r.k or 0) + 1
+    r.lk = (r.lk or 0) + 1
+    fightKills[#fightKills + 1] = { id = id, lvl = lvl }
+    changed(id)
+end
 local function noteDeath()
     if not isTrue(call(UnitIsDead, "target")) then return end
     local id, guid = npcID("target")
@@ -355,12 +390,28 @@ local function noteDeath()
     if isTrue(call(UnitIsTapDenied, "target")) then return end
     if nDead > 300 then wipe(seenDead); nDead = 0 end
     seenDead[guid] = true; nDead = nDead + 1
-    local r = record(id, true)
-    r.k = (r.k or 0) + 1
-    r.lk = (r.lk or 0) + 1
+    local r = record(id)
+    local name = r and r.n
+    if name and (owedByXP[name] or 0) > 0 then owedByXP[name] = owedByXP[name] - 1 return end
+    if name then owedBySight[name] = (owedBySight[name] or 0) + 1 end
     local lvl = call(UnitLevel, "target")
-    fightKills[#fightKills + 1] = { id = id, lvl = plain(lvl) and lvl > 0 and lvl or nil }
-    changed(id)
+    addKill(id, plain(lvl) and lvl > 0 and lvl or nil)
+end
+local function noteXP(text)
+    if not str(text) then return end
+    local name = text:match("^(.-) dies, you gain")
+    local id = name and idByName(name)
+    if not id then return end
+    if (owedBySight[name] or 0) > 0 then owedBySight[name] = owedBySight[name] - 1 return end
+    owedByXP[name] = (owedByXP[name] or 0) + 1
+    local lvl
+    if npcID("target") == id then
+        lvl = call(UnitLevel, "target")
+        lvl = plain(lvl) and lvl > 0 and lvl or nil
+    end
+    local r = record(id)
+    if not lvl and r and r.lo and r.lo == r.hi then lvl = r.lo end
+    addKill(id, lvl)
 end
 
 -- Health, worked out (0.1.577). The game hides a creature's health from
@@ -390,6 +441,7 @@ local function dmgTotal()
 end
 local function fightStart()
     wipe(fightKills)
+    wipe(owedByXP); wipe(owedBySight)
     local ok, t, pet = pcall(dmgTotal)
     if ok and plain(t) then dmgBefore, petBefore = t, pet end
 end
@@ -402,10 +454,11 @@ local function fightEnd()
         local k = fightKills[1]
         local d = math.floor(now - dmgBefore + 0.5)
         local r = record(k.id)
-        if r and k.lvl and d > 0 and not (r.hp and r.hp[k.lvl]) then
+        local L = k.lvl or 0 -- (0: which level it was is not known)
+        if r and d > 0 and not (r.hp and r.hp[L]) then
             r.he, r.hn = r.he or {}, r.hn or {}
-            if not r.he[k.lvl] or d < r.he[k.lvl] then r.he[k.lvl] = d end
-            r.hn[k.lvl] = (r.hn[k.lvl] or 0) + 1
+            if not r.he[L] or d < r.he[L] then r.he[L] = d end
+            r.hn[L] = (r.hn[L] or 0) + 1
             changed(k.id)
         end
     end
@@ -484,16 +537,6 @@ end
 -- understood, with the language's name. Once you know the language and
 -- hear the creature again, its lines come in clear, and the scrambled
 -- ones in that language are dropped then.
-local nameIndex
-local function idByName(name)
-    local all = MinimalUIDB and MinimalUIDB.bestiary
-    if not all then return end
-    if not nameIndex then
-        nameIndex = {}
-        for id, r in pairs(all) do if r.n then nameIndex[r.n] = id end end
-    end
-    return nameIndex[name]
-end
 local function understood(lang)
     if not str(lang) then return true end
     if not (GetNumLanguages and GetLanguageByIndex) then return true end
@@ -631,9 +674,9 @@ function B.Rows(rows, id, full)
                 stat(rows, "Health at " .. l, big(r.hp[l]))
             else
                 local n = r.hn and r.hn[l] or 1
-                rows[#rows + 1] = { kind = "stat", label = "Health at " .. l, value = "about " .. big(r.he[l]),
+                rows[#rows + 1] = { kind = "stat", label = l > 0 and ("Health at " .. l) or "Health", value = "about " .. big(r.he[l]),
                     tooltip = function(tip)
-                        tip:SetText("Health at level " .. l, 1, 1, 1)
+                        tip:SetText(l > 0 and ("Health at level " .. l) or "Health", 1, 1, 1)
                         tip:AddLine("The game hides a creature's health from addons. This is worked out from the damage it took to kill one alone ("
                             .. n .. (n == 1 and " kill" or " kills") .. " so far; the least is kept).", 0.86, 0.86, 0.89, true)
                     end }
@@ -1234,7 +1277,7 @@ function B:OnInit(db)
     end)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED", "LOOT_OPENED",
-                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
+                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
                          "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL", "CHAT_MSG_MONSTER_EMOTE" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
@@ -1247,7 +1290,11 @@ function B:OnInit(db)
         end
         if e == "PLAYER_REGEN_DISABLED" then pcall(fightStart) return end
         if e == "PLAYER_ENTERING_WORLD" then C_Timer.After(3, function() if not InCombatLockdown() then pcall(fightStart) end end) return end
-        if e == "PLAYER_REGEN_ENABLED" then C_Timer.After(0.6, function() pcall(fightEnd) end) end
+        if e == "CHAT_MSG_COMBAT_XP_GAIN" then pcall(noteXP, a1) return end
+        if e == "PLAYER_REGEN_ENABLED" then
+            C_Timer.After(0.3, function() pcall(noteDeath) end)
+            C_Timer.After(0.6, function() pcall(fightEnd) end)
+        end
         if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target"); pcall(noteLook)
         elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover")
         elseif e == "NAME_PLATE_UNIT_ADDED" then if type(a1) == "string" then pcall(observe, a1) end
