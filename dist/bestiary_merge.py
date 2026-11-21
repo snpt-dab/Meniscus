@@ -95,6 +95,8 @@ def clean(r):
     if r.get('ag') in (0, 1): o['ag'] = r['ag']
     z = {txt(k, 60): True for k in (r.get('z') or {}) if txt(k, 60)} if isinstance(r.get('z'), dict) else {}
     if z: o['z'] = z
+    dsp = {k: True for k in (r.get('dsp') or {}) if num(k, 1, 10**7)} if isinstance(r.get('dsp'), dict) else {}
+    if dsp: o['dsp'] = dsp
     hp = {k: v for k, v in (r.get('hp') or {}).items() if num(k, 1, 255) and num(v, 1, 10**9)} if isinstance(r.get('hp'), dict) else {}
     if hp: o['hp'] = hp
     c = {}
@@ -138,6 +140,7 @@ def merge(a, b):
     for k in ('t', 'f', 'cl', 'ag'):
         if k not in a and k in b: a[k] = b[k]
     if 'z' in b: a.setdefault('z', {}).update(b['z'])
+    if 'dsp' in b: a.setdefault('dsp', {}).update(b['dsp'])
     for k in ('hp', 'hit'):
         for x, v in b.get(k, {}).items():
             d = a.setdefault(k, {})
@@ -161,6 +164,7 @@ def finish(r):
         clear = {e.get('l') for e in r['q'] if not e.get('u')}
         r['q'] = [e for e in r['q'] if not (e.get('u') and e.get('l') in clear)][:16]
     if 'z' in r: r['z'] = dict(sorted(r['z'].items())[:8])
+    if 'dsp' in r: r['dsp'] = dict(sorted(r['dsp'].items())[:16])
     if 'c' in r: r['c'] = dict(sorted(r['c'].items())[:24])
     if 'l' in r: r['l'] = dict(sorted(r['l'].items(), key=lambda kv: -kv[1])[:120])
     for k in ('ln', 'lk'):
