@@ -1019,6 +1019,33 @@ function ML:OnInit(db)
     self.db = db
     ghost(_G.MailFrame)
     ghost(_G.OpenMailFrame)
+    -- Walking away (0.1.610): the window stayed up, so the game's "mail
+    -- closed" notice is not to be counted on. Three more signs are taken:
+    -- the game's own (unseen) mail frame hiding, its notice that the
+    -- mailbox is no longer being used, and, twice a second while our window
+    -- is up, asking whether a mailbox is still in use (believed only once
+    -- it has said yes, so a client that never answers closes nothing).
+    if _G.MailFrame then
+        pcall(_G.MailFrame.HookScript, _G.MailFrame, "OnHide", function() if not closing then close() end end)
+    end
+    local PIM, MAILKIND = C_PlayerInteractionManager, Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.MailInfo
+    local away = CreateFrame("Frame")
+    pcall(away.RegisterEvent, away, "PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+    away:SetScript("OnEvent", function(_, _, kind)
+        if MAILKIND and not secret(kind) and kind == MAILKIND then close() end
+    end)
+    local saidYes, tick = false, 0
+    away:SetScript("OnUpdate", function(_, dt)
+        if not (win and win:IsShown()) then saidYes = false return end
+        tick = tick + dt
+        if tick < 0.5 then return end
+        tick = 0
+        if not (PIM and PIM.IsInteractingWithNpcOfType and MAILKIND) then return end
+        local at = call(PIM.IsInteractingWithNpcOfType, MAILKIND)
+        if secret(at) then return end
+        if at == true then saidYes = true
+        elseif at == false and saidYes then saidYes = false; close(); call(_G.CloseMail) end
+    end)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE", "MAIL_SEND_INFO_UPDATE", "MAIL_SEND_SUCCESS",
                          "MAIL_FAILED", "PLAYER_MONEY", "BAG_UPDATE_DELAYED", "UPDATE_PENDING_MAIL" }) do
