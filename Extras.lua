@@ -1088,10 +1088,43 @@ local function buildWaypoint()
         self:SetPoint("CENTER", UIParent, "CENTER", dx / d, dy / d)
     end)
 
-    -- (0.1.551 forced the marker visible whenever the game had faded it to
-    -- nothing; taken out in 0.1.553. The game hides it on purpose while it
-    -- has no settled spot, as for an objective that is an area, and shown
-    -- regardless it jumped about.)
+    -- The game rates its target here as "invalid" (state 0) for every
+    -- quest tried, a finished one with a plain turn-in spot among them,
+    -- and holds its marker at no opacity for it, while still giving the
+    -- marker a valid and steady place on screen (0.1.555, from /men dot's
+    -- trace). So the dot is shown by that instead: whenever the game says
+    -- the place on screen is valid, and you have not arrived.
+    -- 0.1.551 did this without asking whether the place was valid, and
+    -- without what follows, and the dot leapt about on quests whose
+    -- objective is an area. While the marker is held at the screen's edge,
+    -- or the target is far off, it is an indicator and not a point in the
+    -- world, so there it is eased toward where the game puts it (about a
+    -- fifth of a second behind) and a leap becomes a glide. Near and on
+    -- screen it is left exactly where the game has it.
+    local ARRIVED, EASE = 12, 0.22
+    local sx, sy, sAt = nil, nil, 0
+    pcall(F.HookScript, F, "OnUpdate", function(self)
+        local valid = NV.GetFrame and NV.GetFrame() and NV.HasValidScreenPosition and NV.HasValidScreenPosition()
+        if secret(valid) or not valid then sx = nil return end
+        local dist = NV.GetDistance and NV.GetDistance()
+        local a = self:GetAlpha()
+        if not secret(a) and a < 0.9 and not (num(dist) and dist < ARRIVED) then self:SetAlpha(1) end
+        local clamped = NV.WasClampedToScreen and NV.WasClampedToScreen()
+        if secret(clamped) or not (clamped or (num(dist) and dist > FAR)) then sx = nil return end
+        local x, y = self:GetCenter()
+        if not (num(x) and num(y)) then return end
+        local now = GetTime()
+        if not sx or now - sAt > 0.5 then
+            sx, sy = x, y
+        else
+            local k = 1 - math.exp(-(now - sAt) / EASE)
+            sx, sy = sx + (x - sx) * k, sy + (y - sy) * k
+        end
+        sAt = now
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", sx, sy)
+    end)
+
     -- Which quest the dot is for: the one you focused (ns.QuestFocus), and
     -- nothing else. No focus, no dot. A map pin you set yourself is left
     -- alone, and a rare that has just appeared borrows the dot for a while
