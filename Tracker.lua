@@ -1,6 +1,7 @@
 local _, ns = ...
 local CreateFrame = ns.CreateFrame
 local T = ns.Theme
+local ITEM_SIZE = 18 -- a quest item's button, on its quest's row
 
 -- Quest/objective tracker, light touch: section header art removed, header
 -- titles in the theme font and accent color with a thin accent rule under
@@ -429,8 +430,11 @@ function TR:Console(x, y, w, h)
             if P.offset < 0 then P.offset = 0 end
             content:ClearAllPoints()
             content:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, P.offset)
+            if P.seatItems then pcall(P.seatItems) end
         end
         P.place = place
+        holder:HookScript("OnShow", function() if P.seatItems then pcall(P.seatItems) end end)
+        holder:HookScript("OnHide", function() if P.seatItems then pcall(P.seatItems) end end)
         holder:SetScript("OnMouseWheel", function(_, d) P.offset = P.offset - d * 34; place() end)
 
         P.lines, P.used, P.btns, P.usedBtns = {}, 0, {}, 0
@@ -542,17 +546,50 @@ function TR:Console(x, y, w, h)
             return b
         end
 
+        -- A quest's item, drawn at the right of its row: this is what you
+        -- see (it scrolls and is clipped with the list); the button that
+        -- uses the item lies over it, unseen (TR:SetQuestItems, P.seatItems).
+        P.rowIcons, P.itemRows = {}, {}
+        local function rowIcon(n)
+            local f = P.rowIcons[n]
+            if not f then
+                f = CreateFrame("Frame", nil, content)
+                f:SetSize(ITEM_SIZE, ITEM_SIZE)
+                f:SetFrameLevel(content:GetFrameLevel() + 4)
+                local mask = f:CreateMaskTexture()
+                mask:SetTexture("Interface/AddOns/Meniscus/Media/rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                mask:SetAllPoints()
+                f.ring = f:CreateTexture(nil, "BACKGROUND")
+                f.ring:SetAllPoints()
+                f.ring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+                f.ring:AddMaskTexture(mask)
+                local imask = f:CreateMaskTexture()
+                imask:SetTexture("Interface/AddOns/Meniscus/Media/rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                imask:SetPoint("TOPLEFT", 1.5, -1.5); imask:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+                f.icon = f:CreateTexture(nil, "ARTWORK")
+                f.icon:SetAllPoints(imask)
+                f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                f.icon:AddMaskTexture(imask)
+                P.rowIcons[n] = f
+            end
+            return f
+        end
+
         function P.fill()
             for i = 1, #P.lines do P.lines[i]:Hide() end
             for i = 1, #P.btns do P.btns[i]:Hide() end
+            for i = 1, #P.rowIcons do P.rowIcons[i]:Hide() end
+            wipe(P.itemRows)
+            local usedIcons = 0
             P.used, P.usedBtns = 0, 0
             wipe(P.timers)
             local width = math.max(60, holder:GetWidth() - 10)
             content:SetWidth(width + 10)
             local yy = 4
+            local rm = 0 -- room kept clear at the right of a quest's lines (its item)
             local function put(fs, indent, gap)
                 fs:ClearAllPoints()
-                fs:SetWidth(width - indent)
+                fs:SetWidth(width - indent - rm)
                 fs:SetPoint("TOPLEFT", content, "TOPLEFT", 5 + indent, -yy)
                 yy = yy + (fs:GetStringHeight() or 12) + gap
             end
@@ -571,7 +608,6 @@ function TR:Console(x, y, w, h)
                 P.againPending = true
                 C_Timer.After(soonest - nowT + 0.5, function() P.againPending = false; P.again() end)
             end
-            pcall(TR.SetQuestItems, TR, all)
             if TR.db.groupProgress ~= false then pcall(shareProgress, all) end
             local showPeers = TR.db.groupProgress ~= false
             if #list == 0 then
@@ -582,6 +618,7 @@ function TR:Console(x, y, w, h)
             end
             local section
             for _, e in ipairs(list) do
+                rm = 0
                 if e.group ~= section then
                     section = e.group
                     if yy > 4 then yy = yy + 4 end
@@ -603,6 +640,16 @@ function TR:Console(x, y, w, h)
                 fs:SetTextColor(diffColor(e.level))
                 fs:SetAlpha(1)
                 local top = yy
+                if e.item then
+                    rm = ITEM_SIZE + 6
+                    usedIcons = usedIcons + 1
+                    local ic = rowIcon(usedIcons)
+                    ic.icon:SetTexture(e.item.icon)
+                    ic:ClearAllPoints()
+                    ic:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -top)
+                    ic:Show()
+                    P.itemRows[e.id] = { top = top, icon = ic }
+                end
                 local focused = ns.QuestFocus ~= nil and ns.QuestFocus.Get() == e.id
                 put(fs, (focused or e.complete) and 11 or 0, 1)
                 local b = P.takeBtn()
@@ -655,6 +702,7 @@ function TR:Console(x, y, w, h)
             end
             P.total = yy + 2
             content:SetHeight(P.total)
+            pcall(TR.SetQuestItems, TR, all)
             place()
         end
 
@@ -732,19 +780,72 @@ function TR:Console(x, y, w, h)
     self:ApplyConsole()
 end
 
--- Usable quest items. Blizzard's tracker puts a button beside the quest; a
--- button that uses an item has to be a secure one, which can't be created,
--- moved or re-pointed in combat, so they can't ride along inside a list that
--- scrolls and re-sorts. Instead they sit in a fixed row on the panel's tab
--- strip, between the tabs and "auto", visible whichever tab is showing:
--- one small icon per quest item, usable in combat. They are (re)assigned
--- out of combat only; a change made mid-fight is applied when it ends.
-local MAX_ITEMS, ITEM_SIZE = 6, 18
+-- Usable quest items: each on its own quest's row, at the right (0.1.558;
+-- they were a strip of icons beside the tabs, and ran into "auto").
+-- A button that uses an item has to be a secure one, which can't be made,
+-- moved, shown or hidden in a fight, while the list scrolls and re-sorts
+-- freely. So there are two things: the picture of the item, which belongs
+-- to the row and goes where the row goes; and the button, laid over the
+-- picture and not itself seen, which is moved to it whenever that is
+-- allowed (P.seatItems). In a fight, if a row moves away from its button,
+-- the picture dims: the item can't be clicked there until the fight ends
+-- (or the row is back in place). While the list is not the tab showing
+-- (the damage meter), and for an item whose quest is not in the list, the
+-- buttons sit on the tab strip as before, seen.
+-- They are (re)assigned out of combat only; a change made mid-fight is
+-- applied when it ends.
+local MAX_ITEMS = 6
 function TR:SetQuestItems(all)
     local P = self.panel
     if not P or type(all) ~= "table" then return end
-    if InCombatLockdown() then P.itemsStale = true return end
+    if InCombatLockdown() then P.itemsStale = true; if P.seatItems then pcall(P.seatItems) end return end
     P.itemsStale = false
+    if not P.seatItems then
+        function P.seatItems()
+            local btns = P.itemBtns
+            if not btns then return end
+            local rows = P.itemRows or {}
+            local listOn = P.holder:IsShown()
+            local locked = InCombatLockdown()
+            local hh = P.holder:GetHeight() or 0
+            local strip = 0
+            for _, row in pairs(rows) do row.live = false end
+            for _, b in ipairs(btns) do
+                if b.assigned then
+                    local row = listOn and rows[b.questID] or nil
+                    local want, y
+                    if row then
+                        y = math.floor(row.top - (P.offset or 0) + 0.5)
+                        want = (y >= 0 and y + ITEM_SIZE <= hh) and ("row" .. y) or "off"
+                    else
+                        strip = strip + 1
+                        want = "strip" .. strip
+                    end
+                    if not locked and b.seat ~= want then
+                        b:ClearAllPoints()
+                        if want == "off" then
+                            b:SetPoint("TOPRIGHT", P.holder, "TOPRIGHT", -4, 0)
+                            b:Hide()
+                        elseif row then
+                            b:SetPoint("TOPRIGHT", P.holder, "TOPRIGHT", -4, -y)
+                            b:SetAlpha(0)
+                            b:Show()
+                        else
+                            b:SetPoint("LEFT", P.tabQuests, "RIGHT", 8 + (strip - 1) * (ITEM_SIZE + 3), 0)
+                            b:SetAlpha(1)
+                            b:Show()
+                        end
+                        b.seat = want
+                    end
+                    if row and b.seat == want and want ~= "off" then row.live = true end
+                end
+            end
+            for _, row in pairs(rows) do
+                row.icon:SetAlpha(row.live and 1 or 0.35)
+                pcall(row.icon.icon.SetDesaturated, row.icon.icon, not row.live)
+            end
+        end
+    end
     P.itemBtns = P.itemBtns or {}
     local n = 0
     for _, e in ipairs(all) do
@@ -754,6 +855,7 @@ function TR:SetQuestItems(all)
             if not b then
                 b = CreateFrame("Button", "MinimalUI_QuestItem" .. n, P, "SecureActionButtonTemplate")
                 b:SetSize(ITEM_SIZE, ITEM_SIZE)
+                b:SetFrameLevel(P:GetFrameLevel() + 20) -- (over the list's rows, which take clicks themselves)
                 b:RegisterForClicks("AnyDown", "AnyUp")
                 local mask = b:CreateMaskTexture()
                 mask:SetTexture("Interface/AddOns/Meniscus/Media/rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -772,6 +874,8 @@ function TR:SetQuestItems(all)
                 b.icon:AddMaskTexture(imask)
                 b:SetScript("OnEnter", function(self)
                     self.ring:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+                    local row = P.itemRows and P.itemRows[self.questID]
+                    if row and row.live then row.icon.ring:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1) end
                     GameTooltip:SetOwner(self, "ANCHOR_TOP")
                     if self.link and pcall(GameTooltip.SetHyperlink, GameTooltip, self.link) then
                         if self.quest then GameTooltip:AddLine(self.quest, T.textDim[1], T.textDim[2], T.textDim[3]) end
@@ -780,20 +884,25 @@ function TR:SetQuestItems(all)
                 end)
                 b:SetScript("OnLeave", function(self)
                     self.ring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+                    for _, row in pairs(P.itemRows or {}) do row.icon.ring:SetColorTexture(T.border[1], T.border[2], T.border[3], 1) end
                     GameTooltip:Hide()
                 end)
                 P.itemBtns[n] = b
             end
             b.link, b.quest = e.item.link, e.title
+            if b.questID ~= e.id then b.seat = nil end
+            b.questID, b.assigned = e.id, true
             b.icon:SetTexture(e.item.icon)
             b:SetAttribute("type", "item")
             b:SetAttribute("item", e.item.link)
-            b:ClearAllPoints()
-            b:SetPoint("LEFT", P.tabQuests, "RIGHT", 8 + (n - 1) * (ITEM_SIZE + 3), 0)
-            b:Show()
         end
     end
-    for i = n + 1, #P.itemBtns do P.itemBtns[i]:Hide() end
+    for i = n + 1, #P.itemBtns do
+        local b = P.itemBtns[i]
+        b.assigned, b.seat = false, nil
+        b:Hide()
+    end
+    P.seatItems()
 end
 
 -- Which tab is showing; combatStarting covers the moment the fight begins
