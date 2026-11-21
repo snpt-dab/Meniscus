@@ -59,6 +59,7 @@ local function plain(v) return type(v) == "number" and not secret(v) end
 local function str(v) return type(v) == "string" and not secret(v) and v ~= "" end
 local function isTrue(v) return not secret(v) and v == true end
 local function count(t) local n = 0; for _ in pairs(t) do n = n + 1 end return n end
+local nameIndex -- (name to id, built when first asked for; thrown away when a creature is added)
 
 -- ── The record ────────────────────────────────────────────────────────────
 local function npcOf(guid)
@@ -353,7 +354,6 @@ local function noteCast(unit, spellID, done)
     end
 end
 
-local nameIndex
 local function idByName(name)
     local all = MinimalUIDB and MinimalUIDB.bestiary
     if not all then return end
