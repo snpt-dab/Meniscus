@@ -1884,7 +1884,7 @@ local function rareFanfare(name, kind, note)
         sheen:SetTexture(MEDIA .. "spot.tga")
         sheen:SetBlendMode("ADD")
         sheen:SetSize(120, H * 2.4)
-        sheen:SetAlpha(0)
+        sheen:SetVertexColor(1, 1, 1, 0)
         local LIFE, FADE, BEAT, BEATS, SPREAD = 6, 0.6, 0.6, 3, 20
         local col = { 1, 1, 1 }
         local t0 = 0
@@ -1919,7 +1919,7 @@ local function rareFanfare(name, kind, note)
                 sheen:SetPoint("CENTER", clip, "LEFT", -60 + (W + 120) * e, 0)
                 sheen:SetVertexColor(col[1], col[2], col[3], 0.5 * math.sin(s * math.pi))
             else
-                sheen:SetAlpha(0)
+                sheen:SetVertexColor(1, 1, 1, 0)
             end
         end)
         function f.play(name, kind, note)
@@ -1930,7 +1930,6 @@ local function rareFanfare(name, kind, note)
             emIcon:SetVertexColor(col[1], col[2], col[3], 1)
             title:SetText(name)
             sub:SetText(note or "")
-            sheen:SetAlpha(1)
             t0 = GetTime()
             f:Show()
         end
