@@ -511,6 +511,9 @@ local function makeTile(parent, slotName)
                 local c = a.behind and { 0.95, 0.62, 0.45 } or { 0.6, 0.6, 0.65 }
                 GameTooltip:AddLine(string.format("Item level %d: %s %s (%d)", a.lvl, how, a.against, math.floor(a.par + 0.5)), c[1], c[2], c[3])
             end
+            if a.ratio and a.ratio < 0.7 and self.advFavour then
+                GameTooltip:AddLine("Little of what you gear for (" .. self.advFavour .. ")", 0.95, 0.62, 0.45)
+            end
             if a.top then GameTooltip:AddLine("Next upgrade: the slot most worth replacing", T.accent[1], T.accent[2], T.accent[3]) end
         end
         GameTooltip:Show()
@@ -638,6 +641,20 @@ local SLOT_LABEL = { Shoulder = "Shoulders", Back = "Cloak", Wrist = "Bracers", 
                      MainHand = "Main hand", SecondaryHand = "Off hand", Ranged = "Ranged" }
 local TOOL_SUB = { [14] = true, [20] = true } -- (a pick or a fishing pole in hand is not your weapon)
 local BEHIND = { 0.95, 0.62, 0.45 }
+-- What you are gearing for (0.1.563), read off what you wear: the totals
+-- of the five attributes on your gear, which is the graph's gear shape.
+-- Mostly Stamina, then Strength, then Agility, say. Each attribute gets a
+-- weight from its share (the largest is 1), steadied with a third of the
+-- class's usual weights so a few odd pieces at a low level don't decide
+-- it. A piece of armour is then judged by how much of THOSE it carries for
+-- its slot's size, against what your pieces usually carry: one with
+-- little of them counts as lower than its item level (down to 0.6 of it),
+-- one with plenty as a little higher (up to 1.2). Weapons and trinkets are
+-- left at their item level: they are worth what they do, not their stats.
+local ADV_KEY = { "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_STAMINA_SHORT",
+                  "ITEM_MOD_INTELLECT_SHORT", "ITEM_MOD_SPIRIT_SHORT" }
+local ADV_NAME = { "Strength", "Agility", "Stamina", "Intellect", "Spirit" }
+local function statJudged(name) return SLOT_WEIGHT[name] ~= nil and name ~= "Trinket0" and name ~= "Trinket1" end
 
 local function gearAdvice()
     local out = { list = {} }
@@ -652,6 +669,51 @@ local function gearAdvice()
     local avg = sum / n
     local par = (level > avg and level < avg * 2 + 10) and level or avg
     out.avg, out.par, out.level = avg, par, level
+    -- what you favour, and what your pieces usually carry of it
+    local lean, usual
+    do
+        local tot, sumAll = { 0, 0, 0, 0, 0 }, 0
+        for _, b in ipairs(tiles) do
+            b.attrs = nil
+            local link = b.lvl and GetInventoryItemLink("player", b.slot)
+            local st = link and not secret(link) and ns.ItemStats and ns.ItemStats(link)
+            if st then
+                local a = {}
+                for i = 1, 5 do
+                    local v = st[ADV_KEY[i]]
+                    a[i] = plain(v) and v or 0
+                    tot[i] = tot[i] + a[i]
+                    sumAll = sumAll + a[i]
+                end
+                b.attrs = a
+            end
+        end
+        local mx = math.max(tot[1], tot[2], tot[3], tot[4], tot[5])
+        if sumAll >= 10 and mx > 0 then
+            local cw = ns.StatWeights and ns.StatWeights[cls or ""]
+            lean = {}
+            for i = 1, 5 do lean[i] = 0.65 * tot[i] / mx + 0.35 * (cw and cw[i] or 0.5) end
+            local order = { 1, 2, 3, 4, 5 }
+            table.sort(order, function(x, y) return tot[x] > tot[y] end)
+            local names = {}
+            for _, i in ipairs(order) do
+                if #names < 3 and tot[i] >= mx * 0.25 then names[#names + 1] = ADV_NAME[i] end
+            end
+            out.favour = table.concat(names, ", ")
+            local rs, rn = 0, 0
+            for _, b in ipairs(tiles) do
+                if b.attrs and statJudged(b.slotName) then
+                    local v = 0
+                    for i = 1, 5 do v = v + lean[i] * b.attrs[i] end
+                    b.rate = v / SLOT_WEIGHT[b.slotName]
+                    rs, rn = rs + b.rate, rn + 1
+                else
+                    b.rate = nil
+                end
+            end
+            if rn >= 4 and rs > 0 then usual = rs / rn else lean = nil end
+        end
+    end
     local ww = WEAPON_WEIGHT[cls or ""] or WEAPON_WEIGHT.WARRIOR
     local info = C_Item and C_Item.GetItemInfoInstant
     local function kind(slot)
@@ -674,6 +736,10 @@ local function gearAdvice()
                 local _, classID, subID = kind(b.slot)
                 if not (classID == 2 and TOOL_SUB[subID]) then
                     e = { lvl = b.lvl, gap = par - b.lvl }
+                    if lean and usual and b.rate then
+                        e.ratio = b.rate / usual
+                        e.egap = par - b.lvl * (0.6 + 0.4 * math.min(e.ratio, 1.5))
+                    end
                 end
             elseif not GetInventoryItemTexture("player", b.slot) and from and level >= from
                 and not (name == "SecondaryHand" and twoHand) then
@@ -682,8 +748,8 @@ local function gearAdvice()
             if e then
                 e.tile, e.label, e.avg, e.par = b, SLOT_LABEL[name] or name, avg, par
                 e.against = par == avg and "your gear's average" or "your level"
-                e.score = e.gap * w
-                e.behind = e.empty or e.gap >= math.max(4, par * 0.15)
+                e.score = (e.egap or e.gap) * w
+                e.behind = e.empty or (e.egap or e.gap) >= math.max(4, par * 0.15)
                 b.advice = e
                 table.insert(out.list, e)
             end
@@ -705,6 +771,7 @@ local function applyAdvice()
     if not ok then adv = { list = {} } end
     for _, b in ipairs(tiles) do
         local a = b.advice
+        b.advFavour = adv.favour
         if a and a.behind then b.ilvl:SetTextColor(BEHIND[1], BEHIND[2], BEHIND[3]) else b.ilvl:SetTextColor(1, 1, 1) end
     end
     local icon = win and win.nextIcon
@@ -2195,7 +2262,18 @@ local function buildGear(page)
         GameTooltip:AddDoubleLine(t.against == "your level" and "Your level" or "Your gear's average item level", tostring(par),
             BODYC[1], BODYC[2], BODYC[3], 1, 1, 1)
         if not t.empty then
-            GameTooltip:AddDoubleLine("Behind by", tostring(math.floor(t.gap + 0.5)), BODYC[1], BODYC[2], BODYC[3], BEHIND[1], BEHIND[2], BEHIND[3])
+            local d = math.floor(t.gap + 0.5)
+            GameTooltip:AddDoubleLine(d >= 0 and "Behind by" or "Ahead by", tostring(math.abs(d)), BODYC[1], BODYC[2], BODYC[3], BEHIND[1], BEHIND[2], BEHIND[3])
+        end
+        if adv.favour and adv.favour ~= "" then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddDoubleLine("You gear for", adv.favour, BODYC[1], BODYC[2], BODYC[3], 1, 1, 1)
+            if t.ratio then
+                local how = t.ratio < 0.4 and "almost none" or (t.ratio < 0.7 and "less than your usual")
+                    or (t.ratio > 1.2 and "more than your usual") or "about your usual"
+                GameTooltip:AddDoubleLine("This piece has of those", how, BODYC[1], BODYC[2], BODYC[3],
+                    t.ratio < 0.7 and BEHIND[1] or 1, t.ratio < 0.7 and BEHIND[2] or 1, t.ratio < 0.7 and BEHIND[3] or 1)
+            end
         end
         local shown = 0
         for i = 2, #adv.list do
@@ -2213,7 +2291,9 @@ local function buildGear(page)
             .. (t.against == "your level"
                 and ("your level (" .. par .. "), used because your gear's average (" .. math.floor(adv.avg + 0.5) .. ") is lower still.")
                 or ("the average of everything you wear (" .. par .. ")."))
-            .. " Slots that hold more stats count for more (weapon, then chest, legs and head), so the pick is not always the lowest number.",
+            .. " Slots that hold more stats count for more (weapon, then chest, legs and head)"
+            .. (adv.favour and adv.favour ~= "" and ", and armour with little of the stats you gear for (read off what you wear) counts as lower than its item level" or "")
+            .. ", so the pick is not always the lowest number.",
             DIMC[1], DIMC[2], DIMC[3], true)
         GameTooltip:Show()
     end)
