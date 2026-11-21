@@ -105,8 +105,13 @@ def icons():
     I = {}
     # head and shoulders
     I['character'] = Icon().ring(12, 8.2, 3.2).arc(12, 21.5, 7.0, 25, 155)
-    # hammer: a handle and a heavy head set across it
-    I['profession'] = Icon().line([(6.5, 19), (12.5, 13)]).line([(10.5, 7.5), (16.5, 13.5)], w=4.6)
+    # a smith's hammer: a handle, and a square steel head set across it
+    # with a flat face at one end and a wedge (the peen) at the other. (The
+    # head was a round-ended bar, and it read as a croquet mallet.)
+    def _hm(a, b, hx=14.2, hy=9.8, k=0.7071):   # a along the handle, b across it
+        return (hx + (a + b) * k, hy + (b - a) * k)
+    I['profession'] = (Icon().line([_hm(-11.6, 0), _hm(0, 0)], w=2.6)
+                       .poly([_hm(-2.7, 5.0), _hm(2.7, 5.0), _hm(2.7, -2.4), _hm(1.0, -6.4), _hm(-0.6, -6.4), _hm(-2.7, -2.4)]))
     # open book
     I['spell'] = Icon().box(4.5, 6.5, 19.5, 17.5, rad=2).line([(12, 6.5), (12, 17.5)])
     # three linked points (same stroke as everything else)
