@@ -99,7 +99,7 @@ def clean(r):
     if dsp: o['dsp'] = dsp
     hp = {k: v for k, v in (r.get('hp') or {}).items() if num(k, 1, 255) and num(v, 1, 10**9)} if isinstance(r.get('hp'), dict) else {}
     if hp: o['hp'] = hp
-    he = {k: v for k, v in (r.get('he') or {}).items() if num(k, 1, 255) and num(v, 1, 10**9)} if isinstance(r.get('he'), dict) else {}
+    he = {k: v for k, v in (r.get('he') or {}).items() if num(k, 0, 255) is not None and num(v, 1, 10**9)} if isinstance(r.get('he'), dict) else {}
     if he:
         o['he'] = he
         hn = r.get('hn') if isinstance(r.get('hn'), dict) else {}
