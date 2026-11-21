@@ -326,6 +326,14 @@ local function noteLook()
 end
 
 local function noteCast(unit, spellID, done)
+    if done and MinimalUIDB then
+        local dg = MinimalUIDB.castdiag or {}
+        MinimalUIDB.castdiag = dg
+        local key = secret(unit) and "hidden unit" or (type(unit) ~= "string" and "no unit")
+            or (unit == "player" and "you") or (unit:find("^nameplate") and "a nameplate") or unit:gsub("%d+", "")
+        dg["from " .. key] = (dg["from " .. key] or 0) + 1
+    end
+    if secret(unit) then return end
     if unit ~= "target" and not (type(unit) == "string" and unit:find("^nameplate")) then return end
     if done and MinimalUIDB then
         -- (how a cast with no bar arrives on this client: counted, to be read later)
@@ -365,45 +373,82 @@ local function idByName(name)
 end
 local seenDead, seenLoot, nDead, nLoot = {}, {}, 0, 0
 local fightKills = {} -- (what died to you in the fight going on)
--- A kill (0.1.580: it was only "your target was seen dead", and in a
--- fight the game mostly would not say so: 13 corpses looted of one
--- creature and not one kill counted). Two signs now, either of which
--- counts it, and the other is then let pass:
---   the game's own line "<name> dies, you gain N experience", which is
---     yours by definition (nothing for a creature too low to give any);
---   your target seen dead and not someone else's, asked when its health
---     changes and again when the fight ends.
--- One is by name and the other by the creature itself, so they are paired
--- by name within a fight.
+-- A kill. Three signs, and a death is counted by whichever comes first
+-- (0.1.584; with two of them, three corpses were looted of a creature
+-- that had one kill to its name):
+--   seen dead: your target or a nameplate's creature, dead and not someone
+--     else's, asked when its health changes and when the fight ends;
+--   looted: a corpse you open was a kill of yours, whether or not it was
+--     seen to die (these two know which creature it was: counted once);
+--   the game's line "<name> dies, you gain N experience": yours by
+--     definition, but it gives a name and no more, so it is paired with
+--     the other two by name: a death counted from this line lets the next
+--     sighting or looting of that name pass (within five minutes), and one
+--     already sighted lets this line pass (within ten seconds).
 local owedByXP, owedBySight = {}, {}
-local function addKill(id, lvl)
+local function owe(t, name)
+    local q = t[name]
+    if not q then q = {}; t[name] = q end
+    q[#q + 1] = GetTime()
+end
+local function take(t, name, within)
+    local q = name and t[name]
+    if not q then return false end
+    local now = GetTime()
+    while q[1] and now - q[1] > within do table.remove(q, 1) end
+    if q[1] then table.remove(q, 1) return true end
+    return false
+end
+local function diag(key, what)
+    if not MinimalUIDB then return end
+    local dg = MinimalUIDB[key] or {}
+    MinimalUIDB[key] = dg
+    dg[what] = (dg[what] or 0) + 1
+end
+local function addKill(id, lvl, inFight)
     local r = record(id, true)
     r.k = (r.k or 0) + 1
     r.lk = (r.lk or 0) + 1
-    fightKills[#fightKills + 1] = { id = id, lvl = lvl }
+    if inFight then fightKills[#fightKills + 1] = { id = id, lvl = lvl } end
     changed(id)
 end
-local function noteDeath()
-    if not isTrue(call(UnitIsDead, "target")) then return end
-    local id, guid = npcID("target")
-    if not id or seenDead[guid] then return end
-    if isTrue(call(UnitIsTapDenied, "target")) then return end
-    if nDead > 300 then wipe(seenDead); nDead = 0 end
+local function markDead(guid)
+    if nDead > 600 then wipe(seenDead); nDead = 0 end
     seenDead[guid] = true; nDead = nDead + 1
+end
+local function noteDeath(unit)
+    unit = unit or "target"
+    if not isTrue(call(UnitIsDead, unit)) then return end
+    local id, guid = npcID(unit)
+    if not id or seenDead[guid] then return end
+    if isTrue(call(UnitIsTapDenied, unit)) then return end
+    markDead(guid)
     local r = record(id)
     local name = r and r.n
-    if name and (owedByXP[name] or 0) > 0 then owedByXP[name] = owedByXP[name] - 1 return end
-    if name then owedBySight[name] = (owedBySight[name] or 0) + 1 end
-    local lvl = call(UnitLevel, "target")
-    addKill(id, plain(lvl) and lvl > 0 and lvl or nil)
+    if take(owedByXP, name, 300) then diag("killdiag", "seen dead, already had the experience line") return end
+    if name then owe(owedBySight, name) end
+    local lvl = call(UnitLevel, unit)
+    diag("killdiag", "counted when seen dead")
+    addKill(id, plain(lvl) and lvl > 0 and lvl or nil, true)
+end
+-- (from the loot window: creditLoot, below)
+local function lootKill(id, guid)
+    if seenDead[guid] then return end
+    markDead(guid)
+    local r = record(id)
+    if take(owedByXP, r and r.n, 300) then return end
+    diag("killdiag", "counted when looted")
+    addKill(id, nil, false)
 end
 local function noteXP(text)
+    if secret(text) then diag("killdiag", "experience line hidden") return end
     if not str(text) then return end
     local name = text:match("^(.-) dies, you gain")
-    local id = name and idByName(name)
-    if not id then return end
-    if (owedBySight[name] or 0) > 0 then owedBySight[name] = owedBySight[name] - 1 return end
-    owedByXP[name] = (owedByXP[name] or 0) + 1
+    if not name then diag("killdiag", "experience line, other wording") return end
+    local id = idByName(name)
+    if not id then diag("killdiag", "experience line, creature not in the book") return end
+    if take(owedBySight, name, 10) then return end
+    owe(owedByXP, name)
     local lvl
     if npcID("target") == id then
         lvl = call(UnitLevel, "target")
@@ -411,7 +456,8 @@ local function noteXP(text)
     end
     local r = record(id)
     if not lvl and r and r.lo and r.lo == r.hi then lvl = r.lo end
-    addKill(id, lvl)
+    diag("killdiag", "counted from the experience line")
+    addKill(id, lvl, true)
 end
 
 -- Health, worked out (0.1.577). The game hides a creature's health from
@@ -441,7 +487,6 @@ local function dmgTotal()
 end
 local function fightStart()
     wipe(fightKills)
-    wipe(owedByXP); wipe(owedBySight)
     local ok, t, pet = pcall(dmgTotal)
     if ok and plain(t) then dmgBefore, petBefore = t, pet end
 end
@@ -507,6 +552,7 @@ local function creditLoot(item, guid, ...)
             if nLoot > 600 then wipe(seenLoot); nLoot = 0 end
             seenLoot[guid] = {}; nLoot = nLoot + 1
             r.ln = (r.ln or 0) + 1
+            pcall(lootKill, id, guid)
             changed(id)
         end
         local had = seenLoot[guid]
@@ -1311,16 +1357,21 @@ function B:OnInit(db)
         if e == "PLAYER_ENTERING_WORLD" then C_Timer.After(3, function() if not InCombatLockdown() then pcall(fightStart) end end) return end
         if e == "CHAT_MSG_COMBAT_XP_GAIN" then pcall(noteXP, a1) return end
         if e == "PLAYER_REGEN_ENABLED" then
-            C_Timer.After(0.3, function() pcall(noteDeath) end)
+            C_Timer.After(0.3, function() pcall(noteDeath, "target") end)
             C_Timer.After(0.6, function() pcall(fightEnd) end)
         end
-        if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target"); pcall(noteLook)
+        if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target")
+            -- (noteLook is not run: the game answered 0 for every creature
+            -- asked, 39 of 39, so its forms can't be learned this way.)
         elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover")
         elseif e == "NAME_PLATE_UNIT_ADDED" then if type(a1) == "string" then pcall(observe, a1) end
         elseif e == "LOOT_OPENED" then pcall(noteLoot)
         else pcall(noteCast, a1, a3, e == "UNIT_SPELLCAST_SUCCEEDED") end
     end)
     local hp = CreateFrame("Frame")
-    pcall(hp.RegisterUnitEvent, hp, "UNIT_HEALTH", "target")
-    hp:SetScript("OnEvent", function() pcall(noteDeath) end)
+    pcall(hp.RegisterEvent, hp, "UNIT_HEALTH")
+    hp:SetScript("OnEvent", function(_, _, unit)
+        if type(unit) ~= "string" or secret(unit) then return end
+        if unit == "target" or unit:find("^nameplate") then pcall(noteDeath, unit) end
+    end)
 end
