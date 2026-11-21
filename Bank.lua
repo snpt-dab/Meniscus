@@ -196,6 +196,15 @@ local function buyTab()
     BK:ShowBlizzard(true)
     ns:Print("Buying a bank tab has to be done in Blizzard's bank window (shown beside this one). Click \"Hide Blizzard bank\" when you're done.")
 end
+-- (The "Blizzard bank" button is gone from the header, 0.1.561: it only
+-- shows, as "Hide Blizzard bank", while that window is up. This brings it
+-- up if it is ever wanted.)
+ns.commands = ns.commands or {}
+ns.commands.blizzbank = function()
+    local w = _G.MinimalUIBank -- (the window's local is declared further down)
+    if not (w and w:IsShown()) then return ns:Print("Open the bank first.") end
+    BK:ShowBlizzard(not BK.showBlizz)
+end
 local function buySlot()
     confirmBuy("a bank bag slot", nextSlotCost(), function() call(_G.PurchaseSlot) end)
 end
@@ -443,8 +452,10 @@ function BK:Refresh()
     else
         win.buySlot:Hide()
     end
-    win.blizz:SetLabel(self.showBlizz and "Hide Blizzard bank" or "Blizzard bank")
-    win.blizz.on = self.showBlizz; win.blizz:Repaint()
+    win.blizz:SetShown(self.showBlizz and true or false)
+    win.deposit:ClearAllPoints()
+    if self.showBlizz then win.deposit:SetPoint("RIGHT", win.blizz, "LEFT", -8, 0)
+    else win.deposit:SetPoint("RIGHT", win.searchBox, "LEFT", -8, 0) end
     win.money:SetText(money(GetMoney()))
     win:SetSize(PAD * 2 + COLS * TILE + (COLS - 1) * GAP, top + rows * (TILE + GAP) - GAP + 12 + footer)
 
@@ -613,14 +624,16 @@ local function build()
     end)
     box:SetScript("OnEditFocusGained", function() hint:Hide() end)
     box:SetScript("OnEditFocusLost", function(self) hint:SetShown((self:GetText() or "") == "") end)
-    win.blizz = pill(win, "Blizzard bank", function() BK:ShowBlizzard(not BK.showBlizz) end)
+    win.searchBox = box
+    win.blizz = pill(win, "Hide Blizzard bank", function() BK:ShowBlizzard(false) end)
     win.blizz:SetPoint("RIGHT", box, "LEFT", -8, 0)
-    win.deposit = pill(win, "Deposit", deposit)
-    win.deposit:SetPoint("RIGHT", win.blizz, "LEFT", -8, 0)
+    win.blizz:Hide()
+    win.deposit = pill(win, "Stack from bags", deposit)
+    win.deposit:SetPoint("RIGHT", box, "LEFT", -8, 0)
     win.deposit:HookScript("OnEnter", function(self)
         ns.TipAnchor(self)
-        GameTooltip:SetText("Deposit", 1, 1, 1)
-        GameTooltip:AddLine("Moves from your bags every item the bank already has some of.", 0.8, 0.8, 0.8, true)
+        GameTooltip:SetText("Stack from bags", 1, 1, 1)
+        GameTooltip:AddLine("Anything in your bags that the bank already holds some of is moved in beside it. Nothing else is touched.", 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     win.deposit:HookScript("OnLeave", function() GameTooltip:Hide() end)
