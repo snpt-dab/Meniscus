@@ -511,84 +511,111 @@ end
 local function fightStart()
     wipe(fightKills)
 end
-local function fightEnd()
-    if InCombatLockdown() then return end
-    pcall(function()
-        local DM, T = C_DamageMeter, Enum and Enum.DamageMeterType
-        if not (DM and DM.GetCombatSessionSourceFromType) then return end
-        if MinimalUIDB and T and not (MinimalUIDB.meterdiag and MinimalUIDB.meterdiag.types) then
-            local names = {}
-            for k, v in pairs(T) do names[#names + 1] = tostring(k) .. "=" .. tostring(v) end
-            table.sort(names)
-            MinimalUIDB.meterdiag = MinimalUIDB.meterdiag or {}
-            MinimalUIDB.meterdiag.types = table.concat(names, ", ")
+-- (0.1.587) Five kills and nothing learned: the meter was asked 0.6 s
+-- after the fight, when its figures are still hidden (they were plain
+-- when a probe asked 4 s after), and this client has no list of the
+-- meter's views by name (Enum.DamageMeterType), so the two views wanted
+-- were never asked for at all. Now: asked again, later, until the figures
+-- can be read (readMeter says false while they can't); and the views are
+-- found by what is in them. One that lists creatures is taken for "what
+-- each enemy took" only if what it says they took, all together, is close
+-- to what you and your pet did, in a fight you fought alone.
+local function readMeter(kills)
+    local DM = C_DamageMeter
+    if not (DM and DM.GetCombatSessionSourceFromType) then return true end
+    local me = call(UnitGUID, "player")
+    if not str(me) then return true end
+    local mine = call(DM.GetCombatSessionSourceFromType, 1, 0, me)
+    if type(mine) == "table" and secret(mine.totalAmount) then return false end
+    local nKilled, levelOf, killed = #kills, {}, {}
+    for _, k in ipairs(kills) do
+        levelOf[k.id] = k.lvl or levelOf[k.id]
+        killed[k.id] = true
+    end
+    -- what you and your pet did in the fight, and the excess of the last blows
+    local done, over = 0, 0
+    for _, g in ipairs({ me, call(UnitGUID, "pet") }) do
+        local src = str(g) and call(DM.GetCombatSessionSourceFromType, 1, 0, g)
+        if type(src) == "table" then
+            if plain(src.totalAmount) then done = done + src.totalAmount end
+            for _, sp in ipairs(type(src.combatSpells) == "table" and src.combatSpells or {}) do
+                if plain(sp.overkillAmount) then over = over + sp.overkillAmount end
+            end
         end
-        local levelOf, killed, nKilled = {}, {}, #fightKills
-        for _, k in ipairs(fightKills) do
-            levelOf[k.id] = k.lvl or levelOf[k.id]
-            killed[k.id] = true
-        end
-        -- what you and your pet did in the fight, and the excess of the last blows
-        local done, over = 0, 0
-        local me = call(UnitGUID, "player")
-        for _, g in ipairs({ me, call(UnitGUID, "pet") }) do
-            local src = str(g) and call(DM.GetCombatSessionSourceFromType, 1, 0, g)
-            if type(src) == "table" then
-                if plain(src.totalAmount) then done = done + src.totalAmount end
-                for _, sp in ipairs(type(src.combatSpells) == "table" and src.combatSpells or {}) do
-                    if plain(sp.overkillAmount) then over = over + sp.overkillAmount end
+    end
+    local alone = not (IsInGroup and isTrue(call(IsInGroup)))
+    meterLog("fight read: you did " .. done .. ", excess " .. over .. ", kills noted " .. nKilled)
+    local sampled = false
+    if DM.GetCombatSessionFromType and nKilled > 0 and done > 0 then
+        for n = 1, 15 do
+            local ses = call(DM.GetCombatSessionFromType, 1, n)
+            local list = type(ses) == "table" and type(ses.combatSources) == "table" and ses.combatSources or nil
+            if list and list[1] and npcOf(list[1].sourceGUID) then
+                local sum = 0
+                for _, src in ipairs(list) do
+                    if plain(src.totalAmount) then sum = sum + src.totalAmount end
+                    meterLog("view " .. n .. ": " .. tostring(str(src.name) and src.name or "?") .. " " .. tostring(plain(src.totalAmount) and src.totalAmount or "?")
+                        .. " death " .. tostring(plain(src.deathTimeSeconds) and src.deathTimeSeconds or "?"))
                 end
-            end
-        end
-        local sampled = false
-        local ses = T and T.EnemyDamageTaken and DM.GetCombatSessionFromType
-            and call(DM.GetCombatSessionFromType, 1, T.EnemyDamageTaken)
-        if type(ses) == "table" and type(ses.combatSources) == "table" then
-            local dead = 0
-            for _, src in ipairs(ses.combatSources) do
-                if plain(src.deathTimeSeconds) and src.deathTimeSeconds > 0 then dead = dead + 1 end
-            end
-            for _, src in ipairs(ses.combatSources) do
-                local id = npcOf(src.sourceGUID)
-                local total = src.totalAmount
-                local died = (plain(src.deathTimeSeconds) and src.deathTimeSeconds > 0) or (id and killed[id] and dead == 0)
-                meterLog("enemy " .. tostring(str(src.name) and src.name or "?") .. " id " .. tostring(id) .. " took "
-                    .. tostring(plain(total) and total or "?") .. " died " .. tostring(died and true or false)
-                    .. " (you did " .. done .. ", excess " .. over .. ", kills noted " .. nKilled .. ")")
-                if id and plain(total) and total > 0 and died then
-                    local v = total
-                    if math.max(dead, nKilled) == 1 and over < v then v = v - over end
-                    healthSample(id, levelOf[id], math.floor(v + 0.5))
-                    sampled = true
-                end
-            end
-        end
-        if not sampled and nKilled == 1 and done > over and not (IsInGroup and isTrue(call(IsInGroup))) then
-            meterLog("one kill, id " .. fightKills[1].id .. ": you did " .. done .. ", excess " .. over)
-            healthSample(fightKills[1].id, fightKills[1].lvl, math.floor(done - over + 0.5))
-        end
-        -- what hit you
-        local taken = T and T.DamageTaken and str(me) and call(DM.GetCombatSessionSourceFromType, 1, T.DamageTaken, me)
-        for _, sp in ipairs(type(taken) == "table" and type(taken.combatSpells) == "table" and taken.combatSpells or {}) do
-            local sid = sp.spellID
-            local who = str(sp.creatureName) and sp.creatureName
-                or (type(sp.combatSpellDetails) == "table" and str(sp.combatSpellDetails.unitName) and sp.combatSpellDetails.unitName) or nil
-            local id = (who and idByName(who)) or (not who and nKilled == 1 and fightKills[1].id) or nil
-            meterLog("hit by " .. tostring(who) .. " spell " .. tostring(plain(sid) and sid or "?") .. " total "
-                .. tostring(plain(sp.totalAmount) and sp.totalAmount or "?"))
-            local r = id and record(id)
-            if r and plain(sid) then
-                local name = sid == 6603 and "Melee" or (C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, sid))
-                if str(name) then
-                    r.c = r.c or {}
-                    if r.c[name] == nil and count(r.c) < 16 or r.c[name] == true then
-                        r.c[name] = sid
-                        changed(id)
+                if not sampled and alone and sum >= done * 0.9 and sum <= done * 1.05 + 1 then
+                    for _, src in ipairs(list) do
+                        local id = npcOf(src.sourceGUID)
+                        local total = src.totalAmount
+                        if id and killed[id] and plain(total) and total > 0 then
+                            local v = total
+                            if nKilled == 1 and over < v then v = v - over end
+                            healthSample(id, levelOf[id], math.floor(v + 0.5))
+                            sampled = true
+                        end
                     end
                 end
             end
         end
-    end)
+    end
+    if not sampled and nKilled == 1 and done > over and alone then
+        healthSample(kills[1].id, kills[1].lvl, math.floor(done - over + 0.5))
+    end
+    -- what hit you: a view in which your own line lists attacks by creature
+    local got = false
+    for n = 1, 15 do
+        local taken = not got and call(DM.GetCombatSessionSourceFromType, 1, n, me)
+        for _, sp in ipairs(type(taken) == "table" and type(taken.combatSpells) == "table" and taken.combatSpells or {}) do
+            local sid = sp.spellID
+            local who = str(sp.creatureName) and sp.creatureName or nil
+            if who then
+                got = true
+                meterLog("view " .. n .. ": hit by " .. who .. " spell " .. tostring(plain(sid) and sid or "?") .. " total "
+                    .. tostring(plain(sp.totalAmount) and sp.totalAmount or "?"))
+                local id = idByName(who)
+                local r = id and record(id)
+                if r and plain(sid) then
+                    local name = sid == 6603 and "Melee" or (C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, sid))
+                    if str(name) then
+                        r.c = r.c or {}
+                        if (r.c[name] == nil and count(r.c) < 16) or r.c[name] == true then
+                            r.c[name] = sid
+                            changed(id)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return true
+end
+local function fightEnd(kills, try)
+    if InCombatLockdown() then return end
+    local ok, read = pcall(readMeter, kills)
+    if not ok then meterLog("error: " .. tostring(read)) end
+    if ok and read == false then
+        if try < 6 then
+            C_Timer.After(try < 3 and 1 or 3, function() fightEnd(kills, try + 1) end)
+        else
+            meterLog("the meter stayed hidden for 12 s after a fight")
+        end
+        return
+    end
+    local fightKills = kills
     -- What it left on you: your debuffs, now that they can be read. One
     -- the game ties to a creature still about goes to that creature; one
     -- with no owner left goes to what you killed, if that was one thing.
@@ -614,7 +641,6 @@ local function fightEnd()
             end
         end
     end)
-    wipe(fightKills)
 end
 
 -- Its loot table (0.1.569): every item on every corpse you open, and how
@@ -1451,6 +1477,7 @@ function B:OnInit(db)
         for _, r in pairs(MinimalUIDB.bestiary or {}) do r.he, r.hn, r.hs = nil, nil, nil end
         MinimalUIDB.bestiaryRev = 3
     end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 3 then MinimalUIDB.meterdiag = nil; MinimalUIDB.bestiaryRev = 4 end
     B.OnChange(function(id)
         if id then hay[id] = nil end
         if win and win:IsShown() then stale = true end
@@ -1473,7 +1500,12 @@ function B:OnInit(db)
         if e == "CHAT_MSG_COMBAT_XP_GAIN" then pcall(noteXP, a1) return end
         if e == "PLAYER_REGEN_ENABLED" then
             C_Timer.After(0.3, function() pcall(noteDeath, "target") end)
-            C_Timer.After(0.6, function() pcall(fightEnd) end)
+            C_Timer.After(0.6, function()
+                local kills = {}
+                for i, k in ipairs(fightKills) do kills[i] = k end
+                wipe(fightKills)
+                pcall(fightEnd, kills, 1)
+            end)
         end
         if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target")
             -- (noteLook is not run: the game answered 0 for every creature
