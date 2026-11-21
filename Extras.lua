@@ -1800,111 +1800,137 @@ end
 -- minimap marks for rares (where this client has them), in which case the
 -- quest dot is borrowed for a minute and a half to point at it; and any
 -- rare whose nameplate appears, or that you target or point at.
--- The fanfare (0.1.543, it was a pill and a soft ping, and was missed): the
--- whole screen flashes once, its edges glow and beat three times in the
--- rare's colour (silver, or gold for a rare elite) and stay lit while the
--- banner is up; the banner is the name, large, struck into place under the
--- top of the screen between two lines of light that run out from the
--- middle, with what is known of it underneath. The raid warning sound, on
--- the master channel so it is heard with effects off, and the game's icon
--- flashes in the taskbar in case you are looking elsewhere. Six seconds.
--- /men rare shows it.
+-- The fanfare (0.1.545: in the addon's own dress; 0.1.543 lit the whole
+-- screen's edges, which was loud enough but not ours). A card under the top
+-- of the screen, as the dialog window's header band: dark, grained, ringed
+-- in the rare's colour (silver, or gold for a rare elite), with a round
+-- emblem, the kind in small capitals, the name in bold and what is known
+-- of it underneath. It is struck into place, and for three beats its two
+-- coloured ghosts (warm and cool, as on a critical hit's number) are thrown
+-- apart and drawn back while the ring flares white; then a light crosses
+-- it once, as on a skill going up. The raid warning sound, on the master
+-- channel so it is heard with effects off, and the game's icon flashes in
+-- the taskbar. Six seconds. /men rare shows it.
 local fanfare
 local function rareFanfare(name, kind, note)
     if not fanfare then
+        local W, H, RAD = 460, 78, 16
         local f = CreateFrame("Frame", nil, UIParent)
-        f:SetAllPoints(UIParent)
+        f:SetSize(W, H)
+        f:SetPoint("TOP", UIParent, "TOP", 0, -150)
         f:SetFrameStrata("HIGH")
         f:EnableMouse(false)
         f:Hide()
-        local white = f:CreateTexture(nil, "BACKGROUND")
-        white:SetAllPoints()
-        white:SetColorTexture(1, 1, 1, 1)
-        white:SetBlendMode("ADD")
-        local edges = {}
-        local DEPTH = 190
-        for i, e in ipairs({ { "TOPLEFT", "TOPRIGHT", "VERTICAL", false }, { "BOTTOMLEFT", "BOTTOMRIGHT", "VERTICAL", true },
-                             { "TOPLEFT", "BOTTOMLEFT", "HORIZONTAL", true }, { "TOPRIGHT", "BOTTOMRIGHT", "HORIZONTAL", false } }) do
-            local t = f:CreateTexture(nil, "BORDER")
-            t:SetColorTexture(1, 1, 1, 1)
-            t:SetBlendMode("ADD")
-            t:SetPoint(e[1]); t:SetPoint(e[2])
-            if e[3] == "VERTICAL" then t:SetHeight(DEPTH) else t:SetWidth(DEPTH) end
-            t.dir, t.minLit = e[3], e[4]
-            edges[i] = t
+        -- the ghosts, behind the card: what shows of them is the fringe
+        local ghosts = {}
+        for i, c in ipairs({ { 1.00, 0.30, 0.42 }, { 0.30, 0.62, 1.00 } }) do
+            local g = CreateFrame("Frame", nil, f)
+            g:SetSize(W, H)
+            g:SetPoint("CENTER")
+            g:SetFrameLevel(f:GetFrameLevel())
+            g.paint = ns.RoundedRect(g, 0, 0, RAD, c[1], c[2], c[3], 0)
+            g.c = c
+            ghosts[i] = g
         end
-        local banner = CreateFrame("Frame", nil, f)
-        banner:SetSize(10, 10)
-        banner:SetPoint("TOP", f, "TOP", 0, -150)
-        local burst = banner:CreateTexture(nil, "BACKGROUND")
-        burst:SetTexture(MEDIA .. "spot.tga")
-        burst:SetBlendMode("ADD")
-        burst:SetSize(760, 200)
-        burst:SetPoint("CENTER", banner, "CENTER", 0, -28)
-        local lines = {}
-        for i = 1, 4 do
-            local t = banner:CreateTexture(nil, "ARTWORK")
-            t:SetColorTexture(1, 1, 1, 1)
-            t:SetHeight(2)
-            local y = i <= 2 and 0 or -62
-            if i % 2 == 1 then t:SetPoint("RIGHT", banner, "TOP", 0, y) else t:SetPoint("LEFT", banner, "TOP", 0, y) end
-            t.left = i % 2 == 1
-            lines[i] = t
+        local card = CreateFrame("Frame", nil, f)
+        card:SetAllPoints()
+        card:SetFrameLevel(f:GetFrameLevel() + 2)
+        local ring = ns.RoundedRect(card, 0, 0, RAD, 1, 1, 1, 1)
+        ns.RoundedRect(card, 1, 2, RAD - 2, 0.075, 0.075, 0.085, 0.97)
+        local grain = card:CreateTexture(nil, "BORDER")
+        grain:SetTexture(MEDIA .. "noise.tga", "REPEAT", "REPEAT")
+        grain:SetHorizTile(true); grain:SetVertTile(true)
+        grain:SetVertexColor(1, 1, 1, 0.07)
+        grain:SetPoint("TOPLEFT", 6, -6)
+        grain:SetPoint("BOTTOMRIGHT", -6, 6)
+        -- the emblem
+        local D = 50
+        local em = CreateFrame("Frame", nil, card)
+        em:SetSize(D, D)
+        em:SetPoint("LEFT", card, "LEFT", 14, 0)
+        local emRing = em:CreateTexture(nil, "ARTWORK", nil, 1)
+        emRing:SetTexture(MEDIA .. "circle.tga")
+        emRing:SetAllPoints()
+        local emFill = em:CreateTexture(nil, "ARTWORK", nil, 2)
+        emFill:SetTexture(MEDIA .. "circle.tga")
+        emFill:SetPoint("TOPLEFT", 2, -2)
+        emFill:SetPoint("BOTTOMRIGHT", -2, 2)
+        emFill:SetVertexColor(0.05, 0.05, 0.06, 1)
+        local emIcon = em:CreateTexture(nil, "OVERLAY")
+        emIcon:SetTexture(MEDIA .. "micro_achievement.tga")
+        emIcon:SetSize(26, 26)
+        emIcon:SetPoint("CENTER")
+        local function words(size, bold, color)
+            local fs = card:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(fs, size, "", bold)
+            fs:SetTextColor(unpack(color or T.text))
+            fs:SetJustifyH("LEFT")
+            fs:SetWordWrap(false)
+            return fs
         end
-        local label = ns:CreateText(banner, 11)
-        label:SetPoint("TOP", banner, "TOP", 0, -9)
-        local punch = CreateFrame("Frame", nil, banner)
-        punch:SetSize(10, 10)
-        punch:SetPoint("CENTER", banner, "TOP", 0, -34)
-        local title = ns:CreateText(punch, 28)
-        title:SetPoint("CENTER")
-        title:SetShadowOffset(2, -2)
-        title:SetShadowColor(0, 0, 0, 0.9)
-        local sub = ns:CreateText(banner, 12, T.textDim)
-        sub:SetPoint("TOP", banner, "TOP", 0, -68)
-        for _, fs in ipairs({ label, sub }) do fs:SetShadowOffset(1, -1); fs:SetShadowColor(0, 0, 0, 0.9) end
-        local LIFE, FADE, LINE_W = 6, 0.8, 300
+        local label = words(10, true)
+        label:SetPoint("TOPLEFT", em, "TOPRIGHT", 14, 0)
+        local title = words(20, true)
+        title:SetPoint("LEFT", em, "RIGHT", 14, -1)
+        title:SetPoint("RIGHT", card, "RIGHT", -18, -1)
+        local sub = words(11, false, T.textDim)
+        sub:SetPoint("BOTTOMLEFT", em, "BOTTOMRIGHT", 14, 0)
+        -- the light that crosses it, kept inside the card
+        local clip = CreateFrame("Frame", nil, card)
+        clip:SetPoint("TOPLEFT", 2, -2)
+        clip:SetPoint("BOTTOMRIGHT", -2, 2)
+        clip:SetClipsChildren(true)
+        local sheen = clip:CreateTexture(nil, "OVERLAY")
+        sheen:SetTexture(MEDIA .. "spot.tga")
+        sheen:SetBlendMode("ADD")
+        sheen:SetSize(120, H * 2.4)
+        sheen:SetAlpha(0)
+        local LIFE, FADE, BEAT, BEATS, SPREAD = 6, 0.6, 0.6, 3, 20
         local col = { 1, 1, 1 }
         local t0 = 0
-        local function grad(t, o, r, g, b, a0, a1)
-            if not (CreateColor and pcall(t.SetGradient, t, o, CreateColor(r, g, b, a0), CreateColor(r, g, b, a1))) then
-                t:SetVertexColor(r, g, b, math.max(a0, a1) * 0.4)
-            end
-        end
         f:SetScript("OnUpdate", function()
             local t = GetTime() - t0
             if t >= LIFE then f:Hide() return end
-            local out = t > LIFE - FADE and (LIFE - t) / FADE or 1
-            local r, g, b = col[1], col[2], col[3]
-            -- the flash: gone in a quarter of a second
-            white:SetAlpha(t < 0.25 and 0.30 * (1 - t / 0.25) or 0)
-            -- the edges: three beats, then a slow breath
-            local a
-            if t < 1.8 then a = 0.25 + 0.55 * math.abs(math.sin(t / 0.6 * math.pi))
-            else a = 0.22 + 0.10 * math.sin((t - 1.8) * 2.4) end
-            a = a * out
-            for _, e in ipairs(edges) do
-                if e.minLit then grad(e, e.dir, r, g, b, a, 0) else grad(e, e.dir, r, g, b, 0, a) end
+            f:SetAlpha(math.min(1, t / 0.12) * (t > LIFE - FADE and (LIFE - t) / FADE or 1))
+            -- struck into place
+            f:SetScale(t < 0.2 and 1.14 - 0.14 * (t / 0.2) or 1)
+            -- the beats: the ghosts out fast and back slowly, the ring flaring
+            local out, a = 0, 0
+            if t < BEAT * BEATS then
+                local p = (t / BEAT) % 1
+                out = p < 0.18 and (p / 0.18) or (1 - (p - 0.18) / 0.82) ^ 2
+                a = p < 0.12 and p / 0.12 or 1 - (p - 0.12) / 0.88
             end
-            burst:SetVertexColor(r, g, b, (t < 0.5 and 0.75 - t or 0.25) * out)
-            -- the lines run out from the middle (eased)
-            local k = math.min(1, t / 0.45)
-            local w = LINE_W * k * (2 - k)
-            for _, l in ipairs(lines) do
-                l:SetWidth(math.max(1, w))
-                if l.left then grad(l, "HORIZONTAL", r, g, b, 0, 0.9 * out) else grad(l, "HORIZONTAL", r, g, b, 0.9 * out, 0) end
+            for i, g in ipairs(ghosts) do
+                local dir = i == 1 and -1 or 1
+                g:ClearAllPoints()
+                g:SetPoint("CENTER", f, "CENTER", dir * SPREAD * out, dir * -3 * out)
+                g.paint(g.c[1], g.c[2], g.c[3], a * 0.9)
             end
-            -- the name is struck into place
-            punch:SetScale(t < 0.22 and 1.7 - 0.7 * (t / 0.22) or 1)
-            banner:SetAlpha(math.min(1, t / 0.12) * out)
+            local k = a * 0.7
+            local r, g, b = col[1] + (1 - col[1]) * k, col[2] + (1 - col[2]) * k, col[3] + (1 - col[3]) * k
+            ring(r, g, b, 1)
+            emRing:SetVertexColor(r, g, b, 1)
+            -- the light, once the beats are over
+            local s = (t - BEAT * BEATS) / 0.9
+            if s > 0 and s < 1 then
+                local e = s * s * (3 - 2 * s)
+                sheen:ClearAllPoints()
+                sheen:SetPoint("CENTER", clip, "LEFT", -60 + (W + 120) * e, 0)
+                sheen:SetVertexColor(col[1], col[2], col[3], 0.5 * math.sin(s * math.pi))
+            else
+                sheen:SetAlpha(0)
+            end
         end)
         function f.play(name, kind, note)
             local elite = kind == "rareelite"
-            if elite then col[1], col[2], col[3] = 1.00, 0.80, 0.36 else col[1], col[2], col[3] = 0.62, 0.80, 1.00 end
-            label:SetText(elite and "R A R E   E L I T E" or "R A R E   S P A W N")
+            if elite then col[1], col[2], col[3] = 0.95, 0.76, 0.34 else col[1], col[2], col[3] = 0.62, 0.78, 0.96 end
+            label:SetText(elite and "RARE ELITE" or "RARE SPAWN")
             label:SetTextColor(col[1], col[2], col[3], 1)
+            emIcon:SetVertexColor(col[1], col[2], col[3], 1)
             title:SetText(name)
             sub:SetText(note or "")
+            sheen:SetAlpha(1)
             t0 = GetTime()
             f:Show()
         end
