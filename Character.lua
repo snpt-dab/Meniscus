@@ -622,7 +622,9 @@ local SLOT_WEIGHT = { Head = 1, Chest = 1, Legs = 1, Shoulder = 0.75, Hands = 0.
                       Waist = 0.55, Wrist = 0.55, Back = 0.55, Neck = 0.55, Finger0 = 0.55, Finger1 = 0.55,
                       Trinket0 = 0.3, Trinket1 = 0.3 }
 -- the level from which an empty slot is worth a word
-local FROM_LEVEL = { Back = 6, Waist = 5, Wrist = 5, Shoulder = 12, Head = 18, Finger0 = 18, Finger1 = 18,
+-- (Shoulders from 17, helmets from 25, rings from about 15: the user's
+-- figures for this game, 0.1.565. Before that an empty one is not a gap.)
+local FROM_LEVEL = { Back = 6, Waist = 5, Wrist = 5, Shoulder = 17, Head = 25, Finger0 = 15, Finger1 = 15,
                      Neck = 20, Trinket0 = 40, Trinket1 = 40 }
 --                    main  off  ranged   empty off hand from, empty ranged from (nil: never)
 local WEAPON_WEIGHT = {
