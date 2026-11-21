@@ -329,6 +329,8 @@ local function fillRow(row, d)
         row.label:SetText(d.label)
         row.value:Show()
         row.value:SetText(d.value)
+        -- (a long label is cut short of the value: it ran over it, 0.1.582)
+        if not d.wide then row.label:SetPoint("RIGHT", row.value, "LEFT", -8, 0) end
         row.value:SetTextColor(unpack(d.color or T.text))
     else -- bar
         ns:SetFont(row.label, 11, "", d.active)

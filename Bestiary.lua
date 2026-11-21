@@ -729,7 +729,7 @@ function B.Rows(rows, id, full)
         head(rows, ln > 0 and ("Loot   (" .. ln .. (ln == 1 and " kill)" or " kills)")) or "Loot", "micro_journal.tga")
         if ln > looted then
             rows[#rows + 1] = { kind = "stat", label = "Nothing on it", labelColor = T.textDim, color = T.textDim,
-                value = string.format("%d%%   %d of %d", math.floor((ln - looted) / ln * 100 + 0.5), ln - looted, ln) }
+                value = string.format("%d%%", math.floor((ln - looted) / ln * 100 + 0.5)) }
         end
         local ids = {}
         for item in pairs(r.l or {}) do ids[#ids + 1] = item end
@@ -743,7 +743,7 @@ function B.Rows(rows, id, full)
             local n = r.l and r.l[item]
             local value, color
             if n and ln > 0 then
-                value = string.format("%d%%   %d of %d", math.floor(n / ln * 100 + 0.5), n, ln)
+                value = string.format("%d%%", math.floor(n / ln * 100 + 0.5)) -- (the counts are in the tooltip)
             else
                 value, color = "seen" .. (r.d and (r.d[item] or 0) > 1 and (" x" .. r.d[item]) or ""), T.textDim
             end
@@ -1271,6 +1271,15 @@ end
 function B:OnInit(db)
     self.db = db
     db.collapsed = db.collapsed or {}
+    -- A fresh book (0.1.582, agreed): what was kept before kills were
+    -- counted properly had loot without kills and tallies from three
+    -- different ways of counting. Everything is met again from here.
+    if MinimalUIDB and MinimalUIDB.bestiaryRev ~= 2 then
+        MinimalUIDB.bestiary, MinimalUIDB.bestiaryOut, MinimalUIDB.bestiarySent = nil, nil, nil
+        MinimalUIDB.hpdiag, MinimalUIDB.castdiag, MinimalUIDB.lookdiag = nil, nil, nil
+        MinimalUIDB.bestiaryRev = 2
+        nameIndex = nil
+    end
     B.OnChange(function(id)
         if id then hay[id] = nil end
         if win and win:IsShown() then stale = true end
