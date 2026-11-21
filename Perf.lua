@@ -347,7 +347,12 @@ local function buildBox()
         if self.traceLabel ~= label then self.traceLabel = label; self.trace:SetLabel(label) end
         local waiting = want ~= have
         if self.reload.primary ~= waiting then self.reload.primary = waiting; self.reload:Repaint() end
-        self:SetHeight(32 + #lines * 13 + 2 * (PILL_H + PILL_GAP) + 10)
+        -- (the height likewise: it keeps the most lines it has had, so the
+        -- "In combat" line coming and going does not move the buttons)
+        if #lines > (self.linesSeen or 0) then
+            self.linesSeen = #lines
+            self:SetHeight(32 + #lines * 13 + 2 * (PILL_H + PILL_GAP) + 10)
+        end
         -- Fit the widest line (the CPU line grows with its addon share)
         -- and the wider row of buttons.
         local row1 = self.trace:GetWidth() + PILL_GAP + self.reload:GetWidth()
