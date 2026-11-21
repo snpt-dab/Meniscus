@@ -493,7 +493,13 @@ local function build()
             beast:SetPoint("TOPLEFT", page, "TOPLEFT", W, 0)
             beast:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -20, 16)
             ns.RoundedRect(beast, -6, 0, 10, 0.085, 0.085, 0.095, 1)
-            local rowsFit = math.floor((ch - 16) / 20)
+            local rowsFit = math.floor((ch - 16 - 30) / 20) -- (room for "Refresh" under the list)
+            -- Refresh (0.1.583): shows whatever you have targeted now, and
+            -- reads it again. For when the window has not followed.
+            local rf = ns.Pill(beast, "Refresh", function()
+                if UnitExists("target") and I.Retarget then I.Retarget() else I:Refresh() end
+            end, { h = 22, pad = 22, minW = 0 })
+            rf:SetPoint("BOTTOMRIGHT", beast, "BOTTOMRIGHT", -10, 8)
             beast.list = Cm.MakeList(beast, cw - 12, rowsFit * 20, 20, 100)
             beast.list:SetPoint("TOPLEFT", 2, -8)
             beast:Hide()
@@ -532,6 +538,7 @@ end
 -- Open on your target, whatever it is (the button by the target frame,
 -- /men inspect); again to close. A player in reach goes through the game's
 -- own inspect (which brings their gear); anything else is shown as it is.
+I.Retarget = function() open("target", "plain") end
 function I:Open()
     if win and win:IsShown() then win:Hide() return end
     if not UnitExists("target") then return ns:Print("Nothing targeted to inspect.") end

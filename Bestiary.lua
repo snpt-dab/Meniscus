@@ -1216,7 +1216,7 @@ local function build()
     win.modelNote:SetWidth(120)
     win.modelNote:SetJustifyH("CENTER")
     win.name = words(16, true)
-    win.name:SetPoint("TOPLEFT", top, "TOPLEFT", 162, -22)
+    win.name:SetPoint("TOPLEFT", top, "TOPLEFT", 162, -40)
     win.name:SetPoint("RIGHT", top, "RIGHT", -12, 0)
     win.name:SetWordWrap(true)
     win.sub = words(11, false, T.textDim)
@@ -1224,6 +1224,16 @@ local function build()
     win.sub:SetPoint("RIGHT", top, "RIGHT", -12, 0)
     win.sub:SetWordWrap(true)
     win.top, win.formPills = top, {}
+    -- "My target": the book opens on what you have targeted; this turns
+    -- to it again without closing the window (0.1.583).
+    local mine = ns.Pill(top, "My target", function()
+        local id = npcID("target")
+        if not id then return ns:Print("Nothing targeted that the bestiary keeps.") end
+        pcall(observe, "target")
+        if not view(id) then return ns:Print("Not in the bestiary yet: it has to be something you can attack.") end
+        B:Pick(id)
+    end, { h = 20, pad = 18, minW = 0, font = 10 })
+    mine:SetPoint("TOPRIGHT", top, "TOPRIGHT", -10, -10)
     win.formLabel = words(10, true, T.textDim)
     win.formLabel:SetPoint("BOTTOMLEFT", top, "BOTTOMLEFT", 162, 16)
     win.formLabel:SetText("FORMS")
