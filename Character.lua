@@ -625,7 +625,7 @@ local SLOT_WEIGHT = { Head = 1, Chest = 1, Legs = 1, Shoulder = 0.75, Hands = 0.
 -- (Shoulders from 17, helmets from 25, rings from about 15: the user's
 -- figures for this game, 0.1.565. Before that an empty one is not a gap.)
 local FROM_LEVEL = { Back = 6, Waist = 5, Wrist = 5, Shoulder = 17, Head = 25, Finger0 = 15, Finger1 = 15,
-                     Neck = 20, Trinket0 = 40, Trinket1 = 40 }
+                     Neck = 25, Trinket0 = false, Trinket1 = false } -- (false: an empty one is never a gap)
 --                    main  off  ranged   empty off hand from, empty ranged from (nil: never)
 local WEAPON_WEIGHT = {
     WARRIOR = { 1.8, 0.7, 0.3, 1, 10 },
@@ -731,7 +731,10 @@ local function gearAdvice()
         if name == "MainHand" then w, from = ww[1], 1
         elseif name == "SecondaryHand" then w, from = ww[2], ww[4]
         elseif name == "Ranged" then w, from = ww[3], ww[5]
-        else w, from = SLOT_WEIGHT[name], FROM_LEVEL[name] or 1 end
+        else
+            w, from = SLOT_WEIGHT[name], FROM_LEVEL[name]
+            if from == nil then from = 1 end
+        end
         if w and w > 0 then
             local e
             if b.lvl then
