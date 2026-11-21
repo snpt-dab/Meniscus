@@ -114,6 +114,12 @@ def clean(r):
         k = txt(k, 60)
         if k: db[k] = v if num(v, 1, 10**7) else True
     if db: o['db'] = db
+    for key in ('cc', 'dbt'):
+        d = {}
+        for k, v in (r.get(key) or {}).items() if isinstance(r.get(key), dict) else ():
+            k, v = txt(k, 60), txt(v, 24)
+            if k and v and re.fullmatch(r'[A-Za-z_ ]+', v): d[k] = v
+        if d: o[key] = d
     hit = {}
     for k, v in (r.get('hit') or {}).items() if isinstance(r.get('hit'), dict) else ():
         k = txt(k, 60)
@@ -159,6 +165,8 @@ def merge(a, b):
         d, n = a.setdefault('he', {}), a.setdefault('hn', {})
         bn = b.get('hn', {}).get(x, 1)   # (the figure seen more often wins; equal: the lower)
         if x not in d or bn > n.get(x, 0) or (bn == n.get(x, 0) and v < d[x]): d[x], n[x] = v, bn
+    for key in ('cc', 'dbt'):
+        for x, v in b.get(key, {}).items(): a.setdefault(key, {}).setdefault(x, v)
     for key in ('c', 'db'):
         for x, v in b.get(key, {}).items():
             d = a.setdefault(key, {})
