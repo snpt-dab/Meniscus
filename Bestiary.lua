@@ -1534,7 +1534,7 @@ local function showModel(id, form)
         elseif m.SetCreature then
             shown = pcall(m.SetCreature, m, id)
         end
-        if shown then pcall(m.SetFacing, m, m.facing or 0.4) end
+        if shown then pcall(m.SetFacing, m, m.facing or 0.52) end
     end
     m:SetShown(shown)
     win.modelNote:SetShown(not shown)
@@ -1772,7 +1772,7 @@ local function build()
     local m = CreateFrame("PlayerModel", nil, clip)
     m:SetPoint("TOPLEFT", top, "TOPLEFT", 6, -6)
     m:SetSize(144, MODEL_H - 12)
-    m.facing = 0.4
+    m.facing = 0.52
     m:EnableMouse(true)
     m:SetScript("OnMouseDown", function(self) self.dragX = GetCursorPosition() end)
     m:SetScript("OnMouseUp", function(self) self.dragX = nil end)

@@ -1682,7 +1682,7 @@ local function makeModelArea(page, x1, y1, x2, y2, tint)
     model:SetPoint("TOPLEFT", page, "TOPLEFT", x1, y1 - DROP)
     model:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", x2, y2 - DROP)
     model:SetFrameLevel(page:GetFrameLevel())
-    model.facing, model.zoom, model.floor = 0, 0, floor
+    model.facing, model.zoom, model.floor = 0.52, 0, floor -- (turned about 30 degrees to start with)
     model:EnableMouse(true)
     model:EnableMouseWheel(true)
     model:SetScript("OnMouseDown", function(self, btn)

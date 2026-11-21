@@ -347,7 +347,8 @@ local function makeModel(page, x1, y1, x2, y2)
     local model = CreateFrame("PlayerModel", nil, page)
     model:SetPoint("TOPLEFT", page, "TOPLEFT", x1, y1 - 24)
     model:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", x2, y2 - 24)
-    model.facing, model.spot = 0, spot
+    -- (Turned a little to one side to start with, about 30 degrees: 0.1.601.)
+    model.facing, model.spot, model.floor = 0.52, spot, floor
     model:EnableMouse(true)
     model:SetScript("OnMouseDown", function(self, btn) if btn == "LeftButton" then self.dragX = GetCursorPosition() end end)
     model:SetScript("OnMouseUp", function(self) self.dragX = nil end)
@@ -538,8 +539,12 @@ local function open(unit, mode)
     win.shell:SetUnit(unit)
     win.model:ClearModel()
     win.model:SetUnit(unit)
-    win.model.facing = 0
-    win.model:SetFacing(0)
+    win.model.facing = 0.52
+    win.model:SetFacing(0.52)
+    -- The shadow on the floor is where a player's feet come: a creature's
+    -- model is fitted to the space its own way (a tall one stands smaller
+    -- and higher), and it floated over the shadow. Players only.
+    if win.model.floor then win.model.floor:SetShown(isTrue(call(UnitIsPlayer, unit))) end
     local _, token = UnitClass(unit)
     local cc = token and not secret(token) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
     if cc then win.model.spot:SetVertexColor(cc.r, cc.g, cc.b, 0.16) else win.model.spot:SetVertexColor(1, 1, 1, 0.08) end
