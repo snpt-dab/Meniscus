@@ -352,7 +352,15 @@ local function buildBox()
         -- and the wider row of buttons.
         local row1 = self.trace:GetWidth() + PILL_GAP + self.reload:GetWidth()
         local row2 = self.reset:GetWidth() + self.gc:GetWidth() + self.report:GetWidth() + 2 * PILL_GAP
-        self:SetWidth(math.max(210, math.ceil(self.body:GetStringWidth()) + 24, math.ceil(math.max(row1, row2)) + 20))
+        -- (0.1.617: it only ever grows, and by steps of 24, with room to
+        -- spare: it was resized at every reading as the figures changed
+        -- width, which kept catching the eye.)
+        local want = math.max(210, math.ceil(self.body:GetStringWidth()) + 24 + 16, math.ceil(math.max(row1, row2)) + 20)
+        want = math.ceil(want / 24) * 24
+        if want > (self.wideSeen or 0) then
+            self.wideSeen = want
+            self:SetWidth(want)
+        end
     end)
 end
 
