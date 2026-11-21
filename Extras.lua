@@ -133,6 +133,51 @@ function EX:Chip(icon)
     end)
     c:SetScript("OnLeave", function() GameTooltip:Hide() end)
     c:SetScript("OnClick", function(self) if self.click then self.click() end end)
+    -- A quiet reflection (0.1.562, the mail chip): a soft bar of light that
+    -- rolls across the chip every few seconds, as on the skill-up pills
+    -- but fainter, kept to the chip's round face by a mask. For a chip
+    -- that should be noticed in passing, not one that calls for you (those
+    -- pulse: "urgent").
+    function c:Sheen(on, r, g, b)
+        local f = self.sheenF
+        if on and not f then
+            local EVERY, TIME, PEAK = 5.5, 1.5, 0.30
+            f = CreateFrame("Frame", nil, self)
+            f:SetAllPoints()
+            f:SetFrameLevel(self:GetFrameLevel() + 3)
+            local mask = f:CreateMaskTexture()
+            mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetPoint("TOPLEFT", 1, -1)
+            mask:SetPoint("BOTTOMRIGHT", -1, 1)
+            local tx = f:CreateTexture(nil, "OVERLAY")
+            tx:SetTexture(MEDIA .. "spot.tga")
+            tx:SetBlendMode("ADD")
+            tx:SetSize(18, 54)
+            tx:AddMaskTexture(mask)
+            tx:SetVertexColor(1, 1, 1, 0)
+            f.col = { 1, 1, 1 }
+            local t = 0
+            f:SetScript("OnShow", function() t = 0 end)
+            f:SetScript("OnUpdate", function(_, dt)
+                t = t + dt
+                if t >= EVERY then t = t - EVERY end
+                local k = t / TIME
+                if k >= 1 then
+                    if f.lit then f.lit = false; tx:SetVertexColor(1, 1, 1, 0) end
+                    return
+                end
+                f.lit = true
+                local e = k * k * (3 - 2 * k)
+                tx:ClearAllPoints()
+                tx:SetPoint("CENTER", f, "LEFT", -10 + 42 * e, 0)
+                tx:SetVertexColor(f.col[1], f.col[2], f.col[3], PEAK * math.sin(k * math.pi))
+            end)
+            self.sheenF = f
+        end
+        if not f then return end
+        if on and r then f.col[1], f.col[2], f.col[3] = r, g, b end
+        f:SetShown(on and true or false)
+    end
     c:Hide()
     chips[#chips + 1] = c
     return c
@@ -759,6 +804,7 @@ local function buildMail()
     local function refresh()
         local has = _G.HasNewMail and call(_G.HasNewMail)
         chip:Set(has == true, 0.95, 0.80, 0.35, false)
+        chip:Sheen(has == true, 1.00, 0.90, 0.60)
     end
     chip.tip = function(tip)
         tip:AddLine("You have mail", 1, 1, 1)
