@@ -109,6 +109,11 @@ def clean(r):
         k = txt(k, 60)
         if k: c[k] = v if num(v, 1, 10**7) else True
     if c: o['c'] = c
+    db = {}
+    for k, v in (r.get('db') or {}).items() if isinstance(r.get('db'), dict) else ():
+        k = txt(k, 60)
+        if k: db[k] = v if num(v, 1, 10**7) else True
+    if db: o['db'] = db
     hit = {}
     for k, v in (r.get('hit') or {}).items() if isinstance(r.get('hit'), dict) else ():
         k = txt(k, 60)
@@ -154,9 +159,10 @@ def merge(a, b):
         d, n = a.setdefault('he', {}), a.setdefault('hn', {})
         d[x] = min(d.get(x, v), v)
         n[x] = n.get(x, 0) + b.get('hn', {}).get(x, 1)
-    for x, v in b.get('c', {}).items():
-        d = a.setdefault('c', {})
-        if x not in d or d[x] is True: d[x] = v
+    for key in ('c', 'db'):
+        for x, v in b.get(key, {}).items():
+            d = a.setdefault(key, {})
+            if x not in d or d[x] is True: d[x] = v
     if 'q' in b:
         q = a.setdefault('q', [])
         have = {e['t'] for e in q}
@@ -175,6 +181,7 @@ def finish(r):
     if 'z' in r: r['z'] = dict(sorted(r['z'].items())[:8])
     if 'dsp' in r: r['dsp'] = dict(sorted(r['dsp'].items())[:16])
     if 'c' in r: r['c'] = dict(sorted(r['c'].items())[:24])
+    if 'db' in r: r['db'] = dict(sorted(r['db'].items())[:16])
     if 'l' in r: r['l'] = dict(sorted(r['l'].items(), key=lambda kv: -kv[1])[:120])
     for k in ('ln', 'lk'):
         if not r.get(k): r.pop(k, None)
