@@ -789,32 +789,62 @@ function B.Rows(rows, id, full)
     end
     if r.kd then stat(rows, "Killed you", string.format("%d", r.kd), RED) end
     -- health, by level
+    -- Health, on one line (0.1.586, as asked):
+    --   "~345"     still being worked out: a figure, or "~307-345", from
+    --              too few samples to stand on;
+    --   "307-345"  settled: every level it comes in has a figure that has
+    --              come up at least twice (or that the game gave outright),
+    --              lowest level's to highest's; one level, one number.
+    -- The tooltip has each level's figure and how often it has come up.
     do
-        local seenLv, lv = {}, {}
-        for l in pairs(r.hp or {}) do seenLv[l] = true end
-        for l in pairs(r.he or {}) do seenLv[l] = true end
-        for l in pairs(seenLv) do lv[#lv + 1] = l end
-        table.sort(lv)
+        local SURE = 2
         local function big(n) return BreakUpLargeNumbers and BreakUpLargeNumbers(n) or tostring(n) end
-        for _, l in ipairs(lv) do
-            if r.hp and r.hp[l] then
-                stat(rows, "Health at " .. l, big(r.hp[l]))
-            else
-                local n = r.hn and r.hn[l] or 1
-                rows[#rows + 1] = { kind = "stat", label = l > 0 and ("Health at " .. l) or "Health", value = "about " .. big(r.he[l]),
-                    tooltip = function(tip)
-                        tip:SetText(l > 0 and ("Health at level " .. l) or "Health", 1, 1, 1)
-                        tip:AddLine("The game hides a creature's health from addons. This is worked out from the damage it took to kill one: the figure that has come up most often ("
-                            .. n .. (n == 1 and " time so far, so not yet sure)." or " times)."), 0.86, 0.86, 0.89, true)
-                    end }
-            end
-        end
+        local by, lv = {}, {}
+        for l, h in pairs(r.he or {}) do by[l] = { h = h, n = r.hn and r.hn[l] or 1 } end
+        for l, h in pairs(r.hp or {}) do by[l] = { h = h, n = SURE, exact = true } end
+        for l in pairs(by) do lv[#lv + 1] = l end
+        table.sort(lv)
         if #lv == 0 then
             rows[#rows + 1] = { kind = "stat", label = "Health", value = "not learned yet", color = T.textDim,
                 tooltip = function(tip)
                     tip:SetText("Health", 1, 1, 1)
                     tip:AddLine("The game hides a creature's health from addons. It is worked out from the damage it takes when you kill one.",
                         0.86, 0.86, 0.89, true)
+                end }
+        else
+            local lowest, highest
+            for _, l in ipairs(lv) do
+                local h = by[l].h
+                if not lowest or h < lowest then lowest = h end
+                if not highest or h > highest then highest = h end
+            end
+            -- settled: a sure figure for every level from its lowest to its highest
+            local settled = r.lo ~= nil
+            if settled then
+                for l = r.lo, r.hi do
+                    if not (by[l] and by[l].n >= SURE) then settled = false break end
+                end
+            end
+            if settled then
+                lowest, highest = by[r.lo].h, by[r.hi].h
+                if lowest > highest then lowest, highest = highest, lowest end
+            end
+            local value = (settled and "" or "~") .. (lowest == highest and big(lowest) or (big(lowest) .. "-" .. big(highest)))
+            rows[#rows + 1] = { kind = "stat", label = "Health", value = value, color = settled and T.text or T.textDim,
+                tooltip = function(tip)
+                    tip:SetText("Health", 1, 1, 1)
+                    for _, l in ipairs(lv) do
+                        local e = by[l]
+                        tip:AddDoubleLine(l > 0 and ("Level " .. l) or "Level not known", big(e.h)
+                            .. (e.exact and "" or ("   seen " .. e.n .. (e.n == 1 and " time" or " times"))),
+                            0.86, 0.86, 0.89, 1, 1, 1)
+                    end
+                    tip:AddLine(" ")
+                    tip:AddLine(settled and "Settled: every level it comes in has a figure that has come up at least twice."
+                        or "Still being worked out (~): it settles once every level it comes in has a figure that has come up twice.",
+                        0.6, 0.6, 0.65, true)
+                    tip:AddLine("The game hides a creature's health from addons: these are worked out from the damage it took to kill one.",
+                        0.6, 0.6, 0.65, true)
                 end }
         end
     end
