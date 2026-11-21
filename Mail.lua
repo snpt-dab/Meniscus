@@ -644,7 +644,27 @@ local function sameRealm(r)
     for _, mine in ipairs({ call(_G.GetNormalizedRealmName) or "", call(_G.GetRealmName) or "", full or "" }) do
         if type(mine) == "string" and not secret(mine) and mine ~= "" and mine:gsub("[%s%-']", ""):lower() == r then return true end
     end
-    return false
+    -- (0.1.620: that did not catch it. So also: the realm your own
+    -- characters are filed under in our saved list, which is where the
+    -- name was being put together from; with one realm on file, that one.)
+    local chars = MinimalUIDB and MinimalUIDB.chars
+    local me = call(UnitName, "player")
+    local keys, hit, mineHere = 0, false, false
+    for key, names in pairs(type(chars) == "table" and chars or {}) do
+        keys = keys + 1
+        if type(key) == "string" and key:gsub("[%s%-']", ""):lower() == r then
+            hit = true
+            if type(me) == "string" and not secret(me) and type(names) == "table" and names[me] then mineHere = true end
+        end
+    end
+    local ok = hit and (mineHere or keys == 1)
+    if MinimalUIDB then
+        local function k(v) return secret(v) and "hidden" or type(v) end
+        MinimalUIDB.maildiag = "realm asked three ways: " .. k(call(_G.GetNormalizedRealmName)) .. ", " .. k(call(_G.GetRealmName)) .. ", " .. k(full)
+            .. "; none matched; saved list: " .. keys .. " realm(s), " .. (hit and "one matches" or "none matches")
+            .. (mineHere and ", you are on it" or "") .. "; your name " .. k(me)
+    end
+    return ok
 end
 local function short(name)
     if type(name) ~= "string" or secret(name) then return name end
