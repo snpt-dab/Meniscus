@@ -1768,12 +1768,7 @@ function Bars:ApplyPlate()
             local function refreshMoney()
                 local m = GetMoney and GetMoney() or 0
                 if type(m) ~= "number" or (issecretvalue and issecretvalue(m)) then coins:SetText("") return end
-                local g, s, c = math.floor(m / 10000), math.floor(m / 100) % 100, m % 100
-                local parts = {}
-                if g > 0 then parts[#parts + 1] = (BreakUpLargeNumbers and BreakUpLargeNumbers(g) or g) .. "|cffffd24ag|r" end
-                if s > 0 or g > 0 then parts[#parts + 1] = s .. "|cffc7c7cfs|r" end
-                parts[#parts + 1] = c .. "|cffd98a4cc|r"
-                coins:SetText(table.concat(parts, " "))
+                coins:SetText(ns.Money(m) or "") -- (the coin discs, as everywhere: Theme.lua)
             end
             local mev = CreateFrame("Frame")
             mev:RegisterEvent("PLAYER_MONEY")

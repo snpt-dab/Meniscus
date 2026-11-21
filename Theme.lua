@@ -976,6 +976,24 @@ function ns.RewardInfo(link, count, usable)
 end
 
 -- Hide a non-secure Blizzard region/frame and keep it hidden.
+-- Money, the one way (0.1.596): each amount followed by a small disc in
+-- its coin's colour, "2(gold) 42(silver) 36(copper)", parts that are zero
+-- left out. Every window had its own copy of this; the console's Bags
+-- pill, the loot pills and the bestiary wrote letters (2g 42s 36c).
+-- ns.Money(copper, sep): nil for what is not a plain number.
+local DISC = "|TInterface/AddOns/Meniscus/Media/circle.tga:9:9:2:0:32:32:0:32:0:32:%s|t"
+ns.CoinMark = { g = DISC:format("230:194:90"), s = DISC:format("184:188:198"), c = DISC:format("201:138:82") }
+function ns.Money(copper, sep)
+    if type(copper) ~= "number" or issecretvalue(copper) then return nil end
+    copper = math.floor(copper + 0.5)
+    local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+    local parts = {}
+    if g > 0 then parts[#parts + 1] = (BreakUpLargeNumbers and BreakUpLargeNumbers(g) or g) .. ns.CoinMark.g end
+    if s > 0 then parts[#parts + 1] = s .. ns.CoinMark.s end
+    if c > 0 or #parts == 0 then parts[#parts + 1] = c .. ns.CoinMark.c end
+    return table.concat(parts, sep or " ")
+end
+
 function ns.Kill(obj)
     if not obj or obj.__muiKilled then return end
     if obj.IsProtected and obj:IsProtected() then return end
