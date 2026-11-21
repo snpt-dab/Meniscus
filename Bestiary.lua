@@ -21,7 +21,11 @@ local T = ns.Theme
 --     hp = { [level] = health }         its full health at that level,
 --     he = { [level] = health worked out from your damage (the least seen) },
 --     hn = { [level] = kills that went into he }   (0.1.577, below),
---     c  = { [spell name] = spell id or true }   what it casts (16),
+--     c  = { [spell name] = spell id or true }   what it casts (16): cast
+--          bars, and since 0.1.579 casts with no bar (instant ones) where
+--          the game says what they were,
+--     db = { [debuff name] = spell id or true }  what it leaves on you (12):
+--          the debuffs found on you when a fight with it ends,
 --     hit = { [attack name] = hardest hit on you } (from death recaps),
 --     q  = { { t = what it said, k = "yell" / "emote" / nil (said),
 --              l = language, u = true when you did not understand it } } (12),
@@ -122,7 +126,7 @@ local function view(id)
     v.lo = (own.lo and sh.lo) and math.min(own.lo, sh.lo) or own.lo or sh.lo
     v.hi = (own.hi and sh.hi) and math.max(own.hi, sh.hi) or own.hi or sh.hi
     if not v.hi then v.lo = nil end
-    for _, key in ipairs({ "z", "c", "hp", "hit", "dsp" }) do
+    for _, key in ipairs({ "z", "c", "hp", "hit", "dsp", "db" }) do
         if own[key] or sh[key] then
             local t = {}
             for k, val in pairs(sh[key] or {}) do t[k] = val end
@@ -313,8 +317,16 @@ local function noteLook()
     end)
 end
 
-local function noteCast(unit, spellID)
+local function noteCast(unit, spellID, done)
     if unit ~= "target" and not (type(unit) == "string" and unit:find("^nameplate")) then return end
+    if done and MinimalUIDB then
+        -- (how a cast with no bar arrives on this client: counted, to be read later)
+        local dg = MinimalUIDB.castdiag or {}
+        MinimalUIDB.castdiag = dg
+        local key = secret(spellID) and "hidden id" or (plain(spellID) and "id" or "no id")
+        dg[key] = (dg[key] or 0) + 1
+        if not plain(spellID) then return end -- (no bar to ask the name of)
+    end
     local id = npcID(unit)
     if not id then return end
     local name
@@ -398,6 +410,31 @@ local function fightEnd()
         end
     end
     if plain(now) then dmgBefore, petBefore = now, pet end
+    -- What it left on you: your debuffs, now that they can be read. One
+    -- the game ties to a creature still about goes to that creature; one
+    -- with no owner left goes to what you killed, if that was one thing.
+    pcall(function()
+        local U = C_UnitAuras
+        if not (U and U.GetAuraDataByIndex) then return end
+        for i = 1, 16 do
+            local a = U.GetAuraDataByIndex("player", i, "HARMFUL")
+            if type(a) ~= "table" then break end
+            local name, src = a.name, a.sourceUnit
+            if str(name) then
+                local id
+                if str(src) then id = npcID(src)
+                elseif src == nil and #fightKills == 1 then id = fightKills[1].id end
+                local r = id and record(id)
+                if r then
+                    r.db = r.db or {}
+                    if r.db[name] == nil and count(r.db) < 12 then
+                        r.db[name] = plain(a.spellId) and a.spellId or true
+                        changed(id)
+                    end
+                end
+            end
+        end
+    end)
     wipe(fightKills)
 end
 
@@ -615,19 +652,29 @@ function B.Rows(rows, id, full)
     local names = {}
     for name in pairs(r.c or {}) do names[name] = true end
     for name in pairs(r.hit or {}) do names[name] = true end
+    for name in pairs(r.db or {}) do names[name] = true end
     if next(names) then
-        head(rows, "Attacks", "micro_spell.tga")
+        head(rows, "Attacks and abilities", "micro_spell.tga")
         local list = {}
         for name in pairs(names) do list[#list + 1] = name end
         table.sort(list, function(a, b) if (a == "Melee") ~= (b == "Melee") then return a == "Melee" end return a < b end)
         for _, name in ipairs(list) do
-            local sid = r.c and type(r.c[name]) == "number" and r.c[name] or nil
+            local sid = r.c and type(r.c[name]) == "number" and r.c[name]
+                or (r.db and type(r.db[name]) == "number" and r.db[name]) or nil
+            local debuff = r.db and r.db[name] ~= nil
             local icon = name == "Melee" and MELEE_ICON
                 or (sid and C_Spell and C_Spell.GetSpellTexture and call(C_Spell.GetSpellTexture, sid)) or nil
             local hit = r.hit and r.hit[name]
             rows[#rows + 1] = { kind = "stat", label = name, labelColor = T.text, icon = str(icon) and icon or (plain(icon) and icon) or nil,
-                value = hit and ("up to " .. hit) or "", color = T.textDim,
-                tooltip = sid and function(tip) pcall(tip.SetSpellByID, tip, sid) end or nil }
+                value = (hit and ("up to " .. hit) or "") .. (debuff and ((hit and "   ·   " or "") .. "debuff") or ""), color = T.textDim,
+                tooltip = function(tip)
+                    if not (sid and pcall(tip.SetSpellByID, tip, sid)) then tip:SetText(name, 1, 1, 1) end
+                    tip:AddLine(" ")
+                    if r.c and r.c[name] ~= nil then tip:AddLine("Seen it use this.", 0.6, 0.6, 0.65) end
+                    if debuff then tip:AddLine("Found on you after a fight with it.", 0.6, 0.6, 0.65) end
+                    if hit then tip:AddLine("Hardest hit on you: " .. hit .. " (from a death recap).", 0.6, 0.6, 0.65) end
+                    tip:Show()
+                end }
         end
     end
     if (r.l and next(r.l)) or (r.d and next(r.d)) then
@@ -757,6 +804,7 @@ local function haystack(id, r)
                    r.ag == 1 and "hostile" or (r.ag == 0 and "neutral" or "") }
     for z in pairs(r.z or {}) do bits[#bits + 1] = z end
     for name in pairs(r.c or {}) do bits[#bits + 1] = name end
+    for name in pairs(r.db or {}) do bits[#bits + 1] = name end
     for name in pairs(r.hit or {}) do bits[#bits + 1] = name end
     for _, line in ipairs(r.q or {}) do
         bits[#bits + 1] = line.t
@@ -1186,7 +1234,7 @@ function B:OnInit(db)
     end)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED", "LOOT_OPENED",
-                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
+                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
                          "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL", "CHAT_MSG_MONSTER_EMOTE" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
@@ -1204,7 +1252,7 @@ function B:OnInit(db)
         elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover")
         elseif e == "NAME_PLATE_UNIT_ADDED" then if type(a1) == "string" then pcall(observe, a1) end
         elseif e == "LOOT_OPENED" then pcall(noteLoot)
-        else pcall(noteCast, a1, a3) end
+        else pcall(noteCast, a1, a3, e == "UNIT_SPELLCAST_SUCCEEDED") end
     end)
     local hp = CreateFrame("Frame")
     pcall(hp.RegisterUnitEvent, hp, "UNIT_HEALTH", "target")
