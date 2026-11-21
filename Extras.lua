@@ -1088,6 +1088,23 @@ local function buildWaypoint()
         self:SetPoint("CENTER", UIParent, "CENTER", dx / d, dy / d)
     end)
 
+    -- The game fades its marker by what it thinks of the target (0 when it
+    -- calls the target "invalid"), and was found holding it at nothing
+    -- with a focused quest 270 yards off, the marker in place on screen and
+    -- shown (0.1.551, /men dot). The dot is ours to show: while there is
+    -- somewhere to point and you have not arrived, it is kept visible.
+    -- (After the game's own update, each frame, so this is what stands.)
+    local ARRIVED = 12
+    pcall(F.HookScript, F, "OnUpdate", function(self)
+        local a = self:GetAlpha()
+        if secret(a) or a >= 0.9 then return end
+        local nav = NV.GetFrame and NV.GetFrame()
+        if not nav then return end
+        local dist = NV.GetDistance and NV.GetDistance()
+        if num(dist) and dist < ARRIVED then return end
+        self:SetAlpha(1)
+    end)
+
     -- Which quest the dot is for: the one you focused (ns.QuestFocus), and
     -- nothing else. No focus, no dot. A map pin you set yourself is left
     -- alone, and a rare that has just appeared borrows the dot for a while
@@ -1187,6 +1204,7 @@ local function buildWaypoint()
         add("nav frame", function() local n = NV.GetFrame(); return n ~= nil, n and n:IsShown(), n and n:GetCenter() end)
         add("nav distance", function() return NV.GetDistance() end)
         add("nav clamped", function() return NV.WasClampedToScreen() end)
+        add("nav target state", function() return NV.GetTargetState and NV.GetTargetState() end)
         add("marker shown/visible", function() return F:IsShown(), F:IsVisible() end)
         add("marker alpha/effective", function() return F:GetAlpha(), F:GetEffectiveAlpha() end)
         add("marker scale/effective", function() return F:GetScale(), F:GetEffectiveScale() end)
