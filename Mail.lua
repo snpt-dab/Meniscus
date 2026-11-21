@@ -632,6 +632,27 @@ local function myRealm()
     return r
 end
 
+-- A name on your own realm is written without the realm (0.1.619): the
+-- box was filling in "Name-YourRealm" for your own characters. Whatever
+-- the realm is called by (the game has three ways of saying it), a name
+-- ending in it loses it.
+local function sameRealm(r)
+    if type(r) ~= "string" or secret(r) then return false end
+    r = r:gsub("[%s%-']", ""):lower()
+    if r == "" then return false end
+    local _, full = call(_G.UnitFullName, "player")
+    for _, mine in ipairs({ call(_G.GetNormalizedRealmName) or "", call(_G.GetRealmName) or "", full or "" }) do
+        if type(mine) == "string" and not secret(mine) and mine ~= "" and mine:gsub("[%s%-']", ""):lower() == r then return true end
+    end
+    return false
+end
+local function short(name)
+    if type(name) ~= "string" or secret(name) then return name end
+    local n, r = name:match("^([^%-]+)%-(.+)$")
+    if n and sameRealm(r) then return n end
+    return name
+end
+
 local function startsWith(name, lq)
     return type(name) == "string" and not secret(name) and #name > #lq and name:lower():sub(1, #lq) == lq
 end
@@ -684,15 +705,29 @@ end
 -- longer than what was last typed, so deleting never re-completes.
 function ML.CompleteName(self, userInput)
     ML.toChanges = (ML.toChanges or 0) + 1
-    if not userInput then return end
+    if not userInput then
+        -- (filled in by something other than your typing, the game's own
+        -- completing for one: the realm comes off there too)
+        local now = self:GetText() or ""
+        local cut = short(now)
+        if cut ~= now and not self.cutting then
+            self.cutting = true
+            local at = math.min(#(self.typed or ""), #cut)
+            self:SetText(cut)
+            self:HighlightText(at, #cut)
+            self:SetCursorPosition(at)
+            self.cutting = nil
+        end
+        return
+    end
     -- Complete unless this change was a deletion (the new text is just the
     -- start of what was typed before).
     local t = self:GetText() or ""
     local prev = self.typed or ""
     self.typed = t
     if t == "" or prev:sub(1, #t) == t then return end
-    local name = suggestName(t)
-    if not name then return end
+    local name = short(suggestName(t))
+    if not name or #name <= #t then return end
     ML.toCompletions = (ML.toCompletions or 0) + 1
     self:SetText(name)
     self:HighlightText(#t, #name)
