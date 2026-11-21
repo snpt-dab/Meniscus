@@ -147,7 +147,8 @@ local function view(id)
         for _, src in ipairs({ sh, own }) do
             for l, h in pairs(src.he or {}) do
                 local n = src.hn and src.hn[l] or 1
-                if not v.he[l] or n > v.hn[l] or (n == v.hn[l] and h < v.he[l]) then v.he[l], v.hn[l] = h, n end
+                if not v.he[l] or h < v.he[l] then v.he[l] = h end
+                v.hn[l] = (v.hn[l] or 0) + n
             end
         end
     end
@@ -539,6 +540,28 @@ local function meterLog(line)
     dg.log = dg.log or {}
     if #dg.log < 40 then dg.log[#dg.log + 1] = line end
 end
+-- Which of the samples to believe (0.1.590). What can be read is the
+-- damage you did in a fight with one kill, and on this client the last
+-- blow's excess is not told apart, nor is there a per-enemy view: so a
+-- sample is the creature's health plus whatever the last blow did beyond
+-- it, plus anything else you hit. Never less than its health, unless it
+-- was already hurt. So the least sample is the nearest (a level 15 with
+-- 346 had been put at 330-428: the 428 was a fight with a stray hit in
+-- it). The least is passed over only when it stands well apart from the
+-- next (under four fifths of it, with three samples or more): that one
+-- was already hurt. hn is how many samples there are.
+local function settle(r, L)
+    local h = r.hs and r.hs[L]
+    if not h then return end
+    local vals, n = {}, 0
+    for v, c in pairs(h) do vals[#vals + 1] = v; n = n + c end
+    if #vals == 0 then return end
+    table.sort(vals)
+    local best = vals[1]
+    if n >= 3 and vals[2] and vals[1] < vals[2] * 0.8 and h[vals[1]] == 1 then best = vals[2] end
+    r.he, r.hn = r.he or {}, r.hn or {}
+    r.he[L], r.hn[L] = best, n
+end
 local function healthSample(id, lvl, value)
     local r = record(id)
     local L = lvl or 0 -- (0: which level it was is not known)
@@ -547,19 +570,14 @@ local function healthSample(id, lvl, value)
     local h = r.hs[L] or {}
     r.hs[L] = h
     h[value] = (h[value] or 0) + 1
-    if count(h) > 8 then -- (the rarest goes, the largest of those)
+    if count(h) > 10 then -- (the rarest goes, the largest of those)
         local drop
         for v, n in pairs(h) do
             if v ~= value and (not drop or n < h[drop] or (n == h[drop] and v > drop)) then drop = v end
         end
         if drop then h[drop] = nil end
     end
-    local best
-    for v, n in pairs(h) do
-        if not best or n > h[best] or (n == h[best] and v < best) then best = v end
-    end
-    r.he, r.hn = r.he or {}, r.hn or {}
-    r.he[L], r.hn[L] = best, h[best]
+    settle(r, L)
     changed(id)
 end
 local function fightStart()
@@ -885,11 +903,14 @@ function B.Rows(rows, id, full)
     --              lowest level's to highest's; one level, one number.
     -- The tooltip has each level's figure and how often it has come up.
     do
-        local SURE = 2
+        local SURE = 3
         local function big(n) return BreakUpLargeNumbers and BreakUpLargeNumbers(n) or tostring(n) end
         local by, lv = {}, {}
         for l, h in pairs(r.he or {}) do by[l] = { h = h, n = r.hn and r.hn[l] or 1 } end
         for l, h in pairs(r.hp or {}) do by[l] = { h = h, n = SURE, exact = true } end
+        local leveled = false
+        for l in pairs(by) do if l > 0 then leveled = true end end
+        if leveled then by[0] = nil end -- (a sample whose level is not known: only when there is nothing else)
         for l in pairs(by) do lv[#lv + 1] = l end
         table.sort(lv)
         if #lv == 0 then
@@ -924,12 +945,12 @@ function B.Rows(rows, id, full)
                     for _, l in ipairs(lv) do
                         local e = by[l]
                         tip:AddDoubleLine(l > 0 and ("Level " .. l) or "Level not known", big(e.h)
-                            .. (e.exact and "" or ("   seen " .. e.n .. (e.n == 1 and " time" or " times"))),
+                            .. (e.exact and "" or ("   from " .. e.n .. (e.n == 1 and " kill" or " kills"))),
                             0.86, 0.86, 0.89, 1, 1, 1)
                     end
                     tip:AddLine(" ")
-                    tip:AddLine(settled and "Settled: every level it comes in has a figure that has come up at least twice."
-                        or "Still being worked out (~): it settles once every level it comes in has a figure that has come up twice.",
+                    tip:AddLine(settled and "Settled: every level it comes in has a figure from three kills or more."
+                        or "Still being worked out (~): it settles once every level it comes in has a figure from three kills.",
                         0.6, 0.6, 0.65, true)
                     tip:AddLine("The game hides a creature's health from addons: these are worked out from the damage it took to kill one.",
                         0.6, 0.6, 0.65, true)
@@ -1538,8 +1559,25 @@ function B:Open(id)
     if win:IsShown() then showModel(picked); self:Refresh() else win:Show() end
 end
 ns.commands = ns.commands or {}
+-- "/men bestiary hp 346": the health you can read on your target's frame
+-- (the game shows it to you and hides it from addons), set down as the
+-- exact figure for that creature at that level. It replaces the estimate.
+local function setHealth(n)
+    local id = npcID("target")
+    local lvl = call(UnitLevel, "target")
+    if not (id and plain(lvl) and lvl > 0) then return ns:Print("Target the creature first (one you can attack).") end
+    if not (n and n > 0 and n < 1e9) then return ns:Print("Say its full health as a number:  /men bestiary hp 346") end
+    pcall(observe, "target")
+    local r = record(id, true)
+    r.hp = r.hp or {}
+    r.hp[lvl] = math.floor(n)
+    changed(id)
+    ns:Print((r.n or "It") .. ", level " .. lvl .. ": health set to " .. math.floor(n) .. ".")
+end
 ns.commands.bestiary = function(rest)
     if type(rest) == "string" and rest:find("^%s*export") then return export() end
+    local hp = type(rest) == "string" and rest:match("^%s*hp%s*(%d*)")
+    if hp then return setHealth(tonumber(hp)) end
     B:Open()
 end
 
@@ -1562,6 +1600,13 @@ function B:OnInit(db)
         MinimalUIDB.bestiaryRev = 3
     end
     if MinimalUIDB and MinimalUIDB.bestiaryRev == 3 then MinimalUIDB.bestiaryRev = 4 end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 4 then -- (0.1.590: the samples are read differently)
+        for _, r in pairs(MinimalUIDB.bestiary or {}) do
+            r.he, r.hn = nil, nil
+            for L in pairs(r.hs or {}) do settle(r, L) end
+        end
+        MinimalUIDB.bestiaryRev = 5
+    end
     B.OnChange(function(id)
         if id then hay[id] = nil end
         if win and win:IsShown() then stale = true end

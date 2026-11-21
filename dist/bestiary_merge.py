@@ -163,8 +163,9 @@ def merge(a, b):
             d[x] = max(d.get(x, 0), v)
     for x, v in b.get('he', {}).items():
         d, n = a.setdefault('he', {}), a.setdefault('hn', {})
-        bn = b.get('hn', {}).get(x, 1)   # (the figure seen more often wins; equal: the lower)
-        if x not in d or bn > n.get(x, 0) or (bn == n.get(x, 0) and v < d[x]): d[x], n[x] = v, bn
+        bn = b.get('hn', {}).get(x, 1)   # (each is the least of that player's samples: the lower, and the kills added up)
+        d[x] = min(d.get(x, v), v)
+        n[x] = n.get(x, 0) + bn
     for key in ('cc', 'dbt'):
         for x, v in b.get(key, {}).items(): a.setdefault(key, {}).setdefault(x, v)
     for key in ('c', 'db'):
