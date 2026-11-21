@@ -729,7 +729,7 @@ local function gearAdvice()
         local name = b.slotName
         local w, from
         if name == "MainHand" then w, from = ww[1], 1
-        elseif name == "SecondaryHand" then w, from = ww[2], ww[4]
+        elseif name == "SecondaryHand" then w, from = ww[2], false -- (an empty off hand is a choice, not a gap: 0.1.567)
         elseif name == "Ranged" then w, from = ww[3], ww[5]
         else
             w, from = SLOT_WEIGHT[name], FROM_LEVEL[name]
