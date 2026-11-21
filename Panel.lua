@@ -764,6 +764,12 @@ local PAGES = {
     { key = "windows", title = "Windows", groups = {
         { title = "Replacement windows", items = {
             moduleSwitch("Character window", "Character"),
+            { "Next upgrade", kind = "switch", note = "An arrow beside the gear slot most worth replacing",
+              get = function() local d = ns.modules.Character.db; return not d or d.nextUpgrade ~= false end,
+              set = function()
+                  local m = ns.modules.Character
+                  if m.db then m.db.nextUpgrade = m.db.nextUpgrade == false; pcall(m.Refresh, m) end
+              end },
             moduleSwitch("Spellbook", "Spellbook"),
             moduleSwitch("Quest log", "QuestLog"),
             moduleSwitch("NPC dialogs", "Dialogs"),
@@ -983,6 +989,7 @@ local KEYS = {
     ["Trainer"] = "learn spells class train",
     ["Mailbox"] = "mail letters send",
     ["Inspect"] = "other players gear",
+    ["Next upgrade"] = "gear priority weakest slot item level evaluator advice",
     ["Bestiary"] = "creatures mobs monsters health levels abilities journal",
     ["Dialog text types itself out"] = "typewriter animation quest text",
     ["Tooltips"] = "hover info box",
@@ -1491,6 +1498,7 @@ ns.commands.help = function()
         "/men windows  window docking on / off (reload)",
         "/men levelup  preview the level-up banner",
         "/men bestiary  what you have learned of the creatures you have met",
+        "/men blizzbank  the game's own bank window beside ours (and away again)",
         "/men perf trace  time every handler, for finding hidden costs (reload; run again to stop)",
         "/men lab  development: small test marks under your combat numbers, and measurements written down (reload)",
         "/men artprobe [clear]  record what the thing under the mouse is drawn with",

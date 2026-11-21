@@ -460,27 +460,6 @@ local function makeTile(parent, slotName)
     b.count = over:CreateFontString(nil, "OVERLAY")
     ns:SetFont(b.count, 9, "OUTLINE", true)
     b.count:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -3, 3)
-    -- "work on this slot next" (gearAdvice): the bags' upgrade badge, in
-    -- the accent colour, on the corner the item level doesn't use.
-    local nx = CreateFrame("Frame", nil, over)
-    nx:SetSize(15, 15)
-    nx:SetPoint("CENTER", b, "TOPLEFT", 5, -5)
-    local nRim = nx:CreateTexture(nil, "OVERLAY", nil, 0)
-    nRim:SetTexture(MEDIA .. "circle.tga")
-    nRim:SetVertexColor(0.04, 0.04, 0.05, 1)
-    nRim:SetAllPoints()
-    local nDisc = nx:CreateTexture(nil, "OVERLAY", nil, 1)
-    nDisc:SetTexture(MEDIA .. "circle.tga")
-    nDisc:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
-    nDisc:SetPoint("TOPLEFT", 1.5, -1.5)
-    nDisc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
-    local nArrow = nx:CreateTexture(nil, "OVERLAY", nil, 2)
-    nArrow:SetTexture(MEDIA .. "micro_up.tga")
-    nArrow:SetVertexColor(0.05, 0.05, 0.06, 1)
-    nArrow:SetPoint("TOPLEFT", 2, -2)
-    nArrow:SetPoint("BOTTOMRIGHT", -2, 2)
-    nx:Hide()
-    b.next = nx
     b.duraBg = over:CreateTexture(nil, "OVERLAY", nil, 1)
     b.duraBg:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 4, 4)
     b.duraBg:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -4, 4)
@@ -527,12 +506,12 @@ local function makeTile(parent, slotName)
             if a.empty then
                 GameTooltip:AddLine("Nothing worn here", 0.95, 0.62, 0.45)
             else
-                local d = math.floor(a.lvl - a.avg + (a.lvl >= a.avg and 0.5 or -0.5))
-                local how = d == 0 and "level with" or (math.abs(d) .. (d > 0 and " above" or " below"))
+                local d = math.floor(math.abs(a.gap) + 0.5)
+                local how = d == 0 and "level with" or (d .. (a.gap < 0 and " above" or " below"))
                 local c = a.behind and { 0.95, 0.62, 0.45 } or { 0.6, 0.6, 0.65 }
-                GameTooltip:AddLine(string.format("Item level %d: %s your average of %d", a.lvl, how, math.floor(a.avg + 0.5)), c[1], c[2], c[3])
+                GameTooltip:AddLine(string.format("Item level %d: %s %s (%d)", a.lvl, how, a.against, math.floor(a.par + 0.5)), c[1], c[2], c[3])
             end
-            if a.top then GameTooltip:AddLine("Your weakest slot: upgrade this next", T.accent[1], T.accent[2], T.accent[3]) end
+            if a.top then GameTooltip:AddLine("Next upgrade: the slot most worth replacing", T.accent[1], T.accent[2], T.accent[3]) end
         end
         GameTooltip:Show()
         noCompare()
@@ -701,7 +680,8 @@ local function gearAdvice()
                 e = { empty = true, gap = math.min(15, math.max(5, par)) }
             end
             if e then
-                e.tile, e.label, e.avg = b, SLOT_LABEL[name] or name, avg
+                e.tile, e.label, e.avg, e.par = b, SLOT_LABEL[name] or name, avg, par
+                e.against = par == avg and "your gear's average" or "your level"
                 e.score = e.gap * w
                 e.behind = e.empty or e.gap >= math.max(4, par * 0.15)
                 b.advice = e
@@ -715,27 +695,29 @@ local function gearAdvice()
     return out
 end
 
+-- "Next upgrade" (0.1.561; it was a chip over the model and a badge on the
+-- tile's corner): one round icon beside the slot that came out worst, on
+-- the tile's inner side, level with its middle (above it, for the weapons
+-- along the bottom). The ranking and what the numbers mean are in its
+-- tooltip. Off with the "Next upgrade" switch (Windows page).
 local function applyAdvice()
     local ok, adv = pcall(gearAdvice)
     if not ok then adv = { list = {} } end
     for _, b in ipairs(tiles) do
         local a = b.advice
         if a and a.behind then b.ilvl:SetTextColor(BEHIND[1], BEHIND[2], BEHIND[3]) else b.ilvl:SetTextColor(1, 1, 1) end
-        if b.next then b.next:SetShown(a ~= nil and a.top == true) end
     end
-    local chip = win and win.adviceChip
-    if not chip then return end
-    chip.adv = adv
-    if not adv.avg then chip:Hide() return end
+    local icon = win and win.nextIcon
+    if not icon then return end
+    icon.adv = adv
     local t = adv.top
-    if t then
-        chip.text:SetText("|cff9a9aa5UPGRADE NEXT|r   " .. t.label .. "   |cff9a9aa5"
-            .. (t.empty and "empty" or string.format("%d", t.lvl)) .. "|r")
-    else
-        chip.text:SetText("|cff9a9aa5GEAR IS EVEN|r")
-    end
-    chip:SetWidth(chip.text:GetStringWidth() + 22)
-    chip:Show()
+    if not t or C.db.nextUpgrade == false then icon:Hide() return end
+    local b = t.tile
+    icon:ClearAllPoints()
+    if b.side == "left" then icon:SetPoint("LEFT", b, "RIGHT", 6, 0)
+    elseif b.side == "right" then icon:SetPoint("RIGHT", b, "LEFT", -6, 0)
+    else icon:SetPoint("BOTTOM", b, "TOP", 0, 6) end
+    icon:Show()
 end
 
 -- ── Stat tooltips ─────────────────────────────────────────────────────────
@@ -2151,11 +2133,11 @@ local function buildGear(page)
     local top = -4
     for i, s in ipairs(LEFT_SLOTS) do
         local b = makeTile(page, s)
-        if b then b:SetPoint("TOPLEFT", page, "TOPLEFT", 20, top - (i - 1) * (TILE + GAP)) end
+        if b then b.side = "left"; b:SetPoint("TOPLEFT", page, "TOPLEFT", 20, top - (i - 1) * (TILE + GAP)) end
     end
     for i, s in ipairs(RIGHT_SLOTS) do
         local b = makeTile(page, s)
-        if b then b:SetPoint("TOPLEFT", page, "TOPLEFT", 420 - TILE, top - (i - 1) * (TILE + GAP)) end
+        if b then b.side = "right"; b:SetPoint("TOPLEFT", page, "TOPLEFT", 420 - TILE, top - (i - 1) * (TILE + GAP)) end
     end
     local weapons = {}
     for _, s in ipairs(WEAPON_SLOTS) do
@@ -2173,39 +2155,71 @@ local function buildGear(page)
     win.model = makeModelArea(page, 20 + TILE + 10, top, 420 - TILE - 10, top - 7 * (TILE + GAP) + 6, cc)
     win.card = makeStatsCard(page, top)
 
-    -- What to upgrade next (gearAdvice): a chip over the model's head, the
-    -- ranking in its tooltip.
-    local chip = CreateFrame("Button", nil, page)
-    chip:SetHeight(18)
-    chip:SetPoint("TOP", page, "TOPLEFT", cx, top)
-    chip:SetFrameLevel(win.model:GetFrameLevel() + 3)
-    ns.RoundedRect(chip, -6, 0, 9, 0.10, 0.10, 0.12, 0.9)
-    chip.text = text(chip, 10, true)
-    chip.text:SetPoint("CENTER")
-    chip:SetScript("OnEnter", function(self)
+    -- "Next upgrade" (gearAdvice, applyAdvice): the icon that sits beside
+    -- the slot, over the model's edge.
+    local nx = CreateFrame("Button", nil, page)
+    nx:SetSize(20, 20)
+    nx:SetFrameLevel(win.model:GetFrameLevel() + 5)
+    local rim = nx:CreateTexture(nil, "ARTWORK", nil, 0)
+    rim:SetTexture(MEDIA .. "circle.tga")
+    rim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    rim:SetAllPoints()
+    local disc = nx:CreateTexture(nil, "ARTWORK", nil, 1)
+    disc:SetTexture(MEDIA .. "circle.tga")
+    disc:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
+    disc:SetPoint("TOPLEFT", 1.5, -1.5)
+    disc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local arrow = nx:CreateTexture(nil, "ARTWORK", nil, 2)
+    arrow:SetTexture(MEDIA .. "micro_up.tga")
+    arrow:SetVertexColor(0.05, 0.05, 0.06, 1)
+    arrow:SetPoint("TOPLEFT", 3, -3)
+    arrow:SetPoint("BOTTOMRIGHT", -3, 3)
+    nx:SetScript("OnEnter", function(self)
         local adv = self.adv
-        if not (adv and adv.avg) then return end
-        ns.TipAnchor(self)
-        GameTooltip:SetText("What to upgrade next", 1, 1, 1)
-        local shown = 0
-        for _, e in ipairs(adv.list) do
-            if shown >= 4 or e.score < 2 then break end
-            shown = shown + 1
-            local d = e.lvl and math.floor(adv.avg - e.lvl + 0.5)
-            local right = e.empty and "empty"
-                or (string.format("%d", e.lvl) .. (d > 0 and ("   " .. d .. " below") or ""))
-            local c = shown == 1 and T.accent or { 0.86, 0.86, 0.89 }
-            GameTooltip:AddDoubleLine(shown .. ".  " .. e.label, right, c[1], c[2], c[3], BEHIND[1], BEHIND[2], BEHIND[3])
+        local t = adv and adv.top
+        if not t then return end
+        local W1, DIMC, BODYC = { 1, 1, 1 }, { 0.6, 0.6, 0.65 }, { 0.86, 0.86, 0.89 }
+        local par = math.floor(adv.par + 0.5)
+        local function line(e)
+            if e.empty then return "nothing worn" end
+            local d = math.floor(e.gap + 0.5)
+            return "item level " .. string.format("%d", e.lvl) .. (d > 0 and ("  (" .. d .. " below)") or "")
         end
-        if shown == 0 then GameTooltip:AddLine("Nothing stands out: every slot is near your average.", 0.86, 0.86, 0.89, true) end
+        ns.TipAnchor(self)
+        GameTooltip:SetText("Next upgrade: " .. t.label, W1[1], W1[2], W1[3])
+        if t.empty then
+            GameTooltip:AddLine("Nothing is worn in this slot.", BODYC[1], BODYC[2], BODYC[3], true)
+        else
+            GameTooltip:AddDoubleLine("This piece's item level", string.format("%d", t.lvl), BODYC[1], BODYC[2], BODYC[3], BEHIND[1], BEHIND[2], BEHIND[3])
+        end
+        GameTooltip:AddDoubleLine(t.against == "your level" and "Your level" or "Your gear's average item level", tostring(par),
+            BODYC[1], BODYC[2], BODYC[3], 1, 1, 1)
+        if not t.empty then
+            GameTooltip:AddDoubleLine("Behind by", tostring(math.floor(t.gap + 0.5)), BODYC[1], BODYC[2], BODYC[3], BEHIND[1], BEHIND[2], BEHIND[3])
+        end
+        local shown = 0
+        for i = 2, #adv.list do
+            local e = adv.list[i]
+            if shown >= 3 or e.score < 2 then break end
+            if shown == 0 then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("After that", DIMC[1], DIMC[2], DIMC[3])
+            end
+            shown = shown + 1
+            GameTooltip:AddDoubleLine(e.label, line(e), BODYC[1], BODYC[2], BODYC[3], BODYC[1], BODYC[2], BODYC[3])
+        end
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(string.format("Each slot's item level against your average (%d) and your level (%d), weighed by how much the slot carries: weapon first, then chest, legs and head.",
-            math.floor(adv.avg + 0.5), adv.level), 0.6, 0.6, 0.65, true)
+        GameTooltip:AddLine("\"Below\" is how far a piece's item level is under "
+            .. (t.against == "your level"
+                and ("your level (" .. par .. "), used because your gear's average (" .. math.floor(adv.avg + 0.5) .. ") is lower still.")
+                or ("the average of everything you wear (" .. par .. ")."))
+            .. " Slots that hold more stats count for more (weapon, then chest, legs and head), so the pick is not always the lowest number.",
+            DIMC[1], DIMC[2], DIMC[3], true)
         GameTooltip:Show()
     end)
-    chip:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    chip:Hide()
-    win.adviceChip = chip
+    nx:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    nx:Hide()
+    win.nextIcon = nx
 end
 
 local function buildPet(page)
