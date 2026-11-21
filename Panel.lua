@@ -1497,6 +1497,7 @@ ns.commands.help = function()
         "/men blizzopts  the game's Options window without our skin (and back); needs a reload",
         "/men windows  window docking on / off (reload)",
         "/men levelup  preview the level-up banner",
+        "/men dotforce  the quest dot: kept visible and placed by Meniscus (the default), or left to the game",
         "/men bestiary  what you have learned of the creatures you have met",
         "/men bestiary export  set your records down for sharing (then Share Bestiary.bat)",
         "/men bestiary hp <number>  your target's full health, as its frame shows it (replaces the estimate)",

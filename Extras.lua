@@ -1149,16 +1149,94 @@ local function buildWaypoint()
     -- screen it is left exactly where the game has it.
     local ARRIVED, EASE = 12, 0.22
     local sx, sy, sAt = nil, nil, 0
-    -- (0.1.557: off unless /men dotforce turns it on, to see what the game
-    -- does by itself after a restart. The switch is kept in db.dotForce and
-    -- takes effect at once.)
+    -- 0.1.602. The game was patched on the evening the dot went missing
+    -- (its program file is dated 20:30 that day) and has not shown its
+    -- marker by itself since, so keeping it visible is the rule now and
+    -- "/men dotforce" is the way to turn that off. (It was off unless
+    -- asked for, 0.1.557; whoever had it off is put back on, once.)
+    if EX.db.dotRev ~= 2 then EX.db.dotForce = nil; EX.db.dotRev = 2 end
     ns.commands.dotforce = function()
-        EX.db.dotForce = not EX.db.dotForce
+        EX.db.dotForce = EX.db.dotForce == false and true or false
         sx = nil
-        ns:Print("Quest dot: " .. (EX.db.dotForce and "kept visible by Meniscus (forced)." or "left to the game (as before tonight)."))
+        ns:Print("Quest dot: " .. (EX.db.dotForce and "kept visible by Meniscus." or "left to the game (which has not shown it since its patch)."))
+    end
+    -- And where it is put while the objective is far off or off screen.
+    -- The place the game gives its marker there is not to be trusted any
+    -- more: it shot from one edge of the screen to the other as you turned
+    -- and settled on nothing. So that place is not used. The dot is put by
+    -- reckoning instead, as a compass needle is: where the quest is on the
+    -- map, where you are on it, and which way you face give how far round
+    -- from straight ahead the objective lies, and that alone decides the
+    -- spot. Ahead of you (within 50 degrees either side) it sits on the
+    -- horizon, further across the further round it is; beyond that it
+    -- slides down the side of the screen and along the bottom, to bottom
+    -- centre for directly behind. It moves only when you turn or travel,
+    -- and smoothly. Near and in view (not held at the edge, within FAR
+    -- yards) the dot is still left where the game has it: that is the
+    -- thing itself, and was always steady.
+    -- (By the way you face, not the way the camera looks: the game tells
+    -- addons the first and not the second. With the camera swung round to
+    -- your side the dot is off by that much.)
+    local tgt, me = { at = -10 }, { at = -10 }
+    local function bearing(now)
+        if now - tgt.at > 2 then
+            tgt.at, tgt.x = now, nil
+            local q = ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID()
+            local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+            local tries = 0
+            while num(q) and q > 0 and num(map) and tries < 3 and not tgt.x do
+                local list = C_QuestLog.GetQuestsOnMap and C_QuestLog.GetQuestsOnMap(map)
+                if type(list) == "table" then
+                    for i = 1, #list do
+                        local e = list[i]
+                        if e.questID == q and num(e.x) and num(e.y) then tgt.x, tgt.y, tgt.map = e.x, e.y, map break end
+                    end
+                end
+                if not tgt.x then
+                    local info = C_Map.GetMapInfo and C_Map.GetMapInfo(map)
+                    map = info and info.parentMapID
+                    tries = tries + 1
+                end
+            end
+        end
+        if not tgt.x then return nil end
+        if now - me.at > 0.1 or me.map ~= tgt.map then -- (ten times a second: asking makes a small table each time)
+            me.at, me.map, me.x = now, tgt.map, nil
+            local pos = C_Map.GetPlayerMapPosition(tgt.map, "player")
+            if pos then
+                local x, y = pos:GetXY()
+                if num(x) and num(y) then me.x, me.y = x, y end
+            end
+        end
+        if not me.x then return nil end
+        local facing = GetPlayerFacing and GetPlayerFacing()
+        if not num(facing) then return nil end
+        -- (a map is half as wide again as it is tall; north is up, y runs down)
+        local dx, dy = (tgt.x - me.x) * 1.5, tgt.y - me.y
+        if dx == 0 and dy == 0 then return nil end
+        -- clockwise from north to the objective, and you face that far anticlockwise of north
+        local rel = math.atan2(dx, -dy) + facing
+        return (rel + math.pi) % (2 * math.pi) - math.pi
+    end
+    local AHEAD = math.rad(50)
+    local function spot(rel)
+        local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+        local a = W * EDGE_X
+        local hy, by = H * HORIZON, H * (0.5 - EDGE_Y)
+        local side, m = rel < 0 and -1 or 1, math.abs(rel)
+        if m <= AHEAD then return W / 2 + side * a * (math.tan(m) / math.tan(AHEAD)), hy end
+        local u = (m - AHEAD) / (math.pi - AHEAD) * (math.pi / 2)
+        return W / 2 + side * a * math.cos(u), hy - (hy - by) * math.sin(u)
+    end
+    local reckoned = false
+    local function arrow(on)
+        if reckoned == not on then return end
+        reckoned = not on
+        -- (the game's arrow points from where the game had the marker: not shown with a reckoned dot)
+        if F.Arrow then F.Arrow:SetAlpha(on and 0.75 or 0) end
     end
     pcall(F.HookScript, F, "OnUpdate", function(self)
-        if not EX.db.dotForce then return end
+        if EX.db.dotForce == false then return end
         local valid = NV.GetFrame and NV.GetFrame() and NV.HasValidScreenPosition and NV.HasValidScreenPosition()
         if secret(valid) or not valid then sx = nil return end
         local dist = NV.GetDistance and NV.GetDistance()
@@ -1167,14 +1245,27 @@ local function buildWaypoint()
         -- little each frame, and it shimmered between 0.9 and 1.)
         if not secret(a) and a < 1 and not (num(dist) and dist < ARRIVED) then self:SetAlpha(1) end
         local clamped = NV.WasClampedToScreen and NV.WasClampedToScreen()
-        if secret(clamped) or not (clamped or (num(dist) and dist > FAR)) then sx = nil return end
+        if secret(clamped) or not (clamped or (num(dist) and dist > FAR)) then sx = nil; arrow(true) return end
         local x, y = self:GetCenter()
         if not (num(x) and num(y)) then return end
         local now = GetTime()
+        local ease = EASE
+        local ok, rel = pcall(bearing, now)
+        if ok and rel then
+            local px, py = spot(rel)
+            -- (coming in from far off, in view: over the last BLEND yards it goes over to the game's own spot)
+            local t = (not clamped and num(dist)) and math.min(1, (dist - FAR) / BLEND) or 1
+            x, y = x + (px - x) * t, y + (py - y) * t
+            ease = 0.09
+            arrow(false)
+            if F.Arrow then F.Arrow:SetAlpha(0) end -- (each frame: the game's restyle brings it back)
+        else
+            arrow(true)
+        end
         if not sx or now - sAt > 0.5 then
             sx, sy = x, y
         else
-            local k = 1 - math.exp(-(now - sAt) / EASE)
+            local k = 1 - math.exp(-(now - sAt) / ease)
             sx, sy = sx + (x - sx) * k, sy + (y - sy) * k
         end
         sAt = now
@@ -1277,7 +1368,7 @@ local function buildWaypoint()
                 ST.IsSuperTrackingCorpse and ST.IsSuperTrackingCorpse()
         end)
         add("override", function() return override ~= nil end)
-        add("forced by Meniscus", function() return EX.db.dotForce and true or false end)
+        add("forced by Meniscus", function() return EX.db.dotForce ~= false end)
         add("cvar showInGameNavigation", function() return GetCVar("showInGameNavigation") end)
         add("nav frame", function() local n = NV.GetFrame(); return n ~= nil, n and n:IsShown(), n and n:GetCenter() end)
         add("nav distance", function() return NV.GetDistance() end)
