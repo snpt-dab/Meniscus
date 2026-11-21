@@ -2322,7 +2322,7 @@ local RX_MAX, RX_SIZE, RX_GAP = 4, 30, 6
 -- on its own button above the dome. True if any bar button was found.
 local RX_BARS = { "ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton", "MultiBarRightButton", "MultiBarLeftButton",
                   "MultiBar5Button", "MultiBar6Button", "MultiBar7Button" }
-local function flashOnBars(spell)
+local function flashOnBars(spell, quiet) -- (quiet: only say whether it is on a bar)
     local found = false
     for p = 1, #RX_BARS do
         for i = 1, 12 do
@@ -2336,6 +2336,7 @@ local function flashOnBars(spell)
                 if ok and kind == "spell" and num(id) then
                     local name = C_Spell.GetSpellName and call(C_Spell.GetSpellName, id)
                     if type(name) == "string" and not secret(name) and name == spell then
+                        if quiet then return true end
                         if b.__menFlash == nil then
                             local okF, fx = pcall(EX.Flash, b, { size = b:GetWidth() or 36, shape = MEDIA .. "rounded.tga" })
                             b.__menFlash = okF and fx or false
@@ -2468,16 +2469,24 @@ local function buildReactive()
                     if usable == true then show = true
                     elseif noMana == true then show, dim = true, true end
                 end
-                if show then
+                -- A spell that is on a bar in view is not shown above the
+                -- dome as well (0.1.578): its bar button flashes, and that
+                -- is the notice. Looked up once each time it comes ready.
+                if show and not b.ready then
+                    b.ready = true
+                    local okB, onBar = pcall(flashOnBars, b.spell, true)
+                    b.onBar = okB and onBar or false
+                    if b.onBar and not dim then pcall(flashOnBars, b.spell) end
+                elseif not show then
+                    b.ready = false
+                end
+                if show and not b.onBar then
                     b.icon:SetDesaturated(dim)
                     b.vis:SetAlpha(dim and 0.45 or 1)
                     if not b.vis:IsShown() then
                         b.vis:Show()
                         b.pop:Stop(); b.pop:Play()
-                        if not dim then
-                            local ok, onBar = pcall(flashOnBars, b.spell)
-                            if not (ok and onBar) then b.fx.Play() end
-                        end
+                        if not dim then b.fx.Play() end
                     end
                     local okc, c = pcall(C_Spell.GetSpellCooldown, b.spell)
                     if okc and type(c) == "table" then pcall(b.cd.SetCooldown, b.cd, c.startTime, c.duration) end
