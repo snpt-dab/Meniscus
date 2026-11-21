@@ -148,9 +148,9 @@ end
 -- A header may carry glyph = a Media icon: it is then drawn with that icon
 -- and a hairline running out to the right, instead of the chevron.
 --   { kind = "bar",    label, min, max, value, text, color, onClick, tooltip, indent, active }
-local function chevron(row, collapsed)
+local function chevron(row, collapsed, x)
     local a, b = row.chev[1], row.chev[2]
-    local x = 10
+    x = x or 10
     if collapsed then
         a:SetStartPoint("LEFT", row, x - 2, 4); a:SetEndPoint("LEFT", row, x + 2, 0)
         b:SetStartPoint("LEFT", row, x + 2, 0); b:SetEndPoint("LEFT", row, x - 2, -4)
@@ -322,6 +322,10 @@ local function fillRow(row, d)
         row.label:SetTextColor(unpack(d.labelColor or T.textDim))
         row.label:SetPoint("LEFT", row, "LEFT", 20 + indent, 0)
         if d.wide then row.label:SetPoint("RIGHT", row, "RIGHT", -8, 0) end -- (a sentence: cut at the row's end)
+        if d.folded ~= nil then -- (a row that opens: the bestiary's creatures of one name)
+            chevron(row, d.folded, 12 + indent)
+            row.chev[1]:Show(); row.chev[2]:Show()
+        end
         row.label:SetText(d.label)
         row.value:Show()
         row.value:SetText(d.value)

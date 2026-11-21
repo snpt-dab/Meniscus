@@ -572,6 +572,7 @@ local win, picked, stale
 -- overlaps that). The text searched is put together once for a record
 -- and thrown away when the record changes.
 local query, hay = "", {}
+local openNames = {} -- (names with several forms that are open in the list: this session)
 local function haystack(id, r)
     local h = hay[id]
     if h then return h end
@@ -658,20 +659,72 @@ local function listData()
             onClick = function() B.db.collapsed[z] = not col; B:Refresh() end })
         if not col then
             local ids = zones[z]
+            -- (by the lowest level of the name, so its forms sit together)
+            local nameLow = {}
+            for _, id in ipairs(ids) do
+                local v = view(id)
+                if v.lo and (not nameLow[v.n] or v.lo < nameLow[v.n]) then nameLow[v.n] = v.lo end
+            end
             table.sort(ids, function(a, b)
                 local ra, rb = view(a), view(b)
-                if (ra.lo or 0) ~= (rb.lo or 0) then return (ra.lo or 0) < (rb.lo or 0) end
+                if ra.n == rb.n then
+                    if (ra.lo or 0) ~= (rb.lo or 0) then return (ra.lo or 0) < (rb.lo or 0) end
+                    return a < b
+                end
+                local la, lb = nameLow[ra.n] or 0, nameLow[rb.n] or 0
+                if la ~= lb then return la < lb end
                 return ra.n < rb.n
             end)
-            for _, id in ipairs(ids) do
-                local r = view(id)
-                local c = id == picked and T.accent
-                    or (r.shared and not r.met and T.textDim)
+            -- Creatures of one name that are not one creature (a Southsea
+            -- Brigand is a gnoll here, a troll there: each its own kind
+            -- to the game, with its own look) go under one row that
+            -- opens. Shut, it stands for the first; open, each is a row.
+            local function color(r, on)
+                return on and T.accent or (r.shared and not r.met and T.textDim)
                     or ((r.cl == "elite" or r.cl == "worldboss" or r.cl == "rareelite") and ELITE)
                     or (r.cl == "rare" and RARE) or T.text
-                table.insert(d, { kind = "stat", label = r.n, labelColor = c, indent = 10,
-                    value = levels(r) or "", color = T.textDim,
-                    onClick = function() B:Pick(id) end })
+            end
+            local i = 1
+            while i <= #ids do
+                local id = ids[i]
+                local r = view(id)
+                local j = i
+                while ids[j + 1] and view(ids[j + 1]).n == r.n do j = j + 1 end
+                if j == i then
+                    table.insert(d, { kind = "stat", label = r.n, labelColor = color(r, id == picked), indent = 10,
+                        value = levels(r) or "", color = T.textDim,
+                        onClick = function() B:Pick(id) end })
+                else
+                    local key = z .. "\n" .. r.n
+                    local isOpen = words ~= nil or openNames[key] == true
+                    local lo, hi, has, sameType = nil, nil, false, true
+                    for k = i, j do
+                        local v = view(ids[k])
+                        if v.lo and (not lo or v.lo < lo) then lo = v.lo end
+                        if v.hi and (not hi or v.hi > hi) then hi = v.hi end
+                        if ids[k] == picked then has = true end
+                        if (v.f or v.t) ~= (r.f or r.t) then sameType = false end
+                    end
+                    table.insert(d, { kind = "stat", label = r.n .. "   |cff7d7d88" .. (j - i + 1) .. " forms|r",
+                        labelColor = color(r, has and not isOpen), indent = 10, folded = not isOpen,
+                        value = lo and (lo == hi and tostring(lo) or (lo .. "-" .. hi)) or "", color = T.textDim,
+                        onClick = function()
+                            openNames[key] = not isOpen
+                            if not isOpen and not has then B:Pick(id) else B:Refresh() end
+                        end })
+                    if isOpen then
+                        for k = i, j do
+                            local vid = ids[k]
+                            local v = view(vid)
+                            local what = not sameType and (v.f or v.t) or nil
+                            table.insert(d, { kind = "stat", label = "Form " .. (k - i + 1) .. (what and ("   |cff7d7d88" .. what .. "|r") or ""),
+                                labelColor = color(v, vid == picked), indent = 24,
+                                value = levels(v) or "", color = T.textDim,
+                                onClick = function() B:Pick(vid) end })
+                        end
+                    end
+                end
+                i = j + 1
             end
         end
     end
