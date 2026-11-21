@@ -1163,6 +1163,43 @@ local function buildWaypoint()
         C_Timer.After(0.3, function() due = false; pcall(apply) end)
     end
     focusApply = soon
+    -- /men dot: everything about the dot at this moment, for when it is
+    -- not to be seen: said in chat in short, and in full in
+    -- MinimalUIDB.dotprobe (read after a reload).
+    ns.commands.dot = function()
+        local out = {}
+        local function show(v) if secret(v) then return "<hidden>" end return tostring(v) end
+        local function add(k, fn)
+            local ok, a, b, c, d = pcall(fn)
+            out[#out + 1] = k .. " " .. (ok and (show(a) .. (b ~= nil and (" " .. show(b)) or "") .. (c ~= nil and (" " .. show(c)) or "")
+                .. (d ~= nil and (" " .. show(d)) or "")) or ("error " .. tostring(a)))
+        end
+        add("at", function() return date("%H:%M:%S") end)
+        add("focus", function() return ns.QuestFocus.Get() end)
+        add("supertracked quest", function() return ST.GetSuperTrackedQuestID() end)
+        add("in log at", function() return C_QuestLog.GetLogIndexForQuestID(ns.QuestFocus.Get()) end)
+        add("pin/waypoint/corpse", function()
+            return ST.IsSuperTrackingMapPin and ST.IsSuperTrackingMapPin(), ST.IsSuperTrackingUserWaypoint and ST.IsSuperTrackingUserWaypoint(),
+                ST.IsSuperTrackingCorpse and ST.IsSuperTrackingCorpse()
+        end)
+        add("override", function() return override ~= nil end)
+        add("cvar showInGameNavigation", function() return GetCVar("showInGameNavigation") end)
+        add("nav frame", function() local n = NV.GetFrame(); return n ~= nil, n and n:IsShown(), n and n:GetCenter() end)
+        add("nav distance", function() return NV.GetDistance() end)
+        add("nav clamped", function() return NV.WasClampedToScreen() end)
+        add("marker shown/visible", function() return F:IsShown(), F:IsVisible() end)
+        add("marker alpha/effective", function() return F:GetAlpha(), F:GetEffectiveAlpha() end)
+        add("marker scale/effective", function() return F:GetScale(), F:GetEffectiveScale() end)
+        add("marker centre", function() return F:GetCenter() end)
+        add("marker size", function() return F:GetSize() end)
+        add("marker strata/level", function() return F:GetFrameStrata(), F:GetFrameLevel() end)
+        add("marker parent", function() local p = F:GetParent(); return p and (p.GetName and p:GetName() or "unnamed"), p and p:IsShown(), p and p:GetAlpha() end)
+        add("screen", function() return UIParent:GetWidth(), UIParent:GetHeight(), UIParent:GetEffectiveScale() end)
+        add("dot alpha/shown", function() return dot:GetAlpha(), dot:IsShown(), dot:IsVisible() end)
+        add("world map open", function() return _G.WorldMapFrame and _G.WorldMapFrame:IsShown() end)
+        if MinimalUIDB then MinimalUIDB.dotprobe = out end
+        for _, l in ipairs(out) do ns:Print(l) end
+    end
     function ns.QuestFocus.Override(guid, seconds)
         override = { guid = guid, till = GetTime() + (seconds or 60) }
         soon()
