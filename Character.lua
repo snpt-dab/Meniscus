@@ -1258,6 +1258,74 @@ local function honorData()
     return d
 end
 
+-- ── Statistics ────────────────────────────────────────────────────────────
+-- The game's own tallies (creatures killed, deaths, gold, quests...), which
+-- this client keeps but shows only inside the achievements window. The
+-- categories as the game groups them: a top one as a header, the ones under
+-- it as headers set in. A tally the game has nothing for yet ("--") is left
+-- out, and a category with nothing left goes with it, unless "Not yet
+-- counted" at the bottom is opened. Headers fold (kept in db.collapsed).
+local function statisticsData()
+    local d = {}
+    local cats = call(GetStatisticsCategoryList)
+    if type(cats) ~= "table" then return d end
+    local showAll = C.db.statsAll and true or false
+    local top, kids, hidden = {}, {}, 0
+    for _, id in ipairs(cats) do
+        local name, parent = call(GetCategoryInfo, id)
+        if type(name) == "string" and not secret(name) and plain(parent) then
+            if parent == -1 then top[#top + 1] = { id = id, name = name }
+            else kids[parent] = kids[parent] or {}; table.insert(kids[parent], { id = id, name = name }) end
+        end
+    end
+    local function rowsOf(id, indent)
+        local rows = {}
+        local n = call(GetCategoryNumAchievements, id)
+        if not plain(n) then return rows end
+        for k = 1, n do
+            local sid, sname = call(GetAchievementInfo, id, k)
+            if sid ~= nil and type(sname) == "string" and not secret(sname) then
+                local v = call(GetStatistic, sid)
+                local empty = v == nil or (not secret(v) and (v == "--" or v == ""))
+                if empty then hidden = hidden + 1 end
+                if not empty or showAll then
+                    rows[#rows + 1] = { kind = "stat", label = sname, value = empty and "--" or v, indent = indent,
+                                        color = empty and T.textDim or nil, labelColor = empty and T.textDim or nil }
+                end
+            end
+        end
+        return rows
+    end
+    local function section(c, indent, glyphless)
+        local key = "stat:" .. c.id
+        local col = C.db.collapsed[key]
+        local own = rowsOf(c.id, indent + 12)
+        local subs = {}
+        for _, k in ipairs(kids[c.id] or {}) do
+            local r = rowsOf(k.id, indent + 24)
+            if #r > 0 then subs[#subs + 1] = { c = k, rows = r } end
+        end
+        if #own == 0 and #subs == 0 then return end
+        table.insert(d, { kind = "header", text = c.name, collapsed = col, indent = indent,
+            onClick = function() C.db.collapsed[key] = not col; C:Refresh() end })
+        if col then return end
+        for _, r in ipairs(own) do table.insert(d, r) end
+        for _, sub in ipairs(subs) do
+            local skey = "stat:" .. sub.c.id
+            local scol = C.db.collapsed[skey]
+            table.insert(d, { kind = "header", text = sub.c.name, collapsed = scol, indent = indent + 12,
+                onClick = function() C.db.collapsed[skey] = not scol; C:Refresh() end })
+            if not scol then for _, r in ipairs(sub.rows) do table.insert(d, r) end end
+        end
+    end
+    for _, c in ipairs(top) do section(c, 0) end
+    if hidden > 0 then
+        table.insert(d, { kind = "header", text = "Not yet counted (" .. hidden .. ")", collapsed = not showAll,
+            onClick = function() C.db.statsAll = not showAll; C:Refresh() end })
+    end
+    return d
+end
+
 -- ── Pet ───────────────────────────────────────────────────────────────────
 local HAPPINESS = { { "Unhappy", RED }, { "Content", { 0.95, 0.80, 0.30, 1 } }, { "Happy", GREEN } }
 
@@ -1330,6 +1398,8 @@ local TABS = {
       end },
     { key = "honor", label = "Honor", kw = { "honor", "pvp" },
       available = function() return _G.GetPVPLifetimeStats ~= nil or _G.UnitPVPRank ~= nil end },
+    { key = "stats", label = "Statistics", kw = { "statistic" },
+      available = function() return _G.GetStatistic ~= nil and _G.GetStatisticsCategoryList ~= nil and _G.GetCategoryInfo ~= nil end },
 }
 local TAB_BY_KEY = {}
 for _, t in ipairs(TABS) do TAB_BY_KEY[t.key] = t end
@@ -2068,7 +2138,7 @@ local function build()
 
     buildGear(pages.gear)
     buildPet(pages.pet)
-    for _, k in ipairs({ "rep", "skills", "currency", "honor" }) do buildListPage(pages[k]) end
+    for _, k in ipairs({ "rep", "skills", "currency", "honor", "stats" }) do buildListPage(pages[k]) end
 
     win:SetScript("OnShow", function()
         call(PlaySound, SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_OPEN)
@@ -2085,7 +2155,7 @@ local function build()
     end)
 end
 
-local LIST_DATA = { rep = repData, skills = skillsData, currency = currencyData, honor = honorData }
+local LIST_DATA = { rep = repData, skills = skillsData, currency = currencyData, honor = honorData, stats = statisticsData }
 
 function C:Refresh()
     if not win or not win:IsShown() then return end
