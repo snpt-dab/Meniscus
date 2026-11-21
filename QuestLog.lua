@@ -670,6 +670,8 @@ local function build()
     win.shell:SetTitle(QUEST_LOG or "Quest log")
     win.shell:SetIcon("Interface/Icons/INV_Misc_Note_01")
     win.shell:SetRing({ 0.95, 0.80, 0.35 })
+    -- (Quests | Bestiary: the journal's tabs, Bestiary.lua)
+    if ns.Bestiary and ns.Bestiary.JournalTabs then pcall(ns.Bestiary.JournalTabs, win, "quests") end
 
     -- Left: quest list card.
     local listCard = CreateFrame("Frame", nil, win)
