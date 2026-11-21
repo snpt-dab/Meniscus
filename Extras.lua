@@ -1235,7 +1235,23 @@ local function buildWaypoint()
         -- (the game's arrow points from where the game had the marker: not shown with a reckoned dot)
         if F.Arrow then F.Arrow:SetAlpha(on and 0.75 or 0) end
     end
+    -- 0.1.604: the dot is put away altogether for now. Since the game's
+    -- patch its marker can't be trusted, and what has been tried in its
+    -- place has not been good enough to be worth having on screen. Focusing
+    -- a quest still works (the list marks it, the map still shows it); only
+    -- the dot over the world is not drawn. "/men dotshow" brings it back,
+    -- with everything above, for trying things.
+    ns.commands.dotshow = function()
+        EX.db.dotShow = not EX.db.dotShow
+        sx = nil
+        ns:Print("Quest dot: " .. (EX.db.dotShow and "shown again (placed by Meniscus)." or "hidden."))
+    end
     pcall(F.HookScript, F, "OnUpdate", function(self)
+        if not EX.db.dotShow then
+            local al = self:GetAlpha()
+            if secret(al) or al > 0 then self:SetAlpha(0) end
+            return
+        end
         if EX.db.dotForce == false then return end
         local valid = NV.GetFrame and NV.GetFrame() and NV.HasValidScreenPosition and NV.HasValidScreenPosition()
         if secret(valid) or not valid then sx = nil return end
@@ -2233,7 +2249,7 @@ local function buildRare()
         local now = GetTime()
         if seen[key] and now - seen[key] < 600 then return end
         seen[key] = now
-        local note = guidForDot and "follow the dot" or "nearby"
+        local note = (guidForDot and EX.db.dotShow) and "follow the dot" or "nearby" -- (the dot is hidden for now)
         if type(level) == "number" and not secret(level) and level > 0 then note = "Level " .. level .. "   ·   " .. note end
         if not pcall(rareFanfare, name, kind, note) and ns.FloatWarning then
             ns.FloatWarning(MEDIA .. "micro_achievement.tga", "Rare: " .. name, note)
