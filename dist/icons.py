@@ -303,6 +303,15 @@ def icons():
     # The same for ore: a diamond in a thin diamond (a herb keeps the ring).
     I['node_ore'] = (Icon().line([(12, 2.6), (21.4, 12), (12, 21.4), (2.6, 12)], close=True, w=1.6)
                      .line([(12, 10.4), (13.6, 12), (12, 13.6), (10.4, 12)], close=True, w=4.0))
+    # Skinnable (the bestiary's trait strip): a skinning knife, point up and
+    # to the right: a stubby handle, a guard across it, and a blade with a
+    # straight back and a full curved belly. (It was the smith's hammer.)
+    def _kn(u, v, gx=10.2, gy=13.8, k=0.7071):   # u along the knife, v across it (belly side +)
+        return (gx + (u + v) * k, gy + (v - u) * k)
+    I['skin'] = (Icon().line([_kn(-8.2, 0.4), _kn(-1.6, 0.4)], w=3.4)
+                 .line([_kn(-0.4, -2.6), _kn(-0.4, 3.6)], w=1.9)
+                 .poly([_kn(0.4, -1.1), _kn(12.4, -1.1), _kn(13.6, -0.3), _kn(12.2, 1.2), _kn(9.6, 2.6),
+                        _kn(6.4, 3.2), _kn(3.2, 3.0), _kn(0.4, 2.2)]))
     # Inspect (by the target frame): a magnifying glass.
     I['inspect'] = Icon().ring(10.2, 10.2, 6.2, w=2.0).line([(15.0, 15.0), (20.2, 20.2)], w=2.6)
     return I
