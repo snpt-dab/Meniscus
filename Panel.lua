@@ -1498,6 +1498,7 @@ ns.commands.help = function()
         "/men windows  window docking on / off (reload)",
         "/men levelup  preview the level-up banner",
         "/men bestiary  what you have learned of the creatures you have met",
+        "/men bestiary export  set your records down for sharing (then Share Bestiary.bat)",
         "/men blizzbank  the game's own bank window beside ours (and away again)",
         "/men perf trace  time every handler, for finding hidden costs (reload; run again to stop)",
         "/men lab  development: small test marks under your combat numbers, and measurements written down (reload)",
