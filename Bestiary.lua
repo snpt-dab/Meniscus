@@ -1200,9 +1200,9 @@ function B.Rows(rows, id, full)
         table.sort(ids, function(a, b) if share(a) ~= share(b) then return share(a) > share(b) end return a < b end)
         -- The list is kept short (0.1.591): a creature with a rank (elite,
         -- rare, boss) shows everything it has dropped; any other shows
-        -- what drops at least three times in ten, and quest items, with
+        -- what drops at least one time in five, and quest items, with
         -- the rest folded under one row that opens.
-        local COMMON = 0.30
+        local COMMON = 0.20 -- (was 0.30)
         local whole = r.cl ~= nil or lootOpen[id] == true
         local all, folded = ids, 0
         ids = {}
@@ -1244,7 +1244,7 @@ function B.Rows(rows, id, full)
         if folded > 0 or (lootOpen[id] and r.cl == nil and #all > 0) then
             local open = lootOpen[id] == true
             rows[#rows + 1] = { kind = "stat", value = "", labelColor = T.textDim,
-                label = open and "Show only the common drops" or (folded .. (folded == 1 and " rarer drop" or " rarer drops") .. " (under 30%)"),
+                label = open and "Show only the common drops" or (folded .. (folded == 1 and " rarer drop" or " rarer drops") .. " (under 20%)"),
                 folded = not open, indent = 14,
                 onClick = function() lootOpen[id] = not open; changed(id) end }
         end
