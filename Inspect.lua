@@ -247,7 +247,7 @@ local function fillCreature(unit)
     local rows = {}
     head(rows, "About", "micro_character.tga")
     local kind = call(UnitCreatureType, unit)
-    if kind and (secret(kind) or kind ~= "") then stat(rows, "Kind", kind) end
+    if kind and (secret(kind) or kind ~= "") then stat(rows, "Type", kind) end
     local family = call(UnitCreatureFamily, unit)
     if family and (secret(family) or family ~= "") then stat(rows, "Family", family) end
     local cls = call(UnitClassification, unit)
