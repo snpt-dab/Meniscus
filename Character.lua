@@ -2271,55 +2271,29 @@ local function buildGear(page)
         local t = adv and adv.top
         if not t then return end
         local W1, DIMC, BODYC = { 1, 1, 1 }, { 0.6, 0.6, 0.65 }, { 0.86, 0.86, 0.89 }
-        local par = math.floor(adv.par + 0.5)
-        local function line(e)
-            if e.empty then return "nothing worn" end
-            local d = math.floor(e.gap + 0.5)
-            return "item level " .. string.format("%d", e.lvl) .. (d > 0 and ("  (" .. d .. " below)") or "")
-        end
+        -- (0.1.614: cut down to three short lines, as asked. It was a
+        -- dozen, with a paragraph on how the pick is made.)
+        local against = t.against == "your level" and "your level" or "your gear's average"
         ns.TipAnchor(self)
         GameTooltip:SetText("Next upgrade: " .. t.label, W1[1], W1[2], W1[3])
         if t.empty then
-            GameTooltip:AddLine("Nothing is worn in this slot.", BODYC[1], BODYC[2], BODYC[3], true)
+            GameTooltip:AddLine("Nothing worn here.", BODYC[1], BODYC[2], BODYC[3])
         else
-            GameTooltip:AddDoubleLine("This piece's item level", string.format("%d", t.lvl), BODYC[1], BODYC[2], BODYC[3], BEHIND[1], BEHIND[2], BEHIND[3])
-        end
-        GameTooltip:AddDoubleLine(t.against == "your level" and "Your level" or "Your gear's average item level", tostring(par),
-            BODYC[1], BODYC[2], BODYC[3], 1, 1, 1)
-        if not t.empty then
             local d = math.floor(t.gap + 0.5)
-            GameTooltip:AddDoubleLine(d >= 0 and "Behind by" or "Ahead by", tostring(math.abs(d)), BODYC[1], BODYC[2], BODYC[3], BEHIND[1], BEHIND[2], BEHIND[3])
-        end
-        if adv.favour and adv.favour ~= "" then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddDoubleLine("You gear for", adv.favour, BODYC[1], BODYC[2], BODYC[3], 1, 1, 1)
-            if t.ratio then
-                local how = t.ratio < 0.4 and "almost none" or (t.ratio < 0.7 and "less than your usual")
-                    or (t.ratio > 1.2 and "more than your usual") or "about your usual"
-                GameTooltip:AddDoubleLine("This piece has of those", how, BODYC[1], BODYC[2], BODYC[3],
-                    t.ratio < 0.7 and BEHIND[1] or 1, t.ratio < 0.7 and BEHIND[2] or 1, t.ratio < 0.7 and BEHIND[3] or 1)
+            GameTooltip:AddLine("Item level " .. string.format("%d", t.lvl)
+                .. (d > 0 and (", " .. d .. " below " .. against) or ""), BODYC[1], BODYC[2], BODYC[3])
+            if t.ratio and t.ratio < 0.7 and adv.favour and adv.favour ~= "" then
+                GameTooltip:AddLine((t.ratio < 0.4 and "Almost none" or "Little") .. " of your stats (" .. adv.favour .. ")",
+                    BEHIND[1], BEHIND[2], BEHIND[3])
             end
         end
-        local shown = 0
+        local after = {}
         for i = 2, #adv.list do
             local e = adv.list[i]
-            if shown >= 3 or e.score < 2 then break end
-            if shown == 0 then
-                GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("After that", DIMC[1], DIMC[2], DIMC[3])
-            end
-            shown = shown + 1
-            GameTooltip:AddDoubleLine(e.label, line(e), BODYC[1], BODYC[2], BODYC[3], BODYC[1], BODYC[2], BODYC[3])
+            if #after >= 3 or e.score < 2 then break end
+            after[#after + 1] = e.label
         end
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("\"Below\" is how far a piece's item level is under "
-            .. (t.against == "your level"
-                and ("your level (" .. par .. "), used because your gear's average (" .. math.floor(adv.avg + 0.5) .. ") is lower still.")
-                or ("the average of everything you wear (" .. par .. ")."))
-            .. " Slots that hold more stats count for more (weapon, then chest, legs and head)"
-            .. (adv.favour and adv.favour ~= "" and ", and armour with little of the stats you gear for (read off what you wear) counts as lower than its item level" or "")
-            .. ", so the pick is not always the lowest number.",
-            DIMC[1], DIMC[2], DIMC[3], true)
+        if #after > 0 then GameTooltip:AddLine("Then: " .. table.concat(after, ", "), DIMC[1], DIMC[2], DIMC[3]) end
         GameTooltip:Show()
     end)
     nx:SetScript("OnLeave", function() GameTooltip:Hide() end)
