@@ -459,6 +459,27 @@ local function makeTile(parent, slotName)
     b.count = over:CreateFontString(nil, "OVERLAY")
     ns:SetFont(b.count, 9, "OUTLINE", true)
     b.count:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -3, 3)
+    -- "work on this slot next" (gearAdvice): the bags' upgrade badge, in
+    -- the accent colour, on the corner the item level doesn't use.
+    local nx = CreateFrame("Frame", nil, over)
+    nx:SetSize(15, 15)
+    nx:SetPoint("CENTER", b, "TOPLEFT", 5, -5)
+    local nRim = nx:CreateTexture(nil, "OVERLAY", nil, 0)
+    nRim:SetTexture(MEDIA .. "circle.tga")
+    nRim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    nRim:SetAllPoints()
+    local nDisc = nx:CreateTexture(nil, "OVERLAY", nil, 1)
+    nDisc:SetTexture(MEDIA .. "circle.tga")
+    nDisc:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
+    nDisc:SetPoint("TOPLEFT", 1.5, -1.5)
+    nDisc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local nArrow = nx:CreateTexture(nil, "OVERLAY", nil, 2)
+    nArrow:SetTexture(MEDIA .. "micro_up.tga")
+    nArrow:SetVertexColor(0.05, 0.05, 0.06, 1)
+    nArrow:SetPoint("TOPLEFT", 2, -2)
+    nArrow:SetPoint("BOTTOMRIGHT", -2, 2)
+    nx:Hide()
+    b.next = nx
     b.duraBg = over:CreateTexture(nil, "OVERLAY", nil, 1)
     b.duraBg:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 4, 4)
     b.duraBg:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -4, 4)
@@ -499,6 +520,19 @@ local function makeTile(parent, slotName)
         ns.TipAnchor(self)
         local has = GameTooltip:SetInventoryItem("player", self.slot)
         if not has then GameTooltip:SetText(_G[self.slotName:upper() .. "SLOT"] or self.slotName) end
+        local a = self.advice
+        if a then
+            GameTooltip:AddLine(" ")
+            if a.empty then
+                GameTooltip:AddLine("Nothing worn here", 0.95, 0.62, 0.45)
+            else
+                local d = math.floor(a.lvl - a.avg + (a.lvl >= a.avg and 0.5 or -0.5))
+                local how = d == 0 and "level with" or (math.abs(d) .. (d > 0 and " above" or " below"))
+                local c = a.behind and { 0.95, 0.62, 0.45 } or { 0.6, 0.6, 0.65 }
+                GameTooltip:AddLine(string.format("Item level %d: %s your average of %d", a.lvl, how, math.floor(a.avg + 0.5)), c[1], c[2], c[3])
+            end
+            if a.top then GameTooltip:AddLine("Your weakest slot: upgrade this next", T.accent[1], T.accent[2], T.accent[3]) end
+        end
         GameTooltip:Show()
         noCompare()
         self:SetScript("OnUpdate", noCompare)
@@ -586,6 +620,121 @@ local function updateHeader()
     else
         sh:SetChip(nil)
     end
+end
+
+-- ── What to upgrade next ──────────────────────────────────────────────────
+-- (0.1.559) Which slot is holding your gear back. Each piece's item level
+-- is set against a mark: the average of what you wear, or your own level
+-- when the average is under it (so a character whose gear is all old still
+-- gets an answer). How far a slot is under the mark is weighed by how much
+-- the slot carries: a chest or legs piece holds about twice the stats of a
+-- belt or a ring, and your weapon (the bow, for a hunter) counts for more
+-- than any armour. A slot with nothing in it counts as far behind, once
+-- you are of a level where pieces for it are to be had (no helmets at 8),
+-- and only where your class uses it. The slot that comes out worst gets
+-- the marker; a slot well under the mark has its level in orange.
+-- Item level only: it says where to look, not which piece to take (the
+-- upgrade marks in the bags and on loot weigh the stats).
+local SLOT_WEIGHT = { Head = 1, Chest = 1, Legs = 1, Shoulder = 0.75, Hands = 0.75, Feet = 0.75,
+                      Waist = 0.55, Wrist = 0.55, Back = 0.55, Neck = 0.55, Finger0 = 0.55, Finger1 = 0.55,
+                      Trinket0 = 0.3, Trinket1 = 0.3 }
+-- the level from which an empty slot is worth a word
+local FROM_LEVEL = { Back = 6, Waist = 5, Wrist = 5, Shoulder = 12, Head = 18, Finger0 = 18, Finger1 = 18,
+                     Neck = 20, Trinket0 = 40, Trinket1 = 40 }
+--                    main  off  ranged   empty off hand from, empty ranged from (nil: never)
+local WEAPON_WEIGHT = {
+    WARRIOR = { 1.8, 0.7, 0.3, 1, 10 },
+    PALADIN = { 1.8, 0.7, 0, 1, nil },
+    ROGUE   = { 1.8, 0.9, 0.3, 10, 10 },
+    HUNTER  = { 0.7, 0.5, 1.8, 20, 1 },
+    SHAMAN  = { 1.4, 0.7, 0, 1, nil },
+    DRUID   = { 0.9, 0.5, 0, 15, nil },
+    PRIEST  = { 0.9, 0.5, 0.6, 15, 8 },
+    MAGE    = { 0.9, 0.5, 0.6, 15, 8 },
+    WARLOCK = { 0.9, 0.5, 0.6, 15, 8 },
+}
+local SLOT_LABEL = { Shoulder = "Shoulders", Back = "Cloak", Wrist = "Bracers", Hands = "Gloves", Waist = "Belt",
+                     Feet = "Boots", Finger0 = "Ring", Finger1 = "Ring", Trinket0 = "Trinket", Trinket1 = "Trinket",
+                     MainHand = "Main hand", SecondaryHand = "Off hand", Ranged = "Ranged" }
+local TOOL_SUB = { [14] = true, [20] = true } -- (a pick or a fishing pole in hand is not your weapon)
+local BEHIND = { 0.95, 0.62, 0.45 }
+
+local function gearAdvice()
+    local out = { list = {} }
+    local level = UnitLevel("player")
+    local _, cls = UnitClass("player")
+    local sum, n = 0, 0
+    for _, b in ipairs(tiles) do
+        b.advice = nil
+        if b.lvl then sum, n = sum + b.lvl, n + 1 end
+    end
+    if n == 0 or not plain(level) then return out end
+    local avg = sum / n
+    local par = (level > avg and level < avg * 2 + 10) and level or avg
+    out.avg, out.par, out.level = avg, par, level
+    local ww = WEAPON_WEIGHT[cls or ""] or WEAPON_WEIGHT.WARRIOR
+    local info = C_Item and C_Item.GetItemInfoInstant
+    local function kind(slot)
+        local link = info and GetInventoryItemLink("player", slot)
+        if not link or secret(link) then return end
+        local _, _, _, loc, _, classID, subID = call(info, link)
+        return loc, classID, subID
+    end
+    local twoHand = kind(16) == "INVTYPE_2HWEAPON"
+    for _, b in ipairs(tiles) do
+        local name = b.slotName
+        local w, from
+        if name == "MainHand" then w, from = ww[1], 1
+        elseif name == "SecondaryHand" then w, from = ww[2], ww[4]
+        elseif name == "Ranged" then w, from = ww[3], ww[5]
+        else w, from = SLOT_WEIGHT[name], FROM_LEVEL[name] or 1 end
+        if w and w > 0 then
+            local e
+            if b.lvl then
+                local _, classID, subID = kind(b.slot)
+                if not (classID == 2 and TOOL_SUB[subID]) then
+                    e = { lvl = b.lvl, gap = par - b.lvl }
+                end
+            elseif not GetInventoryItemTexture("player", b.slot) and from and level >= from
+                and not (name == "SecondaryHand" and twoHand) then
+                e = { empty = true, gap = math.min(15, math.max(5, par)) }
+            end
+            if e then
+                e.tile, e.label, e.avg = b, SLOT_LABEL[name] or name, avg
+                e.score = e.gap * w
+                e.behind = e.empty or e.gap >= math.max(4, par * 0.15)
+                b.advice = e
+                table.insert(out.list, e)
+            end
+        end
+    end
+    table.sort(out.list, function(x, y) return x.score > y.score end)
+    local first = out.list[1]
+    if first and first.score >= 2 then first.top = true; out.top = first end
+    return out
+end
+
+local function applyAdvice()
+    local ok, adv = pcall(gearAdvice)
+    if not ok then adv = { list = {} } end
+    for _, b in ipairs(tiles) do
+        local a = b.advice
+        if a and a.behind then b.ilvl:SetTextColor(BEHIND[1], BEHIND[2], BEHIND[3]) else b.ilvl:SetTextColor(1, 1, 1) end
+        if b.next then b.next:SetShown(a ~= nil and a.top == true) end
+    end
+    local chip = win and win.adviceChip
+    if not chip then return end
+    chip.adv = adv
+    if not adv.avg then chip:Hide() return end
+    local t = adv.top
+    if t then
+        chip.text:SetText("|cff9a9aa5UPGRADE NEXT|r   " .. t.label .. "   |cff9a9aa5"
+            .. (t.empty and "empty" or string.format("%d", t.lvl)) .. "|r")
+    else
+        chip.text:SetText("|cff9a9aa5GEAR IS EVEN|r")
+    end
+    chip:SetWidth(chip.text:GetStringWidth() + 22)
+    chip:Show()
 end
 
 -- ── Stat tooltips ─────────────────────────────────────────────────────────
@@ -2022,6 +2171,40 @@ local function buildGear(page)
     local cc = token and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
     win.model = makeModelArea(page, 20 + TILE + 10, top, 420 - TILE - 10, top - 7 * (TILE + GAP) + 6, cc)
     win.card = makeStatsCard(page, top)
+
+    -- What to upgrade next (gearAdvice): a chip over the model's head, the
+    -- ranking in its tooltip.
+    local chip = CreateFrame("Button", nil, page)
+    chip:SetHeight(18)
+    chip:SetPoint("TOP", page, "TOPLEFT", cx, top)
+    chip:SetFrameLevel(win.model:GetFrameLevel() + 3)
+    ns.RoundedRect(chip, -6, 0, 9, 0.10, 0.10, 0.12, 0.9)
+    chip.text = text(chip, 10, true)
+    chip.text:SetPoint("CENTER")
+    chip:SetScript("OnEnter", function(self)
+        local adv = self.adv
+        if not (adv and adv.avg) then return end
+        ns.TipAnchor(self)
+        GameTooltip:SetText("What to upgrade next", 1, 1, 1)
+        local shown = 0
+        for _, e in ipairs(adv.list) do
+            if shown >= 4 or e.score < 2 then break end
+            shown = shown + 1
+            local d = e.lvl and math.floor(adv.avg - e.lvl + 0.5)
+            local right = e.empty and "empty"
+                or (string.format("%d", e.lvl) .. (d > 0 and ("   " .. d .. " below") or ""))
+            local c = shown == 1 and T.accent or { 0.86, 0.86, 0.89 }
+            GameTooltip:AddDoubleLine(shown .. ".  " .. e.label, right, c[1], c[2], c[3], BEHIND[1], BEHIND[2], BEHIND[3])
+        end
+        if shown == 0 then GameTooltip:AddLine("Nothing stands out: every slot is near your average.", 0.86, 0.86, 0.89, true) end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(string.format("Each slot's item level against your average (%d) and your level (%d), weighed by how much the slot carries: weapon first, then chest, legs and head.",
+            math.floor(adv.avg + 0.5), adv.level), 0.6, 0.6, 0.65, true)
+        GameTooltip:Show()
+    end)
+    chip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    chip:Hide()
+    win.adviceChip = chip
 end
 
 local function buildPet(page)
@@ -2161,6 +2344,7 @@ function C:Refresh()
     if not win or not win:IsShown() then return end
     for _, b in ipairs(tiles) do pcall(updateTile, b) end
     pcall(updateHeader)
+    pcall(applyAdvice)
     if self.tab == "gear" then
         pcall(updateResists, win.card.resists, "player")
         pcall(updateAttrs, win.card, "player")
