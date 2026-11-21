@@ -405,8 +405,8 @@ local function take(t, name, within)
 end
 local function diag(key, what)
     if not MinimalUIDB then return end
-    local dg = MinimalUIDB[key] or {}
-    MinimalUIDB[key] = dg
+    local dg = MinimalUIDB[key]
+    if type(dg) ~= "table" then dg = {}; MinimalUIDB[key] = dg end
     dg[what] = (dg[what] or 0) + 1
 end
 local function addKill(id, lvl, inFight)
@@ -531,8 +531,11 @@ end
 -- no cast bar (and plain melee) get into the book without a death recap.
 local function meterLog(line)
     if not MinimalUIDB then return end
-    local dg = MinimalUIDB.meterdiag or {}
-    MinimalUIDB.meterdiag = dg
+    -- (Its own name, 0.1.589: "meterdiag" is a line of text the nameplates
+    -- keep, and writing a log into that failed, which stopped the whole
+    -- reading: five kills of a creature and no health to show for it.)
+    local dg = MinimalUIDB.bestiaryMeter
+    if type(dg) ~= "table" then dg = {}; MinimalUIDB.bestiaryMeter = dg end
     dg.log = dg.log or {}
     if #dg.log < 40 then dg.log[#dg.log + 1] = line end
 end
@@ -1558,7 +1561,7 @@ function B:OnInit(db)
         for _, r in pairs(MinimalUIDB.bestiary or {}) do r.he, r.hn, r.hs = nil, nil, nil end
         MinimalUIDB.bestiaryRev = 3
     end
-    if MinimalUIDB and MinimalUIDB.bestiaryRev == 3 then MinimalUIDB.meterdiag = nil; MinimalUIDB.bestiaryRev = 4 end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 3 then MinimalUIDB.bestiaryRev = 4 end
     B.OnChange(function(id)
         if id then hay[id] = nil end
         if win and win:IsShown() then stale = true end
