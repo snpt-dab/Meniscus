@@ -1162,23 +1162,26 @@ function B.Rows(rows, id, full)
                 end }
         end
     end
-    -- what a kill is worth
-    -- (Experience for a kill was a row: not wanted, 0.1.594. Reputation and
-    -- behavior are icons in the strip, in both windows, and no longer rows.)
-    do
-        local base = r.cb or math.max(r.lk or 0, r.ln or 0)
-        -- (an average, so "~"; the coin discs as everywhere)
-        if r.cn and base > 0 then stat(rows, "Coin per kill", "~" .. coins(r.cn / base)) end
-    end
     -- (What it does was a section of rows here, "Attacks and abilities":
     -- each is an icon in the strip now, 0.1.595.)
-    if (r.l and next(r.l)) or (r.d and next(r.d)) then
+    if (r.l and next(r.l)) or (r.d and next(r.d)) or r.cn then
         -- (Out of kills, where those were counted: a corpse with nothing
         -- on it can't be opened, so corpses looted alone runs high. A kill
         -- you walked away from without looting counts as nothing found.)
         local looted = r.ln or 0
         local ln = math.max(looted, r.lk or 0)
-        head(rows, ln > 0 and ("Loot   (" .. ln .. (ln == 1 and " kill)" or " kills)")) or "Loot", "micro_journal.tga")
+        -- The coin it carries, on the heading itself (0.1.598: it was a row,
+        -- "Coin per kill"): an average, so "~"; what it is, on hover.
+        local base = r.cb or ln
+        local coin = r.cn and base > 0 and coins(r.cn / base) or nil
+        head(rows, (ln > 0 and ("Loot   (" .. ln .. (ln == 1 and " kill)" or " kills)")) or "Loot")
+            .. (coin and ("     |cffeeeef2~" .. coin .. "|r") or ""), "micro_journal.tga")
+        if coin then
+            rows[#rows].tooltip = function(tip)
+                tip:SetText("Coin", 1, 1, 1)
+                tip:AddLine("About " .. coin .. " on each one you kill (averaged over " .. base .. (base == 1 and " kill)." or " kills)."), 0.86, 0.86, 0.89, true)
+            end
+        end
         if ln > looted then
             rows[#rows + 1] = { kind = "stat", label = "Nothing on it", labelColor = T.textDim, color = T.textDim,
                 value = string.format("%d%%", math.floor((ln - looted) / ln * 100 + 0.5)) }
