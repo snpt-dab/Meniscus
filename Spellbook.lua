@@ -756,7 +756,17 @@ local function buildCombat()
     x:SetSize(22, 22)
     x:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -12)
     x:SetFrameLevel(win:GetFrameLevel() + 60) -- (above the header band and what is lifted onto it)
-    secureOver(x, CLOSE_SNIPPET, function() S:Close() end)
+    local xo = secureOver(x, CLOSE_SNIPPET, function() S:Close() end)
+    -- (It lies over the shell's own X and takes the mouse, so the X never
+    -- lit up under the pointer: it felt covered by something unseen. What
+    -- the pointer does here is now passed on to the X.)
+    local function pass(script)
+        local c = win.shell and win.shell.close
+        local f = c and c:GetScript(script)
+        if f then pcall(f, c) end
+    end
+    xo:SetScript("OnEnter", function() pass("OnEnter") end)
+    xo:SetScript("OnLeave", function() pass("OnLeave") end)
 end
 
 -- ── Paging / tabs ─────────────────────────────────────────────────────────
