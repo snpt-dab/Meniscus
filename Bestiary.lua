@@ -14,6 +14,13 @@ local T = ns.Theme
 --     t  = kind (Beast),    f = family (Cat),   cl = rank (elite, rare...),
 --     ag = 1 hostile / 0 neutral,
 --     z  = { [zone] = true }            where (6 at most),
+--     (0.1.592) mana = true (it has mana), uc = its class as the game has
+--          it (MAGE, WARRIOR...), tame = true (a hunter was told so),
+--          sk = how its corpse is gathered (leather / herb / rock / bolts),
+--          qs = { [quest name] = true } quests it counted for (4),
+--          rep = { [faction] = change per kill } (3),
+--          xp = experience for a kill, xl = your level when it gave that,
+--          cn = coin found on its corpses in all (copper),
 --     dsp = { [display id] = true }     its looks (0.1.575, 12 at most):
 --          one creature can wear several bodies (a Southsea Brigand is a
 --          gnoll, a troll, a human... and still the one creature to the
@@ -131,7 +138,13 @@ local function view(id)
     v.lo = (own.lo and sh.lo) and math.min(own.lo, sh.lo) or own.lo or sh.lo
     v.hi = (own.hi and sh.hi) and math.max(own.hi, sh.hi) or own.hi or sh.hi
     if not v.hi then v.lo = nil end
-    for _, key in ipairs({ "z", "c", "hp", "hit", "dsp", "db", "cc", "dbt" }) do
+    for _, key in ipairs({ "mana", "uc", "tame", "sk", "xp", "xl" }) do
+        if own[key] ~= nil then v[key] = own[key] else v[key] = sh[key] end
+    end
+    -- (coin for a kill: your own corpses if you have any, else the others')
+    if own.cn then v.cn, v.cb = own.cn, math.max(own.lk or 0, own.ln or 0)
+    elseif sh.cn then v.cn, v.cb = sh.cn, math.max(sh.lk or 0, sh.ln or 0) end
+    for _, key in ipairs({ "z", "c", "hp", "hit", "dsp", "db", "cc", "dbt", "qs", "rep" }) do
         if own[key] or sh[key] then
             local t = {}
             for k, val in pairs(sh[key] or {}) do t[k] = val end
@@ -235,6 +248,7 @@ end
 -- or a nameplate. seen[guid]: 1 once its standing facts are written, 2 once
 -- its health is too (nothing more to learn from looking at this one).
 local seen, nSeen = {}, 0
+local noteTip -- (below: what its tooltip says)
 local function observe(unit)
     local id, guid = npcID(unit)
     if not id or seen[guid] == 2 then return end
@@ -267,6 +281,11 @@ local function observe(unit)
         if str(cl) and RANK[cl] then r.cl = cl end
         local react = call(UnitReaction, unit, "player")
         if plain(react) then r.ag = react < 4 and 1 or 0 end
+        local pt, pm = call(UnitPowerType, unit), call(UnitPowerMax, unit, 0)
+        if plain(pt) and pt == 0 and plain(pm) and pm > 0 and not r.mana then r.mana = true; new = true end
+        local _, uc = call(UnitClass, unit)
+        if str(uc) then r.uc = uc end
+        pcall(noteTip, unit, id, r)
         local z = zoneNow()
         if z then
             r.z = r.z or {}
@@ -328,6 +347,49 @@ local function noteLook()
         r.dsp = r.dsp or {}
         if not r.dsp[d] and count(r.dsp) < 12 then r.dsp[d] = true; changed(id) end
     end)
+end
+
+-- What the game's own tooltip says of it: that a hunter can tame it, how
+-- its corpse can be gathered, which of your quests it counts for.
+local SKIN = {}
+SKIN[_G.UNIT_SKINNABLE_LEATHER or "Skinnable"] = "leather"
+SKIN[_G.UNIT_SKINNABLE_HERB or "Requires Herbalism"] = "herb"
+SKIN[_G.UNIT_SKINNABLE_ROCK or "Requires Mining"] = "rock"
+SKIN[_G.UNIT_SKINNABLE_BOLTS or "Requires Engineering"] = "bolts"
+function noteTip(unit, id, r)
+    local TI = C_TooltipInfo
+    if not (TI and TI.GetUnit) then return end
+    local data = call(TI.GetUnit, unit)
+    local lines = type(data) == "table" and data.lines
+    if type(lines) ~= "table" then return end
+    local QT = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.QuestTitle
+    local new = false
+    for i = 2, #lines do
+        local ln = lines[i]
+        local text = type(ln) == "table" and ln.leftText
+        if str(text) then
+            if text == (_G.TAMEABLE or "Tameable") then
+                if not r.tame then r.tame = true; new = true end
+            elseif SKIN[text] then
+                if r.sk ~= SKIN[text] then r.sk = SKIN[text]; new = true end
+            elseif QT and not secret(ln.type) and ln.type == QT then
+                r.qs = r.qs or {}
+                if not r.qs[text] and count(r.qs) < 4 then r.qs[text] = true; new = true end
+            end
+        end
+    end
+    if new then changed(id) end
+end
+-- (A corpse: looked at again, for "Skinnable", which only a corpse says.)
+local corpseSeen, nCorpse = {}, 0
+local function noteCorpse(unit)
+    if not isTrue(call(UnitIsDead, unit)) then return end
+    local id, guid = npcID(unit)
+    local r = id and record(id)
+    if not r or corpseSeen[guid] then return end
+    if nCorpse > 300 then wipe(corpseSeen); nCorpse = 0 end
+    corpseSeen[guid] = true; nCorpse = nCorpse + 1
+    noteTip(unit, id, r)
 end
 
 local function noteCast(unit, spellID, done)
@@ -410,10 +472,40 @@ local function diag(key, what)
     if type(dg) ~= "table" then dg = {}; MinimalUIDB[key] = dg end
     dg[what] = (dg[what] or 0) + 1
 end
+-- Reputation for a kill: the game's line "Reputation with X increased by
+-- N" names no creature. It goes to the kill it arrives with (two seconds
+-- either side).
+local lastKill, repWait = nil, {}
+local function attachRep(id, faction, n)
+    local r = record(id)
+    if not r then return end
+    r.rep = r.rep or {}
+    if r.rep[faction] == nil and count(r.rep) >= 3 then return end
+    if r.rep[faction] ~= n then r.rep[faction] = n; changed(id) end
+end
+local function noteRep(text)
+    if not str(text) then return end
+    local faction, n = text:match("eputation with (.-) increased by (%d+)")
+    if faction then n = tonumber(n)
+    else
+        faction, n = text:match("eputation with (.-) decreased by (%d+)")
+        n = faction and -tonumber(n) or nil
+    end
+    if not (faction and n) then return end
+    local now = GetTime()
+    if lastKill and now - lastKill.t < 2 then attachRep(lastKill.id, faction, n)
+    elseif #repWait < 6 then repWait[#repWait + 1] = { f = faction, n = n, t = now } end
+end
 local function addKill(id, lvl, inFight)
     local r = record(id, true)
     r.k = (r.k or 0) + 1
     r.lk = (r.lk or 0) + 1
+    local now = GetTime()
+    lastKill = { id = id, t = now }
+    for _, w in ipairs(repWait) do
+        if now - w.t < 2 then attachRep(id, w.f, w.n) end
+    end
+    wipe(repWait)
     if inFight then fightKills[#fightKills + 1] = { id = id, lvl = lvl } end
     changed(id)
 end
@@ -452,6 +544,12 @@ local function noteXP(text)
     if not name then diag("killdiag", "experience line, other wording") return end
     local id = idByName(name)
     if not id then diag("killdiag", "experience line, creature not in the book") return end
+    local gained = tonumber(text:match("you gain (%d+) experience"))
+    local mine = call(UnitLevel, "player")
+    local rx = record(id)
+    if rx and gained and gained > 0 then
+        rx.xp, rx.xl = gained, plain(mine) and mine or nil
+    end
     if take(owedBySight, name, 10) then return end
     owe(owedByXP, name)
     local lvl
@@ -476,6 +574,7 @@ local CONTROL = { STUN = "Stuns", STUN_MECHANIC = "Stuns", FEAR = "Fears", FEAR_
                   PACIFY = "Pacifies", PACIFYSILENCE = "Pacifies", SCHOOL_INTERRUPT = "Interrupts your casting",
                   DISORIENT = "Disorients", INCAPACITATE = "Incapacitates", SAP = "Incapacitates", CYCLONE = "Lifts you out of the fight",
                   BANISH = "Banishes", SNARE = "Slows", DAZE = "Dazes", SLEEP = "Puts you to sleep", HORROR = "Fears", POLYMORPH = "Polymorphs" }
+function B.ControlWord(kind) return CONTROL[kind] or kind end
 local controlWait = {}
 local function creditControl(id, name, kind, sid)
     local r = id and record(id)
@@ -730,11 +829,16 @@ end
 -- from several corpses at once (looting a heap): each is credited.
 -- A corpse with nothing on it can't be opened, so it is never counted:
 -- the rates are "of those that had anything", a little high.
+local coinNow -- (the coin in the slot being read: to the first corpse it came from)
 local function creditLoot(item, guid, ...)
     if guid == nil then return end
     local id = npcOf(guid)
     if id then
         local r = record(id, true)
+        if coinNow then
+            r.cn = (r.cn or 0) + coinNow
+            coinNow = nil
+        end
         if not seenLoot[guid] then
             if nLoot > 600 then wipe(seenLoot); nLoot = 0 end
             seenLoot[guid] = {}; nLoot = nLoot + 1
@@ -751,6 +855,7 @@ local function creditLoot(item, guid, ...)
     end
     return creditLoot(item, select(2, ...)) -- (guid, quantity, guid, quantity...)
 end
+local coinSeen = {}
 local function noteLoot()
     if not (GetNumLootItems and GetLootSourceInfo and GetLootSlotLink) then return end
     local n = call(GetNumLootItems)
@@ -758,7 +863,19 @@ local function noteLoot()
     for slot = 1, n do
         local link = call(GetLootSlotLink, slot)
         local item = str(link) and tonumber(link:match("item:(%d+)")) or nil
+        coinNow = nil
+        if not item and GetLootSlotInfo then
+            -- (a slot with no item is coin: "1 Silver 20 Copper", read once for each corpse)
+            local _, text = call(GetLootSlotInfo, slot)
+            local src = call(GetLootSourceInfo, slot)
+            if str(text) and str(src) and not coinSeen[src] then
+                local c = (tonumber(text:match("(%d+) Gold")) or 0) * 10000 + (tonumber(text:match("(%d+) Silver")) or 0) * 100
+                    + (tonumber(text:match("(%d+) Copper")) or 0)
+                if c > 0 then coinNow = c; coinSeen[src] = true end
+            end
+        end
         pcall(function() creditLoot(item, GetLootSourceInfo(slot)) end)
+        coinNow = nil
     end
 end
 
@@ -855,11 +972,11 @@ end
 --   { words to find in the emote (lower case, any of them), label, what it means }
 local BEHAVIORS = {
     { { "run away in fear", "attempts to flee", "flees" }, "Runs away in fear",
-      "Runs when badly hurt, and may come back with others." },
+      "Runs when badly hurt, and may come back with others.", "micro_pointer.tga" },
     { { "calls for help", "call for help", "calls for aid" }, "Calls for help",
-      "Brings nearby allies into the fight." },
-    { { "enrage" }, "Enrages", "Hits harder or faster once it is hurt." },
-    { { "frenzy" }, "Goes into a frenzy", "Attacks faster for a while." },
+      "Brings nearby allies into the fight.", "micro_group.tga" },
+    { { "enrage" }, "Enrages", "Hits harder or faster once it is hurt.", "micro_stat_str.tga" },
+    { { "frenzy" }, "Goes into a frenzy", "Attacks faster for a while.", "micro_stat_str.tga" },
 }
 local function behaviorOf(line)
     if line.k ~= "emote" or type(line.t) ~= "string" then return end
@@ -872,6 +989,68 @@ local function behaviorOf(line)
 end
 B.BehaviorOf = behaviorOf
 
+-- The traits (0.1.592): what is true of a creature that a small picture
+-- can say, each with a tooltip. The bestiary shows them as a strip of
+-- round icons under its name, in place of rows of words.
+local BLUE, GOLD, GREEN, GREY = { 0.45, 0.68, 1.00 }, { 0.95, 0.80, 0.35 }, { 0.45, 0.85, 0.50 }, { 0.62, 0.62, 0.68 }
+local DISPEL = { Poison = { "micro_dispel_poison.tga", { 0.45, 0.85, 0.40 } }, Disease = { "micro_dispel_disease.tga", { 0.80, 0.62, 0.35 } },
+                 Curse = { "micro_dispel_curse.tga", { 0.72, 0.45, 0.95 } }, Magic = { "micro_dispel_magic.tga", { 0.45, 0.68, 1.00 } } }
+local GATHER = { leather = { "Skinnable", "Its corpse can be skinned." }, herb = { "Herbs on its corpse", "Its corpse can be gathered with Herbalism." },
+                 rock = { "Ore on its corpse", "Its corpse can be mined." }, bolts = { "Parts on its corpse", "Its corpse can be salvaged with Engineering." } }
+function B.Traits(id)
+    local r = id and view(id)
+    local t = {}
+    if not r then return t end
+    local function add(tex, c, title, text) t[#t + 1] = { tex = MEDIA .. tex, c = c, title = title, text = text } end
+    if r.ag == 1 then add("micro_stat_melee.tga", RED, "Hostile", "Attacks you on sight.")
+    elseif r.ag == 0 then add("micro_stat_melee.tga", GOLD, "Neutral", "Leaves you alone unless you attack it.") end
+    if r.cl == "rare" then add("micro_achievement.tga", RARE, "Rare", "A rare spawn: not often there.")
+    elseif r.cl then add("micro_achievement.tga", ELITE, RANK[r.cl] or "Elite", "Much tougher than its level says.") end
+    if r.mana or r.uc == "MAGE" then add("micro_stat_spell.tga", BLUE, "Caster", "Has mana and casts spells.")
+    elseif r.uc == "PALADIN" then add("micro_stat_spell.tga", GREY, "Fighter with spells", "Fights hand to hand, with some mana to call on.") end
+    local seenB = {}
+    for _, line in ipairs(r.q or {}) do
+        local b = B.BehaviorOf(line)
+        if b and not seenB[b] then
+            seenB[b] = true
+            add(b[4] or "micro_eye.tga", GREY, b[2], b[3])
+        end
+    end
+    for name, kind in pairs(r.cc or {}) do
+        add("micro_stat_resist.tga", RED, (B.ControlWord(kind)) .. " you", "With " .. name .. ": you lose control of your character.")
+    end
+    local seenD = {}
+    for name, kind in pairs(r.dbt or {}) do
+        local d = DISPEL[kind]
+        if d and not seenD[kind] then seenD[kind] = true; add(d[1], d[2], kind, "Leaves " .. name .. " on you.") end
+    end
+    if r.tame then add("micro_class_hunter.tga", GREEN, "Tameable", "A hunter can tame it." .. (r.f and (" Family: " .. r.f .. ".") or ""))
+    elseif r.t == "Beast" and r.f then add("micro_class_hunter.tga", GREY, "Likely tameable", "A beast of the " .. r.f .. " family. Not confirmed: only a hunter is told.") end
+    if r.sk and GATHER[r.sk] then add(r.sk == "leather" and "micro_profession.tga" or (r.sk == "rock" and "micro_node_ore.tga" or "micro_node.tga"), GOLD, GATHER[r.sk][1], GATHER[r.sk][2]) end
+    if r.qs and next(r.qs) then
+        local names = {}
+        for q in pairs(r.qs) do names[#names + 1] = q end
+        table.sort(names)
+        add("micro_quest.tga", GOLD, "Quest target", "Counted for: " .. table.concat(names, ", ") .. ".")
+    end
+    if r.rep and next(r.rep) then
+        local bits, gain = {}, false
+        for f, n in pairs(r.rep) do bits[#bits + 1] = f .. " " .. (n > 0 and "+" or "") .. n; if n > 0 then gain = true end end
+        table.sort(bits)
+        add("micro_guild.tga", gain and GREEN or RED, "Reputation", "For a kill: " .. table.concat(bits, ", ") .. ".")
+    end
+    return t
+end
+local function coins(c)
+    c = math.floor(c + 0.5)
+    local g, s2, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
+    local out = {}
+    if g > 0 then out[#out + 1] = g .. "g" end
+    if s2 > 0 then out[#out + 1] = s2 .. "s" end
+    if cp > 0 or #out == 0 then out[#out + 1] = cp .. "c" end
+    return table.concat(out, " ")
+end
+
 local lootOpen = {} -- (creatures whose whole loot list is open: this session)
 function B.Rows(rows, id, full)
     local r = id and view(id)
@@ -881,10 +1060,9 @@ function B.Rows(rows, id, full)
         return rows
     end
     if full then
+        -- (Type, rank and disposition are in the header line and the icons.)
         head(rows, "About", "micro_character.tga")
-        stat(rows, "Type", r.t and (r.f and (r.t .. ", " .. r.f) or r.t) or nil)
-        stat(rows, "Rank", r.cl and RANK[r.cl] or nil, T.accent)
-        if r.ag then stat(rows, "Disposition", r.ag == 1 and "Hostile" or "Neutral", r.ag == 1 and RED or { 0.92, 0.82, 0.36, 1 }) end
+        if r.f then stat(rows, "Family", r.f) end
         if r.lo then stat(rows, levelLabel(r), levels(r)) end
     elseif r.lo then
         stat(rows, levelLabel(r), levels(r))
@@ -957,6 +1135,15 @@ function B.Rows(rows, id, full)
                         0.6, 0.6, 0.65, true)
                 end }
         end
+    end
+    -- what a kill is worth
+    if r.xp then stat(rows, "Experience", r.xp .. (r.xl and ("   at your level " .. r.xl) or "")) end
+    do
+        local base = r.cb or math.max(r.lk or 0, r.ln or 0)
+        if r.cn and base > 0 then stat(rows, "Coin per kill", coins(r.cn / base)) end
+    end
+    if not full then
+        for f, n in pairs(r.rep or {}) do stat(rows, "Reputation", f .. " " .. (n > 0 and "+" or "") .. n) end
     end
     -- what it does
     local names = {}
@@ -1076,7 +1263,7 @@ function B.Rows(rows, id, full)
     local warns = {}
     for name, kind in pairs(r.cc or {}) do warns[#warns + 1] = { name = name, word = CONTROL[kind] or kind } end
     table.sort(warns, function(a, b) return a.name < b.name end)
-    if #does > 0 or #warns > 0 then
+    if not full and (#does > 0 or #warns > 0) then -- (the bestiary's own window says these with icons)
         head(rows, "Behavior", "micro_eye.tga")
         for _, w in ipairs(warns) do
             rows[#rows + 1] = { kind = "stat", label = w.word .. " you", labelColor = RED, value = w.name, color = T.textDim,
@@ -1158,6 +1345,9 @@ local function haystack(id, r)
     for z in pairs(r.z or {}) do bits[#bits + 1] = z end
     for name in pairs(r.c or {}) do bits[#bits + 1] = name end
     for name in pairs(r.db or {}) do bits[#bits + 1] = name end
+    for _, tr in ipairs(B.Traits(id)) do bits[#bits + 1] = tr.title end
+    for q in pairs(r.qs or {}) do bits[#bits + 1] = q end
+    for f in pairs(r.rep or {}) do bits[#bits + 1] = f end
     for name, kind in pairs(r.cc or {}) do bits[#bits + 1] = name; bits[#bits + 1] = (CONTROL[kind] or kind) end
     for _, kind in pairs(r.dbt or {}) do bits[#bits + 1] = kind end
     for name in pairs(r.hit or {}) do bits[#bits + 1] = name end
@@ -1370,6 +1560,49 @@ local function showModel(id, form)
     end
 end
 
+local function showTraits(id)
+    local list = id and B.Traits(id) or {}
+    for i = 1, math.max(#list, #win.traitBtns) do
+        local b, d = win.traitBtns[i], list[i]
+        if d and i <= 14 then
+            if not b then
+                b = CreateFrame("Button", nil, win.top)
+                b:SetSize(24, 24)
+                b.rim = b:CreateTexture(nil, "ARTWORK", nil, 0)
+                b.rim:SetTexture(MEDIA .. "circle.tga")
+                b.rim:SetAllPoints()
+                b.fill = b:CreateTexture(nil, "ARTWORK", nil, 1)
+                b.fill:SetTexture(MEDIA .. "circle.tga")
+                b.fill:SetPoint("TOPLEFT", 1.5, -1.5)
+                b.fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+                b.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+                b.icon = b:CreateTexture(nil, "OVERLAY")
+                b.icon:SetSize(14, 14)
+                b.icon:SetPoint("CENTER")
+                b:SetPoint("TOPLEFT", win.sub, "BOTTOMLEFT", ((i - 1) % 7) * 28, -10 - math.floor((i - 1) / 7) * 28)
+                b:SetScript("OnEnter", function(self)
+                    local d2 = self.d
+                    if not d2 then return end
+                    self.fill:SetVertexColor(0.13, 0.13, 0.15, 1)
+                    ns.TipAnchor(self)
+                    GameTooltip:SetText(d2.title, d2.c[1], d2.c[2], d2.c[3])
+                    if d2.text then GameTooltip:AddLine(d2.text, 0.86, 0.86, 0.89, true) end
+                    GameTooltip:Show()
+                end)
+                b:SetScript("OnLeave", function(self) self.fill:SetVertexColor(0.06, 0.06, 0.07, 1); GameTooltip:Hide() end)
+                win.traitBtns[i] = b
+            end
+            b.d = d
+            b.icon:SetTexture(d.tex)
+            b.icon:SetVertexColor(d.c[1], d.c[2], d.c[3], 1)
+            b.rim:SetVertexColor(d.c[1] * 0.55, d.c[2] * 0.55, d.c[3] * 0.55, 1)
+            b:Show()
+        elseif b then
+            b:Hide()
+        end
+    end
+end
+
 function B:Pick(id)
     picked = id
     if win then showModel(id) end
@@ -1396,10 +1629,12 @@ function B:Refresh()
         if r.t then bits[#bits + 1] = r.t end
         win.sub:SetText(table.concat(bits, "   ·   "))
         win.detail:SetData(B.Rows({}, picked, true))
+        showTraits(picked)
     else
         win.name:SetText("")
         win.sub:SetText("")
         win.detail:SetData({})
+        showTraits(nil)
     end
 end
 
@@ -1535,7 +1770,7 @@ local function build()
     win.sub:SetPoint("TOPLEFT", win.name, "BOTTOMLEFT", 0, -6)
     win.sub:SetPoint("RIGHT", top, "RIGHT", -12, 0)
     win.sub:SetWordWrap(true)
-    win.top, win.formPills = top, {}
+    win.top, win.formPills, win.traitBtns = top, {}, {}
     -- "My target": the book opens on what you have targeted; this turns
     -- to it again without closing the window (0.1.583).
     local mine = ns.Pill(top, "My target", function()
@@ -1639,7 +1874,7 @@ function B:OnInit(db)
     end)
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED", "LOOT_OPENED",
-                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "LOSS_OF_CONTROL_ADDED", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
+                         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "CHAT_MSG_COMBAT_FACTION_CHANGE", "LOSS_OF_CONTROL_ADDED", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
                          "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL", "CHAT_MSG_MONSTER_EMOTE" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
@@ -1654,6 +1889,8 @@ function B:OnInit(db)
         if e == "PLAYER_ENTERING_WORLD" then C_Timer.After(3, function() if not InCombatLockdown() then pcall(fightStart) end end) return end
         if e == "CHAT_MSG_COMBAT_XP_GAIN" then pcall(noteXP, a1) return end
         if e == "LOSS_OF_CONTROL_ADDED" then pcall(noteControl) return end
+        if e == "CHAT_MSG_COMBAT_FACTION_CHANGE" then pcall(noteRep, a1) return end
+        if e == "PLAYER_TARGET_CHANGED" then pcall(noteCorpse, "target") end
         if e == "PLAYER_REGEN_ENABLED" then
             C_Timer.After(0.3, function() pcall(noteDeath, "target") end)
             C_Timer.After(0.6, function()
@@ -1666,7 +1903,7 @@ function B:OnInit(db)
         if e == "PLAYER_TARGET_CHANGED" or e == "PLAYER_REGEN_ENABLED" then pcall(observe, "target")
             -- (noteLook is not run: the game answered 0 for every creature
             -- asked, 39 of 39, so its forms can't be learned this way.)
-        elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover")
+        elseif e == "UPDATE_MOUSEOVER_UNIT" then pcall(observe, "mouseover"); pcall(noteCorpse, "mouseover")
         elseif e == "NAME_PLATE_UNIT_ADDED" then if type(a1) == "string" then pcall(observe, a1) end
         elseif e == "LOOT_OPENED" then pcall(noteLoot)
         else pcall(noteCast, a1, a3, e == "UNIT_SPELLCAST_SUCCEEDED") end

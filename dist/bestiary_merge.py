@@ -93,6 +93,21 @@ def clean(r):
         if v: o[k] = v
     if r.get('cl') in RANKS: o['cl'] = r['cl']
     if r.get('ag') in (0, 1): o['ag'] = r['ag']
+    for k in ('mana', 'tame'):
+        if r.get(k) is True: o[k] = True
+    v = txt(r.get('uc'), 20)
+    if v and re.fullmatch(r'[A-Z]+', v): o['uc'] = v
+    if r.get('sk') in ('leather', 'herb', 'rock', 'bolts'): o['sk'] = r['sk']
+    for k, top in (('xp', 10**6), ('xl', 255), ('cn', 10**10)):
+        v = num(r.get(k), 1, top)
+        if v: o[k] = v
+    qs = {txt(k, 80): True for k in (r.get('qs') or {}) if txt(k, 80)} if isinstance(r.get('qs'), dict) else {}
+    if qs: o['qs'] = qs
+    rep = {}
+    for k, v in (r.get('rep') or {}).items() if isinstance(r.get('rep'), dict) else ():
+        k = txt(k, 60)
+        if k and num(v, -10**5, 10**5): rep[k] = v
+    if rep: o['rep'] = rep
     z = {txt(k, 60): True for k in (r.get('z') or {}) if txt(k, 60)} if isinstance(r.get('z'), dict) else {}
     if z: o['z'] = z
     dsp = {k: True for k in (r.get('dsp') or {}) if num(k, 1, 10**7)} if isinstance(r.get('dsp'), dict) else {}
@@ -153,8 +168,11 @@ def merge(a, b):
     if a is None: return b
     if 'lo' in b:
         a['lo'], a['hi'] = min(a.get('lo', b['lo']), b['lo']), max(a.get('hi', b['hi']), b['hi'])
-    for k in ('t', 'f', 'cl', 'ag'):
+    for k in ('t', 'f', 'cl', 'ag', 'mana', 'uc', 'tame', 'sk', 'xp', 'xl'):
         if k not in a and k in b: a[k] = b[k]
+    if 'cn' in b: a['cn'] = a.get('cn', 0) + b['cn']
+    for k in ('qs', 'rep'):
+        for x, v in b.get(k, {}).items(): a.setdefault(k, {}).setdefault(x, v)
     if 'z' in b: a.setdefault('z', {}).update(b['z'])
     if 'dsp' in b: a.setdefault('dsp', {}).update(b['dsp'])
     for k in ('hp', 'hit'):
