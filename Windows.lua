@@ -375,10 +375,48 @@ local function seatTrade()
     if f:IsShown() then seat() end
 end
 
+-- The dressing room (0.1.612) is not docked either: it is asked for from
+-- a window that has to stay up (a quest's rewards, a merchant), and the
+-- game opened it on top of that window. It stands beside whatever is in
+-- the left dock, or, with only the right dock in use, beside that; with
+-- neither it is left where the game puts it.
+local function seatDress()
+    local f = _G.DressUpFrame
+    if type(f) ~= "table" or f.__muiSeat or not f.HookScript then return end
+    f.__muiSeat = true
+    local busy = false
+    local function seat()
+        if busy or not f:IsShown() then return end
+        local l, r = occupant("left", f), occupant("right", f)
+        if not (l or r) then return end
+        busy = true
+        pcall(function()
+            f:ClearAllPoints()
+            if l then f:SetPoint("BOTTOMLEFT", l, "BOTTOMRIGHT", 14, 0)
+            else f:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT", -14, 0) end
+            -- (too tall for the screen from there: brought down to fit)
+            local top, sh = f:GetTop(), UIParent:GetHeight()
+            local k = f:GetEffectiveScale() / UIParent:GetEffectiveScale()
+            if top and top * k > sh - 10 then
+                local at = l or r
+                local drop = (top * k - (sh - 10)) / k
+                f:ClearAllPoints()
+                if l then f:SetPoint("BOTTOMLEFT", at, "BOTTOMRIGHT", 14, -drop)
+                else f:SetPoint("BOTTOMRIGHT", at, "BOTTOMLEFT", -14, -drop) end
+            end
+        end)
+        busy = false
+    end
+    hooksecurefunc(f, "SetPoint", function() if not busy then seat() end end)
+    f:HookScript("OnShow", function() seat(); C_Timer.After(0, seat) end)
+    if f:IsShown() then seat() end
+end
+
 function W:OnInit(db)
     self.db = db
     db.sides = db.sides or {}
     pcall(seatTrade)
+    pcall(seatDress)
     for name in pairs(MANAGED) do waiting[name] = true end
 
     proxy = CreateFrame("Frame", "MeniscusEscProxy", UIParent)
@@ -427,7 +465,7 @@ function W:OnInit(db)
     driver:RegisterEvent("PLAYER_REGEN_ENABLED")
     driver:RegisterEvent("ADDON_LOADED")
     driver:SetScript("OnEvent", function(_, e)
-        if e == "ADDON_LOADED" then sweep(); pcall(seatTrade) return end
+        if e == "ADDON_LOADED" then sweep(); pcall(seatTrade); pcall(seatDress) return end
         for f, what in pairs(pending) do
             pending[f] = nil
             if what == "hide" then close(f)
