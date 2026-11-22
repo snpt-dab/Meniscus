@@ -1762,7 +1762,8 @@ local function buildNodeMap(db)
     local okF, foot = pcall(ns.MapFooter)
     foot = okF and foot or nil
     local hidePill
-    local holder = CreateFrame("Frame", nil, foot or host)
+    local footOn = foot and foot.IsOn() or false -- (off in the full-screen map: back over the corner)
+    local holder = CreateFrame("Frame", nil, foot and WM or host)
     holder:SetAllPoints()
     holder:SetFrameLevel(math.min(9000, canvas:GetFrameLevel() + 2600))
     local rows, counts, order = {}, {}, {}
@@ -1790,7 +1791,7 @@ local function buildNodeMap(db)
             return x.key < y.key
         end)
         local shown = math.min(#order, 16)
-        local room = foot and ((host:GetWidth() or 600) - 250 - (hidePill and hidePill:GetWidth() or 90)) or 0
+        local room = footOn and ((host:GetWidth() or 600) - 250 - (hidePill and hidePill:GetWidth() or 90)) or 0
         for i = 1, shown do
             local c = order[i]
             local r = rows[i]
@@ -1811,7 +1812,7 @@ local function buildNodeMap(db)
             r.selected = (c.key == only)
             r:Repaint()
             r:ClearAllPoints()
-            if foot then
+            if footOn then
                 if i == 1 then
                     if hidePill then r:SetPoint("LEFT", hidePill, "RIGHT", 10, 0) else r:SetPoint("LEFT", foot, "LEFT", 12, 0) end
                 else
@@ -1898,16 +1899,27 @@ local function buildNodeMap(db)
         if pill then pill:SetLabel(on and "Hide nodes" or "Show nodes") end
     end
     if ns.Pill then
-        pill = ns.Pill(foot or host, "Hide nodes", function()
+        pill = ns.Pill(foot and WM or host, "Hide nodes", function()
             EX.db.nodesShown = EX.db.nodesShown == false
             sync()
         end, { h = 20, font = 10, pad = 18, ring = true, dimIdle = true })
         pill.__muiSkin = true -- (the map's skin pass leaves it alone)
         -- (One row up: the map's coordinates sit in this corner.)
-        if foot then pill:SetPoint("LEFT", foot, "LEFT", 12, 0)
-        else pill:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38) end
         pill:SetFrameLevel(math.min(9000, canvas:GetFrameLevel() + 2600))
         hidePill = pill
+        local function seatPill()
+            pill:ClearAllPoints()
+            if footOn then pill:SetPoint("LEFT", foot, "LEFT", 12, 0)
+            else pill:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38) end
+        end
+        seatPill()
+        if foot then
+            foot.modeHooks[#foot.modeHooks + 1] = function(on)
+                footOn = on
+                seatPill()
+                pcall(legend)
+            end
+        end
     end
     sync()
 end

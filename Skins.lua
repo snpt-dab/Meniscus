@@ -545,6 +545,14 @@ end
 -- the gathering-node pills and the coordinates.
 local MAP_FOOT = 30
 local mapFoot
+-- Not in the full-screen map (0.1.637): that one is already as tall as the
+-- screen, so the extra height pushed its top edge (and the button that makes
+-- it small again) off the screen. There the footer is put away, the map's
+-- area goes back to the window's bottom edge, and whatever sits on the
+-- footer is told to go back over the map's corner (foot.modeHooks, each
+-- called with true / false; foot.IsOn()). The full-screen map is also
+-- lifted a layer, above our own buttons that live over the play field
+-- (the buff reminder showed through it).
 function ns.MapFooter()
     if mapFoot ~= nil then return mapFoot or nil end
     mapFoot = false
@@ -553,45 +561,83 @@ function ns.MapFooter()
     if not (wm and sc and ns.CreateFooter) then return end
     if not (S.db and S.db.enabled ~= false) then mapFoot = nil return end -- (only on the skinned map)
     local F = MAP_FOOT
-    local function raise(f)
-        if not (f and f.GetNumPoints and f.SetPoint) then return end
-        local busy = false
-        local function up(self, p, rel, rp, x, y)
-            if busy or type(p) ~= "string" then return end
-            if type(rel) == "number" then x, y, rel, rp = rel, rp, nil, nil end
-            if rel == nil then rel = self:GetParent() end
-            if type(rel) == "string" then rel = _G[rel] end
-            rp = rp or p
-            if rel ~= wm or not p:find("BOTTOM") or type(rp) ~= "string" or not rp:find("BOTTOM") then return end
-            y = type(y) == "number" and y or 0
-            if y >= F then return end
-            busy = true
-            pcall(self.SetPoint, self, p, wm, rp, type(x) == "number" and x or 0, y + F)
-            busy = false
-        end
-        hooksecurefunc(f, "SetPoint", up)
+    local on = false
+    local raised, busy = {}, false
+    local function fix(self, p, rel, rp, x, y)
+        if busy or type(p) ~= "string" then return end
+        if type(rel) == "number" then x, y, rel, rp = rel, rp, nil, nil end
+        if rel == nil then rel = self:GetParent() end
+        if type(rel) == "string" then rel = _G[rel] end
+        rp = rp or p
+        if rel ~= wm or not p:find("BOTTOM") or type(rp) ~= "string" or not rp:find("BOTTOM") then return end
+        y = type(y) == "number" and y or 0
+        local ny
+        if on and y < F then ny = y + F elseif not on and y >= F then ny = y - F end
+        if not ny then return end
+        busy = true
+        pcall(self.SetPoint, self, p, wm, rp, type(x) == "number" and x or 0, ny)
+        busy = false
+    end
+    local function refit(f)
         local pts = {}
         for i = 1, f:GetNumPoints() do pts[i] = { f:GetPoint(i) } end
-        for _, e in ipairs(pts) do up(f, e[1], e[2], e[3], e[4], e[5]) end
+        for _, e in ipairs(pts) do fix(f, e[1], e[2], e[3], e[4], e[5]) end
+    end
+    local function raise(f)
+        if not (f and f.GetNumPoints and f.SetPoint) then return end
+        hooksecurefunc(f, "SetPoint", fix)
+        raised[#raised + 1] = f
     end
     local growing, last = false, nil
     local function tall(h)
-        if growing or type(h) ~= "number" or issecretvalue(h) then return end
+        if not on or growing or type(h) ~= "number" or issecretvalue(h) then return end
         if last and math.abs(h - last) < 0.5 then return end -- (our own height, set again)
         growing = true
         last = h + F
         pcall(wm.SetHeight, wm, last)
         growing = false
     end
-    hooksecurefunc(wm, "SetSize", function(_, _, h) tall(h) end)
-    hooksecurefunc(wm, "SetHeight", function(_, h) tall(h) end)
-    tall(wm:GetHeight())
-    raise(sc)
-    raise(wm.QuestLog or _G.QuestMapFrame)
     local foot = ns:CreateFooter(wm, F)
     foot.__muiOurs = true
     foot:SetFrameLevel(wm:GetFrameLevel() + 1)
+    foot.modeHooks = {}
+    function foot.IsOn() return on end
+    local baseStrata = wm:GetFrameStrata()
+    if baseStrata == "DIALOG" or baseStrata == "FULLSCREEN" then baseStrata = "HIGH" end
+    local function sync()
+        local full = wm.IsMaximized and wm:IsMaximized()
+        local want = not full
+        if want == on then return end
+        on = want
+        if on then
+            last = nil
+            tall(wm:GetHeight())
+        else
+            local h = wm:GetHeight()
+            if last and type(h) == "number" and math.abs(h - last) < 0.5 then
+                growing = true
+                pcall(wm.SetHeight, wm, last - F)
+                growing = false
+            end
+            last = nil
+        end
+        for _, f in ipairs(raised) do refit(f) end
+        foot:SetShown(on)
+        pcall(wm.SetFrameStrata, wm, on and baseStrata or "DIALOG")
+        for _, fn in ipairs(foot.modeHooks) do pcall(fn, on) end
+    end
+    local function later() C_Timer.After(0, function() pcall(sync) end) end
+    hooksecurefunc(wm, "SetSize", function(_, _, h) tall(h); later() end)
+    hooksecurefunc(wm, "SetHeight", function(_, h) tall(h) end)
+    for _, k in ipairs({ "Maximize", "Minimize", "SynchronizeDisplayState" }) do
+        if type(wm[k]) == "function" then pcall(hooksecurefunc, wm, k, function() pcall(sync) end) end
+    end
+    wm:HookScript("OnShow", function() pcall(sync) end)
+    raise(sc)
+    raise(wm.QuestLog or _G.QuestMapFrame)
+    foot:Hide()
     mapFoot = foot
+    pcall(sync)
     return foot
 end
 
@@ -606,16 +652,23 @@ local function skinMap()
     -- the map's corner in a dark pill where there is no footer.)
     local okF, foot = pcall(ns.MapFooter)
     foot = okF and foot or nil
-    local chip = CreateFrame("Frame", nil, foot or sc or wm)
+    local chip = CreateFrame("Frame", nil, wm)
     chip:SetHeight(22)
-    if foot and sc then
-        chip:SetPoint("RIGHT", sc, "BOTTOMRIGHT", -4, -(MAP_FOOT / 2 + 1))
-        chip:SetFrameLevel(foot:GetFrameLevel() + 2)
-    else
-        chip:SetPoint("BOTTOMLEFT", sc or wm, "BOTTOMLEFT", 10, 10)
-        chip:SetFrameLevel((sc or wm):GetFrameLevel() + 50)
-        ns.RoundedRect(chip, -6, 0, 11, 0.06, 0.06, 0.07, 0.88)
+    chip.__muiOurs = true -- (the window's skin pass leaves it alone)
+    chip:SetFrameLevel((sc or wm):GetFrameLevel() + 50)
+    local chipPaint = ns.RoundedRect(chip, -6, 0, 11, 0.06, 0.06, 0.07, 0.88)
+    local function seatChip(on)
+        chip:ClearAllPoints()
+        if on and sc then
+            chip:SetPoint("RIGHT", sc, "BOTTOMRIGHT", -4, -(MAP_FOOT / 2 + 1))
+            chipPaint(0.06, 0.06, 0.07, 0)
+        else
+            chip:SetPoint("BOTTOMLEFT", sc or wm, "BOTTOMLEFT", 10, 10)
+            chipPaint(0.06, 0.06, 0.07, 0.88)
+        end
     end
+    if foot then foot.modeHooks[#foot.modeHooks + 1] = seatChip end
+    seatChip(foot and foot.IsOn())
     local fs = chip:CreateFontString(nil, "OVERLAY")
     ns:SetFont(fs, 11, "", true)
     fs:SetTextColor(unpack(T.text))
