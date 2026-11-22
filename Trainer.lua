@@ -494,6 +494,17 @@ function TR:Refresh()
                 b.name, b.rank, b.max = sn, rank, max
                 b.fs:SetText(max and (rank .. " / " .. max) or tostring(rank))
                 b.icon:SetTexture(MEDIA .. "micro_" .. (PROF_EMBLEM[sn] or "profession") .. ".tga")
+                -- (First aid: a red cross on a white disc. White on dark
+                -- it read as a "plus" button: 0.1.635.)
+                if sn == "First Aid" then
+                    b.rim:SetVertexColor(0.93, 0.93, 0.95, 1)
+                    b.fill:SetVertexColor(0.93, 0.93, 0.95, 1)
+                    b.icon:SetVertexColor(0.84, 0.20, 0.18)
+                else
+                    b.rim:SetVertexColor(0.42, 0.42, 0.47, 1)
+                    b.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+                    b.icon:SetVertexColor(T.text[1], T.text[2], T.text[3])
+                end
                 b:SetWidth(22 + 6 + b.fs:GetStringWidth())
                 b:Show()
             end
@@ -568,6 +579,7 @@ local function build()
         rim:SetAllPoints()
         rim:SetVertexColor(0.42, 0.42, 0.47, 1)
         local fill = box:CreateTexture(nil, "ARTWORK", nil, 1)
+        b.rim, b.fill = rim, fill
         fill:SetTexture(MEDIA .. "circle.tga")
         fill:SetPoint("TOPLEFT", 1.5, -1.5)
         fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)

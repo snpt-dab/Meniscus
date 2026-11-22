@@ -535,6 +535,66 @@ local function skinMerchant()
     ev:SetScript("OnEvent", function() if m:IsShown() then update() end end)
 end
 
+-- ── World map: a footer band (0.1.635) ────────────────────────────────────
+-- The map's own area runs to the window's bottom edge and keeps the map's
+-- proportions (697 x 465 in a 1035 x 534 window, read from this client), so
+-- a footer can't be taken out of it. The window is made that much taller
+-- instead, each time the game sizes it, and the two things pinned to its
+-- bottom edge (the map's area, the quest log) are pinned that much higher.
+-- The band then holds what used to float over the map's lower left corner:
+-- the gathering-node pills and the coordinates.
+local MAP_FOOT = 30
+local mapFoot
+function ns.MapFooter()
+    if mapFoot ~= nil then return mapFoot or nil end
+    mapFoot = false
+    local wm = _G.WorldMapFrame
+    local sc = wm and wm.ScrollContainer
+    if not (wm and sc and ns.CreateFooter) then return end
+    if not (S.db and S.db.enabled ~= false) then mapFoot = nil return end -- (only on the skinned map)
+    local F = MAP_FOOT
+    local function raise(f)
+        if not (f and f.GetNumPoints and f.SetPoint) then return end
+        local busy = false
+        local function up(self, p, rel, rp, x, y)
+            if busy or type(p) ~= "string" then return end
+            if type(rel) == "number" then x, y, rel, rp = rel, rp, nil, nil end
+            if rel == nil then rel = self:GetParent() end
+            if type(rel) == "string" then rel = _G[rel] end
+            rp = rp or p
+            if rel ~= wm or not p:find("BOTTOM") or type(rp) ~= "string" or not rp:find("BOTTOM") then return end
+            y = type(y) == "number" and y or 0
+            if y >= F then return end
+            busy = true
+            pcall(self.SetPoint, self, p, wm, rp, type(x) == "number" and x or 0, y + F)
+            busy = false
+        end
+        hooksecurefunc(f, "SetPoint", up)
+        local pts = {}
+        for i = 1, f:GetNumPoints() do pts[i] = { f:GetPoint(i) } end
+        for _, e in ipairs(pts) do up(f, e[1], e[2], e[3], e[4], e[5]) end
+    end
+    local growing, last = false, nil
+    local function tall(h)
+        if growing or type(h) ~= "number" or issecretvalue(h) then return end
+        if last and math.abs(h - last) < 0.5 then return end -- (our own height, set again)
+        growing = true
+        last = h + F
+        pcall(wm.SetHeight, wm, last)
+        growing = false
+    end
+    hooksecurefunc(wm, "SetSize", function(_, _, h) tall(h) end)
+    hooksecurefunc(wm, "SetHeight", function(_, h) tall(h) end)
+    tall(wm:GetHeight())
+    raise(sc)
+    raise(wm.QuestLog or _G.QuestMapFrame)
+    local foot = ns:CreateFooter(wm, F)
+    foot.__muiOurs = true
+    foot:SetFrameLevel(wm:GetFrameLevel() + 1)
+    mapFoot = foot
+    return foot
+end
+
 -- ── World map: skin + coordinates ─────────────────────────────────────────
 local function skinMap()
     local wm = _G.WorldMapFrame
@@ -542,11 +602,20 @@ local function skinMap()
     ns.SkinWindow(wm)
     if not S.db.coords then return end
     local sc = wm.ScrollContainer
-    local chip = CreateFrame("Frame", nil, sc or wm)
+    -- (On the footer, under the map's right-hand end, as plain text; over
+    -- the map's corner in a dark pill where there is no footer.)
+    local okF, foot = pcall(ns.MapFooter)
+    foot = okF and foot or nil
+    local chip = CreateFrame("Frame", nil, foot or sc or wm)
     chip:SetHeight(22)
-    chip:SetPoint("BOTTOMLEFT", sc or wm, "BOTTOMLEFT", 10, 10)
-    chip:SetFrameLevel((sc or wm):GetFrameLevel() + 50)
-    ns.RoundedRect(chip, -6, 0, 11, 0.06, 0.06, 0.07, 0.88)
+    if foot and sc then
+        chip:SetPoint("RIGHT", sc, "BOTTOMRIGHT", -4, -(MAP_FOOT / 2 + 1))
+        chip:SetFrameLevel(foot:GetFrameLevel() + 2)
+    else
+        chip:SetPoint("BOTTOMLEFT", sc or wm, "BOTTOMLEFT", 10, 10)
+        chip:SetFrameLevel((sc or wm):GetFrameLevel() + 50)
+        ns.RoundedRect(chip, -6, 0, 11, 0.06, 0.06, 0.07, 0.88)
+    end
     local fs = chip:CreateFontString(nil, "OVERLAY")
     ns:SetFont(fs, 11, "", true)
     fs:SetTextColor(unpack(T.text))
@@ -1834,29 +1903,45 @@ local function deepMap()
     if _G.QuestMapFrame and _G.QuestMapFrame ~= wm.QuestLog then stripBigArt(_G.QuestMapFrame, 0) end
     if wm.__muiHolder then ours(wm.__muiHolder) end
 
-    -- The header band (0.1.631): our windows' band, laid behind the strip
-    -- the map already has above it (title row, then the breadcrumbs and the
-    -- quest search), so nothing of the game's is moved. The game's centred
-    -- "Map & Quest Log" goes; the open map's name stands at the left as
-    -- the title, with the breadcrumbs under it.
+    -- The header band (0.1.631, one row since 0.1.635): our windows' band,
+    -- laid behind the strip the map already has above it. The game's
+    -- centred "Map & Quest Log" goes, and so does a title of our own: the
+    -- breadcrumbs are the title (the last of them, the open map, in white;
+    -- the way back to it dim), level with the quest search on the right.
+    -- Measured on this client: the strip is 67 high, the breadcrumbs were
+    -- set in 64 from the left (room for a portrait that is not there) and
+    -- sat 7 lower than the search box.
     local sc = wm.ScrollContainer
-    local mapTitle
-    local function nameMap()
-        if not mapTitle then return end
-        local id = wm.GetMapID and wm:GetMapID()
-        local info = id and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(id)
-        local n = info and info.name
-        mapTitle:SetText(type(n) == "string" and not issecretvalue(n) and n or (_G.WORLD_MAP or "Map"))
+    local nav = wm.NavBar
+    local function crumbText(b) return (b.GetFontString and b:GetFontString()) or b.text end
+    local function lastCrumb()
+        if not nav then return end
+        local list, last = nav.navList, nil
+        if type(list) == "table" and #list > 0 then
+            last = list[#list]
+        else
+            local best
+            for _, b in ipairs({ nav:GetChildren() }) do
+                local l = b:IsObjectType("Button") and b:IsShown() and b:GetLeft()
+                if l and (not best or l > best) and crumbText(b) then best, last = l, b end
+            end
+        end
+        for _, b in ipairs({ nav:GetChildren() }) do
+            if b:IsObjectType("Button") then
+                local fs = crumbText(b)
+                local was = b.__muiLast
+                b.__muiLast = (b == last) or nil
+                if fs and fs.SetTextColor and was ~= b.__muiLast and not b:IsMouseOver() then
+                    local c = b.__muiLast and T.text or T.textDim
+                    fs:SetTextColor(c[1], c[2], c[3])
+                end
+            end
+        end
     end
     if sc and ns.CreateBand then
         local band = ours(ns:CreateBand(wm))
         band:SetPoint("BOTTOM", sc, "TOP", 0, 6)
         band:SetFrameLevel(wm:GetFrameLevel())
-        mapTitle = band:CreateFontString(nil, "OVERLAY")
-        mapTitle.__muiOurs = true
-        ns:SetFont(mapTitle, 16, "", true)
-        mapTitle:SetTextColor(T.text[1], T.text[2], T.text[3])
-        mapTitle:SetPoint("TOPLEFT", band, "TOPLEFT", 20, -9)
         local tc = bf and bf.TitleContainer
         if tc then
             fade(tc.TitleText)
@@ -1864,29 +1949,28 @@ local function deepMap()
                 if r:IsObjectType("FontString") then fade(r) end
             end
         end
-        if wm.OnMapChanged then pcall(hooksecurefunc, wm, "OnMapChanged", function() pcall(nameMap) end) end
-        -- The breadcrumbs under it, as the title's second line (0.1.634):
-        -- the game sets them in from the left to clear a portrait that is
-        -- not there, which left them hanging to the right of the title.
-        -- They are brought to the title's left edge, each time the game
-        -- places them (it does so again when the map is made large or small).
-        local nav = wm.NavBar
+        if wm.OnMapChanged then
+            pcall(hooksecurefunc, wm, "OnMapChanged", function() C_Timer.After(0, function() pcall(lastCrumb) end) end)
+        end
         if nav and nav.GetPoint then
             local moving = false
-            local function left(self, p, rel, rp, x, y)
-                if moving or type(x) ~= "number" or x <= 14 or type(p) ~= "string" or not p:find("LEFT") then return end
+            local function place(self, p, rel, rp, x, y)
+                if moving or type(x) ~= "number" or type(y) ~= "number" or type(p) ~= "string" then return end
+                local nx, ny = x, y
+                if p:find("LEFT") and x > 14 then nx = 8 end
+                if p:find("TOP") and y <= -22 then ny = y + 7 end
+                if p:find("BOTTOM") and y >= 0 and y < 14 then ny = y + 7 end
+                if nx == x and ny == y then return end
                 moving = true
-                pcall(self.SetPoint, self, p, rel, rp, 8, y or 0)
+                pcall(self.SetPoint, self, p, rel, rp, nx, ny)
                 moving = false
             end
-            hooksecurefunc(nav, "SetPoint", left)
-            for i = 1, nav:GetNumPoints() do
-                local p, rel, rp, x, y = nav:GetPoint(i)
-                left(nav, p, rel, rp, x, y)
-            end
+            hooksecurefunc(nav, "SetPoint", place)
+            local pts = {}
+            for i = 1, nav:GetNumPoints() do pts[i] = { nav:GetPoint(i) } end
+            for _, e in ipairs(pts) do place(nav, e[1], e[2], e[3], e[4], e[5]) end
         end
-        wm:HookScript("OnShow", function() pcall(nameMap) end)
-        pcall(nameMap)
+        wm:HookScript("OnShow", function() pcall(lastCrumb) end)
     end
     -- (How the window is laid out on this client, kept for the footer that
     -- is to come: nothing is known yet of how the map's own area is pinned.)
@@ -1927,6 +2011,7 @@ local function deepMap()
         rect("title", bf and bf.TitleContainer)
         rect("side toggle", wm.SidePanelToggle)
         out[#out + 1] = "maximized: " .. tostring(wm.IsMaximized and wm:IsMaximized())
+        out[#out + 1] = "footer: " .. tostring(mapFoot and true or false)
         MinimalUIDB.maplayout = out
     end
 
@@ -1954,7 +2039,10 @@ local function deepMap()
                     ns:SetFont(fs, size or 12, "", true)
                     fs:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
                     b:HookScript("OnEnter", function() fs:SetTextColor(T.text[1], T.text[2], T.text[3]) end)
-                    b:HookScript("OnLeave", function() fs:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end)
+                    b:HookScript("OnLeave", function()
+                        local c = b.__muiLast and T.text or T.textDim
+                        fs:SetTextColor(c[1], c[2], c[3])
+                    end)
                 end
                 -- The little dropdown arrow beside a crumb: grey.
                 local arrow = b.MenuArrowButton
@@ -2163,6 +2251,7 @@ local function deepMap()
         if acc < 0.5 then return end
         acc = 0
         pcall(crumbs)
+        pcall(lastCrumb)
         pcall(layoutFacts)
         local qm = _G.QuestMapFrame
         if qm and qm.DetailsFrame and qm.DetailsFrame:IsVisible() then pcall(questPane); pcall(fitRewards) end

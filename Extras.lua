@@ -1758,7 +1758,11 @@ local function buildNodeMap(db)
     -- each kind with its colour and how many. Click one to see only that
     -- (larger, brighter), click it again for everything.
     local host = WM.ScrollContainer or WM
-    local holder = CreateFrame("Frame", nil, host)
+    -- (On the map's footer band, in a row, where there is one: 0.1.635.)
+    local okF, foot = pcall(ns.MapFooter)
+    foot = okF and foot or nil
+    local hidePill
+    local holder = CreateFrame("Frame", nil, foot or host)
     holder:SetAllPoints()
     holder:SetFrameLevel(math.min(9000, canvas:GetFrameLevel() + 2600))
     local rows, counts, order = {}, {}, {}
@@ -1786,6 +1790,7 @@ local function buildNodeMap(db)
             return x.key < y.key
         end)
         local shown = math.min(#order, 16)
+        local room = foot and ((host:GetWidth() or 600) - 250 - (hidePill and hidePill:GetWidth() or 90)) or 0
         for i = 1, shown do
             local c = order[i]
             local r = rows[i]
@@ -1806,7 +1811,17 @@ local function buildNodeMap(db)
             r.selected = (c.key == only)
             r:Repaint()
             r:ClearAllPoints()
-            r:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38 + 26 + (shown - i) * 21)
+            if foot then
+                if i == 1 then
+                    if hidePill then r:SetPoint("LEFT", hidePill, "RIGHT", 10, 0) else r:SetPoint("LEFT", foot, "LEFT", 12, 0) end
+                else
+                    r:SetPoint("LEFT", rows[i - 1], "RIGHT", 6, 0)
+                end
+                room = room - (r:GetWidth() or 80) - 6
+                if room < 0 then shown = i - 1 break end -- (as many as the band has room for)
+            else
+                r:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38 + 26 + (shown - i) * 21)
+            end
             r:Show()
         end
         for i = shown + 1, #rows do rows[i]:Hide() end
@@ -1883,14 +1898,16 @@ local function buildNodeMap(db)
         if pill then pill:SetLabel(on and "Hide nodes" or "Show nodes") end
     end
     if ns.Pill then
-        pill = ns.Pill(host, "Hide nodes", function()
+        pill = ns.Pill(foot or host, "Hide nodes", function()
             EX.db.nodesShown = EX.db.nodesShown == false
             sync()
         end, { h = 20, font = 10, pad = 18, ring = true, dimIdle = true })
         pill.__muiSkin = true -- (the map's skin pass leaves it alone)
         -- (One row up: the map's coordinates sit in this corner.)
-        pill:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38)
+        if foot then pill:SetPoint("LEFT", foot, "LEFT", 12, 0)
+        else pill:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 10, 38) end
         pill:SetFrameLevel(math.min(9000, canvas:GetFrameLevel() + 2600))
+        hidePill = pill
     end
     sync()
 end
