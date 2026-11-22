@@ -611,7 +611,9 @@ local function askName(id, guid)
     end
     diag("namediag", "named")
     setName(id, text)
-    addZone(r, B.zoneNow and B.zoneNow())
+    -- (Where it was looted. Asked later, at login, you are somewhere else:
+    -- 0.1.622 filed a whole dungeon under the zone outside its door.)
+    if guid then addZone(r, B.zoneNow and B.zoneNow()) end
     return text
 end
 local function nameTheNameless()
@@ -2139,6 +2141,54 @@ function B:OnInit(db)
             end
         end
         MinimalUIDB.bestiaryRev = 7
+    end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 7 then
+        -- (0.1.624: the first reading found none of the Wailing Caverns'
+        -- kills, the record of play having been cut short above the line
+        -- that says "inside an instance", and the creatures, named at login,
+        -- were filed under where you stood. Read again: for every creature
+        -- named from its number and never read as one, its experience lines
+        -- wherever they are, and the zone they were in.)
+        local want, tally = {}, {}
+        for _, r in pairs(MinimalUIDB.bestiary or {}) do
+            if r.n and not r.t and not r.lo then want[r.n] = r; r.z = nil end
+        end
+        for _, list in pairs(type(MinimalUIDB.journal) == "table" and MinimalUIDB.journal or {}) do
+            local zone, mine, first, early = nil, nil, true, {}
+            for _, line in ipairs(type(list) == "table" and list or {}) do
+                local what, rest = nil, nil
+                if type(line) == "string" then what, rest = line:match("^[%d%.]+|([%u_]+)|(.*)$") end
+                if what == "S" then
+                    mine = tonumber((select(5, strsplit("|", rest))))
+                elseif what == "WORLD" or what == "ZONE" then
+                    local z, _, _, _, _, kind = strsplit("|", rest)
+                    if first then
+                        -- (Lines above the first place named: the same
+                        -- instance, if this is one being come back into.)
+                        first = false
+                        if what == "WORLD" and z ~= "" and kind and kind ~= "" and kind ~= "none" then
+                            for name in pairs(early) do addZone(want[name], z) end
+                        end
+                    end
+                    zone = z ~= "" and z or nil
+                elseif what == "COMBAT_XP_GAIN" then
+                    local name = rest:match("^(.-) dies, you gain")
+                    local r = name and want[name]
+                    if r then
+                        tally[name] = (tally[name] or 0) + 1
+                        local gained = tonumber(rest:match("you gain (%d+) experience"))
+                        if gained and gained > 0 and mine then r.xp, r.xl = gained, mine end
+                        if zone then addZone(r, zone) elseif first then early[name] = true end
+                    end
+                end
+            end
+        end
+        for name, n in pairs(tally) do
+            local r = want[name]
+            if n > (r.k or 0) then r.k = n end
+            if n > (r.lk or 0) then r.lk = n end
+        end
+        MinimalUIDB.bestiaryRev = 8
     end
     -- (Creatures with a number and no name: asked now, and once more for
     -- those the game had to fetch.)
