@@ -2486,6 +2486,38 @@ local function dmStyle(f, depth)
             if faded then dmCard(f) end
         end
     end
+    -- A window of the meter that opens beside it (a player's spells, 0.1.629):
+    -- seated in the console the meter has no card of its own, the wing being
+    -- its backdrop, so this one stood bare over the action bars. Anything
+    -- sizeable that lies wholly outside the meter gets a card, and is put
+    -- above the bars.
+    if ns.dmNoCard and depth > 0 and depth <= 4 and not isBar and not isButton and not f.__muiDMOut and f:IsVisible() then
+        local root = _G.DamageMeter
+        local p, nested = f:GetParent(), false
+        for _ = 1, 4 do
+            if not p or p == root then break end
+            if p.__muiDMOut then nested = true break end
+            p = p:GetParent()
+        end
+        local fw, fh = dmSize(f)
+        if root and not nested and fw and fw > 100 and fh > 40 then
+            local ok, l, r0, rl, rr = pcall(function() return f:GetLeft(), f:GetRight(), root:GetLeft(), root:GetRight() end)
+            local plainAll = ok and type(l) == "number" and type(r0) == "number" and type(rl) == "number" and type(rr) == "number"
+                and not (issecretvalue and (issecretvalue(l) or issecretvalue(r0) or issecretvalue(rl) or issecretvalue(rr)))
+            if plainAll and (r0 < rl + 20 or l > rr - 20) then
+                f.__muiDMOut = true
+                pcall(f.SetFrameStrata, f, "HIGH")
+                local holder = CreateFrame("Frame", nil, f)
+                holder.__muiDMOurs = true
+                holder:SetPoint("TOPLEFT", -10, 10)
+                holder:SetPoint("BOTTOMRIGHT", 10, -10)
+                holder:SetFrameLevel(math.max(f:GetFrameLevel() - 1, 0))
+                ns.RoundedRect(holder, -8, 0, 10, T.border[1], T.border[2], T.border[3], 1)
+                ns.RoundedRect(holder, -7, 1, 9, 0.06, 0.06, 0.07, 0.97)
+                f.__muiDMCard = holder
+            end
+        end
+    end
     if isBar and not f.__muiDMBar then
         f.__muiDMBar = true
         local tex = f:GetStatusBarTexture()
