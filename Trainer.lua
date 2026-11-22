@@ -217,6 +217,35 @@ local function services()
     return sectioned(list), avail
 end
 
+-- Your own level in a skill, by its name (0.1.630: shown on the header at a
+-- profession trainer, where every row says what it needs and nothing said
+-- what you have). The skill list first, then the professions.
+local function mySkill(want)
+    local S = C_SkillInfo
+    local getNum = (S and S.GetNumSkillLines) or _G.GetNumSkillLines
+    local getInfo = (S and S.GetSkillLineInfo) or _G.GetSkillLineInfo
+    if getNum and getInfo then
+        local n = call(getNum)
+        for i = 1, (num(n) and n or 0) do
+            local name, _, _, rank, _, _, max = call(getInfo, i)
+            if type(name) == "table" then
+                local t = name
+                name, rank, max = t.skillName or t.name, t.skillRank or t.rank or t.currentRank, t.skillMaxRank or t.maxRank
+            end
+            if name == want and num(rank) then return rank, num(max) and max or nil end
+        end
+    end
+    if _G.GetProfessions and _G.GetProfessionInfo then
+        local a, b, c, d, e, f = call(GetProfessions)
+        for _, idx in ipairs({ a or false, b or false, c or false, d or false, e or false, f or false }) do
+            if idx then
+                local name, _, rank, max = call(GetProfessionInfo, idx)
+                if name == want and num(rank) then return rank, num(max) and max or nil end
+            end
+        end
+    end
+end
+
 -- ── Window ────────────────────────────────────────────────────────────────
 local win, rows, offset, data = nil, {}, 0, {}
 local closing = false
@@ -440,8 +469,40 @@ function TR:Refresh()
     local greet = call(_G.GetTrainerGreetingText)
     local zone = GetSubZoneText and GetSubZoneText()
     if not zone or zone == "" then zone = GetZoneText and GetZoneText() end
-    sh:SetSubtitle(zone or "")
+    -- What kind of trainer this is (0.1.630): the line under the name on
+    -- the game's own tooltip ("First Aid Trainer"), before the place.
+    local kind
+    local TI = C_TooltipInfo
+    local tip = TI and TI.GetUnit and call(TI.GetUnit, "npc")
+    local l2 = type(tip) == "table" and type(tip.lines) == "table" and tip.lines[2]
+    local t2 = type(l2) == "table" and l2.leftText or nil
+    if type(t2) == "string" and not (issecretvalue and issecretvalue(t2)) and t2 ~= ""
+        and not t2:find("^" .. (_G.LEVEL or "Level")) and not t2:find("%d") then
+        kind = t2:gsub("^<", ""):gsub(">$", "")
+    end
+    if not kind then
+        for _, e in ipairs(data) do
+            if type(e.skillName) == "string" and e.skillName ~= "" then kind = e.skillName .. " Trainer" break end
+        end
+    end
+    if kind and zone and zone ~= "" then sh:SetSubtitle(kind .. "  ·  " .. zone)
+    else sh:SetSubtitle(kind or zone or "") end
     win.money:SetText(money(GetMoney()))
+    -- Your level in what is taught here (up to two skills), on the band.
+    local line, seen, shown = "", {}, 0
+    for _, e in ipairs(data) do
+        local sn = e.skillName
+        if type(sn) == "string" and sn ~= "" and not seen[sn] and shown < 2 then
+            seen[sn] = true
+            local rank, max = mySkill(sn)
+            if rank then
+                shown = shown + 1
+                line = line .. (line ~= "" and "\n" or "") .. string.format("|cff8a8a94%s|r  %d%s", sn, rank, max and (" / " .. max) or "")
+            end
+        end
+    end
+    win.skill:SetText(line)
+    win.skillBox:SetShown(line ~= "")
     -- The count lives on the button; the chip shows the trainer's attitude.
     win.trainAll:SetLabel(avail > 0 and string.format("Train all (%d)", avail) or "Train all")
     win.trainAll:SetEnabled(avail > 0)
@@ -495,6 +556,15 @@ local function build()
 
     win.shell = ns:CreateShell(win)
     win.shell:SetRing({ 0.45, 0.85, 0.50 })
+    win.skillBox = CreateFrame("Frame", nil, win)
+    win.skillBox:SetSize(200, 34)
+    win.skillBox:SetPoint("TOPRIGHT", win, "TOPRIGHT", -20, -46)
+    win.skill = text(win.skillBox, 12, true)
+    win.skill:SetPoint("BOTTOMRIGHT")
+    win.skill:SetJustifyH("RIGHT")
+    win.skill:SetSpacing(3)
+    if win.shell.Lift then win.shell:Lift(win.skillBox) end
+    win.skillBox:Hide()
     -- Footer: what you have to spend on the left, the actions on the right
     -- (the header keeps to who the trainer is).
     local foot = ns:CreateFooter(win, FOOT_H)
