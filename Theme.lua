@@ -459,7 +459,58 @@ local STAT_MARK = {
     RESISTANCE4_NAME = { "stat_frost", SC[16][1], SC[16][2], SC[16][3] },
     RESISTANCE5_NAME = { "stat_shadow", SC[32][1], SC[32][2], SC[32][3] },
     RESISTANCE6_NAME = { "stat_arcane", SC[64][1], SC[64][2], SC[64][3] },
+    ITEM_MOD_DEFENSE_SKILL_RATING_SHORT = { "stat_guard", 0.62, 0.78, 0.92 },
 }
+-- The game lists some stats under two names (an item's fire resistance came
+-- as both, and showed twice in a comparison: once as a picture, once in
+-- words). The second names, and the one each is kept under. (0.1.627)
+local STAT_ALIAS = {
+    ITEM_MOD_FIRE_RESISTANCE_SHORT = "RESISTANCE2_NAME", ITEM_MOD_NATURE_RESISTANCE_SHORT = "RESISTANCE3_NAME",
+    ITEM_MOD_FROST_RESISTANCE_SHORT = "RESISTANCE4_NAME", ITEM_MOD_SHADOW_RESISTANCE_SHORT = "RESISTANCE5_NAME",
+    ITEM_MOD_ARCANE_RESISTANCE_SHORT = "RESISTANCE6_NAME", ITEM_MOD_ARMOR_SHORT = "RESISTANCE0_NAME",
+    ITEM_MOD_DEFENSE_SKILL_SHORT = "ITEM_MOD_DEFENSE_SKILL_RATING_SHORT",
+}
+-- (By their words too, whatever the name: "Fire Resistance", "Defense".)
+local aliasByWord
+local function canon(key)
+    if STAT_ALIAS[key] then return STAT_ALIAS[key] end
+    if STAT_MARK[key] then return key end
+    if not aliasByWord then
+        aliasByWord = {}
+        for k in pairs(STAT_MARK) do
+            local w = _G[k]
+            if type(w) == "string" and w ~= "" then aliasByWord[w:lower()] = k end
+        end
+        for n = 2, 6 do
+            local w = _G["RESISTANCE" .. n .. "_NAME"]
+            if type(w) == "string" then aliasByWord[w:lower()] = "RESISTANCE" .. n .. "_NAME" end
+        end
+        for w, k in pairs({ ["fire resistance"] = 2, ["nature resistance"] = 3, ["frost resistance"] = 4,
+                            ["shadow resistance"] = 5, ["arcane resistance"] = 6 }) do
+            aliasByWord[w] = "RESISTANCE" .. k .. "_NAME"
+        end
+        aliasByWord["defense"] = "ITEM_MOD_DEFENSE_SKILL_RATING_SHORT"
+    end
+    local w = _G[key]
+    return type(w) == "string" and aliasByWord[w:lower()] or key
+end
+-- An item's stats with each kept once, under its first name.
+local function tidy(t)
+    if not t then return nil end
+    local out
+    for k, v in pairs(t) do
+        local c = canon(k)
+        if c ~= k then
+            out = out or {}
+            out[k] = c
+        end
+    end
+    if not out then return t end
+    local r = {}
+    for k, v in pairs(t) do if not out[k] then r[k] = v end end
+    for k, c in pairs(out) do if r[c] == nil then r[c] = t[k] end end
+    return r
+end
 function ns.StatMark(key, size, dy)
     local m = STAT_MARK[key]
     if not m then return nil end
@@ -643,7 +694,7 @@ function ns.CompareLine(link)
     local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
     local slots = ok and SLOTS[loc]
     if not slots then return nil end
-    local new = itemStats(link)
+    local new = tidy(itemStats(link))
     if not new then return nil end
     local worn
     for _, slot in ipairs(slots) do
@@ -652,7 +703,7 @@ function ns.CompareLine(link)
     end
     if not worn then return "|cff8fd19eNothing equipped there|r" end
     if worn == link then return "|cff9a9aa5You're wearing this|r" end
-    local old = itemStats(worn)
+    local old = tidy(itemStats(worn))
     if not old then return nil end
     local diffs = {}
     for k, v in pairs(new) do
@@ -687,7 +738,7 @@ function ns.CompareRows(link, max)
     local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
     local slots = ok and SLOTS[loc]
     if not slots then return nil end
-    local new = itemStats(link)
+    local new = tidy(itemStats(link))
     if not new then return nil end
     local worn
     for _, slot in ipairs(slots) do
@@ -696,7 +747,7 @@ function ns.CompareRows(link, max)
     end
     if not worn then return { "|cff8fd19eEmpty slot|r" } end
     if worn == link then return { "|cff9a9aa5Equipped|r" } end
-    local old = itemStats(worn)
+    local old = tidy(itemStats(worn))
     if not old then return nil end
     local diffs = {}
     for k, v in pairs(new) do
@@ -962,13 +1013,13 @@ function ns.AddCompare(tip, link)
         tip:AddLine(" ")
         tip:AddLine("A tool, not a fighting weapon: your weapon abilities don't work while it is in your hand.", 0.95, 0.76, 0.32, true)
     end
-    local new = itemStats(link)
+    local new = tidy(itemStats(link))
     if not new then return end
     local shownAny = false
     for _, slot in ipairs(slots) do
         local worn = GetInventoryItemLink("player", slot)
         if worn and worn ~= link then
-            local old = itemStats(worn)
+            local old = tidy(itemStats(worn))
             if old then
                 local gains, losses = {}, {}
                 for k, v in pairs(new) do

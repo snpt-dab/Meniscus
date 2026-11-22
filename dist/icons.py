@@ -291,6 +291,9 @@ def icons():
     I['stat_defense'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True)
     # resistances: a halved shield
     I['stat_resist'] = Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True).line([(12, 5.2), (12, 19)], w=2.0)
+    # the Defense skill: the shield with a chevron on it (armor is the plain shield)
+    I['stat_guard'] = (Icon().line([(6, 5.2), (18, 5.2), (18, 12), (12, 19), (6, 12)], close=True)
+                       .line([(9, 9.2), (12, 12.4), (15, 9.2)], w=1.9))
     # A potion: a round flask with a short neck and a lip.
     I['potion'] = (Icon().arc(12, 14.6, 5.3, 110, 430)
                    .line([(10.2, 9.7), (10.2, 5.6)]).line([(13.8, 9.7), (13.8, 5.6)])
