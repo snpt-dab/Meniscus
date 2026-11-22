@@ -530,6 +530,29 @@ function ns.MakePingable(f, unit, portrait)
             note = note .. " -> unit kind put back"
         end
     end
+    -- (0.1.625: pings on the target frame stopped working, with an error
+    -- inside the game's ping code during a dungeon run and none since.
+    -- What the game is answered each time it asks one of our frames is
+    -- counted, by kind only, in MinimalUIDB.pingask: to be read, not guessed.)
+    if not own and type(f.GetTargetInfo) == "function" then
+        local ask = f.GetTargetInfo
+        f.GetTargetInfo = function(self, ...)
+            local ok, info = pcall(ask, self, ...)
+            pcall(function()
+                local how = not ok and ("error: " .. tostring(info):sub(1, 120))
+                    or type(info) ~= "table" and ("answer is " .. type(info))
+                    or (issecretvalue and issecretvalue(info.guid)) and "creature hidden"
+                    or ("creature " .. type(info.guid))
+                local inst = IsInInstance and IsInInstance()
+                how = tostring(self.unit) .. ", " .. how .. (inst == true and ", in an instance" or ", outside")
+                    .. (InCombatLockdown() and ", in a fight" or "")
+                MinimalUIDB.pingask = MinimalUIDB.pingask or {}
+                MinimalUIDB.pingask[how] = (MinimalUIDB.pingask[how] or 0) + 1
+            end)
+            if not ok then error(info, 0) end
+            return info
+        end
+    end
     pcall(f.SetAttribute, f, "ping-receiver", true)
     if MinimalUIDB then
         MinimalUIDB.pingdiag = MinimalUIDB.pingdiag or {}
