@@ -50,6 +50,26 @@ function ns:CreateFooter(win, h)
     return band
 end
 
+-- The header band alone, for one of the game's own windows that keeps its
+-- title strip (the map, 0.1.631): same fill, grain and hairline, no ring or
+-- title of its own. Pinned to the window's top; the caller sets where its
+-- bottom edge goes (SetPoint "BOTTOM" or SetHeight).
+function ns:CreateBand(win)
+    local band = CreateFrame("Frame", nil, win)
+    band:SetPoint("TOPLEFT", 1, -1)
+    band:SetPoint("TOPRIGHT", -1, -1)
+    ns.RoundedRect(band, -6, 0, 13, unpack(BAND))
+    local sq = band:CreateTexture(nil, "BACKGROUND", nil, -5)
+    sq:SetPoint("BOTTOMLEFT"); sq:SetPoint("BOTTOMRIGHT"); sq:SetHeight(14)
+    sq:SetColorTexture(unpack(BAND))
+    ns.BandNoise(band, 13, true)
+    local line = band:CreateTexture(nil, "BORDER")
+    line:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    line:SetHeight(1)
+    line:SetPoint("BOTTOMLEFT"); line:SetPoint("BOTTOMRIGHT")
+    return band
+end
+
 function ns:CreateShell(win, opts)
     opts = opts or {}
     if ns.WindowBuilt then ns.WindowBuilt(win) end -- Windows.lua: dock it before it is first drawn

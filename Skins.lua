@@ -1834,6 +1834,78 @@ local function deepMap()
     if _G.QuestMapFrame and _G.QuestMapFrame ~= wm.QuestLog then stripBigArt(_G.QuestMapFrame, 0) end
     if wm.__muiHolder then ours(wm.__muiHolder) end
 
+    -- The header band (0.1.631): our windows' band, laid behind the strip
+    -- the map already has above it (title row, then the breadcrumbs and the
+    -- quest search), so nothing of the game's is moved. The game's centred
+    -- "Map & Quest Log" goes; the open map's name stands at the left as
+    -- the title, with the breadcrumbs under it.
+    local sc = wm.ScrollContainer
+    local mapTitle
+    local function nameMap()
+        if not mapTitle then return end
+        local id = wm.GetMapID and wm:GetMapID()
+        local info = id and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(id)
+        local n = info and info.name
+        mapTitle:SetText(type(n) == "string" and not issecretvalue(n) and n or (_G.WORLD_MAP or "Map"))
+    end
+    if sc and ns.CreateBand then
+        local band = ours(ns:CreateBand(wm))
+        band:SetPoint("BOTTOM", sc, "TOP", 0, 4)
+        band:SetFrameLevel(wm:GetFrameLevel())
+        mapTitle = band:CreateFontString(nil, "OVERLAY")
+        mapTitle.__muiOurs = true
+        ns:SetFont(mapTitle, 16, "", true)
+        mapTitle:SetTextColor(T.text[1], T.text[2], T.text[3])
+        mapTitle:SetPoint("TOPLEFT", band, "TOPLEFT", 20, -9)
+        local tc = bf and bf.TitleContainer
+        if tc then
+            fade(tc.TitleText)
+            for _, r in ipairs({ tc:GetRegions() }) do
+                if r:IsObjectType("FontString") then fade(r) end
+            end
+        end
+        if wm.OnMapChanged then pcall(hooksecurefunc, wm, "OnMapChanged", function() pcall(nameMap) end) end
+        wm:HookScript("OnShow", function() pcall(nameMap) end)
+        pcall(nameMap)
+    end
+    -- (How the window is laid out on this client, kept for the footer that
+    -- is to come: nothing is known yet of how the map's own area is pinned.)
+    local laidOut = false
+    local function layoutFacts()
+        if laidOut or not MinimalUIDB then return end
+        laidOut = true
+        local wl, wt = wm:GetLeft(), wm:GetTop()
+        local out = { "window " .. math.floor(wm:GetWidth()) .. "x" .. math.floor(wm:GetHeight()) .. " scale " .. string.format("%.2f", wm:GetEffectiveScale()) }
+        local function rect(label, f)
+            if not (f and f.GetLeft) then out[#out + 1] = label .. ": none" return end
+            local l, t, w, h = f:GetLeft(), f:GetTop(), f:GetWidth(), f:GetHeight()
+            local k = f:GetEffectiveScale() / wm:GetEffectiveScale()
+            local line = label .. ": "
+            if l and t and wl and wt then
+                line = line .. string.format("x %d y %d w %d h %d", l * k - wl, wt - t * k, w * k, h * k)
+            else
+                line = line .. "no place"
+            end
+            if f.GetNumPoints then
+                for i = 1, f:GetNumPoints() do
+                    local p, rel, rp, x, y = f:GetPoint(i)
+                    local rn = rel and ((rel.GetName and rel:GetName()) or (rel == wm and "map window") or (rel == f:GetParent() and "parent") or "other") or "none"
+                    line = line .. string.format(" | %s to %s %s %d %d", tostring(p), tostring(rn), tostring(rp), x or 0, y or 0)
+                end
+            end
+            if f.IsShown then line = line .. (f:IsShown() and "" or " (hidden)") end
+            out[#out + 1] = line
+        end
+        rect("map area", sc)
+        rect("breadcrumbs", wm.NavBar)
+        rect("quest log", wm.QuestLog or _G.QuestMapFrame)
+        rect("border frame", bf)
+        rect("title", bf and bf.TitleContainer)
+        rect("side toggle", wm.SidePanelToggle)
+        out[#out + 1] = "maximized: " .. tostring(wm.IsMaximized and wm:IsMaximized())
+        MinimalUIDB.maplayout = out
+    end
+
     -- Breadcrumbs: every button's art goes (they are created as you move
     -- between maps, so this is repeated while the window is open).
     local nb = wm.NavBar
@@ -2067,6 +2139,7 @@ local function deepMap()
         if acc < 0.5 then return end
         acc = 0
         pcall(crumbs)
+        pcall(layoutFacts)
         local qm = _G.QuestMapFrame
         if qm and qm.DetailsFrame and qm.DetailsFrame:IsVisible() then pcall(questPane); pcall(fitRewards) end
         if not coordGone and tries < 12 then tries = tries + 1; pcall(findCoords, wm, 0) end
