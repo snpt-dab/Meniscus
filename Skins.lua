@@ -1967,6 +1967,44 @@ local function deepMap()
         -- rewards begin (and given its full height back when a quest has
         -- none).
         local df = q.DetailsFrame
+        -- The text itself too (0.1.628): the game hid what ran on under the
+        -- rewards behind their painted backdrop, which is gone here, so
+        -- the description showed through "Rewards". The scrolling area is
+        -- ended where the rewards begin.
+        local sf = df.ScrollFrame
+        if sf and sf.GetNumPoints then
+            if not sf.__muiPts and (sf:GetWidth() or 0) > 0 then
+                sf.__muiPts, sf.__muiW = {}, sf:GetWidth()
+                for i = 1, sf:GetNumPoints() do sf.__muiPts[i] = { sf:GetPoint(i) } end
+            end
+            local top, edge = sf:GetTop(), c:IsShown() and c:GetTop()
+            if sf.__muiPts and top and edge then
+                local h = top - edge * (c:GetEffectiveScale() / sf:GetEffectiveScale()) - 6
+                local bottom = sf:GetBottom()
+                if h > 40 and (not bottom or math.abs((top - bottom) - h) > 1) then
+                    local tops = 0
+                    sf.__muiCut = true
+                    sf:ClearAllPoints()
+                    for _, e in ipairs(sf.__muiPts) do
+                        if type(e[1]) == "string" and e[1]:find("TOP") then
+                            tops = tops + 1
+                            sf:SetPoint(e[1], e[2], e[3], e[4], e[5])
+                        end
+                    end
+                    if tops == 0 then
+                        for _, e in ipairs(sf.__muiPts) do sf:SetPoint(e[1], e[2], e[3], e[4], e[5]) end
+                        sf.__muiCut = nil
+                    else
+                        if tops < 2 then sf:SetWidth(sf.__muiW) end
+                        sf:SetHeight(h)
+                    end
+                end
+            elseif sf.__muiCut and sf.__muiPts and not c:IsShown() then
+                sf.__muiCut = nil
+                sf:ClearAllPoints()
+                for _, e in ipairs(sf.__muiPts) do sf:SetPoint(e[1], e[2], e[3], e[4], e[5]) end
+            end
+        end
         local bar = df.__muiBar
         if bar == nil then
             local sf = df.ScrollFrame
