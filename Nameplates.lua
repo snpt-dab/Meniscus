@@ -949,25 +949,43 @@ local function buildNumbers()
                         -- two faint copies of it, one yellow, one blue, turn
                         -- slowly about it a pixel or two off, so the edges
                         -- shimmer as oil on water does.
+                        -- (0.1.623, asked for more flash and colour: the three
+                        -- colours at full strength and turning faster, a white
+                        -- landing with a burst of light behind it, a glint of
+                        -- white passing over it now and then, and the two
+                        -- copies wide apart at first and bolder throughout.)
                         local a = f.age + f.phase
-                        local w, v = math.sin(a * 2.9), math.sin(a * 1.7 + 1.3)
-                        local toA, toY = w > 0 and w * 0.75 or 0, w < 0 and -w * 0.60 or 0
-                        local r = 0.38 - 0.10 * toA + 0.52 * toY
-                        local g = 0.95 - 0.13 * toA + 0.01 * toY
-                        local b = 0.56 + 0.40 * toA - 0.16 * toY
+                        local v = math.sin(a * 1.7 + 1.3)
+                        local p = (a * 2.0) % 3
+                        local t = p % 1
+                        t = t * t * (3 - 2 * t)
+                        local r, g, b
+                        if p < 1 then r, g, b = 0.25 - 0.15 * t, 1.00 - 0.12 * t, 0.45 + 0.55 * t      -- green to aqua
+                        elseif p < 2 then r, g, b = 0.10 + 0.90 * t, 0.88 + 0.06 * t, 1.00 - 0.75 * t  -- aqua to yellow
+                        else r, g, b = 1.00 - 0.75 * t, 0.94 + 0.06 * t, 0.25 + 0.20 * t end           -- yellow to green
                         if not (f.crit and f.age < 0.50) then
+                            local land = f.age < 0.30 and (1 - f.age / 0.30) ^ 0.7 or 0
+                            local glint = math.sin(a * 5.2)
+                            glint = glint > 0 and glint ^ 6 * 0.55 or 0
+                            local mix = land > glint and land or glint
+                            r, g, b = r + (1 - r) * mix, g + (1 - g) * mix, b + (1 - b) * mix
                             if f.zeroSeen == nil or not pcall(f.fs.SetTextColor, f.fs, r, g, b, f.zeroSeen) then f.fs:SetTextColor(r, g, b, 1) end
                         end
                         if not f.crit then
-                            local pull = 1.5 + 0.5 * v
-                            local lean = a * 1.4
+                            local q = f.age < 0.60 and (1 - f.age / 0.60) or 0
+                            local pull = 2.2 + 3.4 * q + 0.6 * v
+                            local lean = a * 1.8
                             local dx, dy = pull * math.cos(lean), pull * math.sin(lean)
                             f.warm:SetPoint("CENTER", -dx, dy)
                             f.cool:SetPoint("CENTER", dx, -dy)
-                            f.warm:SetAlpha(0.55); f.cool:SetAlpha(0.55)
+                            f.warm:SetAlpha(0.78); f.cool:SetAlpha(0.78)
+                            local bq = f.age < 0.50 and (1 - f.age / 0.50) or 0
+                            f.burst:SetAlpha(bq ^ 1.5 * 0.9)
+                            local bs = SIZE * (3.4 + 2.4 * (1 - bq))
+                            f.burst:SetSize(bs * 1.5, bs)
                         end
-                        f.warm:SetTextColor(0.98, 0.93 + 0.05 * v, 0.40 - 0.10 * v)
-                        f.cool:SetTextColor(0.30 + 0.12 * v, 0.62 - 0.10 * v, 1.00)
+                        f.warm:SetTextColor(1.00, 0.88 + 0.10 * v, 0.12)
+                        f.cool:SetTextColor(0.22 + 0.25 * v, 0.42 - 0.14 * v, 1.00)
                     end
                 end
             end
@@ -2420,6 +2438,7 @@ local function buildNumbers()
                 local f = show(nil, hx, hy, amount, 0.38, 0.95, 0.56, crit)
                 if f then
                     f.irid, f.phase = true, math.random() * 6.28
+                    if not crit then f.scale = f.scale * 1.25 end -- (a quarter larger than a hit, 0.1.623)
                     pcall(f.fs.SetFormattedText, f.fs, "+%d", amount)
                     pcall(f.warm.SetFormattedText, f.warm, "+%d", amount)
                     pcall(f.cool.SetFormattedText, f.cool, "+%d", amount)
