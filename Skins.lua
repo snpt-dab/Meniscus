@@ -623,7 +623,22 @@ function ns.MapFooter()
         end
         for _, f in ipairs(raised) do refit(f) end
         foot:SetShown(on)
-        pcall(wm.SetFrameStrata, wm, on and baseStrata or "DIALOG")
+        -- (The window's layer, and with it every part of the window that
+        -- keeps a layer of its own: the frame that holds the close and
+        -- make-small buttons does, and was left a layer below the lifted
+        -- map, behind it, so there was no way back out of full screen: 0.1.638.)
+        local to = on and baseStrata or "DIALOG"
+        pcall(wm.SetFrameStrata, wm, to)
+        local function lift(f, d)
+            for _, c in ipairs({ f:GetChildren() }) do
+                if not (c.IsForbidden and c:IsForbidden()) and c.GetFrameStrata then
+                    local st = c:GetFrameStrata()
+                    if st ~= to and (st == baseStrata or st == "DIALOG") then pcall(c.SetFrameStrata, c, to) end
+                    if d < 2 and c ~= sc then lift(c, d + 1) end
+                end
+            end
+        end
+        pcall(lift, wm, 0)
         for _, fn in ipairs(foot.modeHooks) do pcall(fn, on) end
     end
     local function later() C_Timer.After(0, function() pcall(sync) end) end
