@@ -1850,7 +1850,7 @@ local function deepMap()
     end
     if sc and ns.CreateBand then
         local band = ours(ns:CreateBand(wm))
-        band:SetPoint("BOTTOM", sc, "TOP", 0, 4)
+        band:SetPoint("BOTTOM", sc, "TOP", 0, 6)
         band:SetFrameLevel(wm:GetFrameLevel())
         mapTitle = band:CreateFontString(nil, "OVERLAY")
         mapTitle.__muiOurs = true
@@ -1865,6 +1865,26 @@ local function deepMap()
             end
         end
         if wm.OnMapChanged then pcall(hooksecurefunc, wm, "OnMapChanged", function() pcall(nameMap) end) end
+        -- The breadcrumbs under it, as the title's second line (0.1.634):
+        -- the game sets them in from the left to clear a portrait that is
+        -- not there, which left them hanging to the right of the title.
+        -- They are brought to the title's left edge, each time the game
+        -- places them (it does so again when the map is made large or small).
+        local nav = wm.NavBar
+        if nav and nav.GetPoint then
+            local moving = false
+            local function left(self, p, rel, rp, x, y)
+                if moving or type(x) ~= "number" or x <= 14 or type(p) ~= "string" or not p:find("LEFT") then return end
+                moving = true
+                pcall(self.SetPoint, self, p, rel, rp, 8, y or 0)
+                moving = false
+            end
+            hooksecurefunc(nav, "SetPoint", left)
+            for i = 1, nav:GetNumPoints() do
+                local p, rel, rp, x, y = nav:GetPoint(i)
+                left(nav, p, rel, rp, x, y)
+            end
+        end
         wm:HookScript("OnShow", function() pcall(nameMap) end)
         pcall(nameMap)
     end
@@ -1898,6 +1918,10 @@ local function deepMap()
         end
         rect("map area", sc)
         rect("breadcrumbs", wm.NavBar)
+        rect("first crumb", wm.NavBar and (wm.NavBar.home or wm.NavBar.homeButton))
+        local ql = wm.QuestLog or _G.QuestMapFrame
+        rect("quest search", ql and (ql.SearchBox or (ql.QuestsFrame and ql.QuestsFrame.SearchBox)))
+        rect("quest list", _G.QuestScrollFrame)
         rect("quest log", wm.QuestLog or _G.QuestMapFrame)
         rect("border frame", bf)
         rect("title", bf and bf.TitleContainer)
