@@ -243,6 +243,104 @@ local function zoneNow()
     if not str(z) then z = call(GetZoneText) end
     return str(z) and z or nil
 end
+B.zoneNow = zoneNow
+
+-- ── In a dungeon (0.1.622) ────────────────────────────────────────────────
+-- Inside an instance the game hides who a creature is: its name comes back
+-- hidden and so does the rest of what observe() goes by (a whole run of the
+-- Wailing Caverns left twenty creatures with loot and no name, and some 230
+-- kills of "a creature not in the book"). What is still said in the clear:
+--   the experience line, with the name;
+--   a corpse being looted, with which creature it was (its number);
+--   your target's level, rank and kind, with no name to them.
+-- So: what is learned of a name with no number yet is kept by name
+-- (MinimalUIDB.bestiaryPend), a looted corpse's number is asked its name
+-- from the game's own tooltip (askName, below), and the two are folded
+-- together the moment a record gets its name. Level, rank and kind are
+-- taken from the creature you had targeted as it died.
+local function pendOf(name, make)
+    if not MinimalUIDB then return end
+    local all = MinimalUIDB.bestiaryPend
+    if not all then
+        if not make then return end
+        all = {}; MinimalUIDB.bestiaryPend = all
+    end
+    local p = all[name]
+    if not p and make and count(all) < 400 then p = {}; all[name] = p end
+    return p
+end
+local function addZone(r, z)
+    if not z then return end
+    r.z = r.z or {}
+    if not r.z[z] and count(r.z) < 6 then r.z[z] = true end
+end
+-- (d: level, rank, kind as read off a target; r: a record or a kept-by-name one)
+local function addFacts(r, d)
+    if d.l then
+        if not r.lo or d.l < r.lo then r.lo = d.l end
+        if not r.hi or d.l > r.hi then r.hi = d.l end
+    end
+    if d.lo then
+        if not r.lo or d.lo < r.lo then r.lo = d.lo end
+        if not r.hi or d.hi > r.hi then r.hi = d.hi end
+    end
+    if r.cl == nil then r.cl = d.cl end
+    if r.t == nil then r.t = d.t end
+    if r.f == nil then r.f = d.f end
+    if r.ag == nil then r.ag = d.ag end
+end
+local function setName(id, name)
+    local r = record(id)
+    if not r or r.n then return end
+    r.n = name; nameIndex = nil
+    local all = MinimalUIDB.bestiaryPend
+    local p = all and all[name]
+    if p then
+        addFacts(r, p)
+        if r.xp == nil then r.xp, r.xl = p.xp, p.xl end
+        for z in pairs(p.z or {}) do addZone(r, z) end
+        -- (Its kills by the experience line are all of them; those counted
+        -- at its corpse while it had no name are among them: the greater.)
+        if (p.k or 0) > (r.k or 0) then r.k = p.k end
+        if (p.k or 0) > (r.lk or 0) then r.lk = p.k end
+        all[name] = nil
+    end
+    changed(id)
+end
+-- The creature you have targeted, by what can be read of it without
+-- knowing which it is; and the one you had until a moment ago (the game
+-- drops your target as it dies).
+local tgt, tgtGone
+local function noteTarget()
+    if isTrue(call(UnitExists, "target")) then
+        tgt = nil
+        if isTrue(call(UnitIsPlayer, "target")) or isTrue(call(UnitPlayerControlled, "target")) then return end
+        local react = call(UnitReaction, "target", "player")
+        if not (plain(react) and react <= 4) then return end
+        local lvl = call(UnitLevel, "target")
+        if not (plain(lvl) and lvl > 0) then return end
+        local kind = call(UnitCreatureType, "target")
+        if str(kind) and kind == "Critter" then return end
+        local cl, fam = call(UnitClassification, "target"), call(UnitCreatureFamily, "target")
+        tgt = { l = lvl, t = str(kind) and kind or nil, f = str(fam) and fam or nil,
+                cl = str(cl) and RANK[cl] and cl or nil, ag = react < 4 and 1 or 0 }
+    elseif tgt then
+        tgtGone, tgt = tgt, nil
+        tgtGone.at = GetTime()
+    end
+end
+-- (The one that just died, if it was your target: asked once for each.)
+local function deadTarget()
+    if tgt and not tgt.used and isTrue(call(UnitIsDead, "target")) then tgt.used = true return tgt end
+    if tgtGone and not tgtGone.used and GetTime() - tgtGone.at < 1.5 then tgtGone.used = true return tgtGone end
+end
+-- (What stopped a creature being read, inside an instance: counted.)
+local function obsWhy(what)
+    if not (MinimalUIDB and IsInInstance and isTrue((call(IsInInstance)))) then return end
+    local d = MinimalUIDB.obsdiag or {}
+    MinimalUIDB.obsdiag = d
+    d[what] = (d[what] or 0) + 1
+end
 
 -- A creature in front of you: unit is your target, what the mouse is on,
 -- or a nameplate. seen[guid]: 1 once its standing facts are written, 2 once
@@ -251,8 +349,16 @@ local seen, nSeen = {}, 0
 local noteTip -- (below: what its tooltip says)
 local function observe(unit)
     local id, guid = npcID(unit)
-    if not id or seen[guid] == 2 then return end
-    if not isTrue(call(UnitCanAttack, "player", unit)) then return end
+    if not id then
+        if secret(call(UnitGUID, unit)) then obsWhy("which creature: hidden") end
+        return
+    end
+    if seen[guid] == 2 then return end
+    local can = call(UnitCanAttack, "player", unit)
+    if not isTrue(can) then
+        if secret(can) then obsWhy("whether it can be attacked: hidden") end
+        return
+    end
     if isTrue(call(UnitPlayerControlled, unit)) then return end
     local kind = call(UnitCreatureType, unit)
     if str(kind) and kind == "Critter" then return end
@@ -279,7 +385,11 @@ local function observe(unit)
     end
     if first then
         local name = call(UnitName, unit)
-        if str(name) then r.n = name end
+        if str(name) then
+            if r.n then r.n = name else setName(id, name) end
+        else
+            obsWhy(secret(name) and "read, but its name hidden" or "read, no name")
+        end
         if okLvl then
             if not r.lo or lvl < r.lo then r.lo = lvl; new = true end
             if not r.hi or lvl > r.hi then r.hi = lvl; new = true end
@@ -482,6 +592,38 @@ local function diag(key, what)
     if type(dg) ~= "table" then dg = {}; MinimalUIDB[key] = dg end
     dg[what] = (dg[what] or 0) + 1
 end
+-- The name of a creature known only by its number (a looted corpse in a
+-- dungeon): the game's tooltip for it, asked by that number. The first
+-- asking can come back empty (the game fetches it), so it is asked again.
+local function askName(id, guid)
+    local r = record(id)
+    if not r then return end
+    if r.n then return r.n end
+    local TI = C_TooltipInfo
+    if not (TI and TI.GetHyperlink) then diag("namediag", "no way to ask") return end
+    local data = call(TI.GetHyperlink, "unit:" .. (guid or ("Creature-0-0-0-0-" .. id .. "-0000000000")))
+    local ln = type(data) == "table" and type(data.lines) == "table" and data.lines[1]
+    local text = type(ln) == "table" and ln.leftText or nil
+    if secret(text) then diag("namediag", "name hidden") return end
+    if not str(text) or text == (_G.UNKNOWN or "Unknown") or text:find("^Retrieving") then
+        diag("namediag", "no answer")
+        return
+    end
+    diag("namediag", "named")
+    setName(id, text)
+    addZone(r, B.zoneNow and B.zoneNow())
+    return text
+end
+local function nameTheNameless()
+    local n = 0
+    for id, r in pairs(MinimalUIDB and MinimalUIDB.bestiary or {}) do
+        if not r.n and n < 60 then
+            n = n + 1
+            askName(id)
+        end
+    end
+    return n
+end
 -- Reputation for a kill: the game's line "Reputation with X increased by
 -- N" names no creature. It goes to the kill it arrives with (two seconds
 -- either side).
@@ -543,7 +685,8 @@ local function lootKill(id, guid)
     if seenDead[guid] then return end
     markDead(guid)
     local r = record(id)
-    if take(owedByXP, r and r.n, 300) then return end
+    local name = (r and r.n) or askName(id, guid)
+    if take(owedByXP, name, 300) then return end
     diag("killdiag", "counted when looted")
     addKill(id, nil, false)
 end
@@ -553,9 +696,24 @@ local function noteXP(text)
     local name = text:match("^(.-) dies, you gain")
     if not name then diag("killdiag", "experience line, other wording") return end
     local id = idByName(name)
-    if not id then diag("killdiag", "experience line, creature not in the book") return end
     local gained = tonumber(text:match("you gain (%d+) experience"))
     local mine = call(UnitLevel, "player")
+    if not id then
+        -- (No such creature in the book: kept by its name until one is, 0.1.622.)
+        diag("killdiag", "experience line, creature not in the book")
+        local p = pendOf(name, true)
+        if p then
+            p.k = (p.k or 0) + 1
+            if gained and gained > 0 then p.xp, p.xl = gained, plain(mine) and mine or nil end
+            local d = deadTarget()
+            if d then addFacts(p, d) end
+            p.z = p.z or {}
+            local z = zoneNow()
+            if z and count(p.z) < 6 then p.z[z] = true end
+        end
+        owe(owedByXP, name)
+        return
+    end
     local rx = record(id)
     if rx and gained and gained > 0 then
         rx.xp, rx.xl = gained, plain(mine) and mine or nil
@@ -571,6 +729,15 @@ local function noteXP(text)
     if not lvl and r and r.lo and r.lo == r.hi then lvl = r.lo end
     local e = not lvl and B.tl and B.tl[id]
     if e and GetTime() - e.t < 120 then lvl = e.l end
+    if r and not r.uc then
+        -- (One named from its corpse in a dungeon: never read as a creature.)
+        local d = deadTarget()
+        if d then
+            addFacts(r, d)
+            addZone(r, zoneNow())
+            lvl = d.l
+        end
+    end
     diag("killdiag", "counted from the experience line")
     addKill(id, lvl, true)
 end
@@ -1940,6 +2107,44 @@ function B:OnInit(db)
         end
         MinimalUIDB.bestiaryRev = 6
     end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 6 then
+        -- (0.1.622: the kills inside instances that went uncounted, their
+        -- creatures having no name here, are read back out of the record of
+        -- play, where there is one: "/men record".)
+        for _, list in pairs(type(MinimalUIDB.journal) == "table" and MinimalUIDB.journal or {}) do
+            local inside, zone, mine = false, nil, nil
+            for _, line in ipairs(type(list) == "table" and list or {}) do
+                local what, rest = nil, nil
+                if type(line) == "string" then what, rest = line:match("^[%d%.]+|([%u_]+)|(.*)$") end
+                if what == "S" then
+                    inside = false
+                    mine = tonumber((select(5, strsplit("|", rest))))
+                elseif what == "WORLD" then
+                    local z, _, _, _, _, kind = strsplit("|", rest)
+                    zone = z ~= "" and z or nil
+                    inside = kind ~= nil and kind ~= "" and kind ~= "none"
+                elseif what == "COMBAT_XP_GAIN" and inside then
+                    local name = rest:match("^(.-) dies, you gain")
+                    if name and not idByName(name) then
+                        local p = pendOf(name, true)
+                        if p then
+                            p.k = (p.k or 0) + 1
+                            local gained = tonumber(rest:match("you gain (%d+) experience"))
+                            if gained and gained > 0 then p.xp, p.xl = gained, mine end
+                            p.z = p.z or {}
+                            if zone and count(p.z) < 6 then p.z[zone] = true end
+                        end
+                    end
+                end
+            end
+        end
+        MinimalUIDB.bestiaryRev = 7
+    end
+    -- (Creatures with a number and no name: asked now, and once more for
+    -- those the game had to fetch.)
+    C_Timer.After(6, function()
+        if pcall(nameTheNameless) then C_Timer.After(8, function() pcall(nameTheNameless) end) end
+    end)
     B.OnChange(function(id)
         if id then hay[id] = nil end
         if win and win:IsShown() then stale = true end
@@ -1962,7 +2167,7 @@ function B:OnInit(db)
         if e == "CHAT_MSG_COMBAT_XP_GAIN" then pcall(noteXP, a1) return end
         if e == "LOSS_OF_CONTROL_ADDED" then pcall(noteControl) return end
         if e == "CHAT_MSG_COMBAT_FACTION_CHANGE" then pcall(noteRep, a1) return end
-        if e == "PLAYER_TARGET_CHANGED" then pcall(noteCorpse, "target") end
+        if e == "PLAYER_TARGET_CHANGED" then pcall(noteTarget); pcall(noteCorpse, "target") end
         if e == "PLAYER_REGEN_ENABLED" then
             C_Timer.After(0.3, function() pcall(noteDeath, "target") end)
             C_Timer.After(0.6, function()
