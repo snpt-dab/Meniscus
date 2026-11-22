@@ -317,6 +317,30 @@ def icons():
                         _kn(6.4, 3.2), _kn(3.2, 3.0), _kn(0.4, 2.2)]))
     # Inspect (by the target frame): a magnifying glass.
     I['inspect'] = Icon().ring(10.2, 10.2, 6.2, w=2.0).line([(15.0, 15.0), (20.2, 20.2)], w=2.6)
+    # Professions (the trainer's header, beside your skill): one emblem each.
+    # first aid: a cross
+    I['prof_aid'] = Icon().line([(12, 6.2), (12, 17.8)], w=4.4).line([(6.2, 12), (17.8, 12)], w=4.4)
+    # engineering: a gear
+    g = Icon().ring(12, 12, 4.7, w=2.4)
+    for k in range(8):
+        ca, sa = math.cos(math.radians(k * 45)), math.sin(math.radians(k * 45))
+        g.line([(12 + ca * 6.4, 12 + sa * 6.4), (12 + ca * 7.6, 12 + sa * 7.6)], w=2.7)
+    I['prof_gear'] = g
+    # herbalism: a leaf with its midrib
+    I['prof_herb'] = (Icon().arc(18, 18, 12, 90, 180, w=2.0).arc(6, 6, 12, -90, 0, w=2.0)
+                      .line([(4.8, 19.2), (13.6, 10.4)], w=1.8))
+    # mining: a pick
+    I['prof_pick'] = Icon().arc(8.5, 18, 12.5, 18, 82, w=2.7).line([(5.8, 19.6), (16.2, 8.8)], w=2.4)
+    # tailoring: a needle with a loop of thread
+    I['prof_needle'] = (Icon().line([(5.6, 18.4), (17.6, 6.4)], w=2.0).ring(17.9, 6.1, 1.7, w=1.4)
+                        .arc(15.5, 12.0, 5.8, 70, -160, w=1.5))
+    # fishing: a hook
+    I['prof_hook'] = (Icon().ring(15.5, 5.6, 1.6, w=1.5).line([(15.5, 7.4), (15.5, 14.6)], w=2.2)
+                      .arc(12, 14.6, 3.5, 0, -180, w=2.2).line([(8.5, 14.6), (8.5, 11.2), (10.6, 13.2)], w=2.0))
+    # leatherworking: a stretched hide
+    I['prof_hide'] = Icon().line([(7, 5), (10, 6.6), (14, 6.6), (17, 5), (18.6, 7.4), (16.6, 10), (16.6, 14), (19, 17),
+                                  (17, 19.4), (14, 17.6), (10, 17.6), (7, 19.4), (5, 17), (7.4, 14), (7.4, 10),
+                                  (5.4, 7.4)], close=True, w=1.9)
     return I
 
 

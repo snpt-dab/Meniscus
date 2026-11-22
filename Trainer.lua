@@ -220,6 +220,11 @@ end
 -- Your own level in a skill, by its name (0.1.630: shown on the header at a
 -- profession trainer, where every row says what it needs and nothing said
 -- what you have). The skill list first, then the professions.
+local PROF_EMBLEM = {
+    ["Alchemy"] = "potion", ["Blacksmithing"] = "profession", ["Cooking"] = "food", ["Enchanting"] = "stat_spell",
+    ["Engineering"] = "prof_gear", ["First Aid"] = "prof_aid", ["Fishing"] = "prof_hook", ["Herbalism"] = "prof_herb",
+    ["Leatherworking"] = "prof_hide", ["Mining"] = "prof_pick", ["Skinning"] = "skin", ["Tailoring"] = "prof_needle",
+}
 local function mySkill(want)
     local S = C_SkillInfo
     local getNum = (S and S.GetNumSkillLines) or _G.GetNumSkillLines
@@ -488,7 +493,7 @@ function TR:Refresh()
                 local b = win.skills[shown]
                 b.name, b.rank, b.max = sn, rank, max
                 b.fs:SetText(max and (rank .. " / " .. max) or tostring(rank))
-                b.icon:SetTexture(icon or "Interface/Icons/INV_Misc_Book_09")
+                b.icon:SetTexture(MEDIA .. "micro_" .. (PROF_EMBLEM[sn] or "profession") .. ".tga")
                 b:SetWidth(22 + 6 + b.fs:GetStringWidth())
                 b:Show()
             end
@@ -554,17 +559,23 @@ local function build()
         b:SetSize(80, 22)
         if i == 1 then b:SetPoint("TOPRIGHT", win, "TOPRIGHT", -20, -58)
         else b:SetPoint("RIGHT", win.skills[1], "LEFT", -14, 0) end
+        -- (Our own emblem in a ring, as on the inspection panel: 0.1.633.)
         local box = CreateFrame("Frame", nil, b)
         box:SetSize(22, 22)
         box:SetPoint("LEFT")
-        ns.RoundedRect(box, -8, 0, 6, T.border[1], T.border[2], T.border[3], 1)
-        local mask = box:CreateMaskTexture()
-        mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetPoint("TOPLEFT", 1, -1); mask:SetPoint("BOTTOMRIGHT", -1, 1)
-        b.icon = box:CreateTexture(nil, "ARTWORK")
-        b.icon:SetAllPoints(mask)
-        b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        b.icon:AddMaskTexture(mask)
+        local rim = box:CreateTexture(nil, "ARTWORK", nil, 0)
+        rim:SetTexture(MEDIA .. "circle.tga")
+        rim:SetAllPoints()
+        rim:SetVertexColor(0.42, 0.42, 0.47, 1)
+        local fill = box:CreateTexture(nil, "ARTWORK", nil, 1)
+        fill:SetTexture(MEDIA .. "circle.tga")
+        fill:SetPoint("TOPLEFT", 1.5, -1.5)
+        fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+        fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+        b.icon = box:CreateTexture(nil, "OVERLAY")
+        b.icon:SetSize(13, 13)
+        b.icon:SetPoint("CENTER")
+        b.icon:SetVertexColor(T.text[1], T.text[2], T.text[3])
         b.fs = text(b, 12, true)
         b.fs:SetPoint("LEFT", box, "RIGHT", 6, 0)
         b:EnableMouse(true)
