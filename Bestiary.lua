@@ -2213,7 +2213,16 @@ function B:OnInit(db)
             return
         end
         if e == "PLAYER_REGEN_DISABLED" then pcall(fightStart) return end
-        if e == "PLAYER_ENTERING_WORLD" then C_Timer.After(3, function() if not InCombatLockdown() then pcall(fightStart) end end) return end
+        if e == "PLAYER_ENTERING_WORLD" then
+            C_Timer.After(3, function() if not InCombatLockdown() then pcall(fightStart) end end)
+            -- (Out of a dungeon: the creatures looted in there can be asked
+            -- their names now; inside, the answer comes back hidden. 0.1.626)
+            C_Timer.After(6, function()
+                if IsInInstance and IsInInstance() == true then return end
+                if pcall(nameTheNameless) then C_Timer.After(8, function() pcall(nameTheNameless) end) end
+            end)
+            return
+        end
         if e == "CHAT_MSG_COMBAT_XP_GAIN" then pcall(noteXP, a1) return end
         if e == "LOSS_OF_CONTROL_ADDED" then pcall(noteControl) return end
         if e == "CHAT_MSG_COMBAT_FACTION_CHANGE" then pcall(noteRep, a1) return end

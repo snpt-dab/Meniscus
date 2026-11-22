@@ -498,6 +498,65 @@ end
 -- health and mana in chat, and the plain unit kind only pointed at you.
 -- What each frame was given, and what it answers, is kept in
 -- MinimalUIDB.pingdiag.
+-- Inside an instance (0.1.626): the game hides from addons which creature a
+-- unit is, and a ping on one of our frames has to say exactly that, so it
+-- did nothing there (read from the count: "target, creature hidden, in an
+-- instance"). The game's own "/ping [@unit]" can still say it. So, inside
+-- an instance only, the ping key is pointed at a hidden button that runs
+-- that line for as long as the pointer is on the frame; it is all done by
+-- the game's protected handlers, so it holds in a fight. Outside, nothing
+-- is changed and the hold-for-the-wheel ping works as before.
+local pingHead, pingFrames = nil, {}
+local function pingKeys()
+    if InCombatLockdown() then pingHead.late = true return end
+    pingHead.late = nil
+    local inside = IsInInstance and IsInInstance()
+    local k1, k2
+    if inside == true and GetBindingKey then k1, k2 = GetBindingKey("TOGGLEPINGLISTENER") end
+    for _, fr in ipairs(pingFrames) do
+        pcall(fr.SetAttribute, fr, "men-pingkey1", k1 or nil)
+        pcall(fr.SetAttribute, fr, "men-pingkey2", k2 or nil)
+        if ClearOverrideBindings then pcall(ClearOverrideBindings, fr) end
+    end
+    if MinimalUIDB then
+        MinimalUIDB.pingkeys = (inside == true and "inside" or "outside") .. ", ping key " .. (k1 and "found" or "none")
+            .. ", frames " .. #pingFrames
+    end
+end
+local function pingByKey(f, unit)
+    if not (SecureHandlerWrapScript and f.IsProtected and f:IsProtected()) or InCombatLockdown() then return "not set up" end
+    if not pingHead then
+        pingHead = CreateFrame("Frame", "MeniscusPingHead", UIParent, "SecureHandlerBaseTemplate")
+        for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_BINDINGS", "PLAYER_REGEN_ENABLED" }) do
+            pcall(pingHead.RegisterEvent, pingHead, e)
+        end
+        pingHead:SetScript("OnEvent", function(self, e)
+            if e == "PLAYER_REGEN_ENABLED" and not self.late then return end
+            pcall(pingKeys)
+        end)
+    end
+    local name = "MeniscusPing_" .. unit
+    local b = _G[name]
+    if not b then
+        b = CreateFrame("Button", name, UIParent, "SecureActionButtonTemplate")
+        b:SetAttribute("type", "macro")
+        b:SetAttribute("macrotext", "/ping [@" .. unit .. ",exists]")
+        b:RegisterForClicks("AnyDown", "AnyUp")
+        -- (Both edges, as everywhere here: the game acts on the one its
+        -- own key-down setting names, so it is one ping for one press.)
+    end
+    f:SetAttribute("men-pingbtn", name)
+    SecureHandlerWrapScript(f, "OnEnter", pingHead, [[
+        local b = self:GetAttribute("men-pingbtn")
+        local k1, k2 = self:GetAttribute("men-pingkey1"), self:GetAttribute("men-pingkey2")
+        if k1 then self:SetBindingClick(true, k1, b) end
+        if k2 then self:SetBindingClick(true, k2, b) end
+    ]])
+    SecureHandlerWrapScript(f, "OnLeave", pingHead, [[ self:ClearBindings() ]])
+    pcall(SecureHandlerWrapScript, f, "OnHide", pingHead, [[ self:ClearBindings() ]])
+    pingFrames[#pingFrames + 1] = f
+    return "key route set"
+end
 function ns.MakePingable(f, unit, portrait)
     if not Mixin then return end
     -- The player's kind asks one thing of its frame: is the pointer over
@@ -554,6 +613,10 @@ function ns.MakePingable(f, unit, portrait)
         end
     end
     pcall(f.SetAttribute, f, "ping-receiver", true)
+    if not own and type(unit) == "string" and unit ~= "player" then
+        local ok, how = pcall(pingByKey, f, unit)
+        note = note .. ", " .. tostring(ok and how or ("key route failed: " .. tostring(how):sub(1, 100)))
+    end
     if MinimalUIDB then
         MinimalUIDB.pingdiag = MinimalUIDB.pingdiag or {}
         MinimalUIDB.pingdiag[tostring(f.GetName and f:GetName() or unit)] = note
