@@ -494,17 +494,23 @@ function TR:Refresh()
                 b.name, b.rank, b.max = sn, rank, max
                 b.fs:SetText(max and (rank .. " / " .. max) or tostring(rank))
                 b.icon:SetTexture(MEDIA .. "micro_" .. (PROF_EMBLEM[sn] or "profession") .. ".tga")
-                -- (First aid: a red cross on a white disc. White on dark
-                -- it read as a "plus" button: 0.1.635.)
+                -- (First aid: a little white case with a red cross on it, in
+                -- the same ring as the rest. A bare white cross read as a
+                -- "plus" button: 0.1.636.)
                 if sn == "First Aid" then
-                    b.rim:SetVertexColor(0.93, 0.93, 0.95, 1)
-                    b.fill:SetVertexColor(0.93, 0.93, 0.95, 1)
-                    b.icon:SetVertexColor(0.84, 0.20, 0.18)
+                    b.icon:SetTexture(MEDIA .. "micro_prof_kit.tga")
+                    b.icon:SetSize(16, 16)
+                    b.over:SetTexture(MEDIA .. "micro_prof_aid.tga")
+                    b.over:SetVertexColor(0.86, 0.18, 0.16)
+                    b.over:Show()
+                    b.rim:SetVertexColor(0.86, 0.86, 0.89, 1)
                 else
+                    b.icon:SetSize(13, 13)
+                    b.over:Hide()
                     b.rim:SetVertexColor(0.42, 0.42, 0.47, 1)
-                    b.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
-                    b.icon:SetVertexColor(T.text[1], T.text[2], T.text[3])
                 end
+                b.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+                b.icon:SetVertexColor(T.text[1], T.text[2], T.text[3])
                 b:SetWidth(22 + 6 + b.fs:GetStringWidth())
                 b:Show()
             end
@@ -588,6 +594,9 @@ local function build()
         b.icon:SetSize(13, 13)
         b.icon:SetPoint("CENTER")
         b.icon:SetVertexColor(T.text[1], T.text[2], T.text[3])
+        b.over = box:CreateTexture(nil, "OVERLAY", nil, 1) -- (a second colour laid on the emblem)
+        b.over:SetAllPoints(b.icon)
+        b.over:Hide()
         b.fs = text(b, 12, true)
         b.fs:SetPoint("LEFT", box, "RIGHT", 6, 0)
         b:EnableMouse(true)

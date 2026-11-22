@@ -319,7 +319,11 @@ def icons():
     I['inspect'] = Icon().ring(10.2, 10.2, 6.2, w=2.0).line([(15.0, 15.0), (20.2, 20.2)], w=2.6)
     # Professions (the trainer's header, beside your skill): one emblem each.
     # first aid: a cross
-    I['prof_aid'] = Icon().line([(12, 6.2), (12, 17.8)], w=4.4).line([(6.2, 12), (17.8, 12)], w=4.4)
+    # (two layers: the kit, a white case with a handle; and the cross that
+    # is laid on it in red)
+    I['prof_kit'] = (Icon().box(3.6, 7.4, 20.4, 20.0, rad=3.0, fill=True)
+                     .line([(9.2, 7.4), (9.2, 4.9), (14.8, 4.9), (14.8, 7.4)], w=1.9))
+    I['prof_aid'] = Icon().line([(12, 10.3), (12, 17.1)], w=3.0).line([(8.6, 13.7), (15.4, 13.7)], w=3.0)
     # engineering: a gear
     g = Icon().ring(12, 12, 4.7, w=2.4)
     for k in range(8):
