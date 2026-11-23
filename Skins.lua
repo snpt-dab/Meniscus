@@ -624,21 +624,63 @@ function ns.MapFooter()
         for _, f in ipairs(raised) do refit(f) end
         foot:SetShown(on)
         -- (The window's layer, and with it every part of the window that
-        -- keeps a layer of its own: the frame that holds the close and
-        -- make-small buttons does, and was left a layer below the lifted
-        -- map, behind it, so there was no way back out of full screen: 0.1.638.)
+        -- keeps a lower layer of its own, whatever that layer is: 0.1.638
+        -- only moved parts on the window's own layer, and the frame with
+        -- the close and make-small buttons was still behind the lifted
+        -- map. Each part's own layer is remembered and given back in the
+        -- windowed map: 0.1.639.)
+        local RANK = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6, FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
         local to = on and baseStrata or "DIALOG"
         pcall(wm.SetFrameStrata, wm, to)
         local function lift(f, d)
             for _, c in ipairs({ f:GetChildren() }) do
                 if not (c.IsForbidden and c:IsForbidden()) and c.GetFrameStrata then
-                    local st = c:GetFrameStrata()
-                    if st ~= to and (st == baseStrata or st == "DIALOG") then pcall(c.SetFrameStrata, c, to) end
+                    if on then
+                        if c.__muiSt then pcall(c.SetFrameStrata, c, c.__muiSt); c.__muiSt = nil end
+                    else
+                        local st = c:GetFrameStrata()
+                        if (RANK[st] or 9) < RANK.DIALOG then
+                            c.__muiSt = c.__muiSt or st
+                            pcall(c.SetFrameStrata, c, "DIALOG")
+                        end
+                    end
                     if d < 2 and c ~= sc then lift(c, d + 1) end
                 end
             end
         end
         pcall(lift, wm, 0)
+        -- (What the full-screen window is made of, written down once it has
+        -- settled, in case the buttons are still missing: layer, level,
+        -- shown, place of each part. No names of players in it.)
+        if not on and MinimalUIDB then
+            C_Timer.After(0.5, function()
+                pcall(function()
+                    local out = { string.format("screen %dx%d", UIParent:GetWidth(), UIParent:GetHeight()) }
+                    local function line(label, f)
+                        if not (f and f.GetFrameStrata) then out[#out + 1] = label .. ": none" return end
+                        local l, t = f:GetLeft(), f:GetTop()
+                        local k = f:GetEffectiveScale() / UIParent:GetEffectiveScale()
+                        out[#out + 1] = string.format("%s: %s lvl %d %s alpha %.2f x %d top %d w %d h %d", label,
+                            f:GetFrameStrata(), f:GetFrameLevel(), f:IsVisible() and "visible" or (f:IsShown() and "shown" or "hidden"),
+                            f:GetEffectiveAlpha(), (l or -1) * k, (t or -1) * k, f:GetWidth() * k, f:GetHeight() * k)
+                    end
+                    line("window", wm)
+                    local bf = wm.BorderFrame
+                    line("border", bf)
+                    line("close", (bf and bf.CloseButton) or wm.CloseButton or _G.WorldMapFrameCloseButton)
+                    local mm = (bf and (bf.MaxMinButtonFrame or bf.MaximizeMinimizeFrame)) or wm.MaximizeMinimizeFrame
+                    line("maxmin", mm)
+                    if mm then
+                        for i, b in ipairs({ mm:GetChildren() }) do line("maxmin child " .. i, b) end
+                    end
+                    for i, c in ipairs({ wm:GetChildren() }) do
+                        local n = (c.GetDebugName and c:GetDebugName()) or "?"
+                        line("part " .. i .. " " .. tostring(n):sub(-40) .. (c.__muiOurs and " (ours)" or ""), c)
+                    end
+                    MinimalUIDB.mapfull = out
+                end)
+            end)
+        end
         for _, fn in ipairs(foot.modeHooks) do pcall(fn, on) end
     end
     local function later() C_Timer.After(0, function() pcall(sync) end) end
