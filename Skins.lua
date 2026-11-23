@@ -602,8 +602,14 @@ function ns.MapFooter()
     foot:SetFrameLevel(wm:GetFrameLevel() + 1)
     foot.modeHooks = {}
     function foot.IsOn() return on end
-    local baseStrata = wm:GetFrameStrata()
-    if baseStrata == "DIALOG" or baseStrata == "FULLSCREEN" then baseStrata = "HIGH" end
+    local function qbLayer()
+        local low = wm:IsShown() and on == false
+        for _, n in ipairs({ "MinimalUIQuickBuff" }) do
+            local b = _G[n]
+            if b and not InCombatLockdown() then pcall(b.SetFrameStrata, b, low and "LOW" or "HIGH") end
+        end
+    end
+    wm:HookScript("OnHide", function() pcall(qbLayer) end)
     local function sync()
         local full = wm.IsMaximized and wm:IsMaximized()
         local want = not full
@@ -623,125 +629,12 @@ function ns.MapFooter()
         end
         for _, f in ipairs(raised) do refit(f) end
         foot:SetShown(on)
-        -- (The window's layer, and with it every part of the window that
-        -- keeps a lower layer of its own, whatever that layer is: 0.1.638
-        -- only moved parts on the window's own layer, and the frame with
-        -- the close and make-small buttons was still behind the lifted
-        -- map. Each part's own layer is remembered and given back in the
-        -- windowed map: 0.1.639.)
-        local RANK = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6, FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
-        local to = on and baseStrata or "DIALOG"
-        pcall(wm.SetFrameStrata, wm, to)
-        local function lift(f, d)
-            for _, c in ipairs({ f:GetChildren() }) do
-                if not (c.IsForbidden and c:IsForbidden()) and c.GetFrameStrata then
-                    if on then
-                        if c.__muiSt then pcall(c.SetFrameStrata, c, c.__muiSt); c.__muiSt = nil end
-                    else
-                        local st = c:GetFrameStrata()
-                        if (RANK[st] or 9) < RANK.DIALOG then
-                            c.__muiSt = c.__muiSt or st
-                            pcall(c.SetFrameStrata, c, "DIALOG")
-                        end
-                    end
-                    if d < 2 and c ~= sc then lift(c, d + 1) end
-                end
-            end
-        end
-        pcall(lift, wm, 0)
-        -- (And the frame with the buttons is never under the window's own level.)
-        local bfr = wm.BorderFrame
-        if bfr and bfr.GetFrameLevel and bfr:GetFrameLevel() < wm:GetFrameLevel() + 3 then
-            pcall(bfr.SetFrameLevel, bfr, wm:GetFrameLevel() + 3)
-        end
-        -- (What the full-screen window is made of, written down once it has
-        -- settled, in case the buttons are still missing: layer, level,
-        -- shown, place of each part. No names of players in it.)
-        if not on and MinimalUIDB then
-            C_Timer.After(0.5, function()
-                pcall(function()
-                    local out = { string.format("screen %dx%d", UIParent:GetWidth(), UIParent:GetHeight()) }
-                    local function line(label, f)
-                        if not (f and f.GetFrameStrata) then out[#out + 1] = label .. ": none" return end
-                        local l, t = f:GetLeft(), f:GetTop()
-                        local k = f:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                        out[#out + 1] = string.format("%s: %s lvl %d %s alpha %.2f x %d top %d w %d h %d", label,
-                            f:GetFrameStrata(), f:GetFrameLevel(), f:IsVisible() and "visible" or (f:IsShown() and "shown" or "hidden"),
-                            f:GetEffectiveAlpha(), (l or -1) * k, (t or -1) * k, f:GetWidth() * k, f:GetHeight() * k)
-                    end
-                    line("window", wm)
-                    local bf = wm.BorderFrame
-                    line("border", bf)
-                    line("close", (bf and bf.CloseButton) or wm.CloseButton or _G.WorldMapFrameCloseButton)
-                    local mm = (bf and (bf.MaxMinButtonFrame or bf.MaximizeMinimizeFrame)) or wm.MaximizeMinimizeFrame
-                    line("maxmin", mm)
-                    if mm then
-                        for i, b in ipairs({ mm:GetChildren() }) do line("maxmin child " .. i, b) end
-                    end
-                    for i, c in ipairs({ wm:GetChildren() }) do
-                        local n = (c.GetDebugName and c:GetDebugName()) or "?"
-                        line("part " .. i .. " " .. tostring(n):sub(-40) .. (c.__muiOurs and " (ours)" or ""), c)
-                    end
-                    -- (0.1.641: the buttons turned out to be there, shown and on
-                    -- top within the window, yet not drawn. What they are drawn
-                    -- with, and every shown frame anywhere that lies over them.)
-                    local close = (bf and bf.CloseButton) or wm.CloseButton or _G.WorldMapFrameCloseButton
-                    local function art(label, f, d)
-                        if not (f and f.GetRegions) then return end
-                        for i, r in ipairs({ f:GetRegions() }) do
-                            local what = r:GetObjectType()
-                            local src = ""
-                            if what == "Texture" then
-                                src = tostring((r.GetAtlas and r:GetAtlas()) or r:GetTexture() or "none"):sub(-36)
-                            end
-                            out[#out + 1] = string.format("%s region %d: %s %s alpha %.2f %s %s w %d h %d", label, i, what,
-                                r:IsVisible() and "visible" or (r:IsShown() and "shown" or "hidden"), r:GetAlpha(),
-                                tostring(r.GetDrawLayer and r:GetDrawLayer()), src, r:GetWidth() or 0, r:GetHeight() or 0)
-                        end
-                        if d < 2 then
-                            for i, c in ipairs({ f:GetChildren() }) do
-                                line(label .. " child " .. i, c)
-                                art(label .. " child " .. i, c, d + 1)
-                            end
-                        end
-                    end
-                    art("close", close, 0)
-                    art("maxmin", mm, 0)
-                    local RK = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6, FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
-                    local us = UIParent:GetEffectiveScale()
-                    local cl, cr, ct, cb
-                    if close and close:GetLeft() then
-                        local k = close:GetEffectiveScale() / us
-                        cl, cr, ct, cb = close:GetLeft() * k, close:GetRight() * k, close:GetTop() * k, close:GetBottom() * k
-                    end
-                    local n, f = 0, cl and EnumerateFrames and EnumerateFrames()
-                    while f and n < 30 do
-                        pcall(function()
-                            if (f.IsForbidden and f:IsForbidden()) or f == close or not f:IsVisible() then return end
-                            local st = f:GetFrameStrata()
-                            if (RK[st] or 0) < 5 then return end
-                            local l, r, t, b = f:GetLeft(), f:GetRight(), f:GetTop(), f:GetBottom()
-                            if not (l and r and t and b) then return end
-                            local k = f:GetEffectiveScale() / us
-                            if l * k > cr - 2 or r * k < cl + 2 or b * k > ct - 2 or t * k < cb + 2 then return end
-                            local p, mine, depth = f:GetParent(), false, 0
-                            while p and depth < 12 do
-                                if p == wm then mine = true break end
-                                p, depth = p:GetParent(), depth + 1
-                            end
-                            if mine and f:GetFrameLevel() < 512 then return end
-                            n = n + 1
-                            local nm = (f.GetDebugName and f:GetDebugName()) or "?"
-                            out[#out + 1] = string.format("over the close button: %s %s lvl %d %s regions %d w %d h %d",
-                                tostring(nm):sub(-44), st, f:GetFrameLevel(), mine and "(in the map)" or "(not in the map)",
-                                f:GetNumRegions(), (r - l) * k, (t - b) * k)
-                        end)
-                        f = EnumerateFrames(f)
-                    end
-                    MinimalUIDB.mapfull = out
-                end)
-            end)
-        end
+        -- (The window's layer is left as the game sets it: 0.1.642. Lifting
+        -- the full-screen map a layer, so that our buff reminder would
+        -- not show through it, left the close and make-small buttons
+        -- undrawn until the window was next clicked. The reminder is put
+        -- under the map instead while the full-screen map is open.)
+        qbLayer()
         for _, fn in ipairs(foot.modeHooks) do pcall(fn, on) end
     end
     local function later() C_Timer.After(0, function() pcall(sync) end) end
