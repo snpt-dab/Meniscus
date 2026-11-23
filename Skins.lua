@@ -682,6 +682,62 @@ function ns.MapFooter()
                         local n = (c.GetDebugName and c:GetDebugName()) or "?"
                         line("part " .. i .. " " .. tostring(n):sub(-40) .. (c.__muiOurs and " (ours)" or ""), c)
                     end
+                    -- (0.1.641: the buttons turned out to be there, shown and on
+                    -- top within the window, yet not drawn. What they are drawn
+                    -- with, and every shown frame anywhere that lies over them.)
+                    local close = (bf and bf.CloseButton) or wm.CloseButton or _G.WorldMapFrameCloseButton
+                    local function art(label, f, d)
+                        if not (f and f.GetRegions) then return end
+                        for i, r in ipairs({ f:GetRegions() }) do
+                            local what = r:GetObjectType()
+                            local src = ""
+                            if what == "Texture" then
+                                src = tostring((r.GetAtlas and r:GetAtlas()) or r:GetTexture() or "none"):sub(-36)
+                            end
+                            out[#out + 1] = string.format("%s region %d: %s %s alpha %.2f %s %s w %d h %d", label, i, what,
+                                r:IsVisible() and "visible" or (r:IsShown() and "shown" or "hidden"), r:GetAlpha(),
+                                tostring(r.GetDrawLayer and r:GetDrawLayer()), src, r:GetWidth() or 0, r:GetHeight() or 0)
+                        end
+                        if d < 2 then
+                            for i, c in ipairs({ f:GetChildren() }) do
+                                line(label .. " child " .. i, c)
+                                art(label .. " child " .. i, c, d + 1)
+                            end
+                        end
+                    end
+                    art("close", close, 0)
+                    art("maxmin", mm, 0)
+                    local RK = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6, FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+                    local us = UIParent:GetEffectiveScale()
+                    local cl, cr, ct, cb
+                    if close and close:GetLeft() then
+                        local k = close:GetEffectiveScale() / us
+                        cl, cr, ct, cb = close:GetLeft() * k, close:GetRight() * k, close:GetTop() * k, close:GetBottom() * k
+                    end
+                    local n, f = 0, cl and EnumerateFrames and EnumerateFrames()
+                    while f and n < 30 do
+                        pcall(function()
+                            if (f.IsForbidden and f:IsForbidden()) or f == close or not f:IsVisible() then return end
+                            local st = f:GetFrameStrata()
+                            if (RK[st] or 0) < 5 then return end
+                            local l, r, t, b = f:GetLeft(), f:GetRight(), f:GetTop(), f:GetBottom()
+                            if not (l and r and t and b) then return end
+                            local k = f:GetEffectiveScale() / us
+                            if l * k > cr - 2 or r * k < cl + 2 or b * k > ct - 2 or t * k < cb + 2 then return end
+                            local p, mine, depth = f:GetParent(), false, 0
+                            while p and depth < 12 do
+                                if p == wm then mine = true break end
+                                p, depth = p:GetParent(), depth + 1
+                            end
+                            if mine and f:GetFrameLevel() < 512 then return end
+                            n = n + 1
+                            local nm = (f.GetDebugName and f:GetDebugName()) or "?"
+                            out[#out + 1] = string.format("over the close button: %s %s lvl %d %s regions %d w %d h %d",
+                                tostring(nm):sub(-44), st, f:GetFrameLevel(), mine and "(in the map)" or "(not in the map)",
+                                f:GetNumRegions(), (r - l) * k, (t - b) * k)
+                        end)
+                        f = EnumerateFrames(f)
+                    end
                     MinimalUIDB.mapfull = out
                 end)
             end)
@@ -731,6 +787,22 @@ local function skinMap()
     end
     if foot then foot.modeHooks[#foot.modeHooks + 1] = seatChip end
     seatChip(foot and foot.IsOn())
+    -- Our own way out of the full-screen map (0.1.641): the game's two
+    -- buttons at the top right are there but do not get drawn, for a reason
+    -- not found yet. Over the map's lower right corner, only in full screen.
+    if ns.Pill then
+        local exit = ns.Pill(wm, "Exit full screen", function()
+            local fn = wm.HandleUserActionMinimizeSelf or wm.Minimize
+            if fn then pcall(fn, wm) end
+        end)
+        exit.__muiOurs = true
+        exit:SetPoint("BOTTOMRIGHT", sc or wm, "BOTTOMRIGHT", -12, 12)
+        exit:SetFrameLevel((sc or wm):GetFrameLevel() + 50)
+        local function exitShow() exit:SetShown((wm.IsMaximized and wm:IsMaximized()) and true or false) end
+        if foot then foot.modeHooks[#foot.modeHooks + 1] = exitShow end
+        wm:HookScript("OnShow", exitShow)
+        exitShow()
+    end
     local fs = chip:CreateFontString(nil, "OVERLAY")
     ns:SetFont(fs, 11, "", true)
     fs:SetTextColor(unpack(T.text))

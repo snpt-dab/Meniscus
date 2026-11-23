@@ -91,7 +91,7 @@ end
 local function iconBox(parent, size, radius)
     local box = CreateFrame("Frame", nil, parent)
     box:SetSize(size, size)
-    ns.RoundedRect(box, -8, 0, radius, T.border[1], T.border[2], T.border[3], 1)
+    box.paint = ns.RoundedRect(box, -8, 0, radius, T.border[1], T.border[2], T.border[3], 1)
     local mask = box:CreateMaskTexture()
     mask:SetTexture(MEDIA .. "rounded.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     mask:SetPoint("TOPLEFT", 1, -1); mask:SetPoint("BOTTOMRIGHT", -1, 1)
@@ -100,12 +100,18 @@ local function iconBox(parent, size, radius)
     box.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     box.icon:AddMaskTexture(mask)
     -- (Our own emblem in place of the game's picture, where we have one
-    -- for the skill: a dark tile with the emblem drawn on it: 0.1.640.)
-    box.dark = box:CreateTexture(nil, "ARTWORK", nil, 1)
-    box.dark:SetAllPoints(mask)
-    box.dark:SetColorTexture(0.06, 0.06, 0.07, 1)
-    box.dark:AddMaskTexture(mask)
-    box.dark:Hide()
+    -- for the skill: a ring with the emblem inside, as on the inspection
+    -- panel, each skill in a colour of its own: 0.1.641.)
+    box.rim = box:CreateTexture(nil, "ARTWORK", nil, 2)
+    box.rim:SetTexture(MEDIA .. "circle.tga")
+    box.rim:SetAllPoints()
+    box.rim:Hide()
+    box.fill = box:CreateTexture(nil, "ARTWORK", nil, 3)
+    box.fill:SetTexture(MEDIA .. "circle.tga")
+    box.fill:SetPoint("TOPLEFT", 1.5, -1.5)
+    box.fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    box.fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+    box.fill:Hide()
     box.glyph = box:CreateTexture(nil, "OVERLAY")
     box.glyph:SetPoint("CENTER")
     box.glyph:Hide()
@@ -115,235 +121,51 @@ local function iconBox(parent, size, radius)
     return box
 end
 
--- By skill line, so it holds in any language.
+-- By skill line, so it holds in any language: emblem, colour.
 local LINE_EMBLEM = {
-    [171] = "potion", [164] = "profession", [185] = "food", [333] = "stat_spell", [202] = "prof_gear",
-    [129] = "prof_aid", [356] = "prof_hook", [182] = "prof_herb", [165] = "prof_hide", [186] = "prof_pick",
-    [393] = "skin", [197] = "prof_needle",
+    [171] = { "potion",      0.70, 0.52, 0.95 }, -- alchemy
+    [164] = { "profession",  0.95, 0.62, 0.30 }, -- blacksmithing
+    [185] = { "food",        0.96, 0.78, 0.38 }, -- cooking
+    [333] = { "stat_spell",  0.62, 0.60, 0.98 }, -- enchanting
+    [202] = { "prof_gear",   0.93, 0.83, 0.35 }, -- engineering
+    [129] = { "prof_aid",    0.86, 0.86, 0.89 }, -- first aid
+    [356] = { "prof_hook",   0.42, 0.72, 0.96 }, -- fishing
+    [182] = { "prof_herb",   0.50, 0.84, 0.50 }, -- herbalism
+    [165] = { "prof_hide",   0.80, 0.60, 0.42 }, -- leatherworking
+    [186] = { "prof_pick",   0.62, 0.76, 0.88 }, -- mining
+    [393] = { "skin",        0.86, 0.72, 0.52 }, -- skinning
+    [197] = { "prof_needle", 0.93, 0.56, 0.74 }, -- tailoring
 }
 local function setProfIcon(box, line, fallback, learned)
     local em = LINE_EMBLEM[line or 0]
     box:SetAlpha(learned and 1 or 0.5)
     if not em then
-        box.dark:Hide(); box.glyph:Hide(); box.over:Hide()
+        box.rim:Hide(); box.fill:Hide(); box.glyph:Hide(); box.over:Hide()
+        box.paint(T.border[1], T.border[2], T.border[3], 1)
         box.icon:SetTexture(fallback); box.icon:SetDesaturated(not learned); box.icon:Show()
         return
     end
     local size = box:GetWidth()
+    local r, g, b = em[2], em[3], em[4]
     box.icon:Hide()
-    box.dark:Show()
-    if em == "prof_aid" then -- (a white case with a red cross on it, as at the trainer)
-        box.glyph:SetSize(size * 0.68, size * 0.68)
+    box.paint(T.border[1], T.border[2], T.border[3], 0)
+    box.rim:SetVertexColor(r * 0.62, g * 0.62, b * 0.62, 1)
+    box.rim:Show(); box.fill:Show()
+    if em[1] == "prof_aid" then -- (a white case with a red cross on it, as at the trainer)
+        box.glyph:SetSize(size * 0.62, size * 0.62)
         box.glyph:SetTexture(MEDIA .. "micro_prof_kit.tga")
+        box.glyph:SetVertexColor(T.text[1], T.text[2], T.text[3])
         box.over:SetTexture(MEDIA .. "micro_prof_aid.tga")
         box.over:SetVertexColor(0.86, 0.18, 0.16)
         box.over:Show()
+        box.rim:SetVertexColor(r, g, b, 1)
     else
-        box.glyph:SetSize(size * 0.58, size * 0.58)
-        box.glyph:SetTexture(MEDIA .. "micro_" .. em .. ".tga")
+        box.glyph:SetSize(size * 0.54, size * 0.54)
+        box.glyph:SetTexture(MEDIA .. "micro_" .. em[1] .. ".tga")
+        box.glyph:SetVertexColor(r, g, b)
         box.over:Hide()
     end
-    box.glyph:SetVertexColor(T.text[1], T.text[2], T.text[3])
     box.glyph:Show()
-end
-
--- Slim skill bar: track + fill, rounded, value text above its right end.
-local function skillBar(parent, w)
-    local b = CreateFrame("Frame", nil, parent)
-    b:SetSize(w, 6)
-    ns.RoundedRect(b, -8, 0, 3, 0.05, 0.05, 0.06, 1)
-    b.fillFrame = CreateFrame("Frame", nil, b)
-    b.fillFrame:SetPoint("TOPLEFT"); b.fillFrame:SetPoint("BOTTOMLEFT")
-    b.fill = ns.RoundedRect(b.fillFrame, -7, 0, 3, SKILL[1], SKILL[2], SKILL[3], 1)
-    b.value = text(b, 10, true, T.textDim)
-    b.value:SetPoint("BOTTOMRIGHT", b, "TOPRIGHT", 0, 4)
-    function b:Set(cur, max, mod)
-        if not (num(cur) and num(max) and max > 0) then self:Hide(); return end
-        self:Show()
-        self.fillFrame:SetWidth(math.max(6, w * math.min(1, cur / max)))
-        local t = cur .. " / " .. max
-        if num(mod) and mod > 0 then t = t .. string.format("  |cff8fd19e+%d|r", mod) end
-        self.value:SetText(t)
-        local done = cur >= max
-        self.fill(done and 0.45 or SKILL[1], done and 0.85 or SKILL[2], done and 0.50 or SKILL[3], 1)
-    end
-    return b
-end
-
--- Ability pill: a secure spell button styled like our pills.
-local pillCount = 0
-local function abilityPill(parent)
-    pillCount = pillCount + 1
-    local b = CreateFrame("Button", "MinimalUIProfBookPill" .. pillCount, parent, "SecureActionButtonTemplate")
-    b:SetHeight(24)
-    b:RegisterForClicks("AnyDown", "AnyUp")
-    b:HookScript("PreClick", function() ns.profBookKeyAt = nil end)
-    dragSpell(b)
-    b.fs = text(b, 11, true)
-    b.fs:SetPoint("LEFT", 30, 0)
-    b.ic = b:CreateTexture(nil, "ARTWORK")
-    b.ic:SetSize(16, 16)
-    b.ic:SetPoint("LEFT", 8, 0)
-    b.ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    ns.RoundedRect(b, -7, -1, 13, T.border[1], T.border[2], T.border[3], 1)
-    b.paint = ns.EasePaint(b, ns.RoundedRect(b, -6, 0, 12, unpack(PILL_OFF)))
-    b:HookScript("OnEnter", function(self)
-        self.hover = true
-        if not self.passive then self.paint(unpack(PILL_HOVER)) end
-        ns.TipAnchor(self)
-        if not (self.slot and pcall(GameTooltip.SetSpellBookItem, GameTooltip, self.slot, BANK))
-                and not (self.spellID and pcall(GameTooltip.SetSpellByID, GameTooltip, self.spellID)) then
-            GameTooltip:SetText(self.fs:GetText() or "")
-        end
-        GameTooltip:Show()
-    end)
-    b:HookScript("OnLeave", function(self)
-        self.hover = false
-        self.paint(unpack(PILL_OFF))
-        GameTooltip:Hide()
-    end)
-    return b
-end
-
--- ── Data ──────────────────────────────────────────────────────────────────
-local function profData(index)
-    if not index then return nil end
-    local name, icon, rank, maxRank, numSpells, offset, skillLine, mod = call(GetProfessionInfo, index)
-    if not str(name) then return nil end
-    local p = { name = name, icon = icon, rank = rank, max = maxRank, mod = mod, skillLine = skillLine, abilities = {} }
-    if num(numSpells) and num(offset) then
-        for i = 1, numSpells do
-            local slot = offset + i
-            local info = call(SB.GetSpellBookItemInfo, slot, BANK)
-            if type(info) == "table" and str(info.name) then
-                table.insert(p.abilities, { slot = slot, name = info.name, icon = info.iconID,
-                    spellID = info.spellID or info.actionID, passive = info.isPassive, sub = str(info.subName) })
-                -- The profession's own spell carries the rank title ("Apprentice").
-                if not p.title and info.name == name and str(info.subName) then p.title = info.subName end
-            end
-        end
-    end
-    return p
-end
-
--- ── Window ────────────────────────────────────────────────────────────────
-local win
-local pendingRefresh = false
-
-local function fillAbilities(c, p)
-    local combat = InCombatLockdown()
-    -- The card opens the profession: its first active ability.
-    local main
-    for _, a in ipairs(p and p.abilities or {}) do
-        if not a.passive then main = a; break end
-    end
-    c.main = main
-    if not combat then
-        c:SetAttribute("type1", main and "spell" or nil)
-        c:SetAttribute("spell", main and (main.spellID or main.name) or nil)
-    end
-    -- Pills only when there's a choice (two or more abilities); a lone one
-    -- would just repeat what the card does.
-    local list = (p and #p.abilities > 1) and p.abilities or {}
-    local x = 0
-    local room = c:GetWidth() - c.pillX - 10
-    for i, b in ipairs(c.pills) do
-        local a = list[i]
-        -- Skip pills that would run past the card's edge.
-        if a then
-            ns:SetFont(b.fs, 11, "", true)
-            b.fs:SetText(a.name)
-            if x + b.fs:GetStringWidth() + 44 > room then a = nil end
-        end
-        if a then
-            b.slot, b.spellID, b.passive = a.slot, a.spellID, a.passive
-            b.fs:SetText(a.name)
-            b.fs:SetTextColor(unpack(a.passive and T.textDim or T.text))
-            b.ic:SetTexture(a.icon)
-            local w = math.floor(b.fs:GetStringWidth() + 44)
-            if not combat then
-                b:SetWidth(w)
-                b:ClearAllPoints()
-                b:SetPoint(c.pillAnchor, c, c.pillAnchor, c.pillX + (c.pillDir * x), c.pillY)
-                b:SetAttribute("type1", (not a.passive) and "spell" or nil)
-                b:SetAttribute("spell", (not a.passive) and (a.spellID or a.name) or nil)
-                b:Show()
-            end
-            x = x + w + 6
-        elseif not combat then
-            b.slot, b.spellID = nil, nil
-            b:SetAttribute("type1", nil); b:SetAttribute("spell", nil)
-            b:Hide()
-        end
-    end
-    if combat then pendingRefresh = true end
-end
-
-local EMPTY_PRIMARY = "Visit a profession trainer in a major city to learn a profession. You can have two, in any mix of gathering and crafting."
-local SECONDARY = {
-    { key = "cook", line = 185, name = PROFESSIONS_COOKING or "Cooking", icon = "Interface/Icons/INV_Misc_Food_15",
-      hint = "Visit a trainer to learn cooking: turn meat and fish into food that restores health and gives buffs." },
-    { key = "fish", line = 356, name = PROFESSIONS_FISHING or "Fishing", icon = "Interface/Icons/Trade_Fishing",
-      hint = "Visit a trainer to learn fishing: catch fish and other strange things from water." },
-    { key = "aid", line = 129, name = PROFESSIONS_FIRST_AID or "First Aid", icon = "Interface/Icons/Spell_Holy_SealOfSacrifice",
-      hint = "Visit a trainer to learn first aid: turn cloth into bandages for healing yourself and others." },
-}
-
-local function buildPrimary(i)
-    local c = card(win, W - 36, PRIM_H)
-    c:SetPoint("TOPLEFT", win, "TOPLEFT", 18, -(TOP + (i - 1) * (PRIM_H + 8)))
-    c.box = iconBox(c, 44, 10)
-    c.box:SetPoint("TOPLEFT", 14, -14)
-    c.name = text(c, 14, true)
-    c.name:SetPoint("TOPLEFT", c.box, "TOPRIGHT", 12, -4)
-    c.title = text(c, 11, false, T.textDim)
-    c.title:SetPoint("TOPLEFT", c.name, "BOTTOMLEFT", 0, -5)
-    c.bar = skillBar(c, 220)
-    c.bar:SetPoint("TOPRIGHT", c, "TOPRIGHT", -16, -32)
-    c.unlearn = CreateFrame("Button", nil, c)
-    c.unlearn:SetSize(60, 16)
-    c.unlearn:SetPoint("BOTTOMRIGHT", -14, 16)
-    c.unlearn.fs = text(c.unlearn, 10, false, T.textDim)
-    c.unlearn.fs:SetPoint("RIGHT")
-    c.unlearn.fs:SetText("Unlearn")
-    c.unlearn:SetScript("OnEnter", function(self) self.fs:SetTextColor(unpack(RED)) end)
-    c.unlearn:SetScript("OnLeave", function(self) self.fs:SetTextColor(unpack(T.textDim)) end)
-    c.unlearn:SetScript("OnClick", function(self)
-        local p = c.prof
-        if not p or not p.skillLine then return end
-        StaticPopup_Show("MINIMALUI_UNLEARN_PROFESSION", p.name, nil, p.skillLine)
-    end)
-    c.empty = text(c, 11, false, T.textDim)
-    c.empty:SetPoint("LEFT", c.box, "RIGHT", 12, 0)
-    c.empty:SetPoint("RIGHT", c, "RIGHT", -20, 0)
-    c.empty:SetJustifyH("LEFT")
-    c.empty:SetSpacing(3)
-    c.pills = {}
-    for k = 1, 4 do c.pills[k] = abilityPill(c) end
-    c.pillAnchor, c.pillX, c.pillY, c.pillDir = "BOTTOMLEFT", 70, 12, 1
-    return c
-end
-
-local function buildSecondary(i, w)
-    local c = card(win, w, SEC_H)
-    c:SetPoint("TOPLEFT", win, "TOPLEFT", 18 + (i - 1) * (w + 8), -(TOP + PRIM_H * 2 + 8 + 12))
-    c.box = iconBox(c, 36, 9)
-    c.box:SetPoint("TOPLEFT", 12, -12)
-    c.name = text(c, 13, true)
-    c.name:SetPoint("TOPLEFT", c.box, "TOPRIGHT", 10, -2)
-    c.title = text(c, 10, false, T.textDim)
-    c.title:SetPoint("TOPLEFT", c.name, "BOTTOMLEFT", 0, -4)
-    c.bar = skillBar(c, w - 24)
-    c.bar:SetPoint("TOPLEFT", c, "TOPLEFT", 12, -78)
-    c.empty = text(c, 10, false, T.textDim)
-    c.empty:SetPoint("TOPLEFT", c.box, "BOTTOMLEFT", 0, -12)
-    c.empty:SetWidth(w - 24)
-    c.empty:SetJustifyH("LEFT")
-    c.empty:SetSpacing(2)
-    c.pills = {}
-    for k = 1, 2 do c.pills[k] = abilityPill(c) end
-    c.pillAnchor, c.pillX, c.pillY, c.pillDir = "BOTTOMLEFT", 12, 12, 1
-    return c
 end
 
 local function fillPrimary(c, p)
