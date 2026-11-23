@@ -561,7 +561,7 @@ function ns.MapFooter()
     if not (wm and sc and ns.CreateFooter) then return end
     if not (S.db and S.db.enabled ~= false) then mapFoot = nil return end -- (only on the skinned map)
     local F = MAP_FOOT
-    local on = false
+    local on = nil -- (nil until the first look: starting in full screen went unhandled before 0.1.640)
     local raised, busy = {}, false
     local function fix(self, p, rel, rp, x, y)
         if busy or type(p) ~= "string" then return end
@@ -649,6 +649,11 @@ function ns.MapFooter()
             end
         end
         pcall(lift, wm, 0)
+        -- (And the frame with the buttons is never under the window's own level.)
+        local bfr = wm.BorderFrame
+        if bfr and bfr.GetFrameLevel and bfr:GetFrameLevel() < wm:GetFrameLevel() + 3 then
+            pcall(bfr.SetFrameLevel, bfr, wm:GetFrameLevel() + 3)
+        end
         -- (What the full-screen window is made of, written down once it has
         -- settled, in case the buttons are still missing: layer, level,
         -- shown, place of each part. No names of players in it.)

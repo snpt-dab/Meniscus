@@ -99,7 +99,52 @@ local function iconBox(parent, size, radius)
     box.icon:SetAllPoints(mask)
     box.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     box.icon:AddMaskTexture(mask)
+    -- (Our own emblem in place of the game's picture, where we have one
+    -- for the skill: a dark tile with the emblem drawn on it: 0.1.640.)
+    box.dark = box:CreateTexture(nil, "ARTWORK", nil, 1)
+    box.dark:SetAllPoints(mask)
+    box.dark:SetColorTexture(0.06, 0.06, 0.07, 1)
+    box.dark:AddMaskTexture(mask)
+    box.dark:Hide()
+    box.glyph = box:CreateTexture(nil, "OVERLAY")
+    box.glyph:SetPoint("CENTER")
+    box.glyph:Hide()
+    box.over = box:CreateTexture(nil, "OVERLAY", nil, 1)
+    box.over:SetAllPoints(box.glyph)
+    box.over:Hide()
     return box
+end
+
+-- By skill line, so it holds in any language.
+local LINE_EMBLEM = {
+    [171] = "potion", [164] = "profession", [185] = "food", [333] = "stat_spell", [202] = "prof_gear",
+    [129] = "prof_aid", [356] = "prof_hook", [182] = "prof_herb", [165] = "prof_hide", [186] = "prof_pick",
+    [393] = "skin", [197] = "prof_needle",
+}
+local function setProfIcon(box, line, fallback, learned)
+    local em = LINE_EMBLEM[line or 0]
+    box:SetAlpha(learned and 1 or 0.5)
+    if not em then
+        box.dark:Hide(); box.glyph:Hide(); box.over:Hide()
+        box.icon:SetTexture(fallback); box.icon:SetDesaturated(not learned); box.icon:Show()
+        return
+    end
+    local size = box:GetWidth()
+    box.icon:Hide()
+    box.dark:Show()
+    if em == "prof_aid" then -- (a white case with a red cross on it, as at the trainer)
+        box.glyph:SetSize(size * 0.68, size * 0.68)
+        box.glyph:SetTexture(MEDIA .. "micro_prof_kit.tga")
+        box.over:SetTexture(MEDIA .. "micro_prof_aid.tga")
+        box.over:SetVertexColor(0.86, 0.18, 0.16)
+        box.over:Show()
+    else
+        box.glyph:SetSize(size * 0.58, size * 0.58)
+        box.glyph:SetTexture(MEDIA .. "micro_" .. em .. ".tga")
+        box.over:Hide()
+    end
+    box.glyph:SetVertexColor(T.text[1], T.text[2], T.text[3])
+    box.glyph:Show()
 end
 
 -- Slim skill bar: track + fill, rounded, value text above its right end.
@@ -304,14 +349,14 @@ end
 local function fillPrimary(c, p)
     c.prof = p
     if p then
-        c.box.icon:SetTexture(p.icon); c.box.icon:SetDesaturated(false); c.box:SetAlpha(1)
+        setProfIcon(c.box, p.skillLine, p.icon, true)
         c.name:SetText(p.name); c.name:SetTextColor(unpack(T.text))
         c.title:SetText(p.title or ""); c.title:Show()
         c.bar:Set(p.rank, p.max, p.mod)
         c.unlearn:Show()
         c.empty:Hide()
     else
-        c.box.icon:SetTexture("Interface/Icons/INV_Misc_Book_09"); c.box.icon:SetDesaturated(true); c.box:SetAlpha(0.5)
+        setProfIcon(c.box, nil, "Interface/Icons/INV_Misc_Book_09", false)
         c.name:SetText("")
         c.title:Hide()
         c.bar:Hide()
@@ -324,13 +369,13 @@ end
 local function fillSecondary(c, p, def)
     c.prof = p
     if p then
-        c.box.icon:SetTexture(p.icon); c.box.icon:SetDesaturated(false); c.box:SetAlpha(1)
+        setProfIcon(c.box, p.skillLine or def.line, p.icon, true)
         c.name:SetText(p.name); c.name:SetTextColor(unpack(T.text))
         c.title:SetText(p.title or "")
         c.bar:Set(p.rank, p.max, p.mod)
         c.empty:Hide()
     else
-        c.box.icon:SetTexture(def.icon); c.box.icon:SetDesaturated(true); c.box:SetAlpha(0.5)
+        setProfIcon(c.box, def.line, def.icon, false)
         c.name:SetText(def.name); c.name:SetTextColor(unpack(T.textDim))
         c.title:SetText("Not learned")
         c.bar:Hide()
