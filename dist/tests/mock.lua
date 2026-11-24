@@ -4,9 +4,10 @@ clock = 1000
 local timers, frames, events = {}, {}, {}
 LOG = {}          -- what was put on the screen: { t, what, font, text }
 BROKEN_FONT = false   -- the numerals-only typeface gives its blank characters some width
-KBLANK = false        -- a log line's ticket draws as nothing in a string of ours
+KBLANK = false        -- a log line's ticket measures as nothing in the numerals typeface (and has a width in the ordinary one)
 
 local function logdraw(what, o, text)
+    if o.__unseen then return end
     LOG[#LOG + 1] = { t = clock, what = what, font = o.__font or "?", text = text, o = o }
 end
 
@@ -43,7 +44,13 @@ function METHODS:Hide() self.__shown = false end
 function METHODS:SetShown(v) self.__shown = v and true or false end
 function METHODS:IsShown() return self.__shown end
 function METHODS:IsVisible() return self.__shown end
-function METHODS:CreateFontString() return widget("FontString", self) end
+-- (A string on the BACKGROUND layer is one of the addon's unseen measuring
+-- strings: what it is given is not a number on the screen.)
+function METHODS:CreateFontString(_, layer)
+    local w = widget("FontString", self)
+    if layer == "BACKGROUND" then w.__unseen = true end
+    return w
+end
 function METHODS:CreateTexture() return widget("Texture", self) end
 function METHODS:CreateMaskTexture() return widget("MaskTexture", self) end
 function METHODS:CreateLine() return widget("Line", self) end
@@ -70,8 +77,8 @@ function METHODS:GetText() return self.__text end
 local function width(self)
     local t = self.__text
     if type(t) ~= "string" then return 0 end
-    if KBLANK and t:find("^|K") then return 0 end
     if (self.__font or ""):find("digits", 1, true) then
+        if KBLANK and t:find("^|K") then return 0 end
         local w = 0
         for ch in t:gmatch(".") do
             if ch:match("%d") then w = w + 12

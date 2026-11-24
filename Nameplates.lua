@@ -2026,28 +2026,52 @@ local function buildNumbers()
     -- How the first few numbers drawn from lines measured (their width is
     -- asked for once each, and only "something" or "nothing" is kept): if
     -- they are never seen, this says whether the line drew as numerals.
+    -- (0.1.651: the first three killing swings drawn this way, with a make
+    -- of the typeface that measured right, all measured as nothing, and
+    -- the feature switched itself off. But a width of nothing has two
+    -- readings: the line drew as nothing, or the game will not measure a
+    -- string that holds a log line at all, however it draws. So the same
+    -- line is now also put in an unseen string in the ordinary typeface
+    -- and measured there: only if THAT has a width and the numerals' string
+    -- has none is it settled that the numerals are not drawing. Otherwise
+    -- it stays on, and whether numbers show is for the player's eyes.)
     local seenN, seenKinds = 0, {}
-    local function lineSeen(f)
+    local function lineSeen(f, msg)
         if seenN >= 12 or not MinimalUIDB then return end
         seenN = seenN + 1
         local fs, serial = f.fs, f.serial
+        local plainFs = host.lineProbe
+        if not plainFs then
+            plainFs = host:CreateFontString(nil, "BACKGROUND")
+            ns:SetFont(plainFs, 13, "", true)
+            plainFs:SetAlpha(0)
+            plainFs:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, -400)
+            pcall(plainFs.SetWordWrap, plainFs, false)
+            host.lineProbe = plainFs
+        end
+        pcall(plainFs.SetText, plainFs, msg)
         C_Timer.After(0.1, function()
             if f.serial ~= serial or not f.live then return end
-            local okW, w = pcall(fs.GetUnboundedStringWidth or fs.GetStringWidth, fs)
-            local k = (not okW and "could not be asked") or (secret(w) and "hidden") or (type(w) ~= "number" and "no answer")
-                or (w > 2 and "numerals there" or "nothing drawn")
+            local function kindOf(str, some, none)
+                local okW, w = pcall(str.GetUnboundedStringWidth or str.GetStringWidth, str)
+                return (not okW and "could not be asked") or (secret(w) and "hidden") or (type(w) ~= "number" and "no answer")
+                    or (w > 2 and some or none)
+            end
+            local k = kindOf(fs, "numerals there", "nothing drawn")
+            local kp = kindOf(plainFs, "has a width", "no width")
+            pcall(plainFs.SetText, plainFs, "")
+            k = k .. " (the same line in the ordinary typeface: " .. kp .. ")"
             seenKinds[k] = (seenKinds[k] or 0) + 1
             local parts = {}
             for name, n in pairs(seenKinds) do parts[#parts + 1] = name .. " x" .. n end
             table.sort(parts)
             MinimalUIDB.linewide = table.concat(parts, "; ")
-            -- (Three lines that drew as nothing at all, and none that drew
-            -- as numerals: the game is not putting a log line's text into a
-            -- string of ours after all. Numbers go back to coming from the
-            -- hits reported, as before 0.1.644, for the rest of the session.)
-            if textOK and (seenKinds["nothing drawn"] or 0) >= 3 and not seenKinds["numerals there"] then
+            local bad = seenKinds["nothing drawn (the same line in the ordinary typeface: has a width)"] or 0
+            local good = false
+            for name in pairs(seenKinds) do if name:find("^numerals there") then good = true end end
+            if textOK and bad >= 3 and not good then
                 textOK = false
-                MinimalUIDB.digitface = tostring(MinimalUIDB.digitface) .. " Switched off again: log lines drew as nothing."
+                MinimalUIDB.digitface = tostring(MinimalUIDB.digitface) .. " Switched off again: log lines measured as nothing in it, though they have a width in the ordinary typeface."
                 note("(numbers from log lines switched off: three drew as nothing)")
             end
         end)
@@ -2091,7 +2115,7 @@ local function buildNumbers()
         if not f then return false end
         L.drawn = true
         note(string.format("  engine: a %s line drawn as its own number (%s)", L.kind, why))
-        lineSeen(f)
+        lineSeen(f, L.msg)
         return true
     end
     -- A hit shown in the moment of a kill: its line's number stands behind
@@ -2741,20 +2765,39 @@ local function buildNumbers()
                     strip:SetSize(700, 150)
                     strip:SetPoint("TOP", UIParent, "TOP", 0, -120)
                     strip:SetFrameStrata("HIGH")
-                    strip.rows = {}
+                    strip.rows, strip.nums = {}, {}
                     for i = 1, 8 do
                         local t = strip:CreateFontString(nil, "OVERLAY")
                         ns:SetFont(t, 13, "OUTLINE", true)
                         t:SetPoint("TOP", 0, -(i - 1) * 18)
                         strip.rows[i] = t
+                        -- (0.1.651: and the same line in the numerals-only
+                        -- typeface, in yellow at the strip's left: what the
+                        -- combat numbers would draw for it.)
+                        local n = strip:CreateFontString(nil, "OVERLAY")
+                        local path = digitPath or (MEDIA .. "digits-manrope-r.ttf")
+                        if not pcall(n.SetFont, n, path, 15, "OUTLINE") then ns:SetFont(n, 13, "OUTLINE", true) end
+                        n:SetTextColor(1, 0.82, 0.25)
+                        n:SetPoint("TOPLEFT", strip, "TOPLEFT", -150, -(i - 1) * 18)
+                        pcall(n.SetWordWrap, n, false)
+                        strip.nums[i] = n
                     end
+                    local cap = strip:CreateFontString(nil, "OVERLAY")
+                    ns:SetFont(cap, 11, "OUTLINE", false)
+                    cap:SetTextColor(0.7, 0.7, 0.75)
+                    cap:SetPoint("BOTTOMLEFT", strip, "TOPLEFT", -150, 4)
+                    cap:SetText("Yellow, left: each line's amount alone (if this works)      White: the log's line")
                 end
                 strip:Show()
                 stripAt = stripAt % 8 + 1
                 local t = strip.rows[stripAt]
                 if not pcall(t.SetText, t, msg) then t:SetText("(a line that could not be drawn)") end
+                if strip.nums and strip.nums[stripAt] then pcall(strip.nums[stripAt].SetText, strip.nums[stripAt], msg) end
                 if not (type(r) == "number" and not secret(r) and pcall(t.SetTextColor, t, r, g, b)) then t:SetTextColor(1, 1, 1) end
-                for i = 1, 8 do strip.rows[i]:SetAlpha(i == stripAt and 1 or 0.55) end
+                for i = 1, 8 do
+                    strip.rows[i]:SetAlpha(i == stripAt and 1 or 0.55)
+                    if strip.nums then strip.nums[i]:SetAlpha(i == stripAt and 1 or 0.55) end
+                end
             end
             ns.commands.logtext = function()
                 if not MinimalUIDB then return end
