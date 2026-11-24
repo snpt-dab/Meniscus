@@ -8,8 +8,6 @@ Last updated: 2026-11-24, version 0.1.652.
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 1 | Killing-blow numbers (swing kills) | Kill three or four mobs with plain swings | Did a number appear on the killing swing? Only your eyes can answer this now (see Settled) |
-| 2 | The same, looked at directly | `/men logtext`, hit something a few times, `/men logtext` again to put it away | Are there yellow numbers to the left of each white log line? |
 | 3 | Crafted upgrades between characters | After the restart the file loaded but put nothing on file, and left no reason. 0.1.652 records each step. `/reload`, wait 30 s, type `/men alts`, `/reload` again | What `/men alts` prints (it now says how far it got) |
 | 4 | Item names in bestiary loot | Open a dungeon boss's page after a `/reload` | Whether any row still reads "Item 1234" |
 | 5 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
@@ -31,6 +29,7 @@ Last updated: 2026-11-24, version 0.1.652.
 
 ## Settled recently
 
+- Killing-blow numbers from log lines: confirmed by eye on 2026-11-24 (numbers show on the killing swing). Still not known: the crit look for those, and `/men logtext` can go with the old probes.
 - A string holding a log line cannot be measured at all: 12 of 12 had no width in the ordinary typeface either. So the record can never say whether the numbers draw; the switch-off on width is harmless now and the question is items 1 and 2.
 - The spellbook error ("cannot anchor protected frames") is not in the current session's record: old.
 - Typeface check passes in game since 0.1.649 (the make with a speck of ink in the wide bracket).
