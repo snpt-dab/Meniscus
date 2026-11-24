@@ -340,6 +340,15 @@ local function logFilterSync()
     local st = mine.settings
     st.lineColoring, st.lineColorPriority, st.lineHighlighting, st.showHistory, st.timestamp = true, 3, true, false, false
     st.missColoring = false
+    -- (Nothing but words and numbers in a line, and the short wording: no
+    -- raid mark drawn before a name, no brackets round one. A line's own
+    -- text is drawn as a number, in a typeface where only the numerals
+    -- show: see "A number from a log line's own text".)
+    st.unitIcons, st.braces, st.fullText = false, false, false
+    -- (And the amount in the line's own colour, not picked out in white or
+    -- in a colour of the log's: a number drawn from a line is then the
+    -- colour it is given here, and a critical's two tinted copies are tinted.)
+    st.amountHighlighting, st.amountColoring, st.amountActorColoring, st.amountSchoolColoring = false, false, false, false
     if type(mine.colors) ~= "table" then mine.colors = {} end
     local c = mine.colors
     -- (The kill notice stays a line the log brightens. Should the log colour
@@ -854,6 +863,10 @@ local function buildNumbers()
         f.kind:SetPoint("RIGHT", f.fs, "LEFT", -2, 0)
         f.kind:Hide()
         outer.back, outer.warm, outer.cool, outer.fs, outer.burst, outer.kind = f.back, f.warm, f.cool, f.fs, f.burst, f.kind
+        -- (fs / warm / cool are whichever three strings the number in hand
+        -- is drawn with: these, or a log line's own: see lineSet. pt, px:
+        -- the point the two tinted copies are moved about, and its offset.)
+        outer.numFs, outer.numWarm, outer.numCool, outer.pt, outer.px = f.fs, f.warm, f.cool, "CENTER", 0
         f = outer
         items[#items + 1] = f
         return f
@@ -928,8 +941,8 @@ local function buildNumbers()
                         local pull = 5.5 * (0.36 + 0.64 * q) * (1 + 0.16 * (1 - q) * math.sin(a * 4.6))
                         local lean = 0.18 + 0.42 * (1 - q) * math.sin(a * 1.9)
                         local dx, dy = pull * math.cos(lean), pull * math.sin(lean)
-                        f.warm:SetPoint("CENTER", -dx, dy)
-                        f.cool:SetPoint("CENTER", dx, -dy)
+                        f.warm:SetPoint(f.pt, f.px - dx, dy)
+                        f.cool:SetPoint(f.pt, f.px + dx, -dy)
                         local w = (1 - q) * math.sin(a * 2.7)
                         f.warm:SetTextColor(1.00, 0.45 + 0.22 * w, 0.40 - 0.18 * w)
                         f.cool:SetTextColor(0.45 - 0.16 * w, 0.62 + 0.20 * w, 1.00)
@@ -976,8 +989,8 @@ local function buildNumbers()
                             local pull = 2.2 + 3.4 * q + 0.6 * v
                             local lean = a * 1.8
                             local dx, dy = pull * math.cos(lean), pull * math.sin(lean)
-                            f.warm:SetPoint("CENTER", -dx, dy)
-                            f.cool:SetPoint("CENTER", dx, -dy)
+                            f.warm:SetPoint(f.pt, f.px - dx, dy)
+                            f.cool:SetPoint(f.pt, f.px + dx, -dy)
                             f.warm:SetAlpha(0.78); f.cool:SetAlpha(0.78)
                             local bq = f.age < 0.50 and (1 - f.age / 0.50) or 0
                             f.burst:SetAlpha(bq ^ 1.5 * 0.9)
@@ -992,15 +1005,203 @@ local function buildNumbers()
         end
         if not any then self:Hide() end
     end)
+    -- ── A number from a log line's own text ───────────────────────────────
+    -- The game's Combat Log hands each of its lines over as a ticket: put
+    -- on the screen it reads "Your Melee hit Wretched Zombie 52 Physical.
+    -- (16 Overkill)", but an addon can't read it. With our own filter in the
+    -- log, though, every line is a thing of yours, and its amount is in it.
+    -- So a line can be drawn as its number: in a typeface where only the
+    -- numerals draw and every other character is blank and takes no room
+    -- (Media/digits-*.ttf, made by dist/digitfont.py), the whole line shows
+    -- as "52". An opening bracket is blank but very wide in that typeface,
+    -- so what a line adds after the amount ("(16 Overkill)") lands far to
+    -- the right, outside the small window the number is shown through.
+    -- Nothing is read: the game draws its own line, in a typeface of ours.
+    --
+    -- What it is for: hits whose amount the game gives no other way.
+    --   * The blow that kills. A swing's hit is only reported when the swing
+    --     is seen to land, a quarter of a second or more after the blow; by
+    --     then a dead enemy has no nameplate and is no longer your target,
+    --     and most killing swings were never reported at all.
+    --   * A swing in a group, or with a stranger on your enemy: whichever
+    --     hit is taken for its report, the amount shown is the line's own.
+    --   * Any other line of yours that no hit is reported for (an enemy with
+    --     no nameplate that is not your target).
+    -- Such a number starts at a fixed spot, a little left of the middle: how
+    -- wide it is can't be measured, so it can't be centred.
+    --
+    -- Used only once the typeface has measured as it should, here in the
+    -- game, on plain text (MinimalUIDB.digitface says how that went).
+    local LINE_W, LINE_PAD, LINE_DX = 104, 8, 23 -- the window's width; the number's start inside it; the window's start, left of the middle
+    local DIGIT_A, DIGIT_B, DIGIT_C = "52", "Your Fireball hit Monster 52 Fire.", "Your Fireball hit Monster 52 Fire. (16 Overkill)"
+    local digitPath, digitFlags, textOK = nil, "OUTLINE", false
+    local loadedAt, lastFight = GetTime(), -99
+    do
+        -- (The log prints its old lines again as you come into the world:
+        -- none of those is drawn. And a line with no hit to go by is only
+        -- drawn in a fight, or just after one.)
+        local wf = CreateFrame("Frame")
+        wf:RegisterEvent("PLAYER_ENTERING_WORLD")
+        wf:RegisterEvent("PLAYER_REGEN_ENABLED")
+        wf:SetScript("OnEvent", function(_, event)
+            if event == "PLAYER_REGEN_ENABLED" then lastFight = GetTime() else loadedAt = GetTime() end
+        end)
+    end
+    local function fighting(now)
+        return InCombatLockdown() or now - lastFight < 3
+    end
+    local function digitCheck(tries)
+        if textOK then return end
+        local base = tostring(T.fontBold or T.font or ""):lower()
+        local file = base:find("manrope", 1, true) and "digits-manrope.ttf" or "digits-inter.ttf"
+        local path = MEDIA .. file
+        local probe = host.digitProbe
+        if not probe then
+            probe = host:CreateFontString(nil, "BACKGROUND")
+            probe:SetAlpha(0)
+            probe:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, -200)
+            host.digitProbe = probe
+        end
+        local function wide(text, flags)
+            local ok = pcall(function()
+                probe:SetFont(path, SIZE, flags)
+                probe:SetWordWrap(false)
+                probe:SetText(text)
+            end)
+            if not ok then return nil end
+            local okW, w = pcall(probe.GetUnboundedStringWidth or probe.GetStringWidth, probe)
+            if not okW or type(w) ~= "number" or secret(w) then return nil end
+            return w
+        end
+        local said = {}
+        for _, flags in ipairs({ "OUTLINE", "" }) do
+            local a, b, c = wide(DIGIT_A, flags), wide(DIGIT_B, flags), wide(DIGIT_C, flags)
+            local good = a and b and c and a > 4 and math.abs(b - a) < 0.75 and c - a > LINE_W + 40
+            said[#said + 1] = string.format("%s: \"52\" %s wide, a whole line %s, a line with a bracket %s: %s",
+                flags == "" and "plain" or "outlined", a and string.format("%.1f", a) or "?", b and string.format("%.1f", b) or "?",
+                c and string.format("%.1f", c) or "?", good and "as it should be" or "NOT as it should be")
+            if good then
+                digitPath, digitFlags, textOK = path, flags, true
+                break
+            end
+        end
+        pcall(probe.SetText, probe, "")
+        if MinimalUIDB then
+            MinimalUIDB.digitface = date("%H:%M:%S") .. " " .. file .. ", " .. table.concat(said, "; ")
+                .. (textOK and ". In use." or (tries > 0 and ". Not in use yet: trying again." or ". Not in use."))
+        end
+        if not textOK and tries > 0 then C_Timer.After(3, function() pcall(digitCheck, tries - 1) end) end
+    end
+    -- The strings a line is drawn with, behind their window. (What is
+    -- clipped has to sit on a child frame of the clip.)
+    local function lineStrings(parent, three)
+        local win = CreateFrame("Frame", nil, parent)
+        win:SetClipsChildren(true)
+        win:SetSize(LINE_W, SIZE * 2.4)
+        win:SetPoint("LEFT", parent, "CENTER", -LINE_DX, 0)
+        local hold = CreateFrame("Frame", nil, win)
+        hold:SetAllPoints()
+        local function one(layer)
+            local t = hold:CreateFontString(nil, layer)
+            if not pcall(t.SetFont, t, digitPath, SIZE, digitFlags) or not t:GetFont() then return nil end
+            t:SetPoint("LEFT", LINE_PAD, 0)
+            t:SetWordWrap(false)
+            return t
+        end
+        local warm, cool
+        if three then warm, cool = one("ARTWORK"), one("ARTWORK") end
+        local fs = one("OVERLAY")
+        if not fs or (three and not (warm and cool)) then
+            win:Hide()
+            return nil
+        end
+        fs:SetShadowOffset(1, -1)
+        fs:SetShadowColor(0, 0, 0, 0.9)
+        return win, fs, warm, cool
+    end
+    -- An item's own set, made the first time it draws a line.
+    local function lineSet(f)
+        if f.lineFs == nil then
+            f.lineFs = false
+            if digitPath and f.body then
+                local ok, win, fs, warm, cool = pcall(lineStrings, f.body, true)
+                if ok and win then
+                    warm:SetTextColor(1.00, 0.45, 0.40)
+                    cool:SetTextColor(0.45, 0.62, 1.00)
+                    f.lineWin, f.lineFs, f.lineWarm, f.lineCool = win, fs, warm, cool
+                end
+            end
+        end
+        return f.lineFs or nil
+    end
+    -- A line's number standing BEHIND an ordinary number, seen only if that
+    -- number's amount is nothing at all. (The blow that kills has been
+    -- drawn, by the record, and yet not seen: if the game reports it as a
+    -- hit for 0, the window that hides a 0 hides it. This is the same
+    -- window turned about: a bar from -1 to 1, twice the usual width, so
+    -- its fill is never empty; an amount of 0 leaves the right-hand half
+    -- unfilled, and that half is what this copy shows through. Anything
+    -- more fills the bar, and there is nothing to show through.)
+    local function zeroSet(f)
+        if f.zfs == nil then
+            f.zfs = false
+            if digitPath then
+                pcall(function()
+                    local zb = CreateFrame("StatusBar", nil, f)
+                    zb:SetSize(600, 170)
+                    zb:SetPoint("RIGHT", f, "CENTER", 150, 0)
+                    zb:SetStatusBarTexture("Interface/Buttons/WHITE8x8")
+                    zb:SetStatusBarColor(0, 0, 0, 0)
+                    zb:SetMinMaxValues(-1, 1)
+                    zb:SetValue(1)
+                    local z = CreateFrame("Frame", nil, f)
+                    z:SetClipsChildren(true)
+                    z:SetPoint("TOPLEFT", zb:GetStatusBarTexture(), "TOPRIGHT")
+                    z:SetPoint("BOTTOMRIGHT", zb, "BOTTOMRIGHT")
+                    local box = CreateFrame("Frame", nil, z)
+                    box:SetSize(10, 10)
+                    box:SetPoint("CENTER", f, "CENTER")
+                    local back = box:CreateTexture(nil, "BACKGROUND")
+                    back:SetTexture(SPOT)
+                    back:SetSize(SIZE * 3.8, SIZE * 2.1)
+                    back:SetPoint("CENTER")
+                    local win, fs = lineStrings(box, false)
+                    if win then
+                        box:Hide()
+                        f.zbar, f.zbox, f.zfs, f.zback = zb, box, fs, back
+                    end
+                end)
+            end
+        end
+        return f.zfs or nil
+    end
     -- rel: the frame the number rises from (a nameplate), or nil for a
     -- place on the screen. A nameplate may not be measured by an addon
     -- ("restricted region"), only anchored to: so the number is hung on it.
     local showUnit -- (the unit the hit being shown is on; set by the event below)
     local WIDE_ORDER = { 0, 2, -2, 1, -1, 3, -3 }
     local zeroCurve, zeroBack, zeroBackFor
-    local function show(rel, x, y, value, r, g, b, crit, small, kind, grim)
+    -- line: value is a log line's ticket, to be drawn as its number.
+    local function show(rel, x, y, value, r, g, b, crit, small, kind, grim, line)
         local f = item()
         if not f then return end
+        if line and not lineSet(f) then return end
+        -- (Whichever three strings this number is not drawn with are emptied.)
+        if f.lineOn then
+            f.lineFs:SetText(""); f.lineWarm:SetText(""); f.lineCool:SetText("")
+            f.lineWin:Hide()
+        end
+        if f.zbox then f.zbox:Hide() end
+        if line then
+            f.numFs:SetText(""); f.numWarm:SetText(""); f.numCool:SetText("")
+            f.fs, f.warm, f.cool, f.pt, f.px = f.lineFs, f.lineWarm, f.lineCool, "LEFT", LINE_PAD
+            f.lineWin:Show()
+        else
+            f.fs, f.warm, f.cool, f.pt, f.px = f.numFs, f.numWarm, f.numCool, "CENTER", 0
+        end
+        f.lineOn = line and true or nil
+        f.kind:ClearAllPoints()
+        f.kind:SetPoint("RIGHT", f.fs, "LEFT", -2, 0)
         if f.gauges then for i = 1, #f.gauges do f.gauges[i].win:Hide() end end
         if f.gated then
             f.gated = nil
@@ -1033,7 +1234,8 @@ local function buildNumbers()
         -- an empty swing.
         local seen = nil -- the opacity to draw with, when it could be had
         local SH = shade()
-        if secret(value) then
+        local hidden = (not line) and secret(value) or false
+        if hidden then
             if zeroCurve == nil then
                 zeroCurve = false
                 if C_CurveUtil and C_CurveUtil.CreateCurve then
@@ -1070,12 +1272,12 @@ local function buildNumbers()
             f.back:SetVertexColor(0, 0, 0, SH)
         end
         f.zeroSeen = seen
-        if f.bar and not pcall(f.bar.SetValue, f.bar, secret(value) and value or 1) then
+        if f.bar and not pcall(f.bar.SetValue, f.bar, hidden and value or 1) then
             f.bar:SetValue(1)
             if MinimalUIDB then MinimalUIDB.zeroclip = "the bar would not take the amount" end
         end
         f.fillLater = nil
-        if f.bar and secret(value) and labOn() then labFill(f.bar, "at once"); f.fillLater = true end
+        if f.bar and hidden and labOn() then labFill(f.bar, "at once"); f.fillLater = true end
         -- (A hidden amount goes straight in; nothing is done with it here.)
         local ok = pcall(f.fs.SetText, f.fs, value)
         if MinimalUIDB and not MinimalUIDB.ctdiag then
@@ -1090,7 +1292,7 @@ local function buildNumbers()
         end
         f.warm:SetAlpha(0); f.cool:SetAlpha(0)
         -- (Off unless switched on: tried as the default and not liked.)
-        local pillOn = crit and NP.db and NP.db.numbersCritPill == true or false
+        local pillOn = crit and not line and NP.db and NP.db.numbersCritPill == true or false
         f.pill:SetShown(pillOn)
         if pillOn then
             f.pill:ClearAllPoints()
@@ -1738,6 +1940,84 @@ local function buildNumbers()
     local gateShow      -- (set further down: a swing's hit shown behind the gate)
     local typedSeen, typedOdd = 0, 0
     local lastSlow, lastPaired
+    local lastKillAt, recent = -99, {} -- when you last killed; the last few hits paired with a line
+    -- How the first few numbers drawn from lines measured (their width is
+    -- asked for once each, and only "something" or "nothing" is kept): if
+    -- they are never seen, this says whether the line drew as numerals.
+    local seenN, seenKinds = 0, {}
+    local function lineSeen(f)
+        if seenN >= 12 or not MinimalUIDB then return end
+        seenN = seenN + 1
+        local fs, serial = f.fs, f.serial
+        C_Timer.After(0.1, function()
+            if f.serial ~= serial or not f.live then return end
+            local okW, w = pcall(fs.GetUnboundedStringWidth or fs.GetStringWidth, fs)
+            local k = (not okW and "could not be asked") or (secret(w) and "hidden") or (type(w) ~= "number" and "no answer")
+                or (w > 2 and "numerals there" or "nothing drawn")
+            seenKinds[k] = (seenKinds[k] or 0) + 1
+            local parts = {}
+            for name, n in pairs(seenKinds) do parts[#parts + 1] = name .. " x" .. n end
+            table.sort(parts)
+            MinimalUIDB.linewide = table.concat(parts, "; ")
+        end)
+    end
+    -- A line's own text, drawn as its number (see "A number from a log
+    -- line's own text"). h: the hit taken for its report, if there is one:
+    -- where the number goes, and whether it is a critical, come from that.
+    -- Without one it rises from where your target's numbers do (hang: or,
+    -- with numbers set to show over the enemy, from the nameplate of the
+    -- enemy you were attacking as the blow was struck).
+    local function lineDraw(L, h, why, hang)
+        if L.drawn or not (textOK and L.msg) or KCLASS[L.kind] ~= "wound" then return false end
+        local now = GetTime()
+        if now - loadedAt < 10 then return false end
+        local rel, x, y, crit, school, pet, unit = nil, nil, nil, false, nil, false, nil
+        if h then
+            rel, x, y, unit, school, pet = h.rel, h.x, h.y, h.unit, h.school, h.pet and true or false
+            crit = not secret(h.indicator) and h.indicator == "CRITICAL"
+        else
+            if not fighting(now) then return false end
+            local plate = hang and NP.db.numbersWhere == "plate" and L.key ~= RAILKEY and L.key or nil
+            if plate then
+                rel, x, y = plate, 0, 4
+                local token = plate.namePlateUnitToken
+                if type(token) == "string" and not secret(token) then unit = token end
+            else
+                x, y = railSpot(L.key, true)
+            end
+        end
+        if not x then return false end
+        if not school and L.kind == "swing" then school = 1 end
+        local c = (school and SCHOOL_TINT[school]) or SCHOOL_TINT[1]
+        local kind = NP.db.numbersKind ~= false and school and SCHOOL_ICON[school] or nil
+        local r, g, b, small = c[1], c[2], c[3], nil
+        if pet then
+            r, g, b, small = PET_TINT[1], PET_TINT[2], PET_TINT[3], not crit
+            kind = NP.db.numbersKind ~= false and "micro_class_druid.tga" or nil
+        end
+        showUnit = unit
+        local f = show(rel, x, y, L.msg, r, g, b, crit, small, kind, nil, true)
+        if not f then return false end
+        L.drawn = true
+        note(string.format("  engine: a %s line drawn as its own number (%s)", L.kind, why))
+        lineSeen(f)
+        return true
+    end
+    -- A hit shown in the moment of a kill: its line's number stands behind
+    -- it, seen only if the game gave the hit's amount as nothing (zeroSet).
+    local function lineUnder(h)
+        local f = h.item
+        if h.zdone or h.cls ~= "wound" or not (textOK and h.msg and f and f.live and f.serial == h.serial) then return end
+        h.zdone = true
+        local zfs = zeroSet(f)
+        if not zfs then return end
+        if not pcall(f.zbar.SetValue, f.zbar, h.amount) then return end
+        if not pcall(zfs.SetText, zfs, h.msg) then return end
+        zfs:SetTextColor(f.cr or 1, f.cg or 1, f.cb or 1, 1)
+        f.zback:SetVertexColor(0, 0, 0, shade())
+        f.zbox:Show()
+        note(string.format("  engine #%d: at a kill: its line's own number stands behind it (seen only if the game gave the blow as nothing)", h.id))
+    end
     local eDriver = CreateFrame("Frame")
     eDriver:Hide()
     local function oursCurrent()
@@ -1813,8 +2093,29 @@ local function buildNumbers()
             if L.kind == "swing" and h.truth == true and dt >= 0 then c = delayLearn(dt) end
             lastSlow = { L = L, h = h, c = c }
         end
+        h.msg = L.msg
+        h.atKill = (L.killed or L.atKill or math.abs(h.t - lastKillAt) <= 0.05) and true or nil
+        recent[#recent + 1] = h
+        if #recent > 6 then table.remove(recent, 1) end
         if h.waiting and (h.show or (h.dead and L.killed)) then
-            present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.sch, false, pet)
+            if L.drawn then
+                -- (The line was drawn as its own number already: at the
+                -- kill, or as its enemy's nameplate went. This is that
+                -- blow's report, come after all: not a second number.)
+                note(string.format("  engine #%d: its number is up already, drawn from its line", h.id))
+            elseif textOK and L.msg and KSLOW[L.kind] and h.cls == "wound" and (h.grouped or h.t <= contested)
+                   and lineDraw(L, h, "this hit is taken for its report: the amount is the line's own") then
+                -- (In a group, or with a stranger on your enemy, the hit
+                -- taken for a swing's report may be somebody else's. Its
+                -- place and its "critical" are used; the amount drawn is
+                -- your own line's, whoever's hit this was.)
+            else
+                h.item = present(h.unit, h.rel, h.x, h.y, h.action, h.indicator, h.amount, h.sch, false, pet)
+                h.serial = h.item and h.item.serial or nil
+                if h.atKill then lineUnder(h) end
+            end
+        elseif L.drawn then
+            h.silent = true -- (paired as it arrived: the event below must not draw it again)
         end
     end
     -- A swing or a shot struck a moment ago, whose hit was still to be
@@ -1823,25 +2124,33 @@ local function buildNumbers()
     -- swing's line waited took that line, its own line went spare, and the
     -- swing's real report was then thrown away: seen.)
     local function eSlow(h, now)
-        for i = 1, #eLines do
-            local L = eLines[i]
-            if not L.used and KSLOW[L.kind] and KCLASS[L.kind] == h.cls
-               and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey) or (L.killed and h.key == RAILKEY)) then
-                local dt = h.t - L.t
-                local fits = dt >= -0.05 and dt <= 1.6
-                if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
-                if fits and (h.grouped or h.t <= contested) and L.kind == "swing" and h.cls == "wound" and h.show and dt > 0.02 then
-                    local pet = not (h.key == L.key and h.auto) and L.petKey ~= nil and h.key == L.petKey
-                    if gateShow and gateShow(h, L, pet) then
-                        h.done, h.mine = true, nil
-                        note(string.format("  engine #%d: drawn behind the gate: shows only if it is exactly your swing of %.2f s ago", h.id, dt))
+        -- (A line already drawn as its own number is only tried once no
+        -- other fits: this hit is then that blow's late report, and is not
+        -- drawn a second time.)
+        for pass = 1, 2 do
+            for i = 1, #eLines do
+                local L = eLines[i]
+                if not L.used and (pass == 2) == (L.drawn == true) and KSLOW[L.kind] and KCLASS[L.kind] == h.cls
+                   and (h.key == L.key or (L.petKey ~= nil and h.key == L.petKey) or (L.killed and h.key == RAILKEY)) then
+                    local dt = h.t - L.t
+                    local fits = dt >= -0.05 and dt <= 1.6
+                    if fits and L.kind == "swing" and h.school and h.school ~= 1 then fits = false end
+                    -- (The gate: only where a line can't be drawn as its own
+                    -- number. Where it can, the pairing below draws that.)
+                    if fits and (h.grouped or h.t <= contested) and L.kind == "swing" and h.cls == "wound" and h.show and dt > 0.02
+                       and not (textOK and L.msg) then
+                        local pet = not (h.key == L.key and h.auto) and L.petKey ~= nil and h.key == L.petKey
+                        if gateShow and gateShow(h, L, pet) then
+                            h.done, h.mine = true, nil
+                            note(string.format("  engine #%d: drawn behind the gate: shows only if it is exactly your swing of %.2f s ago", h.id, dt))
+                            return true
+                        end
+                    end
+                    if fits and h.grouped and L.kind == "swing" and dt > 0.1 and not delayKnown(dt) then fits = false end
+                    if fits then
+                        ePair(L, h, dt < 0.02 and "came with its hit" or "its report came later", now)
                         return true
                     end
-                end
-                if fits and h.grouped and L.kind == "swing" and dt > 0.1 and not delayKnown(dt) then fits = false end
-                if fits then
-                    ePair(L, h, dt < 0.02 and "came with its hit" or "its report came later", now)
-                    return true
                 end
             end
         end
@@ -1875,7 +2184,15 @@ local function buildNumbers()
                 table.remove(eLines, i)
             elseif now - L.t > L.life then
                 table.remove(eLines, i)
-                note(string.format("  engine: a %s line went unclaimed (no hit was reported for it)", L.kind))
+                if L.drawn then
+                    -- (Its number went up from its own text: nothing is owed.)
+                elseif lineDraw(L, nil, "no hit was reported for it") then
+                    -- (noted there)
+                elseif KCLASS[L.kind] ~= "heal" then
+                    -- (Not noted for heals: yours on someone with no nameplate
+                    -- have nowhere to be drawn, and filled the record.)
+                    note(string.format("  engine: a %s line went unclaimed (no hit was reported for it)", L.kind))
+                end
             end
         end
         for i = #eHits, 1, -1 do
@@ -1917,7 +2234,7 @@ local function buildNumbers()
         if #eLines == 0 and #eHits == 0 then eDriver:Hide() end
     end
     eDriver:SetScript("OnUpdate", function() eSweep(GetTime()) end)
-    local function eOnLine(kind, now)
+    local function eOnLine(kind, now, msg)
         eSweep(now)
         local cls = KCLASS[kind]
         if cls == "kill" then
@@ -1925,25 +2242,46 @@ local function buildNumbers()
             -- enemy is gone before a swing is seen to land): a swing's line
             -- still waiting when you kill must not be spent on a later hit.
             -- (These lines were let go here at first, on the belief that
-            -- the blow that kills is never reported. It is, a swing's usual
-            -- gap after the kill: seen twice, 0.26 and 0.58 s on, and both
-            -- numbers were lost. The line is marked instead: its hit may
-            -- come on the dead enemy's nameplate or, that gone, as your
-            -- target's; and it is shown even though a dead enemy is no
-            -- longer "fighting you".)
-            for i = 1, #eLines do
-                local L = eLines[i]
-                if not L.used and KSLOW[L.kind] and now - L.t <= 0.05 then L.killed = true end
-            end
-            C_Timer.After(0.02, function()
+            -- the blow that kills is never reported. It is, now and then, a
+            -- swing's usual gap after the kill: seen twice, 0.26 and 0.58 s
+            -- on. More often it is not: three kills by a plain swing in one
+            -- record, and no hit for any of them.)
+            -- So the swing's line is drawn as its own number, here and now
+            -- (0.1.644), where that can be done; it stays marked, and a
+            -- report that does come after all is taken as that blow's (on
+            -- the dead enemy's nameplate or, that gone, as your target's)
+            -- and not drawn a second time. Where it can't be done the
+            -- report, if one comes, is shown as before.
+            -- A blow whose hit IS reported in the moment of the kill (a
+            -- spell, a strike, a tick) keeps the number from its report,
+            -- with its line's own number behind it: see lineUnder.
+            lastKillAt = now
+            local function mark()
                 for i = 1, #eLines do
                     local L = eLines[i]
-                    if not L.used and KSLOW[L.kind] and math.abs(L.t - now) <= 0.05 then L.killed = true end
+                    if not L.used and KCLASS[L.kind] == "wound" and math.abs(L.t - now) <= 0.05 then
+                        if KSLOW[L.kind] then
+                            L.killed = true
+                            lineDraw(L, nil, "the blow that killed")
+                        else
+                            L.atKill = true
+                        end
+                    end
                 end
-            end)
+                for i = 1, #recent do
+                    local h = recent[i]
+                    if math.abs(h.t - now) <= 0.05 then lineUnder(h) end
+                end
+            end
+            mark()
+            C_Timer.After(0.02, mark)
             return
         end
-        local L = { t = now, kind = kind, life = KSLOW[kind] and 1.6 or 0.15 }
+        local L = { t = now, kind = kind, life = KSLOW[kind] and 1.6 or 0.15, msg = msg }
+        -- (A line printed just behind the kill notice is of that moment too:
+        -- the notice has been seen to come before the blow's own line.)
+        local atKill = cls == "wound" and now - lastKillAt <= 0.05
+        if atKill and not KSLOW[kind] then L.atKill = true end
         if KSLOW[kind] then
             -- (Whom you, and your pet, were attacking as the blow was struck.)
             L.key = plateOf("target") or RAILKEY
@@ -1972,6 +2310,20 @@ local function buildNumbers()
         end
         eLines[#eLines + 1] = L
         eDriver:Show()
+        if atKill and KSLOW[kind] then
+            L.killed = true
+            lineDraw(L, nil, "the blow that killed")
+        end
+        -- In a group, a swing or a shot goes up now, as the blow is struck,
+        -- from its line: which of the hits then reported on that enemy is
+        -- its own can't be told, so none is waited for. (It has no
+        -- "critical" look for the same reason: that is in the report.) The
+        -- line stays on, so that a hit taken for its report is not drawn as
+        -- well.
+        if KSLOW[kind] and cls == "wound" and not L.drawn and textOK then
+            local grouped = IsInGroup and IsInGroup()
+            if grouped and not secret(grouped) then lineDraw(L, nil, "in a group: drawn as the blow is struck", true) end
+        end
         return L
     end
     -- A hit reported on an enemy (or a heal on someone): true if a line of
@@ -2020,6 +2372,28 @@ local function buildNumbers()
         eHits[#eHits + 1] = h
         eDriver:Show()
         return nil
+    end
+
+    -- An enemy's nameplate going away with a swing or a shot of yours on it
+    -- still unreported (it died by someone else's hand, or left the screen):
+    -- no report can come by that nameplate now, so the line is drawn as its
+    -- own number here, and is done with. (Done with, too, if it was drawn
+    -- already at your kill: the nameplate will be handed to another enemy,
+    -- and that one's hits are not this line's.)
+    do
+        local pg = CreateFrame("Frame")
+        pcall(pg.RegisterEvent, pg, "NAME_PLATE_UNIT_REMOVED")
+        pg:SetScript("OnEvent", function(_, _, unit)
+            if #eLines == 0 or type(unit) ~= "string" or secret(unit) then return end
+            local plate = plateOf(unit)
+            if not plate then return end
+            for i = 1, #eLines do
+                local L = eLines[i]
+                if not L.used and KSLOW[L.kind] and L.key == plate then
+                    if L.drawn or lineDraw(L, nil, "its enemy's nameplate went before the blow was reported") then L.used = true end
+                end
+            end
+        end)
     end
 
     -- ── The lab's marks (see "The lab" near the top of this section) ───────
@@ -2320,7 +2694,7 @@ local function buildNumbers()
                         lineCount = lineCount + 1
                         if MinimalUIDB then MinimalUIDB.ctlines = lineCount .. " log lines heard this session, the last at " .. string.format("%.2f", now % 1000) end
                         note("LINE " .. kind)
-                        local EL = eOnLine(kind, now)
+                        local EL = eOnLine(kind, now, msg)
                         if KCLASS[kind] == "wound" then
                             local lr = labLine(now, kind)
                             if EL then EL.lab = lr end
@@ -2411,6 +2785,10 @@ local function buildNumbers()
             C_Timer.NewTicker(3, keep)
         end
     end
+
+    -- (The numerals-only typeface, measured: a moment after login, so the
+    -- game has the file; again a few times if it had not.)
+    C_Timer.After(1.5, function() pcall(digitCheck, 4) end)
 
     local labHit -- (the pairing's record of the hit in hand, for the lab's marks)
     -- (Asked by the health orb's own text, Extras: are heals on you shown here?)
@@ -2572,6 +2950,8 @@ local function buildNumbers()
                     -- line comes.)
                     h.show = false
                     mineHit, byPet, why = true, false, "heal, by your cast"
+                elseif verdict == true and h.silent then
+                    mineHit, byPet, why = false, false, "its number is up already, drawn from its line"
                 elseif verdict == true then
                     mineHit, byPet, why = true, h.pet, h.how
                 else
@@ -2699,6 +3079,10 @@ local function buildNumbers()
         end
         if not x then return end
         local made = present(unit, rel, x, y, action, indicator, amount, school, mine, petShown)
+        if made and labHit and not mine then
+            labHit.item, labHit.serial = made, made.serial
+            if labHit.atKill then pcall(lineUnder, labHit) end
+        end
         if made and not mine and action == "WOUND" and labOn() then pcall(labMark, made, amount, GetTime(), labHit) end
     end)
 end

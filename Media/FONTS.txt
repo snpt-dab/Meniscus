@@ -7,3 +7,9 @@ manrope-400.ttf, manrope-500.ttf, manrope-600.ttf, manrope-700.ttf
   Manrope by Mikhail Sharanda, Latin subset as packaged by Fontsource
   (https://fontsource.org/fonts/manrope).
   Licensed under the SIL Open Font License 1.1: https://openfontlicense.org
+
+digits-inter.ttf, digits-manrope.ttf
+  "Meniscus Digits": the numerals of Inter 600 and of Manrope 700, and nothing
+  else (every other character is blank and of no width; "(" is blank and very
+  wide). Made from the files above by dist/digitfont.py, to draw a combat log
+  line as its number. Same licence: SIL Open Font License 1.1.
