@@ -1032,7 +1032,17 @@ local function buildNumbers()
     --
     -- Used only once the typeface has measured as it should, here in the
     -- game, on plain text (MinimalUIDB.digitface says how that went).
-    local LINE_W, LINE_PAD, LINE_DX = 104, 8, 23 -- the window's width; the number's start inside it; the window's start, left of the middle
+    --
+    -- First measured in the game, 0.1.648: the blank characters do take
+    -- next to no room (a whole line came out 3 pixels wider than its
+    -- number), but the wide blank bracket came out a pixel or two wide, not
+    -- 240: the game does not go by the width of a glyph with nothing drawn
+    -- in it. So the file comes in several makes (dist/digitfont.py: a
+    -- bracket with a speck of ink at its far end, one with the speck at its
+    -- near end, a blank one of moderate width, and the first), each is
+    -- measured, and the first that behaves is the one used.
+    local LINE_W, LINE_PAD, LINE_DX = 88, 8, 23 -- the window's width; the number's start inside it; the window's start, left of the middle
+    local DIGIT_MAKES = { "-r", "-q", "-p", "" }
     local DIGIT_A, DIGIT_B, DIGIT_C = "52", "Your Fireball hit Monster 52 Fire.", "Your Fireball hit Monster 52 Fire. (16 Overkill)"
     local digitPath, digitFlags, textOK = nil, "OUTLINE", false
     local loadedAt, lastFight = GetTime(), -99
@@ -1050,19 +1060,65 @@ local function buildNumbers()
     local function fighting(now)
         return InCombatLockdown() or now - lastFight < 3
     end
+    -- Should no make of the typeface measure right, there is another way to
+    -- leave only the amount showing, which can't be measured, only looked
+    -- at: the log can be told to write the amount in a colour of its own,
+    -- and a string whose own colour is fully clear may still draw the parts
+    -- that carry a colour (or may not: the game's notes and addons disagree).
+    -- A small card, once a session and only in that case, puts the question
+    -- on the screen for the player to answer.
+    local function colourTest()
+        if host.colourCard then return end
+        local card = CreateFrame("Frame", nil, UIParent)
+        host.colourCard = card
+        card:SetSize(360, 124)
+        card:SetPoint("TOP", UIParent, "TOP", 0, -170)
+        card:SetFrameStrata("DIALOG")
+        ns.RoundedRect(card, -7, -1, 13, T.border[1], T.border[2], T.border[3], 1)
+        ns.RoundedRect(card, -6, 0, 12, 0.06, 0.06, 0.07, 0.97)
+        local function text(size, bold, y, str, r, g, b, a)
+            local t = card:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(t, size, "", bold)
+            t:SetPoint("TOPLEFT", 18, y)
+            t:SetTextColor(r or T.text[1], g or T.text[2], b or T.text[3], a or 1)
+            t:SetText(str)
+            return t
+        end
+        text(12, true, -14, "Meniscus: a test for the combat numbers")
+        text(11, false, -34, "Which numbers can you read on each line?", T.textDim[1], T.textDim[2], T.textDim[3])
+        text(12, false, -58, "Line A:", T.textDim[1], T.textDim[2], T.textDim[3])
+        text(12, false, -84, "Line B:", T.textDim[1], T.textDim[2], T.textDim[3])
+        -- A: the string's own colour fully clear, the first number in a colour of its own.
+        local a = card:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(a, 16, "OUTLINE", true)
+        a:SetPoint("TOPLEFT", 80, -55)
+        a:SetTextColor(1, 1, 1, 0)
+        a:SetText("|cffffd24052|r   16")
+        -- B: the same, in an ordinary colour, to compare.
+        local bfs = card:CreateFontString(nil, "OVERLAY")
+        ns:SetFont(bfs, 16, "OUTLINE", true)
+        bfs:SetPoint("TOPLEFT", 80, -81)
+        bfs:SetTextColor(1, 1, 1, 1)
+        bfs:SetText("|cffffd24052|r   16")
+        ns:Print("Combat numbers test: a small card is at the top of the screen for a minute. Please report what Line A reads: \"52\", \"52 16\", or nothing.")
+        C_Timer.After(60, function() card:Hide() end)
+    end
     local function digitCheck(tries)
         if textOK then return end
         local base = tostring(T.fontBold or T.font or ""):lower()
-        local file = base:find("manrope", 1, true) and "digits-manrope.ttf" or "digits-inter.ttf"
-        local path = MEDIA .. file
-        local probe = host.digitProbe
+        local family = base:find("manrope", 1, true) and "manrope" or "inter"
+        local probe, wrapProbe = host.digitProbe, host.digitWrap
         if not probe then
             probe = host:CreateFontString(nil, "BACKGROUND")
             probe:SetAlpha(0)
             probe:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, -200)
             host.digitProbe = probe
+            wrapProbe = host:CreateFontString(nil, "BACKGROUND")
+            wrapProbe:SetAlpha(0)
+            wrapProbe:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, -300)
+            host.digitWrap = wrapProbe
         end
-        local function wide(text, flags)
+        local function wide(path, text, flags)
             local ok = pcall(function()
                 probe:SetFont(path, SIZE, flags)
                 probe:SetWordWrap(false)
@@ -1073,24 +1129,50 @@ local function buildNumbers()
             if not okW or type(w) ~= "number" or secret(w) then return nil end
             return w
         end
-        local said = {}
-        for _, flags in ipairs({ "OUTLINE", "" }) do
-            local a, b, c = wide(DIGIT_A, flags), wide(DIGIT_B, flags), wide(DIGIT_C, flags)
-            local good = a and b and c and a > 4 and math.abs(b - a) < 0.75 and c - a > LINE_W + 40
-            said[#said + 1] = string.format("%s: \"52\" %s wide, a whole line %s, a line with a bracket %s: %s",
-                flags == "" and "plain" or "outlined", a and string.format("%.1f", a) or "?", b and string.format("%.1f", b) or "?",
-                c and string.format("%.1f", c) or "?", good and "as it should be" or "NOT as it should be")
-            if good then
-                digitPath, digitFlags, textOK = path, flags, true
-                break
+        -- (How many lines the line with a bracket takes in a string 70
+        -- wide: noted only, for a way of doing this by wrapping should no
+        -- make of the bracket be wide enough.)
+        local function wrapped(path)
+            local n
+            pcall(function()
+                wrapProbe:SetFont(path, SIZE, "")
+                wrapProbe:SetWidth(70)
+                wrapProbe:SetWordWrap(true)
+                wrapProbe:SetText(DIGIT_C)
+                n = wrapProbe.GetNumLines and wrapProbe:GetNumLines() or nil
+            end)
+            return (type(n) == "number" and not secret(n)) and n or nil
+        end
+        local function f(v) return v and string.format("%.1f", v) or "?" end
+        -- A line's number must start where the line does, give or take a
+        -- few pixels (the blank characters before it); and what follows a
+        -- bracket must start beyond the window's far edge.
+        local need = LINE_W - LINE_PAD + 4
+        local said, chosen = {}, nil
+        for _, make in ipairs(DIGIT_MAKES) do
+            local file = "digits-" .. family .. make .. ".ttf"
+            local path = MEDIA .. file
+            for _, flags in ipairs({ "OUTLINE", "" }) do
+                local a, b, c = wide(path, DIGIT_A, flags), wide(path, DIGIT_B, flags), wide(path, DIGIT_C, flags)
+                local p1, p2 = wide(path, "(", flags), wide(path, "((", flags)
+                local good = a and b and c and a > 4 and b - a > -1 and b - a < 6 and c - b >= need
+                said[#said + 1] = string.format("%s %s: %s / %s / %s, one bracket %s, two %s%s", make == "" and "first" or make,
+                    flags == "" and "plain" or "outlined", f(a), f(b), f(c), f(p1), f(p2), good and " GOOD" or "")
+                if good and not textOK then
+                    digitPath, digitFlags, textOK, chosen = path, flags, true, file .. (flags == "" and " plain" or " outlined")
+                end
             end
+            said[#said] = said[#said] .. ", wraps to " .. tostring(wrapped(path) or "?") .. " lines"
         end
         pcall(probe.SetText, probe, "")
+        pcall(wrapProbe.SetText, wrapProbe, "")
         if MinimalUIDB then
-            MinimalUIDB.digitface = date("%H:%M:%S") .. " " .. file .. ", " .. table.concat(said, "; ")
-                .. (textOK and ". In use." or (tries > 0 and ". Not in use yet: trying again." or ". Not in use."))
+            MinimalUIDB.digitface = date("%H:%M:%S") .. " " .. family .. ", widths of \"52\" / a whole line / a line with a bracket (which must be "
+                .. need .. " more than the whole line): " .. table.concat(said, " | ")
+                .. (textOK and (". In use: " .. chosen .. ".") or (tries > 0 and ". None good yet: trying again." or ". None good: not in use."))
         end
         if not textOK and tries > 0 then C_Timer.After(3, function() pcall(digitCheck, tries - 1) end) end
+        if not textOK and tries <= 0 then pcall(colourTest) end
     end
     -- The strings a line is drawn with, behind their window. (What is
     -- clipped has to sit on a child frame of the clip.)
@@ -2265,14 +2347,20 @@ local function buildNumbers()
             -- spell, a strike, a tick) keeps the number from its report,
             -- with its line's own number behind it: see lineUnder.
             lastKillAt = now
+            -- (A swing's line has been seen to come a tenth of a second
+            -- ahead of the notice, with a seal's own hit between them: one
+            -- still unreported a third of a second on is drawn too. Whether
+            -- it was the blow that killed or one on another enemy, it is a
+            -- blow of yours with no number yet.)
             local function mark()
                 for i = 1, #eLines do
                     local L = eLines[i]
-                    if not L.used and KCLASS[L.kind] == "wound" and math.abs(L.t - now) <= 0.05 then
+                    local dt = now - L.t
+                    if not L.used and KCLASS[L.kind] == "wound" then
                         if KSLOW[L.kind] then
-                            L.killed = true
-                            lineDraw(L, nil, "the blow that killed")
-                        else
+                            if math.abs(dt) <= 0.05 then L.killed = true end
+                            if dt >= -0.05 and dt <= 0.35 then lineDraw(L, nil, "the blow that killed") end
+                        elseif math.abs(dt) <= 0.05 then
                             L.atKill = true
                         end
                     end

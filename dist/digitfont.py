@@ -10,12 +10,26 @@ game reports no amount any other way (the blow that kills, above all).
 In these files:
   * 0-9 are the numerals of the family's bold weight (Inter 600, Manrope 700),
     with their own widths;
-  * "(" is blank and very wide (PAREN_EMS ems): whatever a line adds in
-    brackets after the amount ("(16 Overkill)", "(8 Blocked)") is pushed far
-    to the right, out of the small window the number is shown through;
+  * "(" is wide: whatever a line adds in brackets after the amount
+    ("(16 Overkill)", "(8 Blocked)") is pushed to the right, out of the small
+    window the number is shown through;
   * every other character is blank and of no width. They are all MAPPED to a
     blank glyph (not left out of the file), so the game has no reason to draw
     them from some other typeface.
+
+How wide a "(" the game will honour had to be found out. Measured in the
+game (0.1.648): the blank characters come out at a tenth of a pixel each,
+near enough nothing, but a BLANK "(" twelve ems wide came out at a pixel or
+two: the game does not go by the advance of a glyph with nothing drawn in
+it. So there are several makes of each file, and the addon measures them in
+the game and uses the first that behaves (Nameplates.lua, digitCheck):
+  -r   "(" is WIDE_EMS wide with a speck of ink at its far right end: wide by
+       its advance and by where its ink is, and the speck falls outside the
+       window;
+  -q   the same width with the speck at its near end (a faint dot after the
+       number, if the game goes by the advance alone);
+  -p   blank, WIDE_EMS wide (in case a moderate blank width is honoured);
+  (none) blank, PAREN_EMS wide: the first make, kept to be measured against.
 
 No font library is used: the few tables a TrueType file needs are written
 here by hand. Run:  python dist/digitfont.py     (from the addon's folder)
@@ -30,7 +44,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 MEDIA = os.path.join(HERE, '..', 'Media')
 SOURCES = [('inter', 'inter-600.ttf'), ('manrope', 'manrope-700.ttf')]
-PAREN_EMS = 12      # how far "(" pushes what follows it
+PAREN_EMS = 12      # how far the first make's blank "(" was meant to push what follows it
+WIDE_EMS = 4.5      # the other makes: wider than the window the number shows through (80 px at size 20)
+VARIANTS = ['', 'p', 'q', 'r']
 CHUNK = 2048        # the most codes one blank stretch of the character map covers
 
 
@@ -148,20 +164,43 @@ def build_name(family):
     return struct.pack('>HHH', 0, len(recs), 6 + 12 * len(recs)) + entries + strings
 
 
-def make(family, src_name):
+def speck(x0, y0, size):
+    """A small square of ink: a simple glyph of one contour, four points."""
+    x1, y1 = x0 + size, y0 + size
+    head = struct.pack('>h4h', 1, x0, y0, x1, y1)
+    body = struct.pack('>H', 3) + struct.pack('>H', 0)            # the contour ends at point 3; no instructions
+    body += bytes([0x01] * 4)                                     # four points on the curve, each a full step in x and y
+    body += struct.pack('>4h', x0, 0, size, 0)                    # x: to the start, up the side, across, down the side
+    body += struct.pack('>4h', y0, size, 0, -size)
+    out = head + body
+    if len(out) % 4:
+        out += b'\0' * (4 - len(out) % 4)
+    return out, (x0, y0, x1, y1)
+
+
+def make(family, src_name, variant=''):
     src = open(os.path.join(MEDIA, src_name), 'rb').read()
     t = tables_of(src)
     look = cmap_reader(t['cmap'])
     upm = struct.unpack('>H', t['head'][18:20])[0]
     nhm = struct.unpack('>H', t['hhea'][34:36])[0]
-    paren = PAREN_EMS * upm
-    assert paren < 65536
+    paren = int((PAREN_EMS if variant == '' else WIDE_EMS) * upm)
+    assert paren < 32768
 
-    # glyphs: 0 the "missing" glyph, 1 blank, 2 the wide blank, 3-12 the numerals
-    glyphs = [b'', b'', b'']
-    metrics = [(0, 0), (0, 0), (paren, 0)]
+    # glyphs: 0 the "missing" glyph, 1 blank, 2 the wide one, 3-12 the numerals
+    wide, wide_box = b'', None
+    if variant == 'q':
+        wide, wide_box = speck(int(0.02 * upm), 0, int(0.06 * upm))
+    elif variant == 'r':
+        size = int(0.10 * upm)
+        wide, wide_box = speck(paren - size - int(0.02 * upm), 0, size)
+    glyphs = [b'', b'', wide]
+    metrics = [(0, 0), (0, 0), (paren, wide_box[0] if wide_box else 0)]
     pts = cons = 0
     boxes = []
+    if wide_box:
+        boxes.append((paren, wide_box))
+        pts, cons = 4, 1
     for ch in '0123456789':
         gid = look(ord(ch))
         assert gid, 'no numeral ' + ch
@@ -200,7 +239,7 @@ def make(family, src_name):
 
     out_tables = {
         'OS/2': bytes(os2), 'cmap': build_cmap(3, 2, 1), 'glyf': glyf, 'head': bytes(head), 'hhea': bytes(hhea),
-        'hmtx': hmtx, 'loca': loca_t, 'maxp': maxp, 'name': build_name(family.capitalize()), 'post': post,
+        'hmtx': hmtx, 'loca': loca_t, 'maxp': maxp, 'name': build_name(family.capitalize() + (' ' + variant.upper() if variant else '')), 'post': post,
     }
     tags = sorted(out_tables)
     nt = len(tags)
@@ -220,13 +259,14 @@ def make(family, src_name):
     adj = (0xB1B0AFBA - checksum(font)) & 0xFFFFFFFF
     ho = where['head'][0]
     font = font[:ho + 8] + struct.pack('>I', adj) + font[ho + 12:]
-    path = os.path.join(MEDIA, 'digits-%s.ttf' % family)
+    path = os.path.join(MEDIA, 'digits-%s%s.ttf' % (family, '-' + variant if variant else ''))
     open(path, 'wb').write(font)
     return path, len(font), upm, [a for a, _ in boxes], paren
 
 
 if __name__ == '__main__':
     for fam, name in SOURCES:
-        p, size, upm, advs, paren = make(fam, name)
-        print('%s  %d bytes  %d units to the em  numerals %s wide  "(" %d wide' % (
-            os.path.relpath(p, os.path.join(HERE, '..')).replace(os.sep, '/'), size, upm, sorted(set(advs)), paren))
+        for variant in VARIANTS:
+            p, size, upm, advs, paren = make(fam, name, variant)
+            print('%s  %d bytes  %d units to the em  "(" %d wide' % (
+                os.path.relpath(p, os.path.join(HERE, '..')).replace(os.sep, '/'), size, upm, paren))

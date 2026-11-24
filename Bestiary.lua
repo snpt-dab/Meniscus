@@ -1459,6 +1459,30 @@ end
 local function coins(c) return ns.Money(c) or "" end
 
 local lootOpen = {} -- (creatures whose whole loot list is open: this session)
+-- An item's name is only known once the game has fetched the item, which
+-- it has not for things you looked at in another session (a dungeon's loot,
+-- a day later, read "Item 6631": 0.1.648). One with no name yet is asked
+-- for, once, and the page it is on is drawn again when the answer comes.
+local itemWait, itemAsked = {}, {}
+local function wantItem(item, id)
+    itemWait[item] = id
+    if not itemAsked[item] then
+        itemAsked[item] = true
+        local req = C_Item and C_Item.RequestLoadItemDataByID
+        if req then pcall(req, item) end
+    end
+end
+do
+    local iw = CreateFrame("Frame")
+    pcall(iw.RegisterEvent, iw, "GET_ITEM_INFO_RECEIVED")
+    iw:SetScript("OnEvent", function(_, _, item)
+        local id = type(item) == "number" and not secret(item) and itemWait[item]
+        if id then
+            itemWait[item] = nil
+            changed(id)
+        end
+    end)
+end
 function B.Rows(rows, id, full)
     local r = id and view(id)
     if not r then
@@ -1505,6 +1529,11 @@ function B.Rows(rows, id, full)
                     tip:SetText("Health", 1, 1, 1)
                     tip:AddLine("The game hides a creature's health from addons. It is worked out from the damage it takes when you kill one.",
                         0.86, 0.86, 0.89, true)
+                    if not r.t and not r.uc then
+                        tip:AddLine(" ")
+                        tip:AddLine("In a group it is worked out from everyone's damage, in a fight where nothing else dies: for a boss, the next time you kill it.",
+                            0.6, 0.6, 0.65, true)
+                    end
                 end }
         else
             local lowest, highest
@@ -1595,6 +1624,7 @@ function B.Rows(rows, id, full)
         for _, item in ipairs(ids) do
             local _, link = nil, nil
             if C_Item and C_Item.GetItemInfo then _, link = call(C_Item.GetItemInfo, item) end
+            if not str(link) then wantItem(item, id) end
             local icon = C_Item and C_Item.GetItemIconByID and call(C_Item.GetItemIconByID, item)
             local n = r.l and r.l[item]
             local value, color
