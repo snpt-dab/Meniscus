@@ -635,12 +635,76 @@ local function freeSlots()
     return free
 end
 
+-- Something you can't use (0.1.648): plate on a mage, a level you have not
+-- reached, a weapon you have no skill in, another class's piece. The game's
+-- own tooltip says which, by writing that requirement in red, so the
+-- tooltip for the slot is asked for and looked through for a red line: one
+-- rule for every kind of "can't", and it keeps up with what the game adds.
+-- (Not counted: "Durability 0 / 40", red when a piece is broken, and
+-- "Already known" on a recipe. Those are not about whether you could.)
+-- Failing colours in what the tooltip gives, the level alone is checked.
+-- The tile's picture is washed red, as the game does in its own bags.
+-- Kept by the item's link; thrown away when you gain a level or a skill.
+local cantUse, cantN = {}, 0
+local function isRed(c)
+    return type(c) == "table" and num(c.r) and num(c.g) and num(c.b) and c.r > 0.9 and c.g < 0.25 and c.b < 0.25
+end
+local KNOWN, DURABLE = _G.ITEM_SPELL_KNOWN or "Already known", (_G.DURABILITY or "Durability")
+local function unusable(bag, slot, link)
+    if type(link) ~= "string" or secret(link) then return false end
+    local have = cantUse[link]
+    if have ~= nil then return have end
+    local verdict, sure = false, false
+    local TI = C_TooltipInfo
+    local data = TI and TI.GetBagItem and call(TI.GetBagItem, bag, slot)
+    local lines = type(data) == "table" and data.lines
+    if type(lines) == "table" and #lines > 0 then
+        local coloured = false
+        for i = 1, #lines do
+            local l = lines[i]
+            if type(l) == "table" then
+                if l.leftColor ~= nil or l.rightColor ~= nil then coloured = true end
+                local lt = l.leftText
+                local skip = type(lt) == "string" and not secret(lt) and (lt == KNOWN or lt:find(DURABLE, 1, true) == 1)
+                if not skip and (isRed(l.leftColor) or isRed(l.rightColor)) then verdict = true end
+            end
+        end
+        sure = coloured
+        if MinimalUIDB and not MinimalUIDB.usediag then
+            MinimalUIDB.usediag = "an item's tooltip lines " .. (coloured and "say their colours" or "do NOT say their colours: only the level is checked")
+        end
+    end
+    if not verdict then
+        -- (the level, asked plainly: also what is left if the lines say no colours)
+        local f = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+        local _, _, _, _, need = call(f, link)
+        local mine = call(UnitLevel, "player")
+        if num(need) and num(mine) then
+            if need > mine then verdict = true end
+            if not sure and lines then sure = true end
+        end
+    end
+    if sure then
+        if cantN > 400 then wipe(cantUse); cantN = 0 end
+        cantUse[link] = verdict
+        cantN = cantN + 1
+    end
+    return verdict
+end
+do
+    local uf = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED" }) do pcall(uf.RegisterEvent, uf, e) end
+    uf:SetScript("OnEvent", function() wipe(cantUse); cantN = 0 end)
+end
+
 local function updateButton(b)
     local info = itemInfo(b.bag, b.slot)
     if info and info.iconFileID then
         b.icon:SetTexture(info.iconFileID)
         b.icon:Show()
         b.icon:SetDesaturated(info.isLocked and true or false)
+        b.cant = B.db.cantUse ~= false and unusable(b.bag, b.slot, info.hyperlink) or false
+        if b.cant then b.icon:SetVertexColor(1, 0.30, 0.28) else b.icon:SetVertexColor(1, 1, 1) end
         b.fill(unpack(FILL))
         local n = info.stackCount
         b.count:SetText((num(n) and n > 1) and n or "")
@@ -672,6 +736,8 @@ local function updateButton(b)
     else
         b.icon:SetTexture(nil)
         b.icon:Hide()
+        b.cant = false
+        b.icon:SetVertexColor(1, 1, 1)
         b.fill(unpack(EMPTY))
         b.count:SetText("")
         b.ring(T.border[1] * 0.8, T.border[2] * 0.8, T.border[3] * 0.8, 1)
