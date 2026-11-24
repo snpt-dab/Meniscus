@@ -1056,6 +1056,46 @@ local function readMeter(kills)
     if not sampled and nKilled == 1 and done > over and alone then
         healthSample(kills[1].id, kills[1].lvl, math.floor(done - over + 0.5))
     end
+    -- In a group (0.1.647): a fight in which one thing died, which in a
+    -- dungeon is mostly a boss. What the whole group did to it, everyone's
+    -- damage and their pets' together, less the last blow's excess, is its
+    -- health: the same sum as on your own, with more hands in it. Only when
+    -- every member's figure can be read (one still hidden: asked again
+    -- later, like your own). It runs high if something else was hit and
+    -- lived, low if the creature was already hurt or healed itself: a
+    -- sample like any other, shown with "~" until it comes up again.
+    -- (MinimalUIDB.grouphp counts how these readings went.)
+    if not alone and nKilled == 1 then
+        local sum, ov, hidden, hands, seenG = done, over, false, done > 0 and 1 or 0, { [me] = true }
+        local raid = IsInRaid and isTrue((call(IsInRaid)))
+        for i = 1, raid and 40 or 4 do
+            for _, unit in ipairs({ (raid and "raid" or "party") .. i, (raid and "raidpet" or "partypet") .. i }) do
+                local g = call(UnitGUID, unit)
+                if str(g) and not seenG[g] then
+                    seenG[g] = true
+                    local src = call(DM.GetCombatSessionSourceFromType, 1, 0, g)
+                    if type(src) == "table" then
+                        if secret(src.totalAmount) then hidden = true
+                        elseif plain(src.totalAmount) and src.totalAmount > 0 then
+                            sum, hands = sum + src.totalAmount, hands + 1
+                            for _, sp in ipairs(type(src.combatSpells) == "table" and src.combatSpells or {}) do
+                                if plain(sp.overkillAmount) then ov = ov + sp.overkillAmount end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if hidden then
+            diag("grouphp", "a member's figure still hidden: asked again")
+            return false
+        elseif hands < 2 then
+            diag("grouphp", "nobody's damage but yours could be read: no sample")
+        elseif sum > ov then
+            diag("grouphp", "sampled")
+            healthSample(kills[1].id, kills[1].lvl, math.floor(sum - ov + 0.5))
+        end
+    end
     -- what hit you: a view in which your own line lists attacks by creature
     local got = false
     for n = 1, 15 do

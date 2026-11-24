@@ -119,6 +119,27 @@ LOOTS = { { item = 2589, guid = "Creature-0-1-2-3-250999-0000000001" } }
 fire("LOOT_OPENED")
 run(1)
 ''')
+# a boss fight in a group: one thing dies; you did 400, two others 900 and 700 (30 of it past the kill)
+rt.execute(r'''
+METER = { ["Player-1-0001"] = { totalAmount = 400 }, ["Player-1-0002"] = { totalAmount = 900 },
+          ["Player-1-0003"] = { totalAmount = 700, combatSpells = { { overkillAmount = 30 } } } }
+C_DamageMeter = { GetCombatSessionSourceFromType = function(_, _, g) return METER[g] end }
+local oldGUID = UnitGUID
+function UnitGUID(u)
+    if u == "party1" then return "Player-1-0002" elseif u == "party2" then return "Player-1-0003" end
+    return oldGUID(u)
+end
+WORLD.combat = true
+fire("PLAYER_REGEN_DISABLED")
+run(1)
+fire("CHAT_MSG_COMBAT_XP_GAIN", "Lord Rot dies, you gain 300 experience.")
+WORLD.combat = false
+fire("PLAYER_REGEN_ENABLED")
+run(3)
+''')
+print('boss health worked out:', rt.eval('''(function() for id, r in pairs(MinimalUIDB.bestiary) do if r.n == "Lord Rot" then
+    local t = {} for L, h in pairs(r.he or {}) do t[#t + 1] = "level " .. L .. ": " .. h end
+    return table.concat(t, ", ") .. " | " .. tostring(MinimalUIDB.grouphp and MinimalUIDB.grouphp.sampled) end end end)()'''))
 print('--- after a few kills inside (in a group)')
 print(dump(WATCH + ",Lord Rot"))
 print('numbered, no name yet:', rt.eval('(function() local t = {} for id, r in pairs(MinimalUIDB.bestiary) do if not r.n then t[#t + 1] = id .. " k=" .. tostring(r.k) .. " lk=" .. tostring(r.lk) .. " ln=" .. tostring(r.ln) end end return table.concat(t, "; ") end)()'))
