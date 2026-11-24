@@ -1640,7 +1640,7 @@ function B.Rows(rows, id, full)
                 isQuest = classID == 12
             end
             if isQuest then value = "|cfff2cc59Quest|r   " .. value end
-            rows[#rows + 1] = { kind = "stat", label = str(link) and link or ("Item " .. item),
+            rows[#rows + 1] = { kind = "stat", label = str(link) and link or "|cff6e6e78...|r", -- (0.1.654: was "Item 1234" for the moment the game takes to name it)
                 labelColor = T.text, icon = icon, value = value, color = color,
                 tooltip = function(tip)
                     pcall(tip.SetHyperlink, tip, "item:" .. item)

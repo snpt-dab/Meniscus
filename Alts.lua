@@ -64,11 +64,35 @@ local SHIELD = { WARRIOR = true, PALADIN = true, SHAMAN = true }
 local TOOL = { [14] = true, [20] = true }
 
 -- ── The book ──────────────────────────────────────────────────────────────
+-- (0.1.654: GetRealmName() answers "" on this client, which is why nothing
+-- was ever put on file. The realm is asked three ways; with none of them
+-- answering, everything goes in one book, "-". Should a realm name turn
+-- up later, that book is folded into the realm's.)
+local NOREALM = "-"
 local function ident()
     local name = UnitName("player")
-    local realm = GetRealmName and GetRealmName()
-    if not plainStr(name) or not plainStr(realm) then return end
-    return name, realm
+    if not plainStr(name) then return end
+    local realm
+    for _, fn in ipairs({ GetRealmName, GetNormalizedRealmName }) do
+        if not realm and fn then
+            local ok, r = pcall(fn)
+            if ok and plainStr(r) then realm = r end
+        end
+    end
+    if not realm and UnitFullName then
+        local ok, _, r = pcall(UnitFullName, "player")
+        if ok and plainStr(r) then realm = r end
+    end
+    local db = MinimalUIDB
+    local roster = db and type(db.roster) == "table" and db.roster or nil
+    if realm and roster and type(roster[NOREALM]) == "table" then
+        roster[realm] = type(roster[realm]) == "table" and roster[realm] or {}
+        for who, ch in pairs(roster[NOREALM]) do
+            if roster[realm][who] == nil then roster[realm][who] = ch end
+        end
+        roster[NOREALM] = nil
+    end
+    return name, realm or NOREALM
 end
 local function realmBook(create)
     local db = MinimalUIDB

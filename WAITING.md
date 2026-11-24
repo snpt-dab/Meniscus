@@ -2,17 +2,16 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.652.
+Last updated: 2026-11-24, version 0.1.654.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 3 | Crafted upgrades between characters | After the restart the file loaded but put nothing on file, and left no reason. 0.1.652 records each step. `/reload`, wait 30 s, type `/men alts`, `/reload` again | What `/men alts` prints (it now says how far it got) |
-| 4 | Item names in bestiary loot | Open a dungeon boss's page after a `/reload` | Whether any row still reads "Item 1234" |
-| 5 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
-| 6 | The map's own buttons in full screen | Open the map in full screen, first open after a `/reload` | Whether the game's two buttons (close, make small) are there. If yes, the "Exit full screen" pill goes |
-| 7 | Level-up card reasons | Nothing to test | What each level unlocks in this game (only level 10 is filled in) |
+| 1 | Crafted upgrades between characters | `/reload`, then `/men alts`. Log in each alt once; on each crafter open each profession window for a few seconds | Whether `/men alts` lists them, and whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
+| 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |
+| 3 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
+| 4 | Level-up card reasons | Nothing to test | For each level where something new opens up in this game (a talent point, a new skill rank, mounts, a dungeon): which level and what. The card shown at level-up has a line for it; only level 10 is filled in |
 
 ## Read from the saved record after your next reload (nothing for you to do)
 
@@ -29,6 +28,9 @@ Last updated: 2026-11-24, version 0.1.652.
 
 ## Settled recently
 
+- Why nothing was on file for crafted upgrades: `GetRealmName()` answers "" on this client. Fixed in 0.1.654 (realm asked three ways, else one book).
+- Bestiary loot rows: the name does arrive (300-400 ms); the "Item 1234" placeholder is now a dim "...".
+- The game's two map buttons do show in full screen: the "Exit full screen" pill is removed.
 - Killing-blow numbers from log lines: confirmed by eye on 2026-11-24 (numbers show on the killing swing). Still not known: the crit look for those, and `/men logtext` can go with the old probes.
 - A string holding a log line cannot be measured at all: 12 of 12 had no width in the ordinary typeface either. So the record can never say whether the numbers draw; the switch-off on width is harmless now and the question is items 1 and 2.
 - The spellbook error ("cannot anchor protected frames") is not in the current session's record: old.

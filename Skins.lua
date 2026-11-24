@@ -73,6 +73,47 @@ local function skinClose(b)
     end)
 end
 
+-- The map's "make bigger / make small" pair, in the close button's look
+-- (0.1.654: they were the game's own dark squares beside our round close).
+-- A square outline for bigger, a bar for small.
+local function skinToggle(b, bigger)
+    if not b or b.__muiSkin or not b.GetRegions then return end
+    b.__muiSkin = true
+    for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
+        if b[get] then fade(b[get](b)) end
+    end
+    for _, r in ipairs({ b:GetRegions() }) do if r:IsObjectType("Texture") then fade(r) end end
+    local skin = CreateFrame("Frame", nil, b)
+    skin:SetSize(20, 20)
+    skin:SetPoint("CENTER")
+    local mask = skin:CreateMaskTexture()
+    mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints()
+    local bg = skin:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.16, 0.16, 0.18, 1)
+    bg:AddMaskTexture(mask)
+    local lines = {}
+    local segs = bigger and { { -4, 4, 4, 4 }, { 4, 4, 4, -4 }, { 4, -4, -4, -4 }, { -4, -4, -4, 4 } }
+        or { { -4, -3, 4, -3 } }
+    for i, p in ipairs(segs) do
+        local l = skin:CreateLine(nil, "ARTWORK")
+        l:SetThickness(1.5)
+        l:SetStartPoint("CENTER", skin, p[1], p[2])
+        l:SetEndPoint("CENTER", skin, p[3], p[4])
+        l:SetColorTexture(unpack(T.textDim))
+        lines[i] = l
+    end
+    b:HookScript("OnEnter", function()
+        bg:SetColorTexture(unpack(T.accent))
+        for _, l in ipairs(lines) do l:SetColorTexture(unpack(TEXT_DARK)) end
+    end)
+    b:HookScript("OnLeave", function()
+        bg:SetColorTexture(0.16, 0.16, 0.18, 1)
+        for _, l in ipairs(lines) do l:SetColorTexture(unpack(T.textDim)) end
+    end)
+end
+
 -- ── Pill buttons (UIPanelButtonTemplate and friends) ──────────────────────
 local btnFont, btnFontDim, btnFontDark
 local function buttonFonts()
@@ -680,21 +721,46 @@ local function skinMap()
     end
     if foot then foot.modeHooks[#foot.modeHooks + 1] = seatChip end
     seatChip(foot and foot.IsOn())
-    -- Our own way out of the full-screen map (0.1.641): the game's two
-    -- buttons at the top right are there but do not get drawn, for a reason
-    -- not found yet. Over the map's lower right corner, only in full screen.
-    if ns.Pill then
-        local exit = ns.Pill(wm, "Exit full screen", function()
-            local fn = wm.HandleUserActionMinimizeSelf or wm.Minimize
-            if fn then pcall(fn, wm) end
-        end)
-        exit.__muiOurs = true
-        exit:SetPoint("BOTTOMRIGHT", sc or wm, "BOTTOMRIGHT", -12, 12)
-        exit:SetFrameLevel((sc or wm):GetFrameLevel() + 50)
-        local function exitShow() exit:SetShown((wm.IsMaximized and wm:IsMaximized()) and true or false) end
-        if foot then foot.modeHooks[#foot.modeHooks + 1] = exitShow end
-        wm:HookScript("OnShow", exitShow)
-        exitShow()
+    -- (0.1.654: the game's own two buttons at the top right do show in full
+    -- screen since 0.1.642, so our "Exit full screen" pill is gone. They
+    -- get the close button's round look. And in full screen the game puts
+    -- its filter button in the header right under them, its red reset mark
+    -- on top of the close button: there it is moved onto the map's top
+    -- right corner, across from the pin button on the left.)
+    local mm = wm.BorderFrame and wm.BorderFrame.MaxMinButtonFrame
+    if mm then
+        pcall(skinToggle, mm.MaximizeButton, true)
+        pcall(skinToggle, mm.MinimizeButton, false)
+        if not (mm.MaximizeButton or mm.MinimizeButton) then
+            for i, b in ipairs({ mm:GetChildren() }) do pcall(skinToggle, b, i == 1) end
+        end
+    end
+    local tb = wm.WorldMapTrackingOptionsButton
+    if not tb and wm.overlayFrames then
+        for _, f in ipairs(wm.overlayFrames) do
+            local okN, n = pcall(f.GetDebugName, f)
+            if okN and type(n) == "string" and n:find("TrackingOptionsButton") then tb = f end
+        end
+    end
+    if tb and sc and tb.SetPoint then
+        local moving = false
+        local function seatFilter()
+            if moving or not (wm.IsMaximized and wm:IsMaximized()) then return end
+            local top, mapTop = tb:GetTop(), sc:GetTop()
+            if type(top) ~= "number" or type(mapTop) ~= "number" or issecretvalue(top) or issecretvalue(mapTop) then return end
+            if top <= mapTop + 1 then return end -- (already on the map)
+            moving = true
+            pcall(function()
+                tb:ClearAllPoints()
+                tb:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -4, -2)
+            end)
+            moving = false
+        end
+        local function soon() C_Timer.After(0, function() pcall(seatFilter) end) end
+        hooksecurefunc(tb, "SetPoint", function() if not moving then soon() end end)
+        if foot then foot.modeHooks[#foot.modeHooks + 1] = soon end
+        wm:HookScript("OnShow", soon)
+        soon()
     end
     local fs = chip:CreateFontString(nil, "OVERLAY")
     ns:SetFont(fs, 11, "", true)
