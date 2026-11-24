@@ -475,6 +475,18 @@ local function makeTile(parent, slotName)
     b.dura = over:CreateTexture(nil, "OVERLAY", nil, 2)
     b.dura:SetPoint("BOTTOMLEFT", b.duraBg, "BOTTOMLEFT")
     b.dura:SetHeight(3)
+    -- One of your characters can craft something better for this slot
+    -- (Alts.lua): a small disc on the tile's top left corner.
+    b.craftRim = over:CreateTexture(nil, "OVERLAY", nil, 3)
+    b.craftRim:SetTexture(MEDIA .. "circle.tga")
+    b.craftRim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    b.craftRim:SetSize(15, 15)
+    b.craftRim:SetPoint("TOPLEFT", b, "TOPLEFT", -3, 3)
+    b.craftMark = over:CreateTexture(nil, "OVERLAY", nil, 4)
+    b.craftMark:SetTexture(MEDIA .. "micro_profession.tga")
+    b.craftMark:SetPoint("TOPLEFT", b.craftRim, "TOPLEFT", 2, -2)
+    b.craftMark:SetPoint("BOTTOMRIGHT", b.craftRim, "BOTTOMRIGHT", -2, 2)
+    b.craftRim:Hide(); b.craftMark:Hide()
 
     b:RegisterForClicks("LeftButtonUp")
     b:RegisterForDrag("LeftButton")
@@ -522,6 +534,20 @@ local function makeTile(parent, slotName)
                 GameTooltip:AddLine("Little of what you gear for (" .. self.advFavour .. ")", 0.95, 0.62, 0.45)
             end
             if a.top then GameTooltip:AddLine("Next upgrade: the slot most worth replacing", T.accent[1], T.accent[2], T.accent[3]) end
+        end
+        local crafts = self.crafts
+        if crafts then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Can be crafted for this slot:", 0.6, 0.6, 0.65)
+            for i = 1, math.min(#crafts, 3) do
+                local v = crafts[i]
+                local m = v.from[1]
+                local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[v.q or 1]
+                GameTooltip:AddDoubleLine(v.name .. (v.soon and ("  (level " .. v.soon .. ")") or ""),
+                    (m.me and "you" or m.who) .. ", " .. tostring(m.prof),
+                    qc and qc.r or 1, qc and qc.g or 1, qc and qc.b or 1, 0.6, 0.6, 0.65)
+            end
+            if #crafts > 3 then GameTooltip:AddLine("and " .. (#crafts - 3) .. " more, on the Crafts tab", 0.6, 0.6, 0.65) end
         end
         GameTooltip:Show()
         noCompare()
@@ -783,6 +809,75 @@ end
 -- the tile's inner side, level with its middle (above it, for the weapons
 -- along the bottom). The ranking and what the numbers mean are in its
 -- tooltip. Off with the "Next upgrade" switch (Windows page).
+-- Crafted upgrades (Alts.lua): the mark on each slot one of your
+-- characters could make something better for, and the Crafts tab's list.
+local function applyCrafts()
+    local A = ns.Alts
+    local cm = A and A.on and C.db.craftMarks ~= false and A.ForMe() or nil
+    for _, b in ipairs(tiles) do
+        local t = cm and cm.bySlot[b.slot] or nil
+        b.crafts = t
+        if b.craftMark then
+            b.craftRim:SetShown(t ~= nil)
+            b.craftMark:SetShown(t ~= nil)
+            if t then
+                -- (dimmer when the best of them is not wearable yet)
+                local soon = t[1].soon
+                b.craftMark:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], soon and 0.55 or 1)
+            end
+        end
+    end
+end
+local function craftsData()
+    local d = {}
+    local A = ns.Alts
+    local cm = A.ForMe()
+    local last
+    for _, v in ipairs(cm.list) do
+        local label = A.SlotName(v.slot)
+        if label ~= last then
+            d[#d + 1] = { kind = "header", text = label }
+            last = label
+        end
+        local m = v.from[1]
+        local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[v.q or 1]
+        local by = (m.me and "You" or (A.ClassHex(m.c) .. m.who .. "|r")) .. (#v.from > 1 and (" +" .. (#v.from - 1)) or "")
+        d[#d + 1] = { kind = "stat", icon = v.icon,
+            label = v.name .. (v.soon and ("   |cff9a9aa5from level " .. v.soon .. "|r") or ""),
+            labelColor = qc and { qc.r, qc.g, qc.b } or T.text,
+            value = by .. "   |cff9a9aa5" .. tostring(m.prof) .. "|r",
+            onClick = function()
+                if IsModifiedClick and (IsModifiedClick("CHATLINK") or IsModifiedClick("DRESSUP")) and HandleModifiedItemClick then
+                    HandleModifiedItemClick(v.link)
+                end
+            end,
+            tooltip = function(tip)
+                if not pcall(tip.SetHyperlink, tip, v.link) then tip:SetText(v.name) end
+                tip:AddLine(" ")
+                for _, mk in ipairs(v.from) do
+                    tip:AddLine("Crafted by " .. (mk.me and "you" or (A.ClassHex(mk.c) .. mk.who .. "|r")) .. " (" .. tostring(mk.prof) .. ")", 1, 1, 1)
+                end
+                local parts = {}
+                for i = 1, #(m.m or {}), 2 do
+                    local id, need = m.m[i], m.m[i + 1]
+                    local name = C_Item and C_Item.GetItemNameByID and call(C_Item.GetItemNameByID, id)
+                    if not (type(name) == "string" and not secret(name) and name ~= "") then
+                        name = "item " .. tostring(id)
+                        if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+                    end
+                    parts[#parts + 1] = tostring(need) .. " " .. name
+                end
+                if #parts > 0 then tip:AddLine("Needs " .. table.concat(parts, ", "), 0.6, 0.6, 0.65, true) end
+                if v.soon then tip:AddLine("You can wear it from level " .. v.soon .. ".", 0.88, 0.69, 0.38) end
+                if ns.AddCompare then pcall(ns.AddCompare, tip, v.link) end
+            end }
+    end
+    if cm.pending then
+        d[#d + 1] = { kind = "stat", wide = true, label = "Still reading some of the items from the game\226\128\166", value = "" }
+    end
+    return d
+end
+
 local function applyAdvice()
     local ok, adv = pcall(gearAdvice)
     if not ok then adv = { list = {} } end
@@ -1615,6 +1710,11 @@ local TABS = {
     { key = "rep", label = "Reputation", kw = { "reputation" } },
     { key = "skills", label = "Skills", kw = { "skill", "profession" },
       available = function() return skillAPI() ~= nil or _G.GetProfessions ~= nil end },
+    { key = "crafts", label = "Crafts", kw = {},
+      available = function()
+          local A = ns.Alts
+          return (A and A.on and C.db and C.db.craftMarks ~= false and A.ForMe().makers > 0) and true or false
+      end },
     { key = "currency", label = "Currency", kw = { "currency", "token" },
       available = function()
           local n = C_CurrencyInfo and call(C_CurrencyInfo.GetCurrencyListSize)
@@ -2415,7 +2515,8 @@ local function build()
 
     buildGear(pages.gear)
     buildPet(pages.pet)
-    for _, k in ipairs({ "rep", "skills", "currency", "honor", "stats" }) do buildListPage(pages[k]) end
+    for _, k in ipairs({ "rep", "skills", "crafts", "currency", "honor", "stats" }) do buildListPage(pages[k]) end
+    pages.crafts.list.empty:SetText("Nothing your characters can craft beats what you wear.")
 
     win:SetScript("OnShow", function()
         call(PlaySound, SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_OPEN)
@@ -2432,13 +2533,15 @@ local function build()
     end)
 end
 
-local LIST_DATA = { rep = repData, skills = skillsData, currency = currencyData, honor = honorData, stats = statisticsData }
+local LIST_DATA = { rep = repData, skills = skillsData, crafts = craftsData, currency = currencyData, honor = honorData,
+                    stats = statisticsData }
 
 function C:Refresh()
     if not win or not win:IsShown() then return end
     for _, b in ipairs(tiles) do pcall(updateTile, b) end
     pcall(updateHeader)
     pcall(applyAdvice)
+    pcall(applyCrafts)
     if self.tab == "gear" then
         pcall(updateResists, win.card.resists, "player")
         pcall(updateAttrs, win.card, "player")
@@ -2512,6 +2615,15 @@ end
 function C:OnInit(db)
     self.db = db
     db.collapsed = db.collapsed or {}
+    -- (a crafted item's details arrived, or a recipe went on file: marks and the tab may change)
+    if ns.Alts and ns.Alts.Listen then
+        ns.Alts.Listen(function()
+            if win and win:IsShown() then
+                pcall(layoutTabs)
+                C:Refresh()
+            end
+        end)
+    end
 
     -- Using something that has to be applied to a piece of gear (an armor
     -- kit, a sharpening stone, an enchant) turns the cursor into "apply to

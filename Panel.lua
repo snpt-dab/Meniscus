@@ -734,6 +734,8 @@ local PAGES = {
               note = "Each time you use a profession that can't go up until you train it",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.skillCap ~= false end,
               set = function() local d = ns.modules.Extras.db; if d then d.skillCap = d.skillCap == false end end },
+            moduleSwitch("Crafted upgrades between your characters", "Alts",
+                "Marks gear a character of yours could craft for another"),
             { "What a reagent makes, on its tooltip", kind = "switch", reload = true,
               note = "Your recipes that use it, and how many you could make",
               get = function() return ns.modules.Extras.db and ns.modules.Extras.db.canMake ~= false end,
@@ -905,6 +907,7 @@ local PAGES = {
 -- Every word typed must fit somewhere (in any order); a plural matches its
 -- singular.
 local KEYS = {
+    ["Crafted upgrades between your characters"] = "alts alt twink craft mail gear upgrade tailoring blacksmithing leatherworking",
     ["Font"] = "typeface text letters size",
     ["UI scale"] = "size zoom resolution small big",
     ["Health and power orbs"] = "hp mana rage energy globe ball",
@@ -1510,6 +1513,7 @@ ns.commands.help = function()
         "/men levelup  preview the level-up banner",
         "/men dotshow  the quest dot over the world: hidden for now (broken by a game patch); this shows it again",
         "/men dotforce  the quest dot, when shown: kept visible and placed by Meniscus (the default), or left to the game",
+        "/men alts  your characters on file for crafted upgrades (/men alts forget clears them)",
         "/men bestiary  what you have learned of the creatures you have met",
         "/men bestiary export  set your records down for sharing (then Share Bestiary.bat)",
         "/men bestiary hp <number>  your target's full health, as its frame shows it (replaces the estimate)",

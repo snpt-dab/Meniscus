@@ -416,6 +416,7 @@ local SLOTS = {
     INVTYPE_HOLDABLE = { 17 }, INVTYPE_SHIELD = { 17 }, INVTYPE_RANGED = { 18 }, INVTYPE_RANGEDRIGHT = { 18 },
     INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
 }
+ns.EquipSlots = SLOTS -- (Alts.lua: which crafted things are gear)
 local function itemStats(link)
     local f = (C_Item and C_Item.GetItemStats) or _G.GetItemStats
     if not f then return nil end
@@ -689,18 +690,9 @@ local SHORT = { Agility = "Agi", Strength = "Str", Stamina = "Sta", Intellect = 
                 ["Damage Per Second"] = "DPS", ["Attack Power"] = "AP", ["Spell Power"] = "SP",
                 ["Critical Strike"] = "Crit" }
 local function byMagnitude(a, b) return math.abs(a[2]) > math.abs(b[2]) end
-function ns.CompareLine(link)
-    if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return nil end
-    local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
-    local slots = ok and SLOTS[loc]
-    if not slots then return nil end
+function ns.CompareWith(link, worn)
     local new = tidy(itemStats(link))
     if not new then return nil end
-    local worn
-    for _, slot in ipairs(slots) do
-        local l = GetInventoryItemLink("player", slot)
-        if l then worn = l break end
-    end
     if not worn then return "|cff8fd19eNothing equipped there|r" end
     if worn == link then return "|cff9a9aa5You're wearing this|r" end
     local old = tidy(itemStats(worn))
@@ -728,6 +720,18 @@ function ns.CompareLine(link)
     end
     if #diffs > 4 then out = out .. "  |cff9a9aa5\226\128\166|r" end
     return out
+end
+function ns.CompareLine(link)
+    if type(link) ~= "string" or not (C_Item and C_Item.GetItemInfoInstant) then return nil end
+    local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, link)
+    local slots = ok and SLOTS[loc]
+    if not slots then return nil end
+    local worn
+    for _, slot in ipairs(slots) do
+        local l = GetInventoryItemLink("player", slot)
+        if l then worn = l break end
+    end
+    return ns.CompareWith(link, worn)
 end
 
 -- The comparison as rows for a card: a list of coloured strings, one stat
@@ -822,10 +826,13 @@ local WEIGHTS = {
 ns.StatWeights = WEIGHTS -- (the stats card dims the attributes a class has no use for)
 local WEIGHT_KEY = { ITEM_MOD_STRENGTH_SHORT = 1, ITEM_MOD_AGILITY_SHORT = 2, ITEM_MOD_STAMINA_SHORT = 3,
                      ITEM_MOD_INTELLECT_SHORT = 4, ITEM_MOD_SPIRIT_SHORT = 5, RESISTANCE0_NAME = 6 }
-local function gearScore(link)
+local function gearScore(link, cls)
     local st = itemStats(link)
     if not st then return nil end
-    local _, cls = UnitClass("player")
+    if not cls then
+        local _, mine = UnitClass("player")
+        cls = mine
+    end
     local w = WEIGHTS[cls or ""] or WEIGHTS.WARRIOR
     local caster = w[4] >= 0.8
     local total = 0
@@ -845,18 +852,32 @@ local function gearScore(link)
     return total
 end
 
-function ns.IsUpgrade(link)
-    if type(link) ~= "string" or issecretvalue(link) or not (C_Item and C_Item.GetItemInfoInstant) then return false end
-    local known = upCache[link]
-    if known ~= nil then return known end
+-- The judging itself, for you (who = nil: what you wear now) or for one of
+-- your other characters as last seen (who = { c = class, a = the heaviest
+-- armour worn, g = { [slot] = link } }: Alts.lua keeps those). Returns
+-- true / false, or nil while something it needs has not arrived from the
+-- game; with a yes, also the slot it would go in and by how much it wins
+-- (in whatever it was judged by: only good for ranking pieces for one
+-- slot). Whether the character can use the thing at all is the caller's
+-- to ask.
+local function wornIn(who, slot)
+    if who then
+        local l = who.g and who.g[slot]
+        return type(l) == "string" and l or nil
+    end
+    return GetInventoryItemLink("player", slot)
+end
+local function judge(link, who)
     local loc, classID, subID = equipLocOf(link)
     local slots = loc and SLOTS[loc]
-    if not slots then upCache[link] = false; return false end
+    if not slots then return false end
     local new = gearLevel(link)
-    if not new then return false end -- its data hasn't arrived: ask again later
-    local res = false
+    if not new then return nil end -- its data hasn't arrived: ask again later
+    local cls = who and who.c or nil
+    local res, at, gain = false, nil, nil
+    local best = who and who.a or ns.BestArmor()
     local wrongArmor = classID == 4 and type(subID) == "number" and subID >= 1 and subID <= 4
-        and loc ~= "INVTYPE_CLOAK" and subID ~= ns.BestArmor()
+        and loc ~= "INVTYPE_CLOAK" and subID ~= best
     -- Tools that go in a weapon slot (a skinning knife, a mining pick, a
     -- fishing pole) are never an upgrade: they have a higher item level
     -- than starter weapons, but with one in hand your weapon abilities
@@ -865,16 +886,17 @@ function ns.IsUpgrade(link)
     local tool = isWeapon and TOOL_WEAPON[subID]
     -- Weapons are judged by their damage per second, not their item level.
     local newDps = isWeapon and weaponDps(link) or nil
-    local newScore = not isWeapon and gearScore(link) or nil
+    local newScore = not isWeapon and gearScore(link, cls) or nil
     if not tool then
         local lowest, empty, same = nil, false, false
         local lowScore, scored = nil, newScore ~= nil -- (scored: every piece compared could be read)
         local beats = false
         local heavierWorn = false -- what is worn there is a heavier kind of armour than this
-        local main = GetInventoryItemLink("player", 16)
+        local emptyAt, beatAt, lowAt, lvlAt, unread
+        local main = wornIn(who, 16)
         local mainLoc = main and equipLocOf(main)
         for _, slot in ipairs(slots) do
-            local worn = GetInventoryItemLink("player", slot)
+            local worn = wornIn(who, slot)
             local count = true
             if slot == 17 then
                 if loc == "INVTYPE_WEAPON" then
@@ -887,7 +909,7 @@ function ns.IsUpgrade(link)
                 end
             end
             if count then
-                if not worn then empty = true
+                if not worn then empty = true; emptyAt = emptyAt or slot
                 elseif worn == link then same = true
                 else
                     local _, wClass, wSub = equipLocOf(worn)
@@ -898,14 +920,19 @@ function ns.IsUpgrade(link)
                     local wornDps = isWeapon and wClass == 2 and weaponDps(worn) or nil
                     if isWeapon and wClass == 2 and TOOL_WEAPON[wSub] then
                         beats = true -- any real weapon beats a tool
+                        beatAt = beatAt or slot
                     elseif newDps and wornDps then
-                        if newDps > wornDps + 0.05 then beats = true end
+                        if newDps > wornDps + 0.05 then
+                            beats = true
+                            if not gain or newDps - wornDps > gain then beatAt, gain = slot, newDps - wornDps end
+                        end
                     else
                         local l = gearLevel(worn)
-                        if l and (not lowest or l < lowest) then lowest = l end
-                        local sc = scored and gearScore(worn) or nil
+                        if not l then unread = true end
+                        if l and (not lowest or l < lowest) then lowest = l; lvlAt = slot end
+                        local sc = scored and gearScore(worn, cls) or nil
                         if not sc then scored = false
-                        elseif not lowScore or sc < lowScore then lowScore = sc end
+                        elseif not lowScore or sc < lowScore then lowScore = sc; lowAt = slot end
                     end
                 end
             end
@@ -917,13 +944,25 @@ function ns.IsUpgrade(link)
         -- actually worn: cloth can replace cloth (a shaman still in cloth,
         -- finding better cloth), but never the leather or mail already on.
         if same then res = false
-        elseif empty then res = true
+        elseif empty then res, at, gain = true, emptyAt, newDps or newScore or new
         elseif wrongArmor and heavierWorn then res = false
-        elseif beats then res = true
-        elseif scored and lowScore then res = newScore > lowScore + 0.05
-        elseif lowest and new > lowest then res = true end -- (stats not to be had: by item level)
-        if res and ns.ItemUnusable(link) then res = false end
+        elseif beats then res, at = true, beatAt
+        elseif who and unread then return nil -- (a piece of theirs this game session has not read yet)
+        elseif scored and lowScore then res, at, gain = newScore > lowScore + 0.05, lowAt, newScore - lowScore
+        elseif lowest and new > lowest then res, at, gain = true, lvlAt, new - lowest end -- (stats not to be had: by item level)
     end
+    if not res then return false end
+    return true, at, gain or 0
+end
+ns.JudgeUpgrade = judge
+
+function ns.IsUpgrade(link)
+    if type(link) ~= "string" or issecretvalue(link) or not (C_Item and C_Item.GetItemInfoInstant) then return false end
+    local known = upCache[link]
+    if known ~= nil then return known end
+    local res = judge(link)
+    if res == nil then return false end -- (not kept: asked again later)
+    if res and ns.ItemUnusable(link) then res = false end
     upCache[link] = res
     return res
 end

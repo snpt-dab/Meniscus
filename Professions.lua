@@ -148,6 +148,32 @@ end
 local craftableCount -- defined after reagents()
 local recordAll      -- defined after schematic()
 
+-- The item a recipe makes (looked up once per recipe), and which of your
+-- other characters it would be an upgrade for (Alts.lua): nil for none.
+local function outItem(e)
+    if e.out == nil then
+        local o = call(TU.GetRecipeOutputItemData, e.id)
+        e.out = type(o) == "table" and num(o.itemID) and o.itemID or false
+    end
+    return e.out or nil
+end
+local function altsFor(e)
+    local A = ns.Alts
+    if not (A and A.on) then return nil end
+    local item = outItem(e)
+    return item and A.ForAlts(item) or nil
+end
+local function altTip(tip, list)
+    local A = ns.Alts
+    for _, a in ipairs(list) do
+        tip:AddLine(A.ClassHex(a.c) .. a.who .. "|r   " .. A.SlotName(a.slot)
+            .. (a.soon and ("   |cffe0b060from level " .. a.soon .. "|r") or ""), 1, 1, 1)
+        local line = ns.CompareWith and ns.CompareWith(a.link, a.worn)
+        if line then tip:AddLine(line) end
+        tip:AddLine("Level " .. a.l .. ", gear seen " .. A.Ago(a.t), 0.6, 0.6, 0.65)
+    end
+end
+
 -- The recipe list is read from the client only when it can have changed
 -- (opened, learned a recipe, skill changed): that read makes a table per
 -- recipe. Bag changes and casts only recount what's craftable from it.
@@ -207,7 +233,8 @@ local function recipes()
         e.n = n
         if n > 0 then craftable = craftable + 1 end
         if (not q or e.lname:find(q, 1, true))
-                and (not P.db.haveMats or n > 0) and (not P.db.skillUps or e.diff < 3) then
+                and (not P.db.haveMats or n > 0) and (not P.db.skillUps or e.diff < 3)
+                and (not P.forAlts or altsFor(e)) then
             local g = groups[e.cat]
             if not g then g = {}; groups[e.cat] = g end
             if #g == 0 then order[#order + 1] = e.cat end
@@ -267,13 +294,24 @@ function recordAll()
     if not ns.RecordRecipe then return end
     if recordTicker then recordTicker:Cancel() end
     local i = 0
+    -- (Gear recipes also go on file for your other characters, Alts.lua:
+    -- your own recipes only, not a list someone linked you.)
+    local info = profInfo()
+    local prof = str(info.parentProfessionName) or str(info.professionName)
+    local own = not (call(TU.IsTradeSkillLinked) or call(TU.IsTradeSkillGuild) or call(TU.IsNPCCrafting))
     recordTicker = C_Timer.NewTicker(0.05, function(self)
         for _ = 1, 8 do
             i = i + 1
             local e = base[i]
             if not e then self:Cancel(); recordTicker = nil return end
             local c = schematic(e.id)
-            if c ~= NO_SCHEM then pcall(ns.RecordRecipe, e.id, e.name, c.list) end
+            if c ~= NO_SCHEM then
+                pcall(ns.RecordRecipe, e.id, e.name, c.list)
+                if own and prof and ns.RecordCraft then
+                    local item = outItem(e)
+                    if item then pcall(ns.RecordCraft, prof, e.name, item, c.list) end
+                end
+            end
         end
     end)
 end
@@ -344,17 +382,35 @@ local function makeRow(i)
     r.dot:SetPoint("LEFT", r.box, "RIGHT", 8, 0)
     r.count = text(r, 10, true, GREEN)
     r.count:SetPoint("RIGHT", -10, 0)
+    -- an upgrade for one of your other characters (Alts.lua)
+    r.alt = r:CreateTexture(nil, "OVERLAY")
+    r.alt:SetTexture(MEDIA .. "micro_up.tga")
+    r.alt:SetSize(13, 13)
+    r.alt:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
+    r.alt:SetPoint("RIGHT", r.count, "LEFT", -5, 0)
+    r.alt:Hide()
     r.name = text(r, 11, true)
     r.name:SetPoint("LEFT", r.dot, "RIGHT", 7, 0)
-    r.name:SetPoint("RIGHT", r.count, "LEFT", -6, 0)
+    r.name:SetPoint("RIGHT", r.alt, "LEFT", -5, 0)
     r.name:SetJustifyH("LEFT")
     r.name:SetWordWrap(false)
     r.head = text(r, 11, true, T.textDim)
     r.head:SetPoint("LEFT", 6, 0)
     r.headCount = text(r, 10, false, T.textDim)
     r.headCount:SetPoint("RIGHT", -10, 0)
-    r:SetScript("OnEnter", function(self) self.hover = true; paintRow(self) end)
-    r:SetScript("OnLeave", function(self) self.hover = false; paintRow(self) end)
+    r:SetScript("OnEnter", function(self)
+        self.hover = true
+        paintRow(self)
+        local e = self.entry
+        local list = e and not e.header and altsFor(e)
+        if list then
+            ns.TipAnchor(self)
+            GameTooltip:SetText("An upgrade for", 1, 1, 1)
+            altTip(GameTooltip, list)
+            GameTooltip:Show()
+        end
+    end)
+    r:SetScript("OnLeave", function(self) self.hover = false; paintRow(self); GameTooltip:Hide() end)
     r:SetScript("OnClick", function(self)
         local e = self.entry
         if not e then return end
@@ -378,7 +434,7 @@ local function fillRow(r, e)
     r:Show()
     if e.header then
         r.ring(0, 0, 0, 0); r.fill(0, 0, 0, 0)
-        r.box:Hide(); r.dot:Hide(); r.name:Hide(); r.count:Hide()
+        r.box:Hide(); r.dot:Hide(); r.name:Hide(); r.count:Hide(); r.alt:Hide()
         r.head:SetText((e.folded and "+  " or "–  ") .. e.name)
         r.headCount:SetText(e.count)
         r.head:Show(); r.headCount:Show()
@@ -394,6 +450,7 @@ local function fillRow(r, e)
     -- dimmed names read as "can't make this".
     r.name:SetTextColor(unpack(T.text))
     r.count:SetText(e.n > 0 and ("×" .. e.n) or "")
+    r.alt:SetShown(altsFor(e) ~= nil)
     paintRow(r)
 end
 
@@ -557,6 +614,15 @@ function showDetail()
     if num(cd) and cd > 0 then
         table.insert(lines, "|cfff26b66Cooldown  " .. (SecondsToTime and SecondsToTime(cd) or (math.ceil(cd / 60) .. " min")) .. "|r")
     end
+    local forAlts = altsFor(e)
+    if forAlts then
+        local A, names = ns.Alts, {}
+        for _, a in ipairs(forAlts) do
+            names[#names + 1] = A.ClassHex(a.c) .. a.who .. "|r (" .. A.SlotName(a.slot):lower()
+                .. (a.soon and (", from level " .. a.soon) or "") .. ")"
+        end
+        table.insert(lines, "Upgrade for  " .. table.concat(names, ", "))
+    end
     d.info:SetText(table.concat(lines, "\n"))
     local y = -78
     d.info:ClearAllPoints()
@@ -667,6 +733,13 @@ local function refresh()
     end
     sh:SetSubtitle(string.format("%d recipes   ·   %d craftable now", total, craftable))
     win.haveMats.on = P.db.haveMats; win.haveMats:Repaint()
+    -- "For alts" is only offered once another character of yours is on file.
+    local others = ns.Alts and ns.Alts.Others and ns.Alts.Others() or 0
+    if others == 0 and P.forAlts then P.forAlts = false end
+    win.forAlts:SetShown(others > 0)
+    win.forAlts.on = P.forAlts and true or false; win.forAlts:Repaint()
+    win.search:ClearAllPoints()
+    win.search:SetPoint("RIGHT", others > 0 and win.forAlts or win.haveMats, "LEFT", -10, 0)
     win.skillUps.on = P.db.skillUps; win.skillUps:Repaint()
     showDetail()
 end
@@ -742,9 +815,23 @@ local function build()
         P.db.haveMats = not P.db.haveMats; offset = 0; P:Refresh()
     end)
     win.haveMats:SetPoint("RIGHT", win.skillUps, "LEFT", -6, 0)
+    -- Only the recipes that make an upgrade for another character of yours.
+    win.forAlts = pill(win, "For alts", function()
+        P.forAlts = not P.forAlts; offset = 0; P:Refresh()
+    end)
+    win.forAlts:SetPoint("RIGHT", win.haveMats, "LEFT", -6, 0)
+    win.forAlts:HookScript("OnEnter", function(self)
+        ns.TipAnchor(self)
+        GameTooltip:SetText("For alts", 1, 1, 1)
+        GameTooltip:AddLine("Only the recipes that make an upgrade for another of your characters, going by what each wore when you last played it.",
+            0.86, 0.86, 0.89, true)
+        GameTooltip:Show()
+    end)
+    win.forAlts:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    win.forAlts:Hide()
     local box = CreateFrame("EditBox", nil, win)
     box:SetAutoFocus(false)
-    box:SetSize(170, 24)
+    box:SetSize(140, 24)
     box:SetPoint("RIGHT", win.haveMats, "LEFT", -10, 0)
     box:SetTextInsets(10, 10, 0, 0)
     ns:SetFont(box, 11, "")
@@ -769,7 +856,7 @@ local function build()
         ring(T.border[1], T.border[2], T.border[3], 1)
     end)
     win.search = box
-    win.shell:Lift(box, win.haveMats, win.skillUps)
+    win.shell:Lift(box, win.forAlts, win.haveMats, win.skillUps)
 
     for i = 1, ROWS do rows[i] = makeRow(i) end
     win.thumb = win:CreateTexture(nil, "OVERLAY")
@@ -901,6 +988,8 @@ end
 function P:OnInit(db)
     self.db = db
     db.collapsed = db.collapsed or {}
+    -- (an item of another character's gear arrived from the game: the marks may change)
+    if ns.Alts and ns.Alts.Listen then ns.Alts.Listen(function() P:QueueRefresh() end) end
     if MinimalUIDB then MinimalUIDB.proftrace = nil end -- old debug trail
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_LIST_UPDATE",
