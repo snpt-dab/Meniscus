@@ -349,10 +349,10 @@ local ccPanel, ccPill
 local INTERACT_TYPE = (Enum and Enum.ClickBindingType and Enum.ClickBindingType.Interaction) or 3
 local CI = Enum and Enum.ClickBindingInteraction
 local INTERACTIONS = {
-    { id = CI and CI.Target or 1, name = "Target them", was = "BUTTON1",
-      held = "That click is how you target them. Move \"Target them\" to another click first: click it below, then press its new combination." },
-    { id = CI and CI.OpenContextMenu or 2, name = "Open their menu", was = "BUTTON2",
-      held = "That click opens their menu. Move \"Open their menu\" to another click first: click it below, then press its new combination." },
+    { id = CI and CI.Target or 1, name = "Target Unit", was = "BUTTON1",
+      held = "That click is how you target them. Move \"Target Unit\" to another click first: click it below, then press its new combination." },
+    { id = CI and CI.OpenContextMenu or 2, name = "Open Unit Menu", was = "BUTTON2",
+      held = "That click opens their menu. Move \"Open Unit Menu\" to another click first: click it below, then press its new combination." },
 }
 local function sameButton(a, b)
     if a == b then return true end
