@@ -109,9 +109,31 @@ local function forget(all)
     end
 end
 
+-- (0.1.652: after a client restart the record held no roster and no note
+-- at all, and every call here was under a bare pcall, so there was nothing
+-- to say why. Now each step leaves a word in MinimalUIDB.alttrail, and a
+-- failure leaves its message.)
+local trail = {}
+local function mark(k, v)
+    trail[k] = v
+    local db = MinimalUIDB
+    if not db then return end
+    local parts = {}
+    for name, val in pairs(trail) do parts[#parts + 1] = name .. ": " .. tostring(val) end
+    table.sort(parts)
+    db.alttrail = table.concat(parts, " | ")
+end
+local function kind(v) return v == nil and "nil" or (secret(v) and "hidden") or (v == "" and "empty") or type(v) end
 local function snapshot(fromChange)
     local book, name = realmBook(true)
-    if not book then return end
+    if not book then
+        local okN, n = pcall(UnitName, "player")
+        local okR, r = pcall(GetRealmName)
+        mark("no book", "saved table " .. kind(MinimalUIDB) .. ", name " .. (okN and kind(n) or "failed")
+            .. ", realm " .. (okR and kind(r) or "failed"))
+        return
+    end
+    mark("book", "ok")
     local me = book[name]
     if type(me) ~= "table" then me = {}; book[name] = me end
     local _, cls = UnitClass("player")
@@ -141,6 +163,14 @@ local function snapshot(fromChange)
         if n > 0 and n < 15 then me.w = w else me.w = nil end
         if MinimalUIDB then MinimalUIDB.altdiag = "weapon skills read: " .. n .. " of 15 known" end
     end
+    mark("snapshot", "done")
+end
+local snapN = 0
+local function snap(fromChange, why)
+    snapN = snapN + 1
+    local ok, err = pcall(snapshot, fromChange)
+    mark("calls", snapN .. " (last: " .. why .. ")")
+    if not ok then mark("failed", tostring(err):sub(1, 200)) end
 end
 
 -- A recipe that makes gear, as the professions window reads it.
@@ -380,6 +410,7 @@ end
 function A:OnInit(db)
     self.db = db
     A.on = true
+    mark("started", date and date("%H:%M:%S") or "yes")
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "GET_ITEM_INFO_RECEIVED",
                          "PLAYER_LOGOUT" }) do
@@ -388,7 +419,7 @@ function A:OnInit(db)
     local snapQueued = false
     ev:SetScript("OnEvent", function(_, e)
         if e == "PLAYER_LOGOUT" then
-            pcall(snapshot, false)
+            snap(false, "logout")
         elseif e == "GET_ITEM_INFO_RECEIVED" then
             if waiting then
                 waiting = false
@@ -400,14 +431,16 @@ function A:OnInit(db)
             local change = e == "PLAYER_EQUIPMENT_CHANGED"
             C_Timer.After(1, function()
                 snapQueued = false
-                pcall(snapshot, change)
+                snap(change, e)
                 wipe(verdict)
                 mine = nil
                 fire()
             end)
         end
     end)
-    C_Timer.After(6, function() pcall(snapshot, false) end)
+    C_Timer.After(6, function() snap(false, "login") end)
+    -- (And once more, in case the first came before the game had a name.)
+    C_Timer.After(20, function() if not (MinimalUIDB and MinimalUIDB.roster) then snap(false, "second try") end end)
 end
 
 -- /men alts: who is on file, and when each was last read.
@@ -422,7 +455,10 @@ ns.commands.alts = function(rest)
         return
     end
     local book, myName = realmBook()
-    if not A.on or not book then ns:Print("Alts: nothing on file yet.") return end
+    if not A.on or not book then
+        ns:Print("Alts: nothing on file yet.", A.on and ("(" .. tostring(MinimalUIDB and MinimalUIDB.alttrail) .. ")") or "(switched off)")
+        return
+    end
     for name, ch in pairs(book) do
         if type(ch) == "table" then
             local profs = {}
