@@ -47,11 +47,13 @@ run(12)
 START_NOTES, START_DRAWS = #(MinimalUIDB.ctlog or {}), #LOG
 '''
 
-def scenario(name, code, broken=False, expect=None):
+def scenario(name, code, broken=False, expect=None, kblank=False):
     rt = L.LuaRuntime(unpack_returned_tuples=True)
     rt.execute(MOCK)
     if broken:
         rt.execute('BROKEN_FONT = true')
+    if kblank:
+        rt.execute('KBLANK = true')
     load = rt.eval('function(src, name) local f, e = loadstring(src, name); if not f then error(e) end; return f end')
     chunk = load(SRC, 'Nameplates.lua')
     rt.globals()['__chunk'] = chunk
@@ -223,6 +225,30 @@ hit("nameplate2", 18, 1)
 hit("target", 18, 1)
 run(2.5)
 ''', expect=lambda n, d: (count(d, 'digits', '|Ky') == 1 and count(d, 'manrope-700', 'amount(18)') == 1, 'the kill from its line, the next swing from its report')))
+
+# M. the game does not put a log line's text into a string of ours: after three that drew as nothing, back to the old way
+results.append(scenario('M. log lines draw as nothing: switched off after three', r'''
+for i = 1, 3 do
+    mob("nameplate1", "wolf" .. i); WORLD.units.target = "wolf" .. i
+    line("swing")
+    line("kill")
+    die("wolf" .. i); gone("nameplate1")
+    run(2.5)
+end
+BEFORE = #LOG
+mob("nameplate1", "boar"); WORLD.units.target = "boar"
+line("swing")
+line("kill")
+die("boar")
+run(0.3)
+hit("nameplate1", 31, 1)
+run(2.5)
+LATER = {}
+for i = BEFORE + 1, #LOG do LATER[#LATER + 1] = LOG[i] end
+LOG = LATER
+START_DRAWS = 0
+''', kblank=True, expect=lambda n, d: (count(d, 'digits', '|Ky') == 0 and count(d, 'manrope-700', 'amount(31)') == 1 and any('switched off' in x for x in n),
+                                       'the fourth kill is drawn from its late report, as before')))
 
 print('=' * 100)
 print('passed %d of %d' % (sum(1 for r in results if r), len(results)))

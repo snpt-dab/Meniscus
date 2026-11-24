@@ -1959,6 +1959,15 @@ local function buildNumbers()
             for name, n in pairs(seenKinds) do parts[#parts + 1] = name .. " x" .. n end
             table.sort(parts)
             MinimalUIDB.linewide = table.concat(parts, "; ")
+            -- (Three lines that drew as nothing at all, and none that drew
+            -- as numerals: the game is not putting a log line's text into a
+            -- string of ours after all. Numbers go back to coming from the
+            -- hits reported, as before 0.1.644, for the rest of the session.)
+            if textOK and (seenKinds["nothing drawn"] or 0) >= 3 and not seenKinds["numerals there"] then
+                textOK = false
+                MinimalUIDB.digitface = tostring(MinimalUIDB.digitface) .. " Switched off again: log lines drew as nothing."
+                note("(numbers from log lines switched off: three drew as nothing)")
+            end
         end)
     end
     -- A line's own text, drawn as its number (see "A number from a log

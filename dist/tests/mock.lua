@@ -3,7 +3,8 @@
 clock = 1000
 local timers, frames, events = {}, {}, {}
 LOG = {}          -- what was put on the screen: { t, what, font, text }
-BROKEN_FONT = false
+BROKEN_FONT = false   -- the numerals-only typeface gives its blank characters some width
+KBLANK = false        -- a log line's ticket draws as nothing in a string of ours
 
 local function logdraw(what, o, text)
     LOG[#LOG + 1] = { t = clock, what = what, font = o.__font or "?", text = text, o = o }
@@ -69,6 +70,7 @@ function METHODS:GetText() return self.__text end
 local function width(self)
     local t = self.__text
     if type(t) ~= "string" then return 0 end
+    if KBLANK and t:find("^|K") then return 0 end
     if (self.__font or ""):find("digits", 1, true) then
         local w = 0
         for ch in t:gmatch(".") do
