@@ -115,7 +115,9 @@ def clean(r):
         k = txt(k, 60)
         if k and num(v, -10**5, 10**5): rep[k] = v
     if rep: o['rep'] = rep
-    z = {txt(k, 60): True for k in (r.get('z') or {}) if txt(k, 60)} if isinstance(r.get('z'), dict) else {}
+    # (a zone's value is True, or what sort of instance it is: "party", "raid")
+    z = {txt(k, 60): (v if v in ('party', 'raid', 'scenario', 'pvp', 'arena') else True)
+         for k, v in (r.get('z') or {}).items() if txt(k, 60)} if isinstance(r.get('z'), dict) else {}
     if z: o['z'] = z
     dsp = {k: True for k in (r.get('dsp') or {}) if num(k, 1, 10**7)} if isinstance(r.get('dsp'), dict) else {}
     if dsp: o['dsp'] = dsp
@@ -182,7 +184,9 @@ def merge(a, b):
     if 'cn' in b: a['cn'] = a.get('cn', 0) + b['cn']
     for k in ('qs', 'rep'):
         for x, v in b.get(k, {}).items(): a.setdefault(k, {}).setdefault(x, v)
-    if 'z' in b: a.setdefault('z', {}).update(b['z'])
+    for x, v in b.get('z', {}).items():
+        # (marked as an instance by anyone, it stays marked)
+        if v is not True or x not in a.setdefault('z', {}): a.setdefault('z', {})[x] = v
     if 'dsp' in b: a.setdefault('dsp', {}).update(b['dsp'])
     for k in ('hp', 'hit'):
         for x, v in b.get(k, {}).items():

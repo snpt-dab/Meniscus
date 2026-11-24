@@ -8,12 +8,14 @@ local T = ns.Theme
 -- seen"; it lives here now and notes more.
 --
 -- One small record for each KIND of creature (not each one), written only
--- when something is learned:
+-- when something is learned. (A number below zero is made up: a creature
+-- known by its name alone so far, met in a dungeon. See "In a dungeon".)
 --   MinimalUIDB.bestiary[npcID] = {
 --     n  = name,            lo, hi = levels seen,
 --     t  = kind (Beast),    f = family (Cat),   cl = rank (elite, rare...),
 --     ag = 1 hostile / 0 neutral,
---     z  = { [zone] = true }            where (6 at most),
+--     z  = { [zone] = true }            where (6 at most); for an instance
+--          the value is what sort it is ("party", "raid"), not true,
 --     (0.1.592) mana = true (it has mana), uc = its class as the game has
 --          it (MAGE, WARRIOR...), tame = true (a hunter was told so),
 --          sk = how its corpse is gathered (leather / herb / rock / bolts),
@@ -217,7 +219,8 @@ local function export()
     local at = time()
     local out, snap, n = {}, {}, 0
     for id, r in pairs(all) do
-        if r.n then
+        -- (not one known by its name alone: its number here is made up)
+        if r.n and id > 0 then
             local c = {}
             for k, v in pairs(r) do
                 if k ~= "k" and k ~= "kd" and k ~= "d" then c[k] = type(v) == "table" and copy(v) or v end
@@ -245,36 +248,92 @@ local function zoneNow()
 end
 B.zoneNow = zoneNow
 
--- ── In a dungeon (0.1.622) ────────────────────────────────────────────────
+-- ── In a dungeon (0.1.622; reworked 0.1.645) ──────────────────────────────
 -- Inside an instance the game hides who a creature is: its name comes back
 -- hidden and so does the rest of what observe() goes by (a whole run of the
 -- Wailing Caverns left twenty creatures with loot and no name, and some 230
 -- kills of "a creature not in the book"). What is still said in the clear:
 --   the experience line, with the name;
 --   a corpse being looted, with which creature it was (its number);
---   your target's level, rank and kind, with no name to them.
--- So: what is learned of a name with no number yet is kept by name
--- (MinimalUIDB.bestiaryPend), a looted corpse's number is asked its name
--- from the game's own tooltip (askName, below), and the two are folded
--- together the moment a record gets its name. Level, rank and kind are
--- taken from the creature you had targeted as it died.
-local function pendOf(name, make)
-    if not MinimalUIDB then return end
-    local all = MinimalUIDB.bestiaryPend
-    if not all then
-        if not make then return end
-        all = {}; MinimalUIDB.bestiaryPend = all
+--   your target's level and rank, with no name to them;
+--   a boss's name, as its fight begins (MinimalUIDB.bossNames, UnitFrames).
+-- So a dungeon's creature comes into the book by two doors, and the two are
+-- made one:
+--   * by its NAME, the moment one dies (the experience line): a record
+--     under a made-up number below zero, which holds its kills, what a kill
+--     is worth, where, and the level and rank of the one that died if it was
+--     your target;
+--   * by its NUMBER, when you loot one: a record with no name yet, which
+--     holds the loot. Its name is asked of the game's own tooltip (askName,
+--     below), which only answers once you are out of the instance.
+-- The moment the numbered one gets its name, the other is folded into it.
+-- (Until 0.1.645 what was known by name was kept out of the book until
+-- then, in MinimalUIDB.bestiaryPend: a creature killed and never looted BY
+-- YOU, which in a group is most of them, was never in it at all.)
+local function idByName(name)
+    local all = MinimalUIDB and MinimalUIDB.bestiary
+    if not all then return end
+    if not nameIndex then
+        nameIndex = {}
+        -- (a numbered record before one known by name alone, should both be there)
+        for id, r in pairs(all) do
+            if r.n and (id > 0 or nameIndex[r.n] == nil) then nameIndex[r.n] = id end
+        end
     end
-    local p = all[name]
-    if not p and make and count(all) < 400 then p = {}; all[name] = p end
-    return p
+    return nameIndex[name]
 end
-local function addZone(r, z)
+-- The record of a creature known by its name alone: made here.
+local function nameOnly(name)
+    if not (MinimalUIDB and str(name)) then return end
+    local n = 0
+    for id in pairs(MinimalUIDB.bestiary or {}) do if id < 0 then n = n + 1 end end
+    if n >= 400 then return end
+    local seq = (MinimalUIDB.bestiarySeq or 0) + 1
+    MinimalUIDB.bestiarySeq = seq
+    local r = record(-seq, true)
+    if not r then return end
+    r.n = name
+    nameIndex = nil
+    return -seq, r
+end
+-- kind: what sort of instance z is ("party", "raid"...), when it is one. A
+-- place first written down plainly and then met as an instance is marked.
+local function addZone(r, z, kind)
     if not z then return end
     r.z = r.z or {}
-    if not r.z[z] and count(r.z) < 6 then r.z[z] = true end
+    if r.z[z] == nil then
+        if count(r.z) < 6 then r.z[z] = kind or true end
+    elseif kind and r.z[z] == true then
+        r.z[z] = kind
+    end
 end
--- (d: level, rank, kind as read off a target; r: a record or a kept-by-name one)
+-- Where you are, for the book: inside an instance, the instance's own name
+-- (the zone's name is not to be relied on in there: for a moment after you
+-- come in it is still the name of the place you came from, and a whole
+-- dungeon was once filed under the city at its door), and what kind of
+-- instance it is; anywhere else, the zone.
+local function placeNow()
+    if IsInInstance then
+        local inside, kind = call(IsInInstance)
+        if isTrue(inside) then
+            kind = str(kind) and kind or "party"
+            local name = GetInstanceInfo and call(GetInstanceInfo)
+            local zone = zoneNow()
+            if MinimalUIDB then
+                -- (What the game calls the instance beside what it calls the
+                -- zone in there: kept, a dozen at most, to see how they differ.)
+                local dg = MinimalUIDB.instdiag
+                if type(dg) ~= "table" then dg = {}; MinimalUIDB.instdiag = dg end
+                local key = tostring(str(name) and name or "(no name given)") .. " / " .. tostring(zone)
+                if dg[key] or count(dg) < 12 then dg[key] = (dg[key] or 0) + 1 end
+            end
+            return str(name) and name or zone, kind
+        end
+    end
+    return zoneNow(), nil
+end
+B.placeNow = placeNow
+-- (d: level, rank, kind as read off a target; r: a record)
 local function addFacts(r, d)
     if d.l then
         if not r.lo or d.l < r.lo then r.lo = d.l end
@@ -289,23 +348,62 @@ local function addFacts(r, d)
     if r.f == nil then r.f = d.f end
     if r.ag == nil then r.ag = d.ag end
 end
+-- One record of a creature folded into another of the same creature (the
+-- one known by name into the one with its number).
+local function fold(r, s)
+    addFacts(r, s)
+    for _, key in ipairs({ "mana", "uc", "tame", "sk", "xp", "xl" }) do
+        if r[key] == nil then r[key] = s[key] end
+    end
+    for z, kind in pairs(s.z or {}) do addZone(r, z, kind ~= true and kind or nil) end
+    for _, key in ipairs({ "c", "db", "dbt", "cc", "qs", "rep", "hp", "hit", "dsp" }) do
+        if s[key] then
+            r[key] = r[key] or {}
+            for k, v in pairs(s[key]) do
+                local have = r[key][k]
+                if have == nil or have == true or (type(v) == "number" and type(have) == "number" and v > have) then r[key][k] = v end
+            end
+        end
+    end
+    if s.hs then
+        r.hs, r.he, r.hn = r.hs or {}, r.he or {}, r.hn or {}
+        for L, h in pairs(s.hs) do
+            r.hs[L] = r.hs[L] or {}
+            for v, n in pairs(h) do r.hs[L][v] = (r.hs[L][v] or 0) + n end
+            if r.he[L] == nil and s.he then r.he[L], r.hn[L] = s.he[L], s.hn and s.hn[L] or 1 end
+        end
+    end
+    if s.q then
+        r.q = r.q or {}
+        local has = {}
+        for _, line in ipairs(r.q) do has[line.t] = true end
+        for _, line in ipairs(s.q) do
+            if not has[line.t] and #r.q < 12 then has[line.t] = true; r.q[#r.q + 1] = line end
+        end
+    end
+    -- (Its kills by the experience line are all of them; those counted at
+    -- its corpse while it had no name are among them: the greater.)
+    if (s.k or 0) > (r.k or 0) then r.k = s.k end
+    if (s.lk or 0) > (r.lk or 0) then r.lk = s.lk end
+    if s.kd then r.kd = (r.kd or 0) + s.kd end
+end
+-- (A record known by name that has been folded into a numbered one: where
+-- it went, for a window that was showing it.)
+local mergedTo = {}
+B.mergedTo = mergedTo
 local function setName(id, name)
     local r = record(id)
     if not r or r.n then return end
+    local all = MinimalUIDB.bestiary
+    local sid = id > 0 and idByName(name) or nil
+    local s = sid and sid < 0 and all[sid] or nil
     r.n = name; nameIndex = nil
-    local all = MinimalUIDB.bestiaryPend
-    local p = all and all[name]
-    if p then
-        addFacts(r, p)
-        if r.xp == nil then r.xp, r.xl = p.xp, p.xl end
-        for z in pairs(p.z or {}) do addZone(r, z) end
-        -- (Its kills by the experience line are all of them; those counted
-        -- at its corpse while it had no name are among them: the greater.)
-        if (p.k or 0) > (r.k or 0) then r.k = p.k end
-        if (p.k or 0) > (r.lk or 0) then r.lk = p.k end
-        all[name] = nil
+    if s then
+        fold(r, s)
+        all[sid] = nil
+        mergedTo[sid] = id
     end
-    changed(id)
+    changed(s and nil or id)
 end
 -- The creature you have targeted, by what can be read of it without
 -- knowing which it is; and the one you had until a moment ago (the game
@@ -317,12 +415,15 @@ local function noteTarget()
         if isTrue(call(UnitIsPlayer, "target")) or isTrue(call(UnitPlayerControlled, "target")) then return end
         local react = call(UnitReaction, "target", "player")
         if not (plain(react) and react <= 4) then return end
+        -- (A level of "??", which the game gives as a number below zero, is
+        -- a boss: no level to keep, but its rank is as good as any. These
+        -- were passed over whole until 0.1.645, and no boss had a rank.)
         local lvl = call(UnitLevel, "target")
-        if not (plain(lvl) and lvl > 0) then return end
+        if not plain(lvl) then return end
         local kind = call(UnitCreatureType, "target")
         if str(kind) and kind == "Critter" then return end
         local cl, fam = call(UnitClassification, "target"), call(UnitCreatureFamily, "target")
-        tgt = { l = lvl, t = str(kind) and kind or nil, f = str(fam) and fam or nil,
+        tgt = { l = lvl > 0 and lvl or nil, t = str(kind) and kind or nil, f = str(fam) and fam or nil,
                 cl = str(cl) and RANK[cl] and cl or nil, ag = react < 4 and 1 or 0 }
     elseif tgt then
         tgtGone, tgt = tgt, nil
@@ -406,10 +507,11 @@ local function observe(unit)
         local _, uc = call(UnitClass, unit)
         if str(uc) then r.uc = uc end
         pcall(noteTip, unit, id, r)
-        local z = zoneNow()
+        local z, zk = placeNow()
         if z then
-            r.z = r.z or {}
-            if not r.z[z] and count(r.z) < 6 then r.z[z] = true; new = true end
+            local had = r.z and r.z[z]
+            addZone(r, z, zk)
+            if r.z[z] ~= had then new = true end
         end
     end
     -- Its full health: only out of a fight will the game say (a hidden
@@ -549,15 +651,6 @@ local function noteCast(unit, spellID, done)
     end
 end
 
-local function idByName(name)
-    local all = MinimalUIDB and MinimalUIDB.bestiary
-    if not all then return end
-    if not nameIndex then
-        nameIndex = {}
-        for id, r in pairs(all) do if r.n then nameIndex[r.n] = id end end
-    end
-    return nameIndex[name]
-end
 local seenDead, seenLoot, nDead, nLoot = {}, {}, 0, 0
 local fightKills = {} -- (what died to you in the fight going on)
 -- A kill. Three signs, and a death is counted by whichever comes first
@@ -610,10 +703,26 @@ local function askName(id, guid)
         return
     end
     diag("namediag", "named")
+    -- (What the tooltip says below the name, for the first few: a creature
+    -- named this way has no kind and often no level, and if the game puts
+    -- "Level 16 Undead (Elite)" there, that is where to get them.)
+    if MinimalUIDB then
+        local td = MinimalUIDB.bestiaryTip
+        if type(td) ~= "table" then td = {}; MinimalUIDB.bestiaryTip = td end
+        if #td < 8 then
+            local more = {}
+            for i = 2, math.min(#data.lines, 5) do
+                local l = data.lines[i]
+                local t = type(l) == "table" and l.leftText
+                more[#more + 1] = str(t) and t or (secret(t) and "(hidden)" or "(nothing)")
+            end
+            td[#td + 1] = text .. ": " .. (#more > 0 and table.concat(more, " | ") or "no more lines")
+        end
+    end
     setName(id, text)
     -- (Where it was looted. Asked later, at login, you are somewhere else:
     -- 0.1.622 filed a whole dungeon under the zone outside its door.)
-    if guid then addZone(r, B.zoneNow and B.zoneNow()) end
+    if guid then addZone(r, placeNow()) end
     return text
 end
 local function nameTheNameless()
@@ -650,10 +759,17 @@ local function noteRep(text)
     if lastKill and now - lastKill.t < 2 then attachRep(lastKill.id, faction, n)
     elseif #repWait < 6 then repWait[#repWait + 1] = { f = faction, n = n, t = now } end
 end
-local function addKill(id, lvl, inFight)
+-- looted: counted as its corpse was opened.
+-- (lk is what an item's rate is out of: kills whose corpse you could have
+-- opened. On your own that is every kill, and one you walked away from
+-- counts as nothing found. In a group most corpses are someone else's to
+-- open: fifty-eight kills of a creature with eleven corpses opened put every
+-- drop at a fifth of its true rate. There only the corpses opened count,
+-- since 0.1.645.)
+local function addKill(id, lvl, inFight, looted)
     local r = record(id, true)
     r.k = (r.k or 0) + 1
-    r.lk = (r.lk or 0) + 1
+    if looted or not (IsInGroup and isTrue((call(IsInGroup)))) then r.lk = (r.lk or 0) + 1 end
     local now = GetTime()
     lastKill = { id = id, t = now }
     for _, w in ipairs(repWait) do
@@ -690,7 +806,7 @@ local function lootKill(id, guid)
     local name = (r and r.n) or askName(id, guid)
     if take(owedByXP, name, 300) then return end
     diag("killdiag", "counted when looted")
-    addKill(id, nil, false)
+    addKill(id, nil, false, true)
 end
 local function noteXP(text)
     if secret(text) then diag("killdiag", "experience line hidden") return end
@@ -701,20 +817,14 @@ local function noteXP(text)
     local gained = tonumber(text:match("you gain (%d+) experience"))
     local mine = call(UnitLevel, "player")
     if not id then
-        -- (No such creature in the book: kept by its name until one is, 0.1.622.)
+        -- (No such creature in the book: it goes in by its name alone, and
+        -- is counted like any other from here on. See "In a dungeon".)
         diag("killdiag", "experience line, creature not in the book")
-        local p = pendOf(name, true)
-        if p then
-            p.k = (p.k or 0) + 1
-            if gained and gained > 0 then p.xp, p.xl = gained, plain(mine) and mine or nil end
-            local d = deadTarget()
-            if d then addFacts(p, d) end
-            p.z = p.z or {}
-            local z = zoneNow()
-            if z and count(p.z) < 6 then p.z[z] = true end
+        id = nameOnly(name)
+        if not id then
+            owe(owedByXP, name)
+            return
         end
-        owe(owedByXP, name)
-        return
     end
     local rx = record(id)
     if rx and gained and gained > 0 then
@@ -732,12 +842,14 @@ local function noteXP(text)
     local e = not lvl and B.tl and B.tl[id]
     if e and GetTime() - e.t < 120 then lvl = e.l end
     if r and not r.uc then
-        -- (One named from its corpse in a dungeon: never read as a creature.)
+        -- (One never read as a creature: known by its name, or named from
+        -- its corpse, in a dungeon. Where it died is kept each time; its
+        -- level and rank when the one that died was your target.)
+        addZone(r, placeNow())
         local d = deadTarget()
         if d then
             addFacts(r, d)
-            addZone(r, zoneNow())
-            lvl = d.l
+            lvl = d.l or lvl
         end
     end
     diag("killdiag", "counted from the experience line")
@@ -1199,6 +1311,17 @@ local function behaviorOf(line)
 end
 B.BehaviorOf = behaviorOf
 
+-- Its rank, as shown. A dungeon's boss is plain "elite" to the game (or
+-- has no rank read at all, its level being "??"): it is a boss here if a
+-- boss fight of its name has been begun (MinimalUIDB.bossNames, kept by the
+-- unit frames since they first marked bosses).
+local function rankOf(r)
+    local names = MinimalUIDB and MinimalUIDB.bossNames
+    if r.n and type(names) == "table" and names[r.n] and r.cl ~= "rare" then return "worldboss" end
+    return r.cl
+end
+B.RankOf = rankOf
+
 -- The traits (0.1.592): what is true of a creature that a small picture
 -- can say, each with a tooltip. The bestiary shows them as a strip of
 -- round icons under its name, in place of rows of words.
@@ -1215,8 +1338,10 @@ function B.Traits(id)
     local function add(tex, c, title, text) t[#t + 1] = { tex = MEDIA .. tex, c = c, title = title, text = text } end
     if r.ag == 1 then add("micro_stat_melee.tga", RED, "Hostile", "Attacks you on sight.")
     elseif r.ag == 0 then add("micro_stat_melee.tga", GOLD, "Neutral", "Leaves you alone unless you attack it.") end
-    if r.cl == "rare" then add("micro_achievement.tga", RARE, "Rare", "A rare spawn: not often there.")
-    elseif r.cl then add("micro_achievement.tga", ELITE, RANK[r.cl] or "Elite", "Much tougher than its level says.") end
+    local rk = rankOf(r)
+    if rk == "rare" then add("micro_achievement.tga", RARE, "Rare", "A rare spawn: not often there.")
+    elseif rk == "worldboss" then add("micro_achievement.tga", ELITE, "Boss", "A boss: a fight of its own, far tougher than its level says.")
+    elseif rk then add("micro_achievement.tga", ELITE, RANK[rk] or "Elite", "Much tougher than its level says.") end
     if r.mana or r.uc == "MAGE" then add("micro_stat_spell.tga", BLUE, "Caster", "Has mana and casts spells.")
     elseif r.uc == "PALADIN" then add("micro_stat_spell.tga", GREY, "Fighter with spells", "Fights hand to hand, with some mana to call on.") end
     local seenB = {}
@@ -1390,12 +1515,16 @@ function B.Rows(rows, id, full)
         -- "Coin per kill"): an average, so "~"; what it is, on hover.
         local base = r.cb or ln
         local coin = r.cn and base > 0 and coins(r.cn / base) or nil
-        head(rows, (ln > 0 and ("Loot   (" .. ln .. (ln == 1 and " kill)" or " kills)")) or "Loot")
+        -- (Out of corpses, said as such, where there were more kills than
+        -- that: kills in a group, whose corpses were mostly not yours to open.)
+        local one, many = "kill", "kills"
+        if looted > 0 and (r.k or 0) > ln then one, many = "corpse", "corpses" end
+        head(rows, (ln > 0 and ("Loot   (" .. ln .. " " .. (ln == 1 and one or many) .. ")") or "Loot")
             .. (coin and ("     |cffeeeef2~" .. coin .. "|r") or ""), "micro_journal.tga")
         if coin then
             rows[#rows].tooltip = function(tip)
                 tip:SetText("Coin", 1, 1, 1)
-                tip:AddLine("About " .. coin .. " on each one you kill (averaged over " .. base .. (base == 1 and " kill)." or " kills)."), 0.86, 0.86, 0.89, true)
+                tip:AddLine("About " .. coin .. " on each one (averaged over " .. base .. " " .. (base == 1 and one or many) .. ").", 0.86, 0.86, 0.89, true)
             end
         end
         -- (A row "Nothing on it  50%" stood here: not wanted, 0.1.605. Each
@@ -1410,7 +1539,7 @@ function B.Rows(rows, id, full)
         -- what drops at least one time in five, and quest items, with
         -- the rest folded under one row that opens.
         local COMMON = 0.20 -- (was 0.30)
-        local whole = r.cl ~= nil or lootOpen[id] == true
+        local whole = rankOf(r) ~= nil or lootOpen[id] == true
         local all, folded = ids, 0
         ids = {}
         for _, item in ipairs(all) do
@@ -1448,15 +1577,15 @@ function B.Rows(rows, id, full)
                     tip:AddLine(" ")
                     if isQuest then tip:AddLine("A quest item: it only drops while you are on its quest.", 0.95, 0.80, 0.35, true) end
                     if n and ln > 0 then
-                        tip:AddLine(string.format("On %d of %d kills%s.", n, ln, r.shared and ", yours and other players'" or ""), 0.6, 0.6, 0.65, true)
-                        if ln < 20 then tip:AddLine("Few kills so far: the rate will settle.", 0.6, 0.6, 0.65, true) end
+                        tip:AddLine(string.format("On %d of %d %s%s.", n, ln, many, r.shared and ", yours and other players'" or ""), 0.6, 0.6, 0.65, true)
+                        if ln < 20 then tip:AddLine("Few " .. many .. " so far: the rate will settle.", 0.6, 0.6, 0.65, true) end
                     else
                         tip:AddLine("Seen before corpses were counted: no rate yet.", 0.6, 0.6, 0.65, true)
                     end
                     tip:Show()
                 end }
         end
-        if folded > 0 or (lootOpen[id] and r.cl == nil and #all > 0) then
+        if folded > 0 or (lootOpen[id] and rankOf(r) == nil and #all > 0) then
             local open = lootOpen[id] == true
             rows[#rows + 1] = { kind = "stat", value = "", labelColor = T.textDim,
                 label = open and "Show only the common drops" or (folded .. (folded == 1 and " rarer drop" or " rarer drops") .. " (under 20%)"),
@@ -1502,7 +1631,9 @@ function B.Rows(rows, id, full)
         local zs = {}
         for z in pairs(r.z) do zs[#zs + 1] = z end
         table.sort(zs)
-        for _, z in ipairs(zs) do rows[#rows + 1] = { kind = "stat", label = z, labelColor = T.text, value = "" } end
+        for _, z in ipairs(zs) do
+            rows[#rows + 1] = { kind = "stat", label = z, labelColor = T.text, value = r.z[z] ~= true and "dungeon" or "", color = T.textDim }
+        end
     end
     return rows
 end
@@ -1531,9 +1662,13 @@ local openNames = {} -- (names with several forms that are open in the list: thi
 local function haystack(id, r)
     local h = hay[id]
     if h then return h end
-    local bits = { r.n or "", r.t or "", r.f or "", r.cl and RANK[r.cl] or "",
+    local rk = rankOf(r)
+    local bits = { r.n or "", r.t or "", r.f or "", rk and RANK[rk] or "",
                    r.ag == 1 and "hostile" or (r.ag == 0 and "neutral" or "") }
-    for z in pairs(r.z or {}) do bits[#bits + 1] = z end
+    for z, kind in pairs(r.z or {}) do
+        bits[#bits + 1] = z
+        if kind ~= true then bits[#bits + 1] = "dungeon" end
+    end
     for name in pairs(r.c or {}) do bits[#bits + 1] = name end
     for name in pairs(r.db or {}) do bits[#bits + 1] = name end
     for _, tr in ipairs(B.Traits(id)) do bits[#bits + 1] = tr.title end
@@ -1587,7 +1722,11 @@ end
 local function listData()
     local d = {}
     local all = MinimalUIDB and MinimalUIDB.bestiary or {}
-    local here = zoneNow()
+    -- (A dungeon has a heading of its own, apart from a zone of the same
+    -- name: the Ruins of Lordaeron are both.)
+    local DUNGEON = "  (dungeon)"
+    local here, hereKind = placeNow()
+    if here and hereKind then here = here .. DUNGEON end
     local zones, total, kills, found = {}, 0, 0, 0
     local words
     if query ~= "" then
@@ -1606,7 +1745,10 @@ local function listData()
         if r.n and (not words or matches(id, r, words)) then
             found = found + 1
             if r.z and next(r.z) then
-                for z in pairs(r.z) do zones[z] = zones[z] or {}; table.insert(zones[z], id) end
+                for z, kind in pairs(r.z) do
+                    if kind ~= true then z = z .. DUNGEON end
+                    zones[z] = zones[z] or {}; table.insert(zones[z], id)
+                end
             else
                 zones[ELSEWHERE] = zones[ELSEWHERE] or {}; table.insert(zones[ELSEWHERE], id)
             end
@@ -1620,7 +1762,9 @@ local function listData()
         local col = B.db.collapsed[z]
         if col == nil then col = z ~= here end
         if words then col = false end -- (a search shows what it found)
-        table.insert(d, { kind = "header", text = z .. "   |cff7d7d88" .. #zones[z] .. "|r", collapsed = col,
+        local shownName = z
+        if z:sub(-#DUNGEON) == DUNGEON then shownName = z:sub(1, -#DUNGEON - 1) .. "   |cff7d7d88dungeon|r" end
+        table.insert(d, { kind = "header", text = shownName .. "   |cff7d7d88" .. #zones[z] .. "|r", collapsed = col,
             onClick = function() B.db.collapsed[z] = not col; B:Refresh() end })
         if not col then
             local ids = zones[z]
@@ -1645,9 +1789,10 @@ local function listData()
             -- to the game, with its own look) go under one row that
             -- opens. Shut, it stands for the first; open, each is a row.
             local function color(r, on)
+                local rk = rankOf(r)
                 return on and T.accent or (r.shared and not r.met and T.textDim)
-                    or ((r.cl == "elite" or r.cl == "worldboss" or r.cl == "rareelite") and ELITE)
-                    or (r.cl == "rare" and RARE) or T.text
+                    or ((rk == "elite" or rk == "worldboss" or rk == "rareelite") and ELITE)
+                    or (rk == "rare" and RARE) or T.text
             end
             local i = 1
             while i <= #ids do
@@ -1699,6 +1844,8 @@ local function listData()
     return d, total, kills, words and found or nil
 end
 
+B.ListData = listData -- (for dist/tests: the list as rows, with no window needed)
+
 local formAt = 1
 local function looksOf(id)
     local r = id and view(id)
@@ -1722,7 +1869,7 @@ local function showModel(id, form)
         elseif looks[1] and m.SetDisplayInfo then
             formAt = 1
             shown = pcall(m.SetDisplayInfo, m, looks[1])
-        elseif m.SetCreature then
+        elseif m.SetCreature and id > 0 then
             shown = pcall(m.SetCreature, m, id)
         end
         if shown then pcall(m.SetFacing, m, m.facing or 0.52) end
@@ -1838,6 +1985,8 @@ end
 function B:Refresh()
     if not win or not win:IsShown() then return end
     stale = false
+    -- (One known by name that has since been given its number: follow it.)
+    if picked and mergedTo[picked] then picked = mergedTo[picked] end
     local d, total, kills, found = listData()
     win.list:SetData(d)
     win.list.empty:SetText(found and "Nothing in the book matches that." or "Nothing met yet. Target or point at a creature.")
@@ -1847,12 +1996,18 @@ function B:Refresh()
     local r = picked and view(picked)
     if r then
         win.name:SetText(r.n or "")
-        local c = ((r.cl == "elite" or r.cl == "worldboss" or r.cl == "rareelite") and ELITE) or (r.cl == "rare" and RARE) or T.text
+        local rk = rankOf(r)
+        local c = ((rk == "elite" or rk == "worldboss" or rk == "rareelite") and ELITE) or (rk == "rare" and RARE) or T.text
         win.name:SetTextColor(c[1], c[2], c[3])
         local bits = {}
         if levels(r) then bits[#bits + 1] = "Level " .. levels(r) end
-        if r.cl and RANK[r.cl] then bits[#bits + 1] = RANK[r.cl] end
+        if rk and RANK[rk] then bits[#bits + 1] = RANK[rk] end
         if r.t then bits[#bits + 1] = r.t end
+        -- (One met only inside a dungeon, where the game hides what a
+        -- creature is: said, so a bare page explains itself.)
+        if not r.t and not r.uc then
+            bits[#bits + 1] = picked < 0 and "known by name: loot one to learn more" or "met in a dungeon"
+        end
         win.sub:SetText(table.concat(bits, "   ·   "))
         win.detail:SetData(B.Rows({}, picked, true))
         showTraits(picked)
@@ -2127,15 +2282,14 @@ function B:OnInit(db)
                     inside = kind ~= nil and kind ~= "" and kind ~= "none"
                 elseif what == "COMBAT_XP_GAIN" and inside then
                     local name = rest:match("^(.-) dies, you gain")
-                    if name and not idByName(name) then
-                        local p = pendOf(name, true)
-                        if p then
-                            p.k = (p.k or 0) + 1
-                            local gained = tonumber(rest:match("you gain (%d+) experience"))
-                            if gained and gained > 0 then p.xp, p.xl = gained, mine end
-                            p.z = p.z or {}
-                            if zone and count(p.z) < 6 then p.z[zone] = true end
-                        end
+                    local id = name and idByName(name)
+                    local p
+                    if name and not id then id, p = nameOnly(name) elseif id and id < 0 then p = record(id) end
+                    if p then
+                        p.k = (p.k or 0) + 1
+                        local gained = tonumber(rest:match("you gain (%d+) experience"))
+                        if gained and gained > 0 then p.xp, p.xl = gained, mine end
+                        addZone(p, zone, "party")
                     end
                 end
             end
@@ -2189,6 +2343,80 @@ function B:OnInit(db)
             if n > (r.lk or 0) then r.lk = n end
         end
         MinimalUIDB.bestiaryRev = 8
+    end
+    if MinimalUIDB and MinimalUIDB.bestiaryRev == 8 then
+        -- (0.1.645, see "In a dungeon". Three things put right in what is
+        -- already written down.)
+        local all = MinimalUIDB.bestiary or {}
+        MinimalUIDB.bestiary = all
+        -- 1. Which zone names are instances, and which were only the place
+        --    you had just come from. The record of play has, as you come
+        --    into an instance, the old zone's name on the line for coming in
+        --    and the instance's own a moment later: the 0.1.622 reading
+        --    went by the first, and filed a dungeon under the city at its door.
+        local stale, inst = {}, {}
+        for _, list in pairs(type(MinimalUIDB.journal) == "table" and MinimalUIDB.journal or {}) do
+            local was, wasAt
+            for _, line in ipairs(type(list) == "table" and list or {}) do
+                local at, what, rest
+                if type(line) == "string" then at, what, rest = line:match("^([%d%.]+)|([%u_]+)|(.*)$") end
+                if what == "WORLD" or what == "ZONE" then
+                    local z, _, _, _, _, kind = strsplit("|", rest)
+                    local inside = kind ~= nil and kind ~= "" and kind ~= "none" and z ~= nil and z ~= ""
+                    at = tonumber(at) or 0
+                    if inside then inst[z] = kind end
+                    if what == "WORLD" then
+                        was, wasAt = inside and z or nil, at
+                    else
+                        if was and inside and z ~= was and at >= wasAt and at - wasAt <= 5 then stale[was] = z end
+                        was = nil
+                    end
+                elseif what == "S" then
+                    was = nil
+                end
+            end
+        end
+        -- (A zone some creature was read in the ordinary way is a zone, not an instance.)
+        local plainZone = {}
+        for _, r in pairs(all) do
+            if r.uc or r.t then
+                for z, kind in pairs(r.z or {}) do if kind == true then plainZone[z] = true end end
+            end
+        end
+        local function dungeonZones(r)
+            if not r.z then return end
+            local z2 = {}
+            for z in pairs(r.z) do
+                local to = stale[z] or z
+                z2[to] = (inst[to] or not plainZone[to]) and (inst[to] or "party") or true
+            end
+            r.z = z2
+        end
+        -- 2. Creatures never read as creatures: named from a corpse, in a
+        --    dungeon. Their zones as above; and an item's rate out of the
+        --    corpses you opened, not out of every kill the group made.
+        for _, r in pairs(all) do
+            if r.n and not r.uc and not r.t then
+                dungeonZones(r)
+                if (r.lk or 0) > (r.ln or 0) then r.lk = r.ln end
+            end
+        end
+        -- 3. What was known by name and kept out of the book comes into it.
+        nameIndex = nil
+        for name, pd in pairs(type(MinimalUIDB.bestiaryPend) == "table" and MinimalUIDB.bestiaryPend or {}) do
+            if str(name) and type(pd) == "table" then
+                local id = idByName(name)
+                local r = id and record(id)
+                if not r then id, r = nameOnly(name) end
+                if r then
+                    dungeonZones(pd)
+                    fold(r, pd)
+                end
+            end
+        end
+        MinimalUIDB.bestiaryPend = nil
+        nameIndex = nil
+        MinimalUIDB.bestiaryRev = 9
     end
     -- (Creatures with a number and no name: asked now, and once more for
     -- those the game had to fetch.)
