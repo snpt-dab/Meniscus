@@ -1469,6 +1469,172 @@ local CURE_TINT = { Magic = { 0.25, 0.55, 1.00 }, Curse = { 0.65, 0.30, 0.95 },
                     Disease = { 0.75, 0.52, 0.22 }, Poison = { 0.30, 0.80, 0.30 } }
 local CURE_S = 18
 _G["BINDING_NAME_CLICK MeniscusQuickCure:LeftButton"] = "Quick Cure (cast next cure)"
+-- Each kind of affliction has its own light, and something that comes off
+-- that light (0.1.676, asked for: "disease can be a kind of yellowish-green
+-- smoke that comes off the light pulse"):
+--   Disease  a sickly yellow-green light; smoke rising and spreading
+--   Poison   a vivid green light; small bubbles rising, and bursting
+--   Curse    a violet light; dark wisps sinking away under it
+--   Magic    a blue light; quick glints around its edge
+-- The ring keeps the kind's usual colour (CURE_TINT, as on the game's own
+-- debuff borders). Where the kind is hidden (in a fight it can be): gold,
+-- and nothing comes off it.
+local CURE_FX = {
+    Disease = { light = { 0.80, 0.84, 0.34 }, mote = { 0.62, 0.72, 0.22 }, how = "smoke" },
+    Poison  = { light = { 0.36, 0.90, 0.42 }, mote = { 0.42, 0.95, 0.48 }, how = "bubbles" },
+    Curse   = { light = { 0.70, 0.42, 1.00 }, mote = { 0.50, 0.24, 0.84 }, how = "wisps" },
+    Magic   = { light = { 0.46, 0.70, 1.00 }, mote = { 0.80, 0.91, 1.00 }, how = "glints" },
+}
+local CURE_PERIOD = 2.2 -- seconds from one pulse of light to the next
+-- (The same scatter every time for a given mote and pulse: no state kept.)
+local function cureRnd(i, k)
+    local v = math.sin(i * 12.9898 + k * 78.233) * 43758.5453
+    return v - math.floor(v)
+end
+-- n motes drawn on host (a plain frame, never a casting button: they are
+-- moved in a fight). :Set(kind) picks what they are; :Draw(since, pulse,
+-- w, h) places them: since = seconds since this pulse of light began,
+-- pulse = its number, w and h = the size of what they come off.
+local function cureMotes(host, n)
+    local m = { tex = {} }
+    for i = 1, n do
+        local t = host:CreateTexture(nil, "OVERLAY", nil, 2)
+        t:SetAlpha(0)
+        m.tex[i] = t
+    end
+    function m:Set(kind)
+        if kind == self.kind then return end
+        self.kind = kind
+        local fx = kind and CURE_FX[kind] or nil
+        self.fx = fx
+        for _, t in ipairs(self.tex) do
+            t:SetAlpha(0)
+            if fx then
+                local soft = fx.how == "smoke" or fx.how == "wisps"
+                t:SetTexture(MEDIA .. (soft and "spot.tga" or "circle.tga"))
+                t:SetBlendMode(soft and "BLEND" or "ADD")
+                t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3])
+            end
+        end
+    end
+    function m:Draw(since, pulse, w, h)
+        local fx = self.fx
+        if not fx then return end
+        local how = fx.how
+        for i, t in ipairs(self.tex) do
+            local r1, r2, r3 = cureRnd(i, pulse), cureRnd(i + 7, pulse), cureRnd(i + 13, pulse)
+            local a, x, y, s = 0, 0, 0, 8
+            if how == "smoke" then
+                local u = (since - 0.05 - 0.35 * r3) / (1.5 + 0.4 * r2)
+                if u > 0 and u < 1 then
+                    x = (r1 - 0.5) * math.max(4, w - 10) + math.sin(u * 5 + i) * 5 * u
+                    y = h / 2 - 3 + (20 + 12 * r2) * u
+                    s = 11 + 17 * u
+                    a = 0.60 * math.min(1, u / 0.18) * (1 - u) ^ 1.3
+                end
+            elseif how == "bubbles" then
+                local u = (since - 0.4 * r3) / (1.0 + 0.4 * r2)
+                if u > 0 and u < 1 then
+                    x = (r1 - 0.5) * math.max(4, w - 12) + math.sin(u * 9 + i) * 2
+                    y = h / 2 - 2 + (12 + 8 * r2) * u
+                    s = 3 + 3 * r2
+                    a = 0.85
+                    if u > 0.85 then -- it bursts: wider, and gone
+                        local p = (u - 0.85) / 0.15
+                        s = s * (1 + 0.8 * p)
+                        a = 0.85 * (1 - p)
+                    end
+                end
+            elseif how == "wisps" then
+                local u = (since - 0.05 - 0.3 * r3) / (1.4 + 0.4 * r2)
+                if u > 0 and u < 1 then
+                    x = (r1 - 0.5) * math.max(4, w - 10) + math.sin(u * 4 + i * 2) * 6 * u
+                    y = -(h / 2 - 3) - (14 + 10 * r2) * u
+                    s = 9 + 12 * u
+                    a = 0.66 * math.min(1, u / 0.2) * (1 - u) ^ 1.2
+                end
+            else -- glints
+                local u = (since - 0.9 * r3) / 0.32
+                if u > 0 and u < 1 then
+                    x = (r1 - 0.5) * (w + 8)
+                    y = (r2 > 0.5 and 1 or -1) * (h / 2 + 2) + (r2 - 0.5) * 4
+                    s = (3 + 3 * r1) * (1 + 0.6 * math.sin(math.pi * u))
+                    a = 0.95 * math.sin(math.pi * u)
+                end
+            end
+            if a > 0 then
+                t:SetSize(s, s)
+                t:ClearAllPoints()
+                t:SetPoint("CENTER", host, "CENTER", x, y)
+                t:SetAlpha(a)
+                t.lit = true
+            elseif t.lit then
+                t.lit = false
+                t:SetAlpha(0)
+            end
+        end
+    end
+    function m:Off()
+        for _, t in ipairs(self.tex) do
+            if t.lit then t.lit = false; t:SetAlpha(0) end
+        end
+    end
+    return m
+end
+-- The pill's dress: ring, dark fill, the affliction's picture, a line of
+-- text, and the pulse of light in the kind's colour with what comes off
+-- it. Worn by the casting pill (out of a fight) and by its stand-in, the
+-- notice shown in a fight. Arriving, it flashes strongly; then a fainter
+-- pulse every CURE_PERIOD seconds while it waits.
+local function cureLook(f, PH)
+    local L = {}
+    L.ring = ns.RoundedRect(f, -8, 0, PH / 2, GOLD[1], GOLD[2], GOLD[3], 1)
+    L.fill = ns.RoundedRect(f, -7, 1.5, PH / 2 - 1.5, 0.06, 0.06, 0.07, 0.97)
+    local mask = f:CreateMaskTexture()
+    mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetSize(PH - 6, PH - 6)
+    mask:SetPoint("LEFT", 3, 0)
+    L.icon = f:CreateTexture(nil, "ARTWORK")
+    L.icon:SetAllPoints(mask)
+    L.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    L.icon:AddMaskTexture(mask)
+    L.text = ns:CreateText(f, 11)
+    L.text:SetPoint("LEFT", mask, "RIGHT", 6, 0)
+    L.text:SetWordWrap(false)
+    L.flash = ns.RoundedRect(f, 6, 0, PH / 2, 1, 1, 1, 0, "OVERLAY")
+    local fxHost = CreateFrame("Frame", nil, f)
+    fxHost:SetAllPoints()
+    fxHost:SetFrameLevel(f:GetFrameLevel() + 3)
+    L.motes = cureMotes(fxHost, 6)
+    local t0, last = 0, -1
+    local tint = { 1, 1, 1 }
+    function L.arrive() t0 = GetTime() end
+    function L.setKind(kind)
+        local c = (kind and CURE_TINT[kind]) or GOLD
+        L.ring(c[1], c[2], c[3], 1)
+        local fx = kind and CURE_FX[kind]
+        local l = fx and fx.light
+        -- (the light a little towards white: a flash, not a wash of colour)
+        tint[1] = l and (l[1] + (1 - l[1]) * 0.3) or 1
+        tint[2] = l and (l[2] + (1 - l[2]) * 0.3) or 1
+        tint[3] = l and (l[3] + (1 - l[3]) * 0.3) or 1
+        L.motes:Set(fx and kind or nil)
+        last = -1
+    end
+    function L.tick()
+        local age = GetTime() - t0
+        local since = age % CURE_PERIOD
+        local a = 0
+        if age < 0.55 then
+            a = 0.9 * (1 - age / 0.55) ^ 1.5
+        elseif age >= CURE_PERIOD and since < 0.7 then
+            a = 0.42 * (1 - since / 0.7) ^ 2
+        end
+        if a ~= last then last = a; L.flash(tint[1], tint[2], tint[3], a) end
+        L.motes:Draw(since, math.floor(age / CURE_PERIOD), f:GetWidth(), f:GetHeight())
+    end
+    return L
+end
 function UF:BuildCure()
     if self.db.cure == false or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
     local _, cls = UnitClass("player")
@@ -1543,14 +1709,19 @@ function UF:BuildCure()
         white:SetBlendMode("ADD")
         white:SetAllPoints()
         white:SetAlpha(0)
+        -- (0.1.676: and off each burst, what the kind gives off: see
+        -- CURE_FX. The later bursts now come every CURE_PERIOD seconds
+        -- from the arrival, so that light and motes keep one clock.)
+        local motes = cureMotes(vis, 4)
         local t0 = 0
         vis:SetScript("OnShow", function() t0 = GetTime() end)
         vis:SetScript("OnUpdate", function(self)
             local now = GetTime()
             ring:SetAlpha(0.6 + 0.4 * math.sin(now * 5))
-            if b.quiet then burst:SetAlpha(0); white:SetAlpha(0) return end
+            if b.quiet then burst:SetAlpha(0); white:SetAlpha(0); motes:Off() return end
             local age = now - t0
             local s = self:GetWidth()
+            local since = age % CURE_PERIOD
             if age < 0.55 then
                 local q = 1 - age / 0.55
                 burst:SetAlpha(q ^ 1.5)
@@ -1558,16 +1729,17 @@ function UF:BuildCure()
                 white:SetAlpha(age < 0.32 and (1 - age / 0.32) or 0)
             else
                 white:SetAlpha(0)
-                local ph = ((age - 0.55) % 2.0) / 0.7
-                if ph < 1 then
+                local ph = since / 0.7
+                if age >= CURE_PERIOD and ph < 1 then
                     burst:SetAlpha(0.55 * (1 - ph) ^ 2)
                     burst:SetSize(s * (1.8 + 1.6 * ph), s * (1.8 + 1.6 * ph))
                 else
                     burst:SetAlpha(0)
                 end
             end
+            motes:Draw(since, math.floor(age / CURE_PERIOD), s, s)
         end)
-        b.vis, b.ring, b.icon, b.hint, b.burst = vis, ring, icon, hint, burst
+        b.vis, b.ring, b.icon, b.hint, b.burst, b.motes = vis, ring, icon, hint, burst, motes
         b:SetScript("OnEnter", function(self)
             if not self.vis:IsShown() then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1644,6 +1816,17 @@ function UF:BuildCure()
             if issecretvalue(d) or (type(d) == "string" and typeSpell[d]) then return a end
         end
     end
+    -- What a fight lets be seen of afflictions, counted once per change of
+    -- a chip's state (MinimalUIDB.curefight): the open question behind
+    -- "can it show in a fight".
+    local function fightNote(b, state)
+        if b.fightState == state then return end
+        b.fightState = state
+        if not (state and MinimalUIDB and InCombatLockdown()) then return end
+        local t = type(MinimalUIDB.curefight) == "table" and MinimalUIDB.curefight or {}
+        MinimalUIDB.curefight = t
+        t[state] = (t[state] or 0) + 1
+    end
     local function update(b)
         if #spells == 0 then b.vis:Hide() return end
         -- While the pill is up (out of combat) it speaks for everyone: the
@@ -1651,6 +1834,7 @@ function UF:BuildCure()
         if pill and pill:IsShown() then b.vis:Hide() return end
         local a, blind = afflicted(b.unit)
         if not a then
+            fightNote(b, blind and UnitExists(b.unit) and "could not look" or nil)
             if blind and InCombatLockdown() and UnitExists(b.unit) then
                 -- Can't tell who needs it: the chip shows dim and plain, so
                 -- it can still be found and pressed on your own judgement.
@@ -1669,14 +1853,18 @@ function UF:BuildCure()
         b.vis:SetAlpha(1)
         b.icon:SetTexture(a.icon)
         local d = a.dispelName
-        local c, right = nil, false
+        local c, right, kind = nil, false, nil
         if type(d) == "string" and not issecretvalue(d) then
+            kind = d
             c = CURE_TINT[d]
             right = spells[2] ~= nil and typeSpell[d] == spells[2]
         end
+        fightNote(b, kind and "seen, kind known" or "seen, kind hidden")
         c = c or GOLD
         b.ring:SetVertexColor(c[1], c[2], c[3], 1)
-        b.burst:SetVertexColor(c[1] + (1 - c[1]) * 0.5, c[2] + (1 - c[2]) * 0.5, c[3] + (1 - c[3]) * 0.5)
+        local l = (kind and CURE_FX[kind] and CURE_FX[kind].light) or c
+        b.burst:SetVertexColor(l[1] + (1 - l[1]) * 0.4, l[2] + (1 - l[2]) * 0.4, l[3] + (1 - l[3]) * 0.4)
+        b.motes:Set(kind and CURE_FX[kind] and kind or nil)
         b.hint:SetText(right and "R" or "")
         -- (Dim and plain a moment ago, now known: that is an arrival too.)
         if b.quiet then b.quiet = nil; b.vis:Hide() end
@@ -1695,19 +1883,8 @@ function UF:BuildCure()
     pill:SetFrameStrata("HIGH")
     pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
     pill:Hide()
-    local pRing = ns.RoundedRect(pill, -8, 0, PH / 2, GOLD[1], GOLD[2], GOLD[3], 1)
-    local pFill = ns.RoundedRect(pill, -7, 1.5, PH / 2 - 1.5, 0.06, 0.06, 0.07, 0.97)
-    local pMask = pill:CreateMaskTexture()
-    pMask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    pMask:SetSize(PH - 6, PH - 6)
-    pMask:SetPoint("LEFT", 3, 0)
-    local pIcon = pill:CreateTexture(nil, "ARTWORK")
-    pIcon:SetAllPoints(pMask)
-    pIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    pIcon:AddMaskTexture(pMask)
-    local pText = ns:CreateText(pill, 11)
-    pText:SetPoint("LEFT", pMask, "RIGHT", 6, 0)
-    pText:SetWordWrap(false)
+    local look = cureLook(pill, PH)
+    local pFill, pIcon, pText = look.fill, look.icon, look.text
     pill:SetScript("OnEnter", function(self)
         pFill(0.12, 0.12, 0.14, 0.97)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1718,23 +1895,30 @@ function UF:BuildCure()
         GameTooltip:Show()
     end)
     pill:SetScript("OnLeave", function() pFill(0.06, 0.06, 0.07, 0.97); GameTooltip:Hide() end)
-    -- The pill arrives in a white flash of its own shape, as the Quick Buff
-    -- pill leaves in one, and gives a fainter one every couple of seconds
-    -- while it waits to be pressed.
-    local pFlash = ns.RoundedRect(pill, 6, 0, PH / 2, 1, 1, 1, 0, "OVERLAY")
-    local pT0, pLast = 0, 0
-    pill.arrive = function() pT0 = GetTime() end
-    pill:HookScript("OnUpdate", function()
-        local age = GetTime() - pT0
-        local a = 0
-        if age < 0.55 then
-            a = 0.9 * (1 - age / 0.55) ^ 1.5
+    -- The pill arrives in a flash of its own shape, in the light of the
+    -- affliction's kind (it was white for all of them until 0.1.676), and
+    -- gives a fainter one every couple of seconds while it waits to be
+    -- pressed; off each comes the kind's smoke, bubbles, wisps or glints.
+    pill.arrive = look.arrive
+    pill:HookScript("OnUpdate", look.tick)
+    -- Where the pill sits, and its stand-in: over the top of the map, in
+    -- the middle of the console (above the character panel it lay across
+    -- the party's frames). Without the map there: just above the Quick
+    -- Buff pill, or where it would be.
+    local function seatMid(f)
+        f:ClearAllPoints()
+        local QBm = ns.modules.QuickBuff
+        local qb = _G.MinimalUIQuickBuff
+        local dome = _G.MinimalUI_MinimapDome
+        if dome and dome:IsShown() then
+            f:SetPoint("BOTTOM", dome, "TOP", 0, 8)
+        -- (In a fight the Quick Buff pill is left where it is: placing it is not allowed then.)
+        elseif qb and QBm and QBm.Place and (InCombatLockdown() or pcall(QBm.Place)) and qb:GetPoint(1) then
+            f:SetPoint("BOTTOM", qb, "TOP", 0, 6)
         else
-            local ph = ((age - 0.55) % 2.2) / 0.7
-            if ph < 1 then a = 0.32 * (1 - ph) ^ 2 end
+            f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 150)
         end
-        if a ~= pLast then pLast = a; pFlash(1, 1, 1, a) end
-    end)
+    end
     local PILL_UNITS = { "player", "party1", "party2", "party3", "party4" }
     local showing = {}
     local function updatePill()
@@ -1763,26 +1947,66 @@ function UF:BuildCure()
         pill:SetAttribute("spell", spell)
         pill:SetAttribute("unit", unit)
         pIcon:SetTexture(a.icon)
-        local c = (kind and CURE_TINT[kind]) or GOLD
-        pRing(c[1], c[2], c[3], 1)
+        look.setKind(kind)
         local ok, n = pcall(UnitName, unit)
         pText:SetText(spell .. "  >  " .. ((ok and type(n) == "string" and not issecretvalue(n)) and n or unit))
         pill:SetWidth(math.max(90, 3 + (PH - 6) + 6 + (pText:GetStringWidth() or 60) + PH / 2))
-        -- Over the top of the map, in the middle of the console (above the
-        -- character panel it lay across the party's frames). Without the
-        -- map there: just above the Quick Buff pill, or where it would be.
-        pill:ClearAllPoints()
-        local QBm = ns.modules.QuickBuff
-        local qb = _G.MinimalUIQuickBuff
-        local dome = _G.MinimalUI_MinimapDome
-        if dome and dome:IsShown() then
-            pill:SetPoint("BOTTOM", dome, "TOP", 0, 8)
-        elseif qb and QBm and QBm.Place and pcall(QBm.Place) and qb:GetPoint(1) then
-            pill:SetPoint("BOTTOM", qb, "TOP", 0, 6)
-        else
-            pill:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 150)
-        end
+        seatMid(pill)
         pill:Show()
+    end
+
+    -- In a fight (0.1.676, asked for: "is there a way to have it show up
+    -- during combat"). The pill itself can't: the game lets no addon show
+    -- a casting button, or point one at someone, once a fight has begun.
+    -- What can be done is a NOTICE in the pill's place and dress, saying
+    -- what is on whom, in the kind's light: it is not a button (clicks go
+    -- through it), and says where the button is, which is the chip beside
+    -- that person's bar (yours: on the map's rim). It shows only where
+    -- the game lets a fight's afflictions be seen at all.
+    local note = CreateFrame("Frame", nil, UIParent)
+    note:SetSize(160, PH)
+    note:SetFrameStrata("HIGH")
+    note:EnableMouse(false)
+    note:Hide()
+    local nLook = cureLook(note, PH)
+    note:SetScript("OnUpdate", nLook.tick)
+    local nSub = ns:CreateText(note, 9)
+    nSub:SetPoint("TOP", note, "BOTTOM", 0, -3)
+    nSub:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3])
+    nSub:SetShadowOffset(1, -1)
+    nSub:SetShadowColor(0, 0, 0, 0.9)
+    local noting = {}
+    local function updateNote()
+        if self.db.cureNote == false or not InCombatLockdown() or #spells == 0 then
+            if note:IsShown() then note:Hide() end
+            noting.unit = nil
+            return
+        end
+        local unit, a
+        for _, u in ipairs(PILL_UNITS) do
+            a = afflicted(u)
+            if a then unit = u break end
+        end
+        if not unit then
+            if note:IsShown() then note:Hide() end
+            noting.unit = nil
+            return
+        end
+        local d = a.dispelName
+        local kind = type(d) == "string" and not issecretvalue(d) and d or nil
+        if noting.unit ~= unit or noting.kind ~= kind or not note:IsShown() then nLook.arrive() end
+        noting.unit, noting.kind = unit, kind
+        nLook.icon:SetTexture(a.icon)
+        nLook.setKind(kind)
+        local ok, n = pcall(UnitName, unit)
+        local who = (ok and type(n) == "string" and not issecretvalue(n)) and n or unit
+        nLook.text:SetText((kind or "Curable") .. "  \194\183  " .. (unit == "player" and "you" or who))
+        nSub:SetText(unit == "player" and "the chip on the map's rim cures it" or "the chip beside their bar cures it")
+        local okW, w = pcall(nLook.text.GetStringWidth, nLook.text)
+        if not okW or type(w) ~= "number" or issecretvalue(w) then w = 100 end
+        note:SetWidth(math.max(90, 3 + (PH - 6) + 6 + w + PH / 2))
+        seatMid(note)
+        note:Show()
     end
 
     local ev = CreateFrame("Frame")
@@ -1799,6 +2023,7 @@ function UF:BuildCure()
                 showing.unit = nil
             end
             updateAll() -- the chips take over
+            C_Timer.After(0.2, function() pcall(updateNote) end)
             return
         end
         if e == "UNIT_AURA" then
@@ -1807,11 +2032,13 @@ function UF:BuildCure()
             if unit ~= "player" and not unit:find("^party%d$") then return end
             pcall(updatePill)
             updateAll()
+            pcall(updateNote)
             return
         end
         if e ~= "PLAYER_REGEN_ENABLED" or stale then pcall(assign) end
         pcall(updatePill)
         updateAll()
+        pcall(updateNote)
     end)
     assign()
     -- (The map and its rim are built after this module.)

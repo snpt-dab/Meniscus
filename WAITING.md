@@ -2,12 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.675.
+Last updated: 2026-11-25, version 0.1.676.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 11 | Quick Cure: light and motes per kind, and the notice in a fight (0.1.676) | `/reload`. Get a disease, poison, curse or magic effect you can cure on you or a party member, out of a fight and in one | Out of a fight: does the pill pulse in the kind’s colour with smoke (disease), bubbles (poison), wisps (curse) or glints (magic)? In a fight: does a notice appear where the pill sits, and do the chips light? Then `/reload` |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
@@ -19,6 +20,7 @@ Last updated: 2026-11-25, version 0.1.675.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
+- `curefight`: what a fight lets be seen of afflictions (seen with its kind, seen with the kind hidden, or could not look) (11).
 - `dolldiag`: for each way of standing a figure up, whether a model came and what the game answered to each piece of gear (10).
 - `figdiag`: the body number this character measured, to check the table of race bodies against (10).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
