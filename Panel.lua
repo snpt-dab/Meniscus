@@ -1516,6 +1516,8 @@ ns.commands.help = function()
         "/men blizzopts  the game's Options window without our skin (and back); needs a reload",
         "/men windows  window docking on / off (reload)",
         "/men levelup  preview the level-up banner",
+        "/men dotpin [force]  a trial: the quest dot on a map pin at the focused quest's spot (again to end it)",
+        "/men figure off | on  the figure on another character of yours' sheet, or its class emblem",
         "/men dotshow  the quest dot over the world: hidden for now (broken by a game patch); this shows it again",
         "/men dotforce  the quest dot, when shown: kept visible and placed by Meniscus (the default), or left to the game",
         "/men alts  your characters on file for crafted upgrades (/men alts forget clears them)",

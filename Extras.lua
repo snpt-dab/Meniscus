@@ -1320,7 +1320,97 @@ local function buildWaypoint()
         sx = nil
         ns:Print("Quest dot: " .. (EX.db.dotShow and "shown again (placed by Meniscus)." or "hidden."))
     end
+    -- 0.1.707, a TRIAL ("/men dotpin"). The marker's place is the game
+    -- engine's (its interface code only copies it), and for a quest the
+    -- engine has none worth having here: it rates every quest "invalid".
+    -- A map pin is an exact place. So: your one map pin is put on the
+    -- focused quest's spot and the marker told to follow the pin, and for
+    -- as long as the trial runs nothing of ours hides, holds or moves the
+    -- marker: what is seen is the game's own doing. What the engine says
+    -- meanwhile (ten seconds, four times a second) goes to
+    -- MinimalUIDB.dotpin. "/men dotpin" again ends it and clears the pin.
+    -- "/men dotpin force" also asks the game's own code to keep the marker
+    -- seen for an "invalid" target (its SetTargetAlphaForState).
+    local pinTrial, pinForced
+    ns.commands.dotpin = function(rest)
+        local M = C_Map
+        local INVALID = Enum and Enum.NavigationState and Enum.NavigationState.Invalid
+        local function unforce()
+            if pinForced and INVALID and F.SetTargetAlphaForState then pcall(F.SetTargetAlphaForState, F, INVALID, 0) end
+            pinForced = nil
+        end
+        if pinTrial and not (rest and rest:find("force")) then
+            pinTrial = nil
+            unforce()
+            if M and M.ClearUserWaypoint then pcall(M.ClearUserWaypoint) end
+            if focusApply then focusApply() end
+            ns:Print("Quest dot trial: ended, the map pin is cleared. /reload and I can read what the game said.")
+            return
+        end
+        if not pinTrial then
+            local q = ns.QuestFocus.Get()
+            if not q then return ns:Print("Quest dot trial: focus a quest first (right-click it in the objectives list).") end
+            if not (M and M.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates and ST.SetSuperTrackedUserWaypoint) then
+                return ns:Print("Quest dot trial: this client has no map pin to give.")
+            end
+            if M.HasUserWaypoint and M.HasUserWaypoint() then
+                return ns:Print("Quest dot trial: you have a map pin of your own set. Clear it first (the trial needs the one pin there is).")
+            end
+            local map = M.GetBestMapForUnit and M.GetBestMapForUnit("player")
+            local x, y, tries = nil, nil, 0
+            while num(map) and tries < 3 and not x do
+                local list = C_QuestLog.GetQuestsOnMap and C_QuestLog.GetQuestsOnMap(map)
+                for i = 1, type(list) == "table" and #list or 0 do
+                    local e = list[i]
+                    if e.questID == q and num(e.x) and num(e.y) then x, y = e.x, e.y break end
+                end
+                if not x then
+                    local info = M.GetMapInfo and M.GetMapInfo(map)
+                    map = info and info.parentMapID
+                    tries = tries + 1
+                end
+            end
+            if not x then return ns:Print("Quest dot trial: the focused quest has no place on the map where you are. Try in its own zone.") end
+            if M.CanSetUserWaypointOnMap and not M.CanSetUserWaypointOnMap(map) then
+                return ns:Print("Quest dot trial: the game allows no map pin on this map.")
+            end
+            local ok, err = pcall(function() return M.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(map, x, y)) end)
+            if not ok then return ns:Print("Quest dot trial: the pin was refused (" .. tostring(err) .. ").") end
+            local okT, errT = pcall(ST.SetSuperTrackedUserWaypoint, true)
+            pinTrial = true
+            local out = { "at " .. date("%H:%M:%S") .. ", quest " .. tostring(q) .. ", map " .. tostring(map) .. string.format(" at %.3f, %.3f", x, y)
+                .. "; pin " .. tostring(err) .. "; followed " .. (okT and "yes" or ("refused: " .. tostring(errT))) }
+            if MinimalUIDB then MinimalUIDB.dotpin = out end
+            local function show(v) if secret(v) then return "<hidden>" end return tostring(v) end
+            C_Timer.NewTicker(0.25, function()
+                if not pinTrial then return end
+                pcall(function()
+                    local nav = NV.GetFrame and NV.GetFrame()
+                    local nx, ny
+                    if nav then nx, ny = nav:GetCenter() end
+                    local dist = NV.GetDistance and NV.GetDistance()
+                    out[#out + 1] = "state " .. show(NV.GetTargetState and NV.GetTargetState()) .. " place " .. show(NV.HasValidScreenPosition and NV.HasValidScreenPosition())
+                        .. " edge " .. show(NV.WasClampedToScreen and NV.WasClampedToScreen()) .. " yards " .. (num(dist) and math.floor(dist) or show(dist))
+                        .. " at " .. (num(nx) and math.floor(nx) or show(nx)) .. "," .. (num(ny) and math.floor(ny) or show(ny))
+                        .. " seen " .. (num(F:GetAlpha()) and string.format("%.2f", F:GetAlpha()) or "?") .. (F:IsShown() and "" or " (frame hidden)")
+                        .. " kind " .. show(ST.GetHighestPrioritySuperTrackingType and ST.GetHighestPrioritySuperTrackingType())
+                        .. (pinForced and " forced" or "")
+                end)
+            end, 40)
+            ns:Print("Quest dot trial: your map pin is on the focused quest's spot and the game's marker follows it. For ten seconds: turn right round, then walk toward it. Is there a dot, does it stay over one place, and does it slide to the screen's edge when the place is behind you? /men dotpin ends the trial. No dot at all: /men dotpin force.")
+        end
+        if rest and rest:find("force") then
+            if INVALID and F.SetTargetAlphaForState then
+                pinForced = true
+                pcall(F.SetTargetAlphaForState, F, INVALID, 1)
+                ns:Print("Quest dot trial: the game is asked to keep its marker seen even for a place it rates invalid. Same questions.")
+            else
+                ns:Print("Quest dot trial: this client's marker has no such setting.")
+            end
+        end
+    end
     pcall(F.HookScript, F, "OnUpdate", function(self)
+        if pinTrial then return end -- (the game's own doing, untouched)
         if not EX.db.dotShow then
             local al = self:GetAlpha()
             if secret(al) or al > 0 then self:SetAlpha(0) end

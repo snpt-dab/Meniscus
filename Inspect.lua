@@ -696,6 +696,18 @@ local CLASS_MARK = { DRUID = 1, HUNTER = 1, MAGE = 1, PALADIN = 1, PRIEST = 1, R
 -- one way to hand, a small pill over the figure steps through them and
 -- remembers your pick (db.figurePick), so that the right one can be found
 -- by eye in one sitting.
+-- 0.1.707. The player's word on all of the above: "the paper doll isn't
+-- working". The game's own code has one more way, and it is the one its
+-- shop uses to show a mount or an outfit on another race: a model scene's
+-- figure made from YOUR unit with a race handed over as the last value
+-- (SetModelByUnit(unit, sheathe, autoDress, hideWeapons, nativeForm,
+-- holdBowString, customRaceID)). A true character's body, so gear goes on
+-- it as on your own; the sex and face stay yours (nothing takes a sex).
+--   race     that, then the saved gear.
+-- It is tried first for a character that is not of your race and sex, and
+-- if it brings nothing the class emblem stands there: the older ways
+-- (display, scene, file) are no longer fallen back to by themselves, only
+-- reached by the pill. "/men figure off" shows the emblem always.
 local RACE_BODY = { [1] = { 49, 50 }, [2] = { 51, 52 }, [3] = { 53, 54 }, [4] = { 55, 56 },
                     [5] = { 57, 58 }, [6] = { 59, 60 }, [7] = { 1563, 1564 }, [8] = { 1478, 1479 } }
 local FIG = { serial = 0, notes = {}, ways = {} }
@@ -816,6 +828,7 @@ local function waysFor(ch)
         and okR and okS and plain(myRace) and plain(mySex) and myRace == ch.ri and mySex == ch.sx then
         ways[#ways + 1] = "own"
     end
+    if ways[1] ~= "own" and plain(ch.ri) and (win.scene or not FIG.sceneTried) then ways[#ways + 1] = "race" end
     if body and d and has(d, "SetDisplayInfo") and has(d, "TryOn") then ways[#ways + 1] = "display" end
     if body and (win.scene or not FIG.sceneTried) then ways[#ways + 1] = "scene" end
     if plain(ch.mf) and ch.mf > 0 and d and has(d, "SetModel") and has(d, "TryOn") then ways[#ways + 1] = "file" end
@@ -825,7 +838,7 @@ end
 -- that says whether a model has come (true / false; nil = can't be told).
 -- Errors where the way is not to be had.
 local function startWay(way, ch, body)
-    if way == "scene" then
+    if way == "scene" or way == "race" then
         local sc = getScene()
         if not sc then error("no model scene") end
         local actor = has(sc, "GetPlayerActor") and sc:GetPlayerActor() or nil
@@ -838,7 +851,8 @@ local function startWay(way, ch, body)
         if not actor then error("no figure in the scene") end
         figNote("scene's figure (" .. (byHand and "made by hand" or "the scene's own") .. "): "
             .. methods(actor, { "SetModelByCreatureDisplayID", "SetModelByUnit", "Undress", "TryOn", "IsLoaded", "ClearModel" }))
-        if not has(actor, "SetModelByCreatureDisplayID") then error("the scene's figure takes no body number") end
+        if way == "scene" and not has(actor, "SetModelByCreatureDisplayID") then error("the scene's figure takes no body number") end
+        if way == "race" and not has(actor, "SetModelByUnit") then error("the scene's figure takes no unit") end
         if not has(actor, "TryOn") then error("the scene's figure takes no gear") end
         if has(actor, "SetOnModelLoadedCallback") then
             pcall(actor.SetOnModelLoadedCallback, actor, function()
@@ -847,7 +861,14 @@ local function startWay(way, ch, body)
         end
         sc:Show()
         if has(actor, "ClearModel") then pcall(actor.ClearModel, actor) end
-        actor:SetModelByCreatureDisplayID(body, false)
+        if way == "race" then
+            -- (not sheathed, not dressing itself, weapons not hidden, its own form, no bowstring; the race)
+            local took = actor:SetModelByUnit("player", false, false, false, true, false, ch.ri)
+            figNote("race: your figure as race " .. tostring(ch.ri) .. ", the game answered " .. (secret(took) and "<hidden>" or tostring(took)))
+            if not secret(took) and took == false then error("the game would not make your figure of race " .. tostring(ch.ri)) end
+        else
+            actor:SetModelByCreatureDisplayID(body, false)
+        end
         if has(actor, "SetYaw") then pcall(actor.SetYaw, actor, 0.52) end
         return actor, function()
             if has(actor, "IsLoaded") then return actor:IsLoaded() and true or false end
@@ -881,6 +902,7 @@ local WAY_SAYS = {
     own = "A stand-in: your own figure, in its gear",
     display = "A stand-in: its race, sex and gear; not its face",
     scene = "A stand-in: its race, sex and gear; not its face",
+    race = "A stand-in: its race and gear, on your own character's build",
     file = "A stand-in: its race, sex and gear; not its face",
 }
 -- Away with it (a live unit is shown, or the window closes).
@@ -954,19 +976,21 @@ showWay = function(idx, auto)
                 -- (Only where it is sure: asked, the model says it is not
                 -- there, and it never said it had loaded.)
                 if loaded == false and not sawLoad and auto and FIG.serial == serial then
-                    figNote(way .. ": no model came; on to the next")
-                    showWay(idx + 1, true)
+                    figNote(way .. ": no model came; the emblem")
+                    showWay(#ways + 1, true)
                 end
             end)
         else
             figNote(way .. " refused: " .. tostring(target))
-            if auto then return showWay(idx + 1, true) end
+            -- (0.1.707: by itself only "own" gives way to the next, which is "race")
+            if auto and idx <= #ways then return showWay(way == "own" and idx + 1 or #ways + 1, true) end
         end
     end
     win.crest:SetShown(not shown)
-    if win.model.floor then win.model.floor:SetShown(shown and way ~= "scene") end
+    if win.model.floor then win.model.floor:SetShown(shown and way ~= "scene" and way ~= "race") end
     local why
     if shown then why = WAY_SAYS[way]
+    elseif I.db.figureOff then why = "Figures are switched off (/men figure on)"
     elseif #ways == 0 then why = "Log this character in once more and a figure in its gear stands here"
     else why = "The game would not stand a figure up here" end
     win.standin:SetText(why)
@@ -1037,6 +1061,9 @@ function I:OpenSnapshot(who, ch)
             if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, e.link) end
         end
         local ways, body, from = waysFor(ch)
+        if I.db.figureOff then ways = {} end
+        -- (0.1.707: a way picked by hand among the old ones is forgotten once, so that the new one is seen)
+        if I.db.figRev ~= 2 then I.db.figurePick = nil; I.db.figRev = 2 end
         FIG.ways, FIG.body = ways, body
         FIG.kind = (ways[1] == "own") and "same" or "other"
         figNote("race " .. tostring(ch.ri) .. ", sex " .. tostring(ch.sx) .. ", body " .. tostring(body)
@@ -1081,6 +1108,13 @@ function I:Open()
 end
 ns.commands = ns.commands or {}
 ns.commands.inspect = function() I:Open() end
+-- "/men figure off | on": the figure on another character of yours' sheet
+ns.commands.figure = function(rest)
+    if not I.db then return end
+    if rest and rest:find("off") then I.db.figureOff = true elseif rest and rest:find("on") then I.db.figureOff = nil end
+    ns:Print("Figures on your other characters' sheets: " .. (I.db.figureOff and "off, the class emblem stands there (/men figure on)."
+        or "on (/men figure off shows the class emblem instead).") .. " Open the sheet again to see it.")
+end
 
 local function close()
     if win and win:IsShown() then

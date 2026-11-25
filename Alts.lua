@@ -179,6 +179,11 @@ local function snapshot(fromChange)
     local lvl = UnitLevel("player")
     if plainStr(cls) then me.c = cls end
     if plainNum(lvl) and lvl > 0 then me.l = lvl end
+    -- (0.1.707: which side it is on, "Alliance" / "Horde". Kept, not yet
+    -- used: whether this game lets your characters of opposite sides send
+    -- each other things is for the player to say, not for us to assume.)
+    local okF, side = pcall(UnitFactionGroup, "player")
+    if okF and plainStr(side) then me.fa = side end
     local okA, best = pcall(ns.BestArmor)
     if okA and plainNum(best) then me.a = best end
     me.t = time()
