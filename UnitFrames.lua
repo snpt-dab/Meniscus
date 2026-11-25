@@ -2243,6 +2243,18 @@ function UF:BuildCure()
     local look = cureLook(pv, PH)
     pv:SetScript("OnShow", look.arrive)
     pv:SetScript("OnUpdate", look.tick)
+    -- (0.1.690: and two more dresses, lying exactly on the first. See
+    -- hiddenLook, below: in a fight each of your first three debuffs gets
+    -- one, drawn or not as the game itself decides.)
+    local layers = { { frame = pv, look = look } }
+    for i = 2, 3 do
+        local f2 = CreateFrame("Frame", nil, pill)
+        f2:SetAllPoints()
+        f2:Hide()
+        local lk = cureLook(f2, PH)
+        f2:SetScript("OnUpdate", lk.tick)
+        layers[i] = { frame = f2, look = lk }
+    end
     pill:SetScript("OnEnter", function(self)
         if not pv:IsShown() then return end
         look.fill(0.12, 0.12, 0.14, 0.97)
@@ -2374,6 +2386,95 @@ function UF:BuildCure()
     -- after the announcement, and in that moment the pill, just put in
     -- its place for the fight, was being put away again as "clean, and
     -- not in a fight": found by the offline run before it was ever seen.)
+    -- IN A FIGHT, FOR WHAT IS CAUGHT IN IT (0.1.690). The record of 0.1.689
+    -- settled what the game's own debuff button holds then: its place in
+    -- the list in the clear, and everything else hidden: the kind, the
+    -- picture, the aura's number; its border is not coloured but given a
+    -- hidden picture by kind. So the kind can NOT be read, by any road.
+    -- What is left is to not read it: the game can be asked whether that
+    -- debuff passes its "you can dispel this" filter, by the hidden number,
+    -- and if it answers with a hidden yes-or-no, that can still be handed
+    -- to a frame as "be seen if no, unseen if yes" without ever being
+    -- looked at. So each of your first three debuffs gets a dress on the
+    -- pill of its own, and the game decides which are seen. The dress is
+    -- then plain gold with the cure's own picture (the kind is not known),
+    -- and no dust. Whether the asking is allowed is what the record will
+    -- say ("filter by number: ..."); if it is refused there is no road
+    -- left that tells a disease from any other debuff.
+    local function dressPlain(L)
+        L.look.quiet = false
+        local okI, info = pcall(C_Spell.GetSpellInfo, spells[1])
+        L.look.icon:SetTexture(okI and type(info) == "table" and info.iconID or 134400)
+        L.look.icon:SetDesaturated(false)
+        L.look.setKind(nil)
+        L.look.text:SetText(spells[1] .. (spells[2] and ("  /  " .. spells[2]) or ""))
+    end
+    local function endHidden()
+        for i, L in ipairs(layers) do
+            if L.hiddenOn then
+                L.hiddenOn = false
+                L.frame:SetAlpha(1)
+            end
+            if i > 1 and L.frame:IsShown() then L.frame:Hide() end
+        end
+    end
+    local function hiddenLook()
+        local F = C_UnitAuras and C_UnitAuras.IsAuraFilteredOutByInstanceID
+        local fr = _G.DebuffFrame
+        local list = fr and fr.auraFrames
+        if not F then wayNote("filter by number: no such asking") return false end
+        if type(list) ~= "table" then return false end
+        local any, slot = false, 0
+        for _, btn in ipairs(list) do
+            if slot >= #layers then break end
+            if not isPlace(btn) then
+                slot = slot + 1
+                local L = layers[slot]
+                local used = false
+                local okS, shown = pcall(btn.IsShown, btn)
+                local info = okS and not issecretvalue(shown) and shown and btn.buttonInfo or nil
+                if type(info) == "table" then
+                    local ok, out = pcall(F, "player", info.auraInstanceID, "HARMFUL|RAID")
+                    if not ok then
+                        wayNote("filter by number: refused")
+                        if MinimalUIDB and not MinimalUIDB.cureerr2 then MinimalUIDB.cureerr2 = tostring(out):sub(1, 200) end
+                    elseif issecretvalue(out) then
+                        if not L.hiddenOn then
+                            dressPlain(L)
+                            L.frame:Show()
+                            L.look.arrive()
+                        end
+                        if L.frame.SetAlphaFromBoolean and pcall(L.frame.SetAlphaFromBoolean, L.frame, out, 0, 1) then
+                            wayNote("filter by number: a hidden yes-or-no, handed on")
+                            used = true
+                        else
+                            wayNote("filter by number: a hidden yes-or-no, and no way to hand it on")
+                        end
+                    elseif out == false then
+                        wayNote("filter by number: plain, one you can cure")
+                        if not L.hiddenOn then
+                            dressPlain(L)
+                            L.frame:Show()
+                            L.look.arrive()
+                        end
+                        L.frame:SetAlpha(1)
+                        used = true
+                    else
+                        wayNote("filter by number: plain, not one you can cure")
+                    end
+                end
+                if used then
+                    L.hiddenOn = true
+                    any = true
+                elseif L.hiddenOn or (slot > 1 and L.frame:IsShown()) then
+                    L.hiddenOn = false
+                    L.frame:SetAlpha(1)
+                    L.frame:Hide()
+                end
+            end
+        end
+        return any
+    end
     local fightOn = false
     local updatePill
     local ownQueued = false
@@ -2394,6 +2495,7 @@ function UF:BuildCure()
         end
         local a, blind = afflicted("player")
         if a then
+            endHidden()
             local d = a.dispelName
             local kind = type(d) == "string" and not issecretvalue(d) and d or nil
             fightNote(pill, kind and "seen, kind known" or "seen, kind hidden")
@@ -2415,9 +2517,14 @@ function UF:BuildCure()
         elseif blind and fighting and stillKept(pill) then
             -- Can't be looked at, and something was on you going into
             -- the fight: it is taken to be there still, as it was shown.
+            endHidden()
             fightNote(pill, "could not look; kept what was seen before")
             if not pv:IsShown() then pv:Show() end
+        elseif blind and fighting and hiddenLook() then
+            fightNote(pill, "could not look; left to the game's own yes-or-no")
+            pill.kindShown, pill.wasQuiet = nil, false
         else
+            endHidden()
             fightNote(pill, blind and fighting and "could not look" or nil)
             pill.kept = nil
             if pv:IsShown() then pv:Hide() end
