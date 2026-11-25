@@ -137,7 +137,7 @@ Roster figure (0.1.707; Inspect.lua): a new way "race", tried first for a charac
 
 Quest dot trial (0.1.707; Extras.lua `/men dotpin [force]`): the one map pin set on the focused quest's spot (`C_Map.SetUserWaypoint`) and followed (`C_SuperTrack.SetSuperTrackedUserWaypoint(true)`), our own hiding and placing switched off meanwhile; ten seconds of what the engine says in `MinimalUIDB.dotpin`. The marker's place is the engine's own (`Blizzard_QuestNavigation/SuperTrackedFrame.lua` only copies `C_Navigation.GetFrame()`), and its fade for an "invalid" target is settable (`SuperTrackedFrame:SetTargetAlphaForState`).
 
-Alts: each character's side is kept as `fa` (0.1.707), not used. Crafted upgrades look within one realm's book and keep bind-on-pickup to its maker; whether opposite sides can send each other gear in Forever is an open question to the user: do not assume.
+Alts: each character's side is kept as `fa` (0.1.707). Crafted upgrades look within one realm's book, keep bind-on-pickup to its maker, and (0.1.708, the user's rule: opposite sides can't send each other gear) keep to your side: `sameSide(ch)` goes by `fa`, else `C_CreatureInfo.GetFactionInfo(race).groupTag`, and lets an unknown through.
 
 Pets (stages 1-2, 0.1.703-704): `ns.PetMoodNow()` (Bars.lua) asks `C_PetInfo.GetPetHappiness`; Extras.lua `gameSays(id)` asks `C_PetInfo.CanPetEatItem` (a "no" counts only after it has said "yes" to something this session). Both unseen in game.
 

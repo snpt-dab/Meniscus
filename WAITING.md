@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.707.
+Last updated: 2026-11-25, version 0.1.708.
 
 ## Needs you, in game
 
@@ -67,11 +67,9 @@ Read 2026-11-25 (`Blizzard_QuestNavigation/SuperTrackedFrame.lua`). Nothing in i
 
 Built 0.1.707 as a trial: `/men dotpin` (item 14); `/men dotpin force` adds lead 2.
 
-## A question for you: crafted upgrades and the two sides
-
-Crafted upgrades look only among characters on the SAME realm (each realm has its own book), and never suggest a bind-on-pickup piece for anyone but its maker. They do NOT look at which side a character is on: an Alliance crafter is offered for a Horde character. Since 0.1.707 each character’s side is kept when it is played (nothing is done with it yet). Does this game let your characters of opposite sides mail or trade each other gear? If not, say so and the suggestions will keep to one side.
-
 ## Settled recently
+
+- Crafted upgrades keep to one side (0.1.708): your word, 2026-11-25, that opposite sides can’t send each other gear. A character not played since 0.1.707 is placed by its race, as the game says.
 
 - Righteous Fury through Quick Buff: "working as intended" (your word, 2026-11-25).
 - Pets, seen in your screenshot (2026-11-25): the feed button’s tooltip says "Eats: Meat, Fish" in the game’s words, so the game’s pet calls are alive on this client; the mood word read Happy. Still to see: the word changing at once on feeding.

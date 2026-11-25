@@ -302,12 +302,32 @@ function ns.RecordCraft(prof, name, item, list)
     end
 end
 
+-- One side only (0.1.708; the player, 2026-11-25: characters of opposite
+-- sides can't send each other gear in this game). A character's side is
+-- what it wrote down when last played (fa), else what the game says of its
+-- race; where neither is known it is let through, as before.
+local function sideOf(ch)
+    if plainStr(ch.fa) then return ch.fa end
+    local CI = _G.C_CreatureInfo
+    if plainNum(ch.ri) and CI and CI.GetFactionInfo then
+        local ok, info = pcall(CI.GetFactionInfo, ch.ri)
+        if ok and type(info) == "table" and plainStr(info.groupTag) then return info.groupTag end
+    end
+end
+local function sameSide(ch)
+    local ok, mine = pcall(UnitFactionGroup, "player")
+    local theirs = sideOf(ch)
+    if not (ok and plainStr(mine) and theirs) then return true end
+    return mine == theirs
+end
+A.SameSide = sameSide
+
 local function buildMakers()
     makers = {}
     local book, myName = realmBook()
     if not book then return end
     for name, ch in pairs(book) do
-        if type(ch) == "table" and type(ch.p) == "table" then
+        if type(ch) == "table" and type(ch.p) == "table" and (name == myName or sameSide(ch)) then
             for prof, P in pairs(ch.p) do
                 if type(P) == "table" and type(P.r) == "table" then
                     for item, rec in pairs(P.r) do
@@ -459,7 +479,7 @@ function A.ForAlts(item)
     if bind == 1 then altVerdict[item] = false return nil end
     local list, pending = {}, false
     for altName, ch in pairs(book) do
-        if altName ~= myName and type(ch) == "table" and type(ch.g) == "table" and plainStr(ch.c) and plainNum(ch.l) then
+        if altName ~= myName and type(ch) == "table" and type(ch.g) == "table" and plainStr(ch.c) and plainNum(ch.l) and sameSide(ch) then
             local can, soon = usableBy(ch, minLevel, classID, subID)
             if can then
                 local okJ, res, slot, gain = pcall(ns.JudgeUpgrade, link, ch)
@@ -486,7 +506,7 @@ function A.Others()
     local book, myName = realmBook()
     local n = 0
     for name, ch in pairs(book or {}) do
-        if name ~= myName and type(ch) == "table" and type(ch.g) == "table" and next(ch.g) then n = n + 1 end
+        if name ~= myName and type(ch) == "table" and type(ch.g) == "table" and next(ch.g) and sameSide(ch) then n = n + 1 end
     end
     return n
 end
