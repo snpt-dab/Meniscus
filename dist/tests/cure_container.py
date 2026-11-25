@@ -424,11 +424,8 @@ function fire(e, unit) EV.scripts.OnEvent(EV, e, unit) runTimers() end
 
 HOOK_NEW = '''    local ev = CreateFrame("Frame")
     for _, e in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED",'''
-HOOK_OLD = '''    local ev = CreateFrame("Frame")
-    for _, e in ipairs({ "UNIT_AURA", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED",'''
-assert CHUNK.count(HOOK_NEW) == 1 and CHUNK.count(HOOK_OLD) == 1, 'the events frames were not found: the test needs a look'
+assert CHUNK.count(HOOK_NEW) == 1, 'the events frame was not found: the test needs a look'
 CHUNK2 = CHUNK.replace(HOOK_NEW, HOOK_NEW.replace('local ev = CreateFrame("Frame")', 'local ev = CreateFrame("Frame")\n    EV = ev'))
-CHUNK2 = CHUNK2.replace(HOOK_OLD, HOOK_OLD.replace('local ev = CreateFrame("Frame")', 'local ev = CreateFrame("Frame")\n    EVOLD = ev'))
 
 passed, failed = 0, []
 
@@ -520,9 +517,7 @@ said = list(rt.eval("printed").values())
 check(case, "/men cure show: three samples announced", [s.split(',')[0] for s in said[-3:]],
       ["Quick Cure sample (disease)", "Quick Cure sample (disease)", "Quick Cure sample (poison)"])
 rt.execute("runTimers() NS.commands.cure('old')")
-check(case, "/men cure old", rt.eval("UFX.db.cureOld"), True)
-rt.execute("NS.commands.cure('new')")
-check(case, "/men cure new", rt.eval("UFX.db.cureOld"), None)
+check(case, "/men cure old: gone, and it says so", (rt.eval("UFX.db.cureOld"), "removed" in list(rt.eval("printed").values())[-1]), (None, True))
 check(case, "methods used that this stand-in has no rule for (each must be the game's)", sorted(rt.eval("unknown").keys()),
       ['Button:RegisterForClicks', 'Button:SetPropagateMouseMotion', 'FontString:SetJustifyH', 'FontString:SetShadowColor', 'FontString:SetShadowOffset', 'FontString:SetTextColor',
        'FontString:SetWordWrap', 'Frame:RegisterEvent', 'Frame:RegisterUnitEvent', 'Texture:AddMaskTexture', 'Texture:SetBlendMode',
@@ -556,11 +551,14 @@ check(case, "faces made all the same", record(rt)[-1], "[calm] party1: 2 of 2 fa
 rt.execute("gameAuras('player', { %s }) fire('UNIT_AURA', 'player')" % aura('Poison'))
 check(case, "and seen", (rt.eval("seen('player')"), rt.eval("playing('player')") > 0), ("Poison", True))
 
-# 6. The display before 0.1.693, by choice, and where no container can be made.
-for case, setup in (("the old display, by choice", "UFX.db.cureOld = true"), ("a client with no aura containers", "containerFails = true")):
-    rt = start('PALADIN', ['Purify'], setup)
-    check(case, "the old builder ran, alone", (rt.eval("EVOLD ~= nil"), rt.eval("EV ~= nil"), rt.eval("frames.MeniscusQuickCure.attr.spell1")), (True, False, "Purify"))
-    check(case, "said so in the record", len(record(rt)), 1)
+# 6. The display before 0.1.693 is gone (0.1.711): a saved choice of it is dropped, and
+#    where no container can be made there is no Quick Cure, said in the record.
+case = "the old display chosen in a saved profile"
+rt = start('PALADIN', ['Purify'], "UFX.db.cureOld = true")
+check(case, "the new one is built all the same, the choice dropped", (rt.eval("EV ~= nil"), rt.eval("UFX.db.cureOld")), (True, None))
+case = "a client with no aura containers"
+rt = start('PALADIN', ['Purify'], "containerFails = true")
+check(case, "nothing built, and said so", (rt.eval("EV ~= nil"), rt.eval("frames.MeniscusQuickCure ~= nil"), len(record(rt)), "no Quick Cure" in record(rt)[-1]), (False, False, 1, True))
 
 print("%d of %d checks passed" % (passed, passed + len(failed)))
 for f in failed:

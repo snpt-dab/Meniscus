@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.710.
+Last updated: 2026-11-25, version 0.1.711.
 
 ## Needs you, in game
 
@@ -74,7 +74,7 @@ Built 0.1.707 as a trial: `/men dotpin` (item 14); `/men dotpin force` adds lead
 
 ## Settled recently
 
-- Quick Cure drawn by the game: “good to go, working as expected” (your word, 2026-11-25). The display before 0.1.693 (`BuildCureOld`, `cureLook`, `cureMotes`) can go now, as a stage of its own.
+- Quick Cure drawn by the game: “good to go, working as expected” (your word, 2026-11-25). The display before 0.1.693 was removed in 0.1.711 (tags `stage/before-cure-old-removed`, `stage/cure-old-removed`).
 - Quick Buff pill no longer over the world map (0.1.709): good.
 - Health from the game’s meter (0.1.706): works on ordinary creatures (your word; `metercheck` shows ten taken, each agreeing with the old way where that had an answer, and two fights the old way could not read). A dungeon boss is still to see.
 
