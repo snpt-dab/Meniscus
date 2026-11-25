@@ -736,7 +736,13 @@ function I:OpenSnapshot(who, ch)
     win.crest:SetTexture(mark)
     win.crest:SetVertexColor(r, g, b, 0.85)
     win.crest:SetShown(not shown)
-    win.standin:SetText(shown and "A stand-in: the race, sex and gear on file; not the face" or "")
+    -- (0.1.673: and with only the emblem, why: the first look at one
+    -- showed the emblem and nothing to say a figure would come.)
+    local why = ""
+    if shown then why = "A stand-in: the race, sex and gear on file; not the face"
+    elseif not (plain(ch.ri) and plain(ch.sx)) then why = "Log this character in once more and a figure in its gear stands here"
+    else why = "The game would not stand a figure up here" end
+    win.standin:SetText(why)
     win.standin:Show()
     if not win:IsShown() then win:Show() end
     I:Refresh()

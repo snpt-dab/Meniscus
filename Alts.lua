@@ -78,12 +78,30 @@ local function ident()
     if not plainStr(realm) then realm = nil end
     local db = MinimalUIDB
     local roster = db and type(db.roster) == "table" and db.roster or nil
-    if realm and roster and type(roster[NOREALM]) == "table" then
-        roster[realm] = type(roster[realm]) == "table" and roster[realm] or {}
-        for who, ch in pairs(roster[NOREALM]) do
-            if roster[realm][who] == nil then roster[realm][who] = ch end
+    -- (0.1.673: books kept under another spelling of this realm are
+    -- folded in as well. For a few versions the realm was asked three
+    -- ways, and one of them answers without the spaces: characters read
+    -- then sat in a book of their own and the Roster never showed them.
+    -- Of two records of one character, the later reading stays.)
+    if realm and roster then
+        local function bare(r) return (r:gsub("[%s%-']", "")):lower() end
+        local mine = bare(realm)
+        local fold = {}
+        for k, book in pairs(roster) do
+            if k ~= realm and type(k) == "string" and type(book) == "table" and (k == NOREALM or bare(k) == mine) then
+                fold[#fold + 1] = k
+            end
         end
-        roster[NOREALM] = nil
+        for _, k in ipairs(fold) do
+            roster[realm] = type(roster[realm]) == "table" and roster[realm] or {}
+            for who, ch in pairs(roster[k]) do
+                local had = roster[realm][who]
+                if type(had) ~= "table" or (type(ch) == "table" and (ch.t or 0) > (had.t or 0)) then
+                    roster[realm][who] = ch
+                end
+            end
+            roster[k] = nil
+        end
     end
     return name, realm or NOREALM
 end

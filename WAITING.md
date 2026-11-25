@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.672.
+Last updated: 2026-11-24, version 0.1.673.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 10 | Roster and the full sheet of an alt (0.1.672) | `/reload`, character window, Roster tab, open an alt, "Open the full sheet". Log each alt in once first for the fuller record | Whether the gear tiles, attributes and details show; whether a figure stands in the middle dressed in that gear, or only the class emblem; what is missing |
+| 10 | The figure on another character’s full sheet (0.1.673) | Log an alt in once (with this version), log back, Roster, that alt, "Open the full sheet" | Whether a figure in its gear stands in the middle, or the emblem with a line saying the game would not |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
@@ -32,6 +32,7 @@ Last updated: 2026-11-24, version 0.1.672.
 
 ## Settled recently
 
+- Roster and the full sheet open and show (tiles, card). The emblem was shown because that character had no race or sex on file yet (not logged in since 0.1.672).
 - Upgrade arrows for armour-only gains (0.1.668): confirmed.
 - A character listed twice in item tooltips (0.1.666): fixed, confirmed.
 - Map buttons in full screen: fine now.
