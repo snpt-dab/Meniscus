@@ -1708,6 +1708,56 @@ end
 -- says how old. A character is a heading (click to open); under it, where
 -- it was, what it has, its attributes, its professions and what it wears.
 local rosterOpen = {}
+-- (0.1.671: and what each one carries, from the record the item tooltips
+-- already keep (MinimalUIDB.inv: bags, and the bank as of its last
+-- opening). Two headings under the character, shut until clicked: a full
+-- bank is a long list. Best quality first, then by name.)
+local rosterRetry = false
+local function carriedRows(d, who, part, title, t)
+    if type(t) ~= "table" or next(t) == nil then return end
+    local items, kinds, unknown = {}, 0, false
+    for id, n in pairs(t) do
+        if plain(id) then
+            kinds = kinds + 1
+            local name, _, q, _, _, _, _, _, _, tex = call((C_Item and C_Item.GetItemInfo) or GetItemInfo, id)
+            if not (type(name) == "string" and not secret(name)) then
+                name, unknown = nil, true
+                if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+            end
+            items[#items + 1] = { id = id, n = plain(n) and n or 1, name = name, q = plain(q) and q or 1, tex = tex }
+        end
+    end
+    local key = who .. "\001" .. part
+    local open = rosterOpen[key] == true
+    d[#d + 1] = { kind = "header", text = title .. "   |cff9a9aa5" .. kinds .. (kinds == 1 and " kind of item" or " kinds of item") .. "|r",
+        collapsed = not open, indent = 12,
+        onClick = function() rosterOpen[key] = not open; C:Refresh() end }
+    if not open then return end
+    table.sort(items, function(a, b)
+        if a.q ~= b.q then return a.q > b.q end
+        if (a.name or "~") ~= (b.name or "~") then return (a.name or "~") < (b.name or "~") end
+        return a.id < b.id
+    end)
+    for _, it in ipairs(items) do
+        local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[it.q]
+        local id = it.id
+        d[#d + 1] = { kind = "stat", icon = it.tex, indent = 24,
+            label = it.name or "|cff6e6e78...|r",
+            labelColor = qc and { qc.r, qc.g, qc.b } or T.text,
+            value = it.n > 1 and ("x" .. it.n) or "", color = T.textDim,
+            tooltip = function(tip)
+                if not pcall(tip.SetHyperlink, tip, "item:" .. id) then tip:SetText(it.name or ("item " .. id)) end
+            end }
+    end
+    -- (Names the game had not loaded: looked at once more, a moment on.)
+    if unknown and not rosterRetry then
+        rosterRetry = true
+        C_Timer.After(0.6, function()
+            rosterRetry = false
+            if win and win:IsShown() and C.tab == "roster" then C:Refresh() end
+        end)
+    end
+end
 local POWER_NAME = { MANA = "Mana", RAGE = "Rage", ENERGY = "Energy", FOCUS = "Focus" }
 local STAT_NAME = { "Strength", "Agility", "Stamina", "Intellect", "Spirit" }
 local function rosterData()
@@ -1774,6 +1824,12 @@ local function rosterData()
             end
             if not any then
                 d[#d + 1] = { kind = "stat", wide = true, indent = 12, label = "Nothing worn was on file.", value = "" }
+            end
+            local inv = MinimalUIDB and type(MinimalUIDB.inv) == "table"
+                and MinimalUIDB.inv[who .. "-" .. (ns.RealmName and ns:RealmName() or "")]
+            if type(inv) == "table" then
+                carriedRows(d, who, "bags", "In the bags", inv.bags)
+                carriedRows(d, who, "bank", "In the bank", inv.bank)
             end
         end
     end
