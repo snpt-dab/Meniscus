@@ -1722,6 +1722,9 @@ function Bars:ApplyPlate()
             local eb = _G["ChatFrame" .. i .. "EditBox"]
             if eb then seat(eb, lx0, base - 2, lx1 - lx0) end
         end
+        -- (A whisper's own window is made later, with a number above
+        -- these: Chat.lua seats its edit box through this as it appears.)
+        ns.SeatChatEdit = function(eb) seat(eb, lx0, base - 2, lx1 - lx0) end
         -- The wing is the chat's background now: Blizzard's own (which also
         -- shades a strip beside the window on hover) is switched off.
         local CHm = ns.modules.Chat

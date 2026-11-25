@@ -15,7 +15,8 @@ local SIDE_BUTTONS = { "ChatFrameMenuButton", "ChatFrameChannelButton", "QuickJo
 
 local function hideTextures(f)
     for _, r in ipairs({ f:GetRegions() }) do
-        if r:IsObjectType("Texture") then
+        -- (a whisper tab's speech-bubble icon stays)
+        if r:IsObjectType("Texture") and r ~= f.conversationIcon then
             r:SetAlpha(0)
             hooksecurefunc(r, "SetAlpha", function(self, a) if a ~= 0 then self:SetAlpha(0) end end)
         end
@@ -55,6 +56,45 @@ end
 -- Seated in the console's wing (Bars.lua): the wing draws the background, so
 -- Blizzard's chat background and border go, and with them the shaded strip
 -- its button column draws beside the window when you hover the chat.
+-- (0.1.714) A whisper opened as its own tab is a window the game makes on
+-- the spot, numbered above the ten it starts with, so none of the loops
+-- here ever met it: it kept the game's black background (wider than the
+-- wing, hence the overhang on the left), its own tab art and edit box.
+-- Every such window is now dressed like the rest as it appears.
+local function extraWindow(i)
+    local cf = _G["ChatFrame" .. i]
+    if not cf then return false end
+    if cf.__muiExtra then
+        -- (made in a fight: its edit box could not be moved then)
+        if cf.__muiEditOwed and ns.SeatChatEdit and not InCombatLockdown() then
+            cf.__muiEditOwed = nil
+            pcall(ns.SeatChatEdit, cf.__muiEditOwed_box)
+        end
+        return true
+    end
+    cf.__muiExtra = true
+    pcall(function() styleTab(i) end)
+    pcall(function() styleEditBox(i) end)
+    if CH.seated then
+        pcall(hideTextures, cf)
+        local bf, eb = _G["ChatFrame" .. i .. "ButtonFrame"], _G["ChatFrame" .. i .. "EditBox"]
+        if bf then pcall(hideTextures, bf); CH.extraButtons[#CH.extraButtons + 1] = bf end
+        if eb and ns.SeatChatEdit then
+            if InCombatLockdown() then cf.__muiEditOwed, cf.__muiEditOwed_box = true, eb
+            else pcall(ns.SeatChatEdit, eb) end
+        end
+    else
+        cf.__muiExtra = nil -- (asked again once the chat is seated)
+    end
+    return true
+end
+CH.extraButtons = {}
+function CH:Extras()
+    local i = (NUM_CHAT_WINDOWS or 10) + 1
+    while i <= 40 and extraWindow(i) do i = i + 1 end
+    return i - 1
+end
+
 function CH:Seated()
     if self.seated then return end
     self.seated = true
@@ -226,7 +266,8 @@ function CH:OnInit(db)
         acc = 0
         -- Underline the selected tab (new windows get styled as they appear).
         local sel = selectedFrame()
-        for i = 1, n do
+        local last = CH:Extras()
+        for i = 1, math.max(n, last) do
             local tab = _G["ChatFrame" .. i .. "Tab"]
             if tab and not tab.__mui then pcall(styleTab, i); pcall(styleEditBox, i) end
             if tab and tab.__muiLine then
@@ -236,6 +277,7 @@ function CH:OnInit(db)
         -- Side buttons fade in while hovering the chat area or the buttons.
         local over = ChatFrame1 and ChatFrame1:IsMouseOver(20, -20, -40, 20)
         for _, b in ipairs(buttons) do over = over or (b:IsShown() and b:IsMouseOver()) end
+        for _, b in ipairs(CH.extraButtons) do over = over or (b:IsShown() and b:IsMouseOver()) end
         local want = over and 1 or 0
         busy = alpha ~= want
         if busy then
@@ -243,5 +285,6 @@ function CH:OnInit(db)
             if math.abs(alpha - want) < 0.02 then alpha = want end
         end
         for _, b in ipairs(buttons) do b:SetAlpha(alpha) end
+        for _, b in ipairs(CH.extraButtons) do b:SetAlpha(alpha) end
     end)
 end
