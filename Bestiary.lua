@@ -992,6 +992,168 @@ end
 local function fightStart()
     wipe(fightKills)
 end
+-- ── Asked by view and by creature number (0.1.706) ────────────────────────
+-- The game's own code names the meter's views (Enum.DamageMeterType: "enemy
+-- damage taken" is 10, "damage taken" 7) and gives each enemy in a fight by
+-- its creature number (sourceCreatureID), with no GUID. readMeter below
+-- looked for an enemy view by a GUID on its first line, which a creature's
+-- line doesn't have: in forty fights it never found one, and health was
+-- only ever your own damage in a fight with one kill.
+-- So, first: the enemy view asked for by its number. One line per enemy with
+-- everything it took, from everybody: its health if it died from full, in a
+-- group as much as alone, however many other things were fought.
+-- This stands BESIDE readMeter: where it learns nothing the old reading runs
+-- as before, and "/men bestiary meter old" puts it aside. What the game said
+-- is counted and kept in MinimalUIDB.metercheck.
+-- And a boss fight's end (ENCOUNTER_END) lists the creatures that were its
+-- bosses, by number and name: lastEnc, and MinimalUIDB.bossNames / bossIDs.
+local lastEnc
+local function meterCheck(what, line)
+    if not MinimalUIDB then return end
+    local t = MinimalUIDB.metercheck
+    if type(t) ~= "table" then t = {}; MinimalUIDB.metercheck = t end
+    t.n, t.log = type(t.n) == "table" and t.n or {}, type(t.log) == "table" and t.log or {}
+    if what then t.n[what] = (t.n[what] or 0) + 1 end
+    if line then
+        if #t.log >= 60 then table.remove(t.log, 1) end
+        t.log[#t.log + 1] = date("%H:%M:%S") .. " " .. line
+    end
+end
+-- (The record a line of the meter is about: by its number, else by its name.)
+local function recOfSource(cid, name)
+    if cid and record(cid) then return cid end
+    return name and idByName(name) or nil
+end
+-- Returns "hidden" while the figures can not be read yet (ask again);
+-- else whether a health was learned (nil: there is no such view).
+local function readEnemies(kills)
+    local DM, TY = C_DamageMeter, Enum and Enum.DamageMeterType
+    local view = type(TY) == "table" and TY.EnemyDamageTaken
+    if not (plain(view) and DM.GetCombatSessionFromType) then meterCheck("no enemy view by number here: the old way") return nil end
+    local ses = call(DM.GetCombatSessionFromType, 1, view)
+    local list = type(ses) == "table" and type(ses.combatSources) == "table" and ses.combatSources or nil
+    if not list then meterCheck("enemy view: nothing given") return nil end
+    if #list == 0 then meterCheck("enemy view: empty") return nil end
+    local nKill, lvlOf = {}, {}
+    for _, k in ipairs(kills) do
+        local id = mergedTo[k.id] or k.id
+        nKill[id] = (nKill[id] or 0) + 1
+        lvlOf[id] = k.lvl or lvlOf[id]
+    end
+    -- (first, who each line is about, and how many lines each creature has)
+    local rows, nLine = {}, {}
+    for _, src in ipairs(list) do
+        if type(src) == "table" then
+            if secret(src.totalAmount) then return "hidden" end
+            local cid = plain(src.sourceCreatureID) and src.sourceCreatureID > 0 and src.sourceCreatureID or npcOf(src.sourceGUID)
+            local name = str(src.name) and src.name or nil
+            local rid = recOfSource(cid, name)
+            rows[#rows + 1] = { src = src, cid = cid, name = name, rid = rid }
+            if rid then nLine[rid] = (nLine[rid] or 0) + 1 end
+        end
+    end
+    local learned = false
+    for _, row in ipairs(rows) do
+        local src, rid = row.src, row.rid
+        local total = plain(src.totalAmount) and src.totalAmount or 0
+        local died = plain(src.deathTimeSeconds) and src.deathTimeSeconds > 0
+        -- the last blow's excess, where the game tells it apart
+        local over = 0
+        if DM.GetCombatSessionSourceFromType and (row.cid or str(src.sourceGUID)) then
+            local one = call(DM.GetCombatSessionSourceFromType, 1, view, str(src.sourceGUID) and src.sourceGUID or nil, row.cid)
+            for _, sp in ipairs(type(one) == "table" and type(one.combatSpells) == "table" and one.combatSpells or {}) do
+                if plain(sp.overkillAmount) then over = over + sp.overkillAmount end
+            end
+        end
+        local boss
+        for _, u in ipairs(lastEnc and GetTime() - lastEnc.t < 30 and lastEnc.units or {}) do
+            if (row.cid and u.id == row.cid) or (row.name and u.name == row.name) then boss = u end
+        end
+        local said
+        if total <= 0 then said = "took nothing"
+        elseif not rid then said = "not a creature in the book"
+        elseif not nKill[rid] then
+            said = died and "died, but no kill of it was noted" or "lived"
+            -- (A boss you did not kill: what it took and what it had left
+            -- would give its health. Written down only, for now.)
+            if boss and boss.left and boss.left > 0 and boss.left < 100 then
+                said = said .. "; with " .. boss.left .. "% left that makes about " .. math.floor(total / (1 - boss.left / 100) + 0.5)
+            end
+        elseif nLine[rid] ~= nKill[rid] then
+            said = nKill[rid] .. " died and the meter has " .. nLine[rid] .. " line(s) for them: can't be told apart"
+        elseif not died and nLine[rid] > 1 then
+            said = "one of several, and this one lived"
+        else
+            local v = math.floor(total - (over < total and over or 0) + 0.5)
+            healthSample(rid, lvlOf[rid], v)
+            learned = true
+            said = "HEALTH " .. v .. " (level " .. tostring(lvlOf[rid] or "?") .. ")" .. (died and "" or " [the meter did not mark it dead]")
+            meterCheck(boss and "a boss's health from the enemy view" or "health from the enemy view")
+        end
+        meterCheck(nil, "enemy: " .. tostring(row.name or "(name hidden)") .. " #" .. tostring(row.cid or "?") .. " took " .. total
+            .. " excess " .. over .. " rank " .. tostring(str(src.classification) and src.classification or "?") .. (boss and " BOSS" or "") .. ": " .. said)
+    end
+    if not learned then meterCheck("enemy view read, no health learned") end
+    return learned
+end
+-- What hit you: each attack in a "damage taken" line, with the creature
+-- that made it (by name). Returns whether any was named.
+local function creditHits(taken, tag)
+    local got = false
+    for _, sp in ipairs(type(taken) == "table" and type(taken.combatSpells) == "table" and taken.combatSpells or {}) do
+        local sid = sp.spellID
+        local who = str(sp.creatureName) and sp.creatureName or nil
+        if who then
+            got = true
+            meterLog(tag .. ": hit by " .. who .. " spell " .. tostring(plain(sid) and sid or "?") .. " total "
+                .. tostring(plain(sp.totalAmount) and sp.totalAmount or "?"))
+            local id = idByName(who)
+            local r = id and record(id)
+            if r and plain(sid) then
+                local name = sid == 6603 and "Melee" or (C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, sid))
+                if str(name) then
+                    r.c = r.c or {}
+                    if (r.c[name] == nil and count(r.c) < 16) or r.c[name] == true then
+                        r.c[name] = sid
+                        changed(id)
+                    end
+                end
+            end
+        end
+    end
+    return got
+end
+local function noteEncounter(id, name, success, units)
+    local out, list = {}, {}
+    for _, u in ipairs(type(units) == "table" and units or {}) do
+        if type(u) == "table" then
+            local cid = plain(u.creatureID) and u.creatureID or nil
+            local nm = str(u.creatureName) and u.creatureName or nil
+            local left = plain(u.remainingHealthPercent) and u.remainingHealthPercent or nil
+            list[#list + 1] = { id = cid, name = nm, left = left }
+            out[#out + 1] = tostring(nm or "(name hidden)") .. " #" .. tostring(cid or "?") .. " " .. tostring(left or "?") .. "% left"
+            if MinimalUIDB then
+                if cid then
+                    MinimalUIDB.bossIDs = type(MinimalUIDB.bossIDs) == "table" and MinimalUIDB.bossIDs or {}
+                    MinimalUIDB.bossIDs[cid] = true
+                end
+                -- (the bosses of a fight are not always called what the fight is)
+                if nm then
+                    MinimalUIDB.bossNames = type(MinimalUIDB.bossNames) == "table" and MinimalUIDB.bossNames or {}
+                    if not MinimalUIDB.bossNames[nm] then
+                        MinimalUIDB.bossNames[nm] = true
+                        local rid = recOfSource(cid, nm)
+                        if rid then changed(rid) end
+                    end
+                end
+            end
+        end
+    end
+    lastEnc = { t = GetTime(), units = list, won = plain(success) and success == 1 }
+    meterCheck("a boss fight's end heard", "boss fight ended: " .. tostring(str(name) and name or "?") .. " (" .. tostring(plain(id) and id or "?") .. "), "
+        .. (lastEnc.won and "won" or "not won") .. ", " .. #list .. " boss(es): " .. table.concat(out, "; "))
+end
+
 -- (0.1.587) Five kills and nothing learned: the meter was asked 0.6 s
 -- after the fight, when its figures are still hidden (they were plain
 -- when a probe asked 4 s after), and this client has no list of the
@@ -1026,8 +1188,19 @@ local function readMeter(kills)
     end
     local alone = not (IsInGroup and isTrue(call(IsInGroup)))
     meterLog("fight read: you did " .. done .. ", excess " .. over .. ", kills noted " .. nKilled)
-    local sampled = false
-    if DM.GetCombatSessionFromType and nKilled > 0 and done > 0 then
+    -- (0.1.706) The enemy view by its number first; what follows only if
+    -- that learned nothing, or has been put aside.
+    local sampled, byView = false, false
+    if not (MinimalUIDB and MinimalUIDB.bestMeterOld) then
+        local okV, res = pcall(readEnemies, kills)
+        if not okV then meterCheck("enemy view: error", "error: " .. tostring(res))
+        elseif res == "hidden" then return false
+        elseif res == true then sampled, byView = true, true end
+        if okV and res == true and alone and nKilled == 1 and done > over then
+            meterCheck(nil, "(the old way would have said " .. math.floor(done - over + 0.5) .. ")")
+        end
+    end
+    if not sampled and DM.GetCombatSessionFromType and nKilled > 0 and done > 0 then
         for n = 1, 15 do
             local ses = call(DM.GetCombatSessionFromType, 1, n)
             local list = type(ses) == "table" and type(ses.combatSources) == "table" and ses.combatSources or nil
@@ -1065,7 +1238,7 @@ local function readMeter(kills)
     -- lived, low if the creature was already hurt or healed itself: a
     -- sample like any other, shown with "~" until it comes up again.
     -- (MinimalUIDB.grouphp counts how these readings went.)
-    if not alone and nKilled == 1 then
+    if not alone and nKilled == 1 and not byView then
         local sum, ov, hidden, hands, seenG = done, over, false, done > 0 and 1 or 0, { [me] = true }
         local raid = IsInRaid and isTrue((call(IsInRaid)))
         for i = 1, raid and 40 or 4 do
@@ -1097,30 +1270,17 @@ local function readMeter(kills)
         end
     end
     -- what hit you: a view in which your own line lists attacks by creature
+    -- (0.1.706: the "damage taken" view by its number first; then, as
+    -- before, whichever view has such a line.)
     local got = false
+    local TY = Enum and Enum.DamageMeterType
+    if type(TY) == "table" and plain(TY.DamageTaken) and not (MinimalUIDB and MinimalUIDB.bestMeterOld) then
+        got = creditHits(call(DM.GetCombatSessionSourceFromType, 1, TY.DamageTaken, me), "view " .. TY.DamageTaken .. " (by number)")
+        meterCheck(got and "what hit you, from the view by number" or "what hit you: the view by number named nothing")
+    end
     for n = 1, 15 do
-        local taken = not got and call(DM.GetCombatSessionSourceFromType, 1, n, me)
-        for _, sp in ipairs(type(taken) == "table" and type(taken.combatSpells) == "table" and taken.combatSpells or {}) do
-            local sid = sp.spellID
-            local who = str(sp.creatureName) and sp.creatureName or nil
-            if who then
-                got = true
-                meterLog("view " .. n .. ": hit by " .. who .. " spell " .. tostring(plain(sid) and sid or "?") .. " total "
-                    .. tostring(plain(sp.totalAmount) and sp.totalAmount or "?"))
-                local id = idByName(who)
-                local r = id and record(id)
-                if r and plain(sid) then
-                    local name = sid == 6603 and "Melee" or (C_Spell and C_Spell.GetSpellName and call(C_Spell.GetSpellName, sid))
-                    if str(name) then
-                        r.c = r.c or {}
-                        if (r.c[name] == nil and count(r.c) < 16) or r.c[name] == true then
-                            r.c[name] = sid
-                            changed(id)
-                        end
-                    end
-                end
-            end
-        end
+        if got then break end
+        got = creditHits(call(DM.GetCombatSessionSourceFromType, 1, n, me), "view " .. n)
     end
     return true
 end
@@ -2290,6 +2450,16 @@ local function setHealth(n)
 end
 ns.commands.bestiary = function(rest)
     if type(rest) == "string" and rest:find("^%s*export") then return export() end
+    -- "/men bestiary meter old | new": how a fight is read afterwards
+    local how = type(rest) == "string" and rest:match("^%s*meter%s*(%a*)")
+    if how then
+        if how == "old" then MinimalUIDB.bestMeterOld = true elseif how == "new" then MinimalUIDB.bestMeterOld = nil end
+        local t = type(MinimalUIDB.metercheck) == "table" and MinimalUIDB.metercheck.n or {}
+        ns:Print("Bestiary, after a fight: " .. (MinimalUIDB.bestMeterOld and "read as before 0.1.706 (/men bestiary meter new changes back)."
+            or "each enemy asked of the game's meter by its number first (/men bestiary meter old puts that aside)."))
+        for what, n in pairs(t) do ns:Print("  " .. what .. ": " .. n) end
+        return
+    end
     local hp = type(rest) == "string" and rest:match("^%s*hp%s*(%d*)")
     if hp then return setHealth(tonumber(hp)) end
     B:Open()
@@ -2542,6 +2712,10 @@ function B:OnInit(db)
         elseif e == "LOOT_OPENED" then pcall(noteLoot)
         else pcall(noteCast, a1, a3, e == "UNIT_SPELLCAST_SUCCEEDED") end
     end)
+    -- (0.1.706) A boss fight's end names its bosses, by number and name.
+    local enc = CreateFrame("Frame")
+    pcall(enc.RegisterEvent, enc, "ENCOUNTER_END")
+    enc:SetScript("OnEvent", function(_, _, id, name, _, _, success, units) pcall(noteEncounter, id, name, success, units) end)
     local hp = CreateFrame("Frame")
     pcall(hp.RegisterEvent, hp, "UNIT_HEALTH")
     hp:SetScript("OnEvent", function(_, _, unit)

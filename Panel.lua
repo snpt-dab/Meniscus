@@ -1523,6 +1523,7 @@ ns.commands.help = function()
         "/men bestiary  what you have learned of the creatures you have met",
         "/men bestiary export  set your records down for sharing (then Share Bestiary.bat)",
         "/men bestiary hp <number>  your target's full health, as its frame shows it (replaces the estimate)",
+        "/men bestiary meter old | new  after a fight: read as before 0.1.706, or each enemy asked of the game's meter (says what was learned)",
         "/men blizzbank  the game's own bank window beside ours (and away again)",
         "/men perf trace  time every handler, for finding hidden costs (reload; run again to stop)",
         "/men lab  development: small test marks under your combat numbers, and measurements written down (reload)",

@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.705.
+Last updated: 2026-11-25, version 0.1.706.
 
 ## Needs you, in game
 
@@ -15,12 +15,13 @@ Last updated: 2026-11-25, version 0.1.705.
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | (1) Log in every character once, so each one’s gear is on file. (2) On each character that has a crafting profession, open that profession’s window once (and scroll nowhere: opening is enough), so its recipes are on file. (3) Then on any character open the character window, and on a crafter the profession window | On the character window: a small disc on a gear slot when one of your OTHER characters can craft something better for it, and a "Crafts" tab listing those. On a crafter’s profession window: an arrow on a recipe that would be an upgrade for one of your other characters, and a "For alts" pill that filters to them. Tell me which of the four you see, and whether what they suggest makes sense |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
-| 3 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
+| 3 | Health asked of the game’s meter, enemy by enemy (0.1.706) | `/reload`. Fight as usual, alone: best a fight with one kill and a second creature hit, and a fight with two different creatures killed. When you next can: a dungeon boss in a group (adds may die too, it no longer needs to be the only kill). Then `/reload`. `/men bestiary meter` says in chat what has been learned so far | Does a creature you had no health for get one in the bestiary after ONE kill, and does it look right against its frame (`/men bestiary hp <n>` sets the exact figure if not)? For the boss: a health, and rank Boss. If health figures go wrong: `/men bestiary meter old` (no reload needed) |
 | 4 | Level-up card reasons | Nothing to test | For each level where something new opens up in this game (a talent point, a new skill rank, mounts, a dungeon): which level and what. The card shown at level-up has a line for it; only level 10 is filled in |
 
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `apicheck` (0.1.702): which of the calls the review below wants to build on really exist on this client (the game’s docs are shared between its flavours). Written four seconds after login; one `/reload` after that and it can be read.
+- `metercheck`: what the game’s meter said of each enemy after each fight, what health was taken from it, and what the old way would have said (3).
 - `liverows`: how many of the target’s icons the game let us dress, and the first thing it refused, if anything (13).
 - `petcheck`: what the game’s pet calls said (mood 1-3, hidden, missing), and how its word on each food sits with what feeding had taught us (12).
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
@@ -35,11 +36,11 @@ Last updated: 2026-11-25, version 0.1.705.
 
 Read in the source for this build; each still wants `apicheck` or one look in game before it is built on. In the order I would do them:
 
-**Way back at every stage.** Each rework keeps the old code beside the new until you have seen the new work, with a chat command that switches back at once, and a git tag before and after each stage (`git tag -l "stage/*"`). Tags so far: `stage/before-pet-rework` (0.1.702), `stage/pet-1-mood` (0.1.703), `stage/pet-2-food` (0.1.704), `stage/before-aura-rows` (0.1.704), `stage/aura-1-target` (0.1.705). The old code is deleted only in a last stage of its own, after your word.
+**Way back at every stage.** Each rework keeps the old code beside the new until you have seen the new work, with a chat command that switches back at once, and a git tag before and after each stage (`git tag -l "stage/*"`). Tags so far: `stage/before-pet-rework` (0.1.702), `stage/pet-1-mood` (0.1.703), `stage/pet-2-food` (0.1.704), `stage/before-aura-rows` (0.1.704), `stage/aura-1-target` (0.1.705), `stage/before-bestiary-meter` (0.1.705), `stage/bestiary-1-enemy-view` (0.1.706). The old code is deleted only in a last stage of its own, after your word.
 
 1. IN PROGRESS (stages 1 and 2 built, see item 12; stage 3, removing the curves, ticker, learned diets and probes, waits for your word). Pet mood and pet food from `C_PetInfo.GetPetHappiness` / `GetPetFoodTypes` / `CanPetEatItem` (Bars.lua mood curves and ticker, Extras.lua learned diets; the Character sheet’s pet row calls a global that is not there).
 2. IN PROGRESS (stage 1, the target, built: item 13; then focus and party, then the seal timer, each its own stage). Party, focus and target aura rows on aura containers (`AddAuraGroup`), so they stay live in a fight; a true seal timer from an aura slot on yourself (`includeSpellIDs` is allowed for your own buffs).
-3. Bestiary in dungeons: the damage meter’s views by number (`Enum.DamageMeterType`, enemy damage taken = 10), each enemy’s creature number from the meter (`sourceCreatureID`), bosses and their health from `ENCOUNTER_END` (`encounterUnitStatus`). Would answer boss health (item 3) without a clean one-kill fight.
+3. IN PROGRESS (stage 1 built: item 3. Stage 2, a dungeon creature’s true number from the meter, waits for what `metercheck` says inside a dungeon). Bestiary in dungeons: the damage meter’s views by number (`Enum.DamageMeterType`, enemy damage taken = 10), each enemy’s creature number from the meter (`sourceCreatureID`), bosses and their health from `ENCOUNTER_END` (`encounterUnitStatus`). Would answer boss health (item 3) without a clean one-kill fight.
 4. The alt’s figure: `actor:SetModelByUnit("player", ..., customRaceID)` then `TryOn` per saved item: right race and gear, but your own sex.
 5. Cast bar "can’t be interrupted" from `UnitCastingInfo`’s own return with `SetVertexColorFromBoolean`, not the hidden target frame’s shield.
 6. Polling replaced by the game’s own signals: menus (`MenuProxy.OnShow`), action range (`ActionButton_UpdateRangeIndicator`, `ACTION_RANGE_CHECK_UPDATE`), group range (`UNIT_IN_RANGE_UPDATE`), list rows in skinned windows (`ScrollUtil.AddAcquiredFrameCallback`), window docking (`UIParentPanelManager.ShowUIPanel`).
@@ -53,6 +54,15 @@ Checked and already the right way (do not re-audit): combat log tickets, colours
 - A "mail to this alt" hint at the mailbox for crafted pieces flagged for an alt.
 - Level and rank of dungeon creatures from nameplates seen to die.
 - Heal numbers from log lines.
+
+## The quest dot (hidden since 0.1.604): what the game’s source shows
+
+Read 2026-11-25 (`Blizzard_QuestNavigation/SuperTrackedFrame.lua`). Nothing in it mends the dot as built, but there are two leads, neither tried in game:
+
+1. The marker’s place is the game engine’s, not its interface code’s: the code only copies where the engine’s own unseen frame is. So the leaping about was the engine having no true place for a QUEST here (it also rates every quest “invalid”). The engine can be given an exact place instead: a map pin (`C_Map.SetUserWaypoint` at the quest’s spot on the map, which we already work out, then `C_SuperTrack.SetSuperTrackedUserWaypoint(true)`). `C_Map.CanSetUserWaypointOnMap` answered yes on this client. Whether the engine then rates the target valid and holds the marker steady is the open question: one short trial would say. Cost: it uses the one map pin a player has.
+2. The marker’s fading to nothing for an “invalid” target is a table in that file with a setter (`SuperTrackedFrame:SetTargetAlphaForState(state, alpha)`): the sanctioned way to keep it seen, in place of our holding its opacity every frame (which shimmered). It does nothing for where the marker is put.
+
+Offered, not built: `/men dotpin`, a trial of lead 1 behind `/men dotshow`.
 
 ## Settled recently
 

@@ -1029,7 +1029,16 @@ function Bars:ApplyPetWell()
         function w.refresh()
             local has = UnitExists("pet")
             if secret(has) then has = true end
-            w:SetShown(w.on and has and true or false)
+            -- (0.1.706) The well is a protected frame: in a fight the game
+            -- refuses to show or hide it (113 refusals in one session, each
+            -- mood event asking). Left as it is then, and put right after.
+            local want = w.on and has and true or false
+            if InCombatLockdown() and w.IsProtected and w:IsProtected() then
+                if w:IsShown() ~= want then w.showLater = true end
+            else
+                w.showLater = nil
+                w:SetShown(want)
+            end
             if not (w.on and has) then return end
             local l = UnitLevel("pet")
             if l == nil or secret(l) or (type(l) == "number" and l <= 0) then lvl:SetText("") else lvl:SetText(l) end
@@ -1115,13 +1124,14 @@ function Bars:ApplyPetWell()
             ns:Print("Pet mood recorded. /reload so it can be read.")
         end
         local ev = CreateFrame("Frame")
-        for _, e in ipairs({ "PET_BAR_UPDATE", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD" }) do pcall(ev.RegisterEvent, ev, e) end
+        for _, e in ipairs({ "PET_BAR_UPDATE", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }) do pcall(ev.RegisterEvent, ev, e) end
         pcall(ev.RegisterUnitEvent, ev, "UNIT_PET", "player")
         for _, e in ipairs({ "UNIT_LEVEL", "UNIT_NAME_UPDATE", "UNIT_HAPPINESS" }) do pcall(ev.RegisterUnitEvent, ev, e, "pet") end
         pcall(ev.RegisterUnitEvent, ev, "UNIT_POWER_UPDATE", "pet")
         pcall(ev.RegisterUnitEvent, ev, "UNIT_MAXPOWER", "pet")
         pcall(ev.RegisterEvent, ev, "UNIT_PET_EXPERIENCE")
         ev:SetScript("OnEvent", function(_, e, _, token)
+            if e == "PLAYER_REGEN_ENABLED" and not w.showLater then return end
             if e == "UNIT_POWER_UPDATE" or e == "UNIT_MAXPOWER" then
                 -- Any change of the pet's powers, at most twice a second. (It
                 -- used to wait for one named "HAPPINESS", and a pet fed up to
