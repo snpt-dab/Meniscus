@@ -1095,6 +1095,24 @@ local function buildRecast()
         list[#list + 1] = date("%H:%M:%S") .. " " .. what .. (fight() and " (in a fight): " or " (out of a fight): ")
             .. res .. (extra and (", " .. extra) or "")
     end
+    -- (0.1.659: the first fights said asking by name is blind in a fight:
+    -- "not there" even right after the seal's cast. So a second witness,
+    -- one the game does show in a fight: whether the spending spell
+    -- (Judgement) can be cast at all. If it needs a seal, it goes
+    -- unusable, and not for want of mana, the moment the seal is gone.
+    -- Whether it does need one is learnt out of a fight, where the buff
+    -- can be seen: no seal on you and Judgement unusable = it does
+    -- (kept in the settings as needsSeal); usable with no seal = it tells
+    -- nothing, and the guess stands.)
+    local function castable(spell)
+        local F = C_Spell and C_Spell.IsSpellUsable
+        if not F then return "no answer" end
+        local ok, u, noMana = pcall(F, spell)
+        if not ok then return "refused" end
+        if secret(u) or secret(noMana) then return "hidden" end
+        if u then return "yes" end
+        return noMana and "no mana" or "no"
+    end
     local function look(name)
         local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
         if not ok then return "refused" end
@@ -1102,6 +1120,30 @@ local function buildRecast()
         if type(a) == "table" then return "there", a end
         return "not there"
     end
+    local function learn()
+        if InCombatLockdown() or not QB.db then return end
+        for ender, prefix in pairs(RECAST_ENDS) do
+            if known(ender) then
+                local on = false
+                for name in pairs(RECAST) do
+                    if name:sub(1, #prefix) == prefix and look(name) ~= "not there" then on = true end
+                end
+                if not on then
+                    local c = castable(ender)
+                    if c == "no" or c == "yes" then
+                        local needs = c == "no"
+                        QB.db.needsSeal = type(QB.db.needsSeal) == "table" and QB.db.needsSeal or {}
+                        if QB.db.needsSeal[ender] ~= needs then
+                            QB.db.needsSeal[ender] = needs
+                            diag("with no " .. prefix .. " on you, " .. ender .. " can be cast", c,
+                                needs and "so it tells when the seal is gone" or "so it tells nothing")
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local function tells(ender) return QB.db and type(QB.db.needsSeal) == "table" and QB.db.needsSeal[ender] == true end
     local function seat()
         f:ClearAllPoints()
         if btn and btn:IsShown() then
@@ -1118,6 +1160,12 @@ local function buildRecast()
         if acc < 0.1 then return end
         acc = 0
         if not cur then return self:Hide() end
+        if cur.ender and not cur.spent and GetTime() - cur.cast > 0.6 and tells(cur.ender)
+            and castable(cur.ender) == "no" then
+            diag(cur.ender .. " can no longer be cast, " .. cur.name, "no", "taken as gone")
+            cur.spent = GetTime()
+            pcall(cd.SetCooldown, cd, 0, 0)
+        end
         local left = cur.start + cur.dur - GetTime()
         seat()
         local since = cur.spent and (GetTime() - cur.spent) or -left
@@ -1144,7 +1192,10 @@ local function buildRecast()
         end
     end)
     local function start(name, spellID, dur)
-        cur = { name = name, start = GetTime(), dur = dur }
+        cur = { name = name, start = GetTime(), cast = GetTime(), dur = dur }
+        for ender, prefix in pairs(RECAST_ENDS) do
+            if name:sub(1, #prefix) == prefix and known(ender) then cur.ender = ender end
+        end
         local okT, tex = false, nil
         if C_Spell and C_Spell.GetSpellTexture then okT, tex = pcall(C_Spell.GetSpellTexture, spellID) end
         icon:SetTexture((okT and tex and not secret(tex)) and tex or 134400)
@@ -1157,7 +1208,9 @@ local function buildRecast()
             if not cur or cur.name ~= name then return end
             local res, a = look(name)
             sees[fight()] = res == "there"
-            if res ~= "there" then return diag("after " .. name, res) end
+            if res ~= "there" then
+                return diag("after " .. name, res, cur.ender and (cur.ender .. " can be cast: " .. castable(cur.ender)) or nil)
+            end
             local e, d = a.expirationTime, a.duration
             if secret(e) or secret(d) or type(e) ~= "number" or type(d) ~= "number" or d <= 0 then
                 -- Its times are hidden: the ring can still be handed the
@@ -1200,7 +1253,11 @@ local function buildRecast()
     au:SetScript("OnEvent", function() if cur and not cur.spent then check("buffs changed") end end)
     local rg = CreateFrame("Frame")
     rg:RegisterEvent("PLAYER_REGEN_ENABLED")
-    rg:SetScript("OnEvent", function() if cur and cur.spent then cur.spent = GetTime() end end) -- (six seconds more, then it goes)
+    rg:SetScript("OnEvent", function()
+        if cur and cur.spent then cur.spent = GetTime() end -- (six seconds more, then it goes)
+        C_Timer.After(1.5, function() pcall(learn) end)
+    end)
+    C_Timer.After(8, function() pcall(learn) end)
     local ev = CreateFrame("Frame")
     pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
     ev:RegisterEvent("PLAYER_DEAD")
@@ -1225,8 +1282,17 @@ local function buildRecast()
                     sees[fight()] = true
                     return diag("after " .. name .. ", " .. cur.name, res, "kept running")
                 end
+                local c = castable(name)
+                if tells(name) then
+                    -- Judgement itself says: still castable (or only out
+                    -- of mana) = the seal is still on.
+                    if c == "yes" or c == "no mana" then
+                        return diag("after " .. name .. ", " .. cur.name, res, name .. " can still be cast (" .. c .. "): kept running")
+                    end
+                end
                 diag("after " .. name .. ", " .. cur.name, res,
-                    sees[fight()] == true and "taken as spent" or "asking not proven here: guessed spent")
+                    (sees[fight()] == true and "taken as spent" or "asking not proven here: guessed spent")
+                    .. "; " .. name .. " can be cast: " .. c)
                 spend()
             end)
         end

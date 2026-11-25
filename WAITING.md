@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.658.
+Last updated: 2026-11-24, version 0.1.659.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 1 | Seal ring (0.1.658) | `/reload`. Seal up, fight, Judge, seal again, a few times; once cast the seal before the pull and once during the fight | What the ring did after Judgement, and whether Judgement takes your seal off in this game. Then `/reload` |
+| 1 | Seal ring (0.1.659) | First: **does Judgement take your seal off in this game?** Then `/reload`, stand a few seconds out of a fight with no seal on, and fight with seal and Judgement as before | The answer, and what the ring did. Then `/reload` |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 7 | Combat numbers' height (0.1.657) | Fight | Whether 36 above the target frame sits right |
 | 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |
@@ -32,6 +32,7 @@ Last updated: 2026-11-24, version 0.1.658.
 
 ## Settled recently
 
+- Seals: asking for the buff by name is blind in a fight ("not there" right after the cast, 3 of 3). Out of a fight it answers, and a seal lasts 30 s.
 - Why nothing was on file for crafted upgrades: `GetRealmName()` answers "" on this client. Fixed in 0.1.654 (realm asked three ways, else one book).
 - Bestiary loot rows: the name does arrive (300-400 ms); the "Item 1234" placeholder is now a dim "...".
 - The game's two map buttons do show in full screen: the "Exit full screen" pill is removed.
