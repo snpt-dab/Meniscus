@@ -1519,6 +1519,7 @@ ns.commands.help = function()
         "/men dotshow  the quest dot over the world: hidden for now (broken by a game patch); this shows it again",
         "/men dotforce  the quest dot, when shown: kept visible and placed by Meniscus (the default), or left to the game",
         "/men alts  your characters on file for crafted upgrades (/men alts forget clears them)",
+        "/men cure show [disease | poison | curse | magic]  a sample of the cure pill and a chip, for 12 seconds (old | new: which draws them)",
         "/men bestiary  what you have learned of the creatures you have met",
         "/men bestiary export  set your records down for sharing (then Share Bestiary.bat)",
         "/men bestiary hp <number>  your target's full health, as its frame shows it (replaces the estimate)",

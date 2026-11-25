@@ -652,6 +652,11 @@ function ns.MapFooter()
             local b = _G[n]
             if b and not InCombatLockdown() then pcall(b.SetFrameStrata, b, low and "LOW" or usual) end
         end
+        -- (0.1.693: what is SEEN of Quick Cure is now the game's aura
+        -- buttons, in a container of ours. That is no casting button, so
+        -- it can go under the map in a fight too.)
+        local cures = _G.MeniscusCureAuras
+        if cures then pcall(cures.SetFrameStrata, cures, low and "LOW" or "MEDIUM") end
     end
     wm:HookScript("OnHide", function() pcall(qbLayer) end)
     local function sync()

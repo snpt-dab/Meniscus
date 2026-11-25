@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.692.
+Last updated: 2026-11-25, version 0.1.693.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Cure pill in a fight, by the game’s own aura container (0.1.692) | `/reload`, wait ten seconds, `/reload` again: that alone tells me what the client offers. Then, when it suits: catch a disease while already in a fight | During the fight, did the disease’s picture appear at the left end of where the pill sits (left of your cast bar)? Did clicking it cure you? Out of a fight, does the pill look and work as before? |
+| 11 | Quick Cure drawn by the game, so that it shows for what is caught IN a fight (0.1.693) | `/reload`. (a) `/men cure show`: a sample pill and chip appear above the pill’s place for 12 seconds; no debuff needed. (b) Catch something curable out of a fight. (c) Catch something curable while already in a fight. Then `/reload` | (a) Does the sample look right: a flash every couple of seconds, faint dust coming off it in time with the flash? (b) Does the pill appear with the debuff’s own picture, and does a click cure? (c) Does it appear during the fight, and go when cured? If nothing shows at all: `/men cure old`, `/reload` brings the previous display back |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
@@ -20,9 +20,7 @@ Last updated: 2026-11-25, version 0.1.692.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
-- `cureapi` (once per version): what the client has for auras: function names, filters, option tables with their defaults, and its own documentation of everything "Aura" (11).
-- `curecontainer`, `cureagree` (fresh each session): each step of making the aura container, with any refusal’s words; and how often its slot agreed with the readable list (11).
-- `cureways`, `curefight`, `cureprobe`, `cureerr` (fresh each session): which way of asking answered in a fight, whether the debuff border’s colour came plain or hidden, and what a shown debuff button’s fields hold (11).
+- `curecontainer` (fresh each session): for you and each party member, how many faces the game let be made and dressed, any refusal’s words, and whether auras were secret in the fight (11).
 - `dolldiag`: for each way of standing a figure up, whether a model came and what the game answered to each piece of gear (10).
 - `figdiag`: the body number this character measured, to check the table of race bodies against (10).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
@@ -37,6 +35,7 @@ Last updated: 2026-11-25, version 0.1.692.
 
 ## Settled recently
 
+- The aura container works on this client (record of 0.1.692): made, given a unit, a slot added for "what you can dispel", its button dressed: every step accepted. The survey it wrote, and then the game’s own source for this build (public: Gethe/wow-ui-source, branch `forever`), gave the rest: slots can be narrowed to a kind of debuff, a button is dressed once as it is made and may not be touched in a fight, and nothing can ask it whether it is shown.
 - CORRECTION (2026-11-25, on re-reading the evidence): "no road is left" was wrong. Every road tried was a way of READING a debuff in a fight, and all of those are closed on purpose (the game’s notes for its 12.1 line, which Forever 1.60 carries). The same change added a way to have auras SHOWN without reading them: an `AuraContainer` given a unit and a filter, drawn by the game itself; the filter `HARMFUL|RAID` is "debuffs you can dispel". Under test from 0.1.692 (item 11). Not yet known to work here.
 - Client fact (record of 0.1.690): asking the game whether a hidden aura passes the dispel filter (`IsAuraFilteredOutByInstanceID`) is refused in a fight with the same words as every other aura call.
 - Client fact (record of 0.1.689): in a fight the game’s own debuff button holds its list place in the clear and everything else hidden (kind, picture, aura number); the border is not coloured but given a hidden atlas. A debuff’s kind cannot be read in a fight by any road.

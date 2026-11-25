@@ -1735,7 +1735,11 @@ local function cureLook(f, PH)
     end
     return L
 end
-function UF:BuildCure()
+-- (0.1.693: this is the display as it was, drawn by this addon from what it
+-- can read. It can't show what is caught IN a fight: see BuildCure, below,
+-- which has the game draw it. Kept for a client that has no aura
+-- containers, and for `/men cure old`; to go once the new one is settled.)
+function UF:BuildCureOld()
     if self.db.cure == false or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
     local _, cls = UnitClass("player")
     local list = CURES[cls or ""]
@@ -2533,330 +2537,6 @@ function UF:BuildCure()
         end
     end
 
-    -- ── The game's own way: an aura container (0.1.692) ───────────────────
-    -- Asked "do you agree with the findings re: the debuff pill showing
-    -- during combat?", the honest answer was: with the measurements, yes;
-    -- with the conclusion drawn from them ("not possible on this client"),
-    -- no. Every road tried was a way of READING a debuff, and the game's
-    -- published notes say why all of them fail: since its 12.1 line (which
-    -- Forever 1.60 carries), anything that hands aura data to addon code
-    -- raises an error while auras are secret (in a fight), the UNIT_AURA
-    -- event's payload is wholly hidden, and its own aura buttons are closed
-    -- to addon code. That was done on purpose, to stop addons acting on
-    -- debuffs by themselves. But the same change added a way for addons to
-    -- have auras SHOWN without reading them: an "AuraContainer" is told a
-    -- unit and a filter, and the game itself tracks, filters and draws the
-    -- matching auras, in a fight as out of one. One of its filters is
-    -- "HARMFUL|RAID": the debuffs on that unit that YOU can dispel. That is
-    -- the cure pill's very question, answered by the game, and it was never
-    -- looked for: no list of what this client offers was ever made before
-    -- "no road is left" was written.
-    --
-    -- This is a first, guarded try at it, and a survey of what the client
-    -- has, so that the real thing can be built from facts:
-    --   * tryContainer: makes a container for you with one slot, "what you
-    --     can dispel", and sets its aura button exactly on the picture at
-    --     the pill's left end. If it works, then in a fight, the moment a
-    --     curable debuff lands, its picture appears there by the game's own
-    --     hand; the pill's button is already under it (it is put there as
-    --     every fight starts), and the game's aura buttons are said to let
-    --     clicks through to what is beneath. Every step is under guard and
-    --     written to MinimalUIDB.curecontainer, refusals with their words.
-    --   * cureSurvey: once per version, writes out what the client has for
-    --     this (function names, the filters, the option tables with their
-    --     defaults, the game's own API documentation for everything
-    --     "Aura") to MinimalUIDB.cureapi. No fight needed for any of it.
-    --   * MinimalUIDB.cureagree counts, at every change of your auras, what
-    --     the slot shows against what the list says (out of a fight, where
-    --     the list can be read): whether the filter means what it should.
-    -- db.cureContainer = false switches the try off.
-    local function has(o, m) return o ~= nil and type(o[m]) == "function" end
-    local function methodsOf(o, list)
-        local out = {}
-        for _, m in ipairs(list) do
-            local okH, yes = pcall(has, o, m)
-            out[#out + 1] = m .. ((okH and yes) and "+" or "-")
-        end
-        return table.concat(out, " ")
-    end
-    if MinimalUIDB then MinimalUIDB.curecontainer, MinimalUIDB.cureagree = nil, nil end
-    local function containerNote(str)
-        if not MinimalUIDB then return end
-        local t = type(MinimalUIDB.curecontainer) == "table" and MinimalUIDB.curecontainer or {}
-        MinimalUIDB.curecontainer = t
-        if #t < 48 then t[#t + 1] = (InCombatLockdown() and "[fight] " or "[calm] ") .. tostring(str):sub(1, 600) end
-    end
-    local slotFrame -- the aura button the game shows for "a debuff on you that you can dispel"
-    local function tryContainer(tries)
-        tries = tries or 0
-        if self.cureContainer or self.db.cureContainer == false then return end
-        if InCombatLockdown() then
-            if tries < 40 then C_Timer.After(5, function() pcall(tryContainer, tries + 1) end) end
-            return
-        end
-        local ok, c = pcall(CreateFrame, "AuraContainer", "MeniscusCureAuras", UIParent, "CustomAuraContainerTemplate")
-        if not ok or not c then
-            containerNote("an aura container could not be made: " .. tostring(c))
-            return
-        end
-        self.cureContainer = c
-        containerNote("container made: " .. methodsOf(c, { "SetUnit", "GetUnit", "SetEnabled", "IsEnabled", "UpdateAllAuras",
-            "AddAuraSlot", "AddAuraGroup", "GetAuraSlotFrame", "SetAuraSlotFilterString", "SetAuraSlotCandidateFilters",
-            "SetAuraSlotEnabled", "SetAuraProcessingPolicy", "SetAuraGroupLayout" }))
-        local function step(label, fn, ...)
-            if type(fn) ~= "function" then
-                containerNote(label .. ": no such thing to call")
-                return false
-            end
-            local okC, r1 = pcall(fn, ...)
-            if okC then
-                containerNote(label .. ": ok" .. (r1 ~= nil and (", gave " .. val(r1)) or ""))
-            else
-                containerNote(label .. ": REFUSED: " .. tostring(r1))
-            end
-            return okC, r1
-        end
-        local S = PH - 6
-        step("size", c.SetSize, c, S, S)
-        step("layer", c.SetFrameStrata, c, "MEDIUM")
-        step("level", c.SetFrameLevel, c, pill:GetFrameLevel() + 6)
-        step("placed on the pill's picture", c.SetPoint, c, "LEFT", pill, "LEFT", 3, 0)
-        step("unit", c.SetUnit, c, "player")
-        local made
-        local okS, slot = step("a slot for what you can dispel (HARMFUL|RAID)", c.AddAuraSlot, c, "cure", "HARMFUL|RAID", {
-            initializeFrame = function(frame) made = frame end,
-        })
-        local f = (okS and type(slot) == "table" and slot) or made
-        if not f then
-            okS, slot = step("the same, with no options", c.AddAuraSlot, c, "cure2", "HARMFUL|RAID")
-            f = (okS and type(slot) == "table" and slot) or made
-        end
-        if not f and has(c, "GetAuraSlotFrame") then
-            local okG, g = step("asked for the slot's frame", c.GetAuraSlotFrame, c, "cure")
-            if okG and type(g) == "table" then f = g end
-        end
-        if not f then
-            containerNote("no slot frame came of it: nothing to dress")
-            return
-        end
-        slotFrame = f
-        local okO, kindOfFrame = pcall(function() return f:GetObjectType() end)
-        containerNote("slot frame: a " .. tostring(okO and kindOfFrame or "?") .. "; " .. methodsOf(f, { "SetIcon", "AddDispelTypeTexture",
-            "SetDispelTypeText", "SetDurationCooldown", "SetDurationText", "SetApplicationCount", "SetSpellName",
-            "AddAuraShownAnimation", "AddAuraAssignedAnimation", "SetCancelAuraButtons", "SetHideTooltipInCombat",
-            "SetTooltipAnchorPoint", "CreateTexture", "CreateMaskTexture", "CreateFontString", "SetPoint", "SetSize" }))
-        step("slot size", f.SetSize, f, S, S)
-        step("slot points cleared", f.ClearAllPoints, f)
-        step("slot placed", f.SetPoint, f, "CENTER", c, "CENTER", 0, 0)
-        -- Its border by kind: a disc behind the picture, for the game to colour.
-        local okB, border = pcall(f.CreateTexture, f, nil, "BACKGROUND")
-        if okB and border then
-            pcall(function()
-                border:SetTexture(MEDIA .. "circle.tga")
-                border:SetPoint("TOPLEFT", f, "TOPLEFT", -2, 2)
-                border:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 2, -2)
-            end)
-            if not step("border by kind handed over, no options", f.AddDispelTypeTexture, f, border) then
-                step("border by kind handed over, empty options", f.AddDispelTypeTexture, f, border, {})
-            end
-        else
-            containerNote("no texture could be made on the slot frame: " .. tostring(border))
-        end
-        -- Its picture, round, as the pill's is.
-        local okT, icon = pcall(f.CreateTexture, f, nil, "ARTWORK")
-        if okT and icon then
-            pcall(function()
-                icon:SetAllPoints(f)
-                icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                local mask = f:CreateMaskTexture()
-                mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-                mask:SetAllPoints(icon)
-                icon:AddMaskTexture(mask)
-            end)
-            step("picture handed over", f.SetIcon, f, icon)
-        end
-        -- A pulse of light as it appears, and every couple of seconds while
-        -- it stays: an animation, which the game plays by itself (no script
-        -- of ours may run on its aura buttons).
-        pcall(function()
-            local glow = f:CreateTexture(nil, "OVERLAY")
-            glow:SetTexture(MEDIA .. "spot.tga")
-            glow:SetBlendMode("ADD")
-            glow:SetPoint("CENTER")
-            glow:SetSize(S * 3.2, S * 3.2)
-            glow:SetAlpha(0)
-            local ag = glow:CreateAnimationGroup()
-            local a1 = ag:CreateAnimation("Alpha")
-            a1:SetFromAlpha(0.85)
-            a1:SetToAlpha(0)
-            a1:SetDuration(0.7)
-            a1:SetEndDelay(1.5)
-            ag:SetLooping("REPEAT")
-            step("a pulse handed over", f.AddAuraShownAnimation, f, ag)
-        end)
-        C_Timer.After(1.5, function()
-            local okV, shown = pcall(f.IsShown, f)
-            local a = afflicted("player")
-            local okE, en = pcall(function() return c:IsEnabled() end)
-            local okCS, cs = pcall(c.IsShown, c)
-            containerNote("a moment on: slot shown " .. (okV and val(shown) or ("REFUSED: " .. tostring(shown)))
-                .. "; by the list you " .. (a and "have" or "have not") .. " something curable"
-                .. "; container shown " .. (okCS and val(cs) or "?") .. ", enabled " .. (okE and val(en) or "?"))
-        end)
-    end
-    -- What the slot shows against what the list says, counted.
-    local agreeQueued = false
-    local function agree()
-        if agreeQueued or not slotFrame then return end
-        agreeQueued = true
-        C_Timer.After(0.4, function()
-            agreeQueued = false
-            if not MinimalUIDB then return end
-            local okV, shown = pcall(slotFrame.IsShown, slotFrame)
-            local slotSays = not okV and "can't be asked" or (issecretvalue(shown) and "hidden") or (shown and "SHOWN" or "not shown")
-            local key
-            if InCombatLockdown() then
-                local n = 0
-                local list = _G.DebuffFrame and _G.DebuffFrame.auraFrames
-                if type(list) == "table" then
-                    for _, btn in ipairs(list) do
-                        if not isPlace(btn) then
-                            local okS, sh = pcall(btn.IsShown, btn)
-                            if okS and not issecretvalue(sh) and sh then n = n + 1 end
-                        end
-                    end
-                end
-                key = "in a fight: slot " .. slotSays .. "; your debuffs: " .. n
-            else
-                key = "out of a fight: slot " .. slotSays .. "; the list says " .. (afflicted("player") and "curable" or "nothing curable")
-            end
-            local t = type(MinimalUIDB.cureagree) == "table" and MinimalUIDB.cureagree or {}
-            MinimalUIDB.cureagree = t
-            t[key] = (t[key] or 0) + 1
-        end)
-    end
-    -- What this client has for the job: written out once per version.
-    local function cureSurvey()
-        local db = MinimalUIDB
-        if not db or db.cureSurveyDone == ns.version then return end
-        if InCombatLockdown() then
-            C_Timer.After(10, function() pcall(cureSurvey) end)
-            return
-        end
-        db.cureSurveyDone = ns.version
-        local out = {}
-        db.cureapi = out
-        local function add(str) if #out < 480 then out[#out + 1] = tostring(str):sub(1, 900) end end
-        local function names(t, pat)
-            if type(t) ~= "table" then return type(t) end
-            local o = {}
-            for k, v in pairs(t) do
-                if type(k) == "string" and (not pat or k:find(pat)) then
-                    o[#o + 1] = k .. (type(v) ~= "function" and ("=" .. val(v)) or "")
-                end
-            end
-            table.sort(o)
-            return table.concat(o, " ")
-        end
-        add("version " .. tostring(ns.version) .. "; client build: " .. tostring(select(2, pcall(function() return (select(1, GetBuildInfo())) .. " " .. (select(2, GetBuildInfo())) .. " " .. tostring(select(4, GetBuildInfo())) end))))
-        add("C_UnitAuras: " .. names(_G.C_UnitAuras))
-        add("C_AuraContainerUtil: " .. names(_G.C_AuraContainerUtil))
-        add("C_Secrets: " .. names(_G.C_Secrets))
-        add("C_TooltipInfo, aura parts: " .. names(_G.C_TooltipInfo, "[ABb]u[rf]"))
-        add("AuraUtil: " .. names(_G.AuraUtil))
-        add("AuraUtil.AuraFilters: " .. keysOf(_G.AuraUtil and _G.AuraUtil.AuraFilters, 40))
-        local okSec, sec = pcall(function() return C_Secrets.ShouldAurasBeSecret() end)
-        add("are auras secret now, out of a fight: " .. (okSec and val(sec) or "could not ask"))
-        local AU = _G.C_AuraContainerUtil
-        if type(AU) == "table" then
-            local list = {}
-            for name, fn in pairs(AU) do
-                if type(name) == "string" and type(fn) == "function" and name:find("^Process") then list[#list + 1] = name end
-            end
-            table.sort(list)
-            for _, name in ipairs(list) do
-                local ok1, r1 = pcall(AU[name], {})
-                add(name .. "({}) -> " .. (ok1 and keysOf(r1, 40) or ("REFUSED: " .. tostring(r1):sub(1, 300))))
-            end
-        end
-        for _, g in ipairs({ "AuraContainerSortMethod", "AuraContainerSortDirection", "AuraContainerProcessingPolicy",
-                             "CustomAuraContainerSlotDefaultOptions", "CustomAuraContainerGroupDefaultOptions",
-                             "CustomAuraContainerGroupLayoutDefaultOptions", "DebuffTypeColor" }) do
-            add("global " .. g .. ": " .. keysOf(_G[g], 40))
-        end
-        if type(Enum) == "table" then
-            local en = {}
-            for k, v in pairs(Enum) do
-                if type(k) == "string" and (k:find("Aura") or k:find("Dispel")) then en[#en + 1] = "Enum." .. k .. " " .. keysOf(v, 40) end
-            end
-            table.sort(en)
-            for _, l in ipairs(en) do add(l) end
-        end
-        -- The game's own documentation of everything "Aura" (the /api browser's data).
-        pcall(function()
-            local L = (C_AddOns and C_AddOns.LoadAddOn) or _G.LoadAddOn
-            if L then L("Blizzard_APIDocumentationGenerated") end
-        end)
-        local D = _G.APIDocumentation
-        if type(D) ~= "table" or type(D.systems) ~= "table" then
-            add("the game's API documentation: not to be had")
-            return
-        end
-        local function fields(list)
-            if type(list) ~= "table" then return "" end
-            local parts = {}
-            for _, fd in ipairs(list) do
-                if type(fd) == "table" then
-                    local s2 = tostring(fd.Name) .. ":" .. tostring(fd.Type)
-                    if fd.InnerType then s2 = s2 .. "<" .. tostring(fd.InnerType) .. ">" end
-                    if fd.Nilable then s2 = s2 .. "?" end
-                    if fd.Default ~= nil then s2 = s2 .. "=" .. tostring(fd.Default) end
-                    if fd.EnumValue ~= nil then s2 = s2 .. "=" .. tostring(fd.EnumValue) end
-                    parts[#parts + 1] = s2
-                end
-            end
-            return table.concat(parts, ", ")
-        end
-        local STD = { Name = 1, Type = 1, Arguments = 1, Returns = 1, Documentation = 1, System = 1, Fields = 1, Payload = 1, LiteralName = 1 }
-        local function flags(doc)
-            local parts = {}
-            for k, v in pairs(doc) do
-                if type(k) == "string" and not STD[k] and type(v) ~= "table" and type(v) ~= "function" then
-                    parts[#parts + 1] = k .. "=" .. tostring(v)
-                end
-            end
-            table.sort(parts)
-            local text = type(doc.Documentation) == "table" and doc.Documentation[1] or nil
-            return (#parts > 0 and (" [" .. table.concat(parts, " ") .. "]") or "") .. (text and (" // " .. tostring(text):sub(1, 220)) or "")
-        end
-        local n = 0
-        for _, sys in ipairs(D.systems) do
-            if type(sys) == "table" then
-                local sname = tostring(sys.Namespace or sys.Name or "?")
-                local whole = sname:find("Aura") ~= nil or tostring(sys.Name):find("Aura") ~= nil
-                for _, fn in ipairs(type(sys.Functions) == "table" and sys.Functions or {}) do
-                    if type(fn) == "table" and (whole or tostring(fn.Name):find("Aura")) then
-                        add("fn " .. sname .. "." .. tostring(fn.Name) .. "(" .. fields(fn.Arguments) .. ") -> " .. fields(fn.Returns) .. flags(fn))
-                        n = n + 1
-                    end
-                end
-                for _, tb in ipairs(type(sys.Tables) == "table" and sys.Tables or {}) do
-                    if type(tb) == "table" and (whole or tostring(tb.Name):find("Aura") or tostring(tb.Name):find("Dispel")) then
-                        add(tostring(tb.Type) .. " " .. tostring(tb.Name) .. " { " .. fields(tb.Fields) .. " }" .. flags(tb))
-                        n = n + 1
-                    end
-                end
-                for _, e2 in ipairs(type(sys.Events) == "table" and sys.Events or {}) do
-                    if type(e2) == "table" and (tostring(e2.Name):find("Aura") or tostring(e2.LiteralName):find("AURA")) then
-                        add("event " .. tostring(e2.LiteralName or e2.Name) .. "(" .. fields(e2.Payload) .. ")" .. flags(e2))
-                        n = n + 1
-                    end
-                end
-            end
-        end
-        add("documentation entries written: " .. n .. ", from " .. #D.systems .. " systems")
-    end
-
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "UNIT_AURA", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED",
                          "PLAYER_REGEN_DISABLED", "ENCOUNTER_START" }) do
@@ -2890,12 +2570,6 @@ function UF:BuildCure()
             -- can't be once the fight is on. Its dress stays off until
             -- there is something to say.
             fightOn = true
-            C_Timer.After(1.5, function()
-                if self.cureSecretNoted or not InCombatLockdown() then return end
-                self.cureSecretNoted = true
-                local okSec, sec = pcall(function() return C_Secrets.ShouldAurasBeSecret() end)
-                containerNote("are auras secret now, in a fight: " .. (okSec and val(sec) or "could not ask"))
-            end)
             if not InCombatLockdown() and #spells > 0 then
                 seatPill()
                 pill:Show()
@@ -2908,9 +2582,7 @@ function UF:BuildCure()
         if e == "UNIT_AURA" then
             if type(unit) ~= "string" or issecretvalue(unit) then return end
             -- (Only you and your party: this event fires for every unit in sight.)
-            if unit == "player" then
-                pcall(updatePill)
-                pcall(agree)
+            if unit == "player" then pcall(updatePill)
             elseif unit:find("^party%d$") then updateAll() end
             return
         end
@@ -2921,8 +2593,763 @@ function UF:BuildCure()
     assign()
     -- (The map and its rim are built after this module.)
     C_Timer.After(3, function() pcall(assign); pcall(updatePill); updateAll() end)
-    C_Timer.After(4, function() pcall(tryContainer, 0) end)
-    C_Timer.After(7, function() pcall(cureSurvey) end)
+end
+
+-- ── Quick Cure, drawn by the game (0.1.693) ─────────────────────────────────
+-- An addon may not READ a debuff in a fight (see BuildCureOld, and CLAUDE.md
+-- "Quick Cure": every road to it is closed on purpose). But the game will
+-- SHOW one for it: an "aura container" is given a unit and a filter, and the
+-- game itself tracks, filters and draws what matches, in a fight as out of
+-- one. So the pill and the chips are no longer drawn by this addon at all.
+-- For you and for each of the party:
+--   * a container with a SLOT for each kind of affliction you have a cure
+--     for (filter "HARMFUL|RAID", what the game says you can dispel,
+--     narrowed to that kind: both must hold, as they had to before);
+--   * each slot's aura button (the game's own) is dressed ONCE, as it is
+--     made, as the whole face for that kind: ring, fill, the words, the
+--     picture (which the game fills in), the light, and what comes off the
+--     light. Light and motes are animations, which the game starts when the
+--     button appears and stops when it goes: no script of ours may run on
+--     an aura button, and in a fight it may not even be touched;
+--   * over them, unseen, the casting button fixed on that unit, as before.
+--     It is there for the whole of every fight; out of one, only while you
+--     have something to cure (that much can still be read, out of a fight).
+-- All of this is from the game's own source for this very build (1.60.1
+-- 71091: the public mirror Gethe/wow-ui-source, branch "forever", folder
+-- Blizzard_AuraContainer), not from trying things:
+--   * a slot shows the first aura that passes its filter string and its
+--     candidate filters; `includeDispelTypes` / `excludeDispelTypes` are
+--     maps keyed by the kind's name ("Magic", "Curse", "Disease", "Poison");
+--   * whatever is handed to an aura button (picture, animation groups) must
+--     be a child of that button, however deep, and an animation's target
+--     too; nothing can be added to a group once it is handed over;
+--   * the button is shown with a hidden yes-or-no, so nothing can ask it
+--     whether it is shown, in a fight or out of one; and while auras are
+--     secret an addon is refused every call on it. So: dressed in the
+--     `initializeFrame` callback, which the game runs before that begins;
+--   * aura buttons pass all mouse input on (the game makes them), so the
+--     casting button could lie under them; it lies over them, to be sure.
+-- The animations are written so as not to lean on what is not known of the
+-- game's animator: every animated thing has ONE fade, which ends at the
+-- strength the thing has at rest; a mote that must fade in and then out is
+-- two things (a frame that fades in, holding a picture that fades out).
+-- The same faces are built on plain frames for `/men cure show`, so that
+-- how they look can be judged without catching anything.
+local function cureEdge(frac, w, h)
+    local r = h / 2
+    local straight = math.max(0, w - h)
+    local cap = math.pi * r
+    local at = (frac % 1) * (2 * straight + 2 * cap)
+    if at < straight then return -straight / 2 + at, r, 0, 1 end
+    at = at - straight
+    if at < cap then
+        local th = math.pi / 2 - at / r
+        return straight / 2 + r * math.cos(th), r * math.sin(th), math.cos(th), math.sin(th)
+    end
+    at = at - cap
+    if at < straight then return straight / 2 - at, -r, 0, -1 end
+    at = at - straight
+    local th = -math.pi / 2 - at / r
+    return -straight / 2 + r * math.cos(th), r * math.sin(th), math.cos(th), math.sin(th)
+end
+-- One mote's whole life in numbers (the sums are cureMotes' own, with the
+-- scatter fixed: an animation is the same at every pulse). From the middle
+-- of a face w by h: where it starts (x, y), how far it goes (dx, dy), its
+-- size and how it swells, how strong, when after the pulse and for how long.
+local function cureMote(fx, i, n, w, h)
+    local how = fx.how
+    local r1, r2, r3 = cureRnd(i, 3), cureRnd(i + 7, 3), cureRnd(i + 13, 3)
+    local ex, ey, nx, ny = cureEdge((i - 1 + 0.8 * r1) / n, w, h)
+    local m = { r = fx.mote[1], g = fx.mote[2], b = fx.mote[3] }
+    if how == "smoke" then
+        -- (the dust of 0.1.687: tight to the edge, faint, rising a touch)
+        local k = h < 22 and 0.6 or 1
+        ex, ey, nx, ny = cureEdge((i - 1 + 1.6 * (r1 - 0.5)) / n, w, h)
+        m.delay, m.life = 0.18 * r3, 1.8 + 0.2 * r2
+        m.x, m.y = ex + nx * 2 * k, ey + ny * 2 * k
+        m.dx, m.dy = nx * (3 + 3 * r3) * k, ny * (3 + 3 * r3) * k + (4 + 3 * r2) * k
+        m.w = 26 * k
+        m.h = m.w * (0.40 + 0.18 * r3)
+        m.grow = (36 + 6 * r2) / 26
+        m.rot = math.atan2(ny, nx) + math.pi / 2 + (r2 - 0.5) * 0.7
+        m.a, m.rise = 0.17, 0.18
+        m.file, m.blend = "smoke" .. (1 + i % 4) .. ".tga", "BLEND"
+        m.r, m.g, m.b = 0.60 + 0.08 * r2, 0.64 + 0.08 * r3, 0.36 + 0.08 * r1
+        m.ease, m.swell = "OUT", "OUT"
+    elseif how == "bubbles" then
+        local out = 12 + 10 * r2
+        m.delay, m.life = 0.14 * r3, 0.8 + 0.4 * r2
+        m.x, m.y, m.dx, m.dy = ex, ey, nx * out, ny * out
+        m.w = 3 + 3 * r2
+        m.h = m.w
+        m.grow = 1.5 -- (it bursts: wider at the last)
+        m.a, m.rise = 0.85, 0.06
+        m.file, m.blend = "circle.tga", "ADD"
+        m.ease, m.swell, m.fall = "OUT", "IN", "IN"
+    elseif how == "wisps" then
+        local out, side = 15 + 11 * r2, math.sin(4 + i * 2) * 5 -- (it curls as it goes)
+        m.delay, m.life = 0.10 * r3, 1.2 + 0.4 * r2
+        m.x, m.y, m.dx, m.dy = ex, ey, nx * out - ny * side, ny * out + nx * side
+        m.w, m.h = 8, 8
+        m.grow = 19 / 8
+        m.a, m.rise = 0.66, 0.12
+        m.file, m.blend = "spot.tga", "BLEND"
+        m.ease = "OUT"
+    else -- glints
+        local out = 9 + 6 * r2
+        m.delay, m.life = 0.45 * r3, 0.42
+        m.x, m.y, m.dx, m.dy = ex + nx * 3, ey + ny * 3, nx * out, ny * out
+        m.w = (3 + 3 * r1) * 1.3
+        m.h = m.w
+        m.grow = 1
+        m.a, m.rise = 0.95, 0.5
+        m.file, m.blend = "circle.tga", "ADD"
+        m.fall = "IN"
+    end
+    return m
+end
+-- A face, on f (an aura button of the game's, or a plain frame): what is
+-- always there. o = { kind (nil: gold, for "anything else"), chip, w, h,
+-- level (f's own), under (the level for what comes off it: behind it) }.
+local function cureFace(f, o)
+    local kind, w, h = o.kind, o.w, o.h
+    local F = { kind = kind, chip = o.chip and true or false, w = w, h = h, level = o.level, under = o.under,
+                loops = {}, arrives = {}, motes = {} }
+    local c = (kind and CURE_TINT[kind]) or GOLD
+    local mask = f:CreateMaskTexture()
+    mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    if F.chip then
+        F.ring = f:CreateTexture(nil, "BACKGROUND")
+        F.ring:SetAllPoints()
+        F.ring:SetTexture(MEDIA .. "circle.tga")
+        F.ring:SetVertexColor(c[1], c[2], c[3], 1)
+        mask:SetPoint("TOPLEFT", 2, -2)
+        mask:SetPoint("BOTTOMRIGHT", -2, 2)
+        F.hint = ns:CreateText(f, 8)
+        F.hint:SetPoint("CENTER", f, "BOTTOMRIGHT", -1, 2)
+        F.hint:SetShadowOffset(1, -1)
+        F.hint:SetShadowColor(0, 0, 0, 1)
+    else
+        ns.RoundedRect(f, -8, 0, h / 2, c[1], c[2], c[3], 1)
+        ns.RoundedRect(f, -7, 1.5, h / 2 - 1.5, 0.06, 0.06, 0.07, 0.97)
+        mask:SetSize(h - 6, h - 6)
+        mask:SetPoint("LEFT", 3, 0)
+        F.text = ns:CreateText(f, 11)
+        F.text:SetPoint("LEFT", mask, "RIGHT", 6, 0)
+        F.text:SetWordWrap(false)
+    end
+    F.icon = f:CreateTexture(nil, "ARTWORK")
+    F.icon:SetAllPoints(mask)
+    F.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    F.icon:AddMaskTexture(mask)
+    return F
+end
+-- The light, and what comes off it. Arriving, a strong flash; then a
+-- fainter pulse every CURE_PERIOD seconds, each kicking the kind's motes
+-- off the edge. F.arrives: groups to play as it arrives; F.loops: groups
+-- that run for as long as it is seen.
+local function cureFaceFx(f, F)
+    local kind, w, h = F.kind, F.w, F.h
+    local c = (kind and CURE_TINT[kind]) or GOLD
+    local fx = kind and CURE_FX[kind] or nil
+    local lt = fx and fx.light or nil
+    local function looped(region)
+        local ag = region:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        F.loops[#F.loops + 1] = ag
+        return ag
+    end
+    local function once(region)
+        local ag = region:CreateAnimationGroup()
+        F.arrives[#F.arrives + 1] = ag
+        return ag
+    end
+    -- (rest: idle time after it, which is how every looped group is made
+    -- exactly CURE_PERIOD long, so that light and motes keep one clock)
+    local function fade(ag, from, to, dur, delay, smooth, rest)
+        local a = ag:CreateAnimation("Alpha")
+        a:SetFromAlpha(from)
+        a:SetToAlpha(to)
+        a:SetDuration(dur)
+        if delay and delay > 0 then a:SetStartDelay(delay) end
+        if smooth then a:SetSmoothing(smooth) end
+        if rest and rest > 0 then a:SetEndDelay(rest) end
+        return a
+    end
+    local function swell(ag, to, dur, delay, smooth)
+        local a = ag:CreateAnimation("Scale")
+        a:SetScaleFrom(1, 1)
+        a:SetScaleTo(to, to)
+        a:SetDuration(dur)
+        if delay and delay > 0 then a:SetStartDelay(delay) end
+        if smooth then a:SetSmoothing(smooth) end
+        return a
+    end
+    if F.chip then
+        local l = lt or c
+        local br, bg, bb = l[1] + (1 - l[1]) * 0.4, l[2] + (1 - l[2]) * 0.4, l[3] + (1 - l[3]) * 0.4
+        local function burst(size)
+            local t = f:CreateTexture(nil, "BACKGROUND", nil, -1)
+            t:SetTexture(MEDIA .. "spot.tga")
+            t:SetBlendMode("ADD")
+            t:SetPoint("CENTER")
+            t:SetSize(size, size)
+            t:SetVertexColor(br, bg, bb)
+            t:SetAlpha(0)
+            return t
+        end
+        -- Arriving: a burst of light opens behind it, and its picture
+        -- goes white for a moment.
+        local g1 = once(burst(w * 2.4))
+        fade(g1, 1, 0, 0.55, 0, "OUT")
+        swell(g1, 4.6 / 2.4, 0.55)
+        local white = f:CreateTexture(nil, "OVERLAY")
+        white:SetTexture(MEDIA .. "circle.tga")
+        white:SetBlendMode("ADD")
+        white:SetAllPoints()
+        white:SetAlpha(0)
+        fade(once(white), 1, 0, 0.32)
+        -- While it waits: a smaller burst at every pulse, and the ring breathes.
+        local g2 = looped(burst(w * 1.8))
+        fade(g2, 0.55, 0, 0.7, 0, "OUT", CURE_PERIOD - 0.7)
+        swell(g2, 3.4 / 1.8, 0.7)
+        local gb = F.ring:CreateAnimationGroup()
+        gb:SetLooping("BOUNCE")
+        fade(gb, 1, 0.25, 0.63, 0, "IN_OUT")
+        F.loops[#F.loops + 1] = gb
+    else
+        -- (the light a little towards white: a flash, not a wash of colour)
+        local tr, tg, tb = 1, 1, 1
+        if lt then tr, tg, tb = lt[1] + (1 - lt[1]) * 0.3, lt[2] + (1 - lt[2]) * 0.3, lt[3] + (1 - lt[3]) * 0.3 end
+        local function flash()
+            local host = CreateFrame("Frame", nil, f)
+            host:SetAllPoints(f)
+            host:SetFrameLevel(F.level + 1)
+            ns.RoundedRect(host, 6, 0, h / 2, tr, tg, tb, 1, "OVERLAY")
+            host:SetAlpha(0)
+            return host
+        end
+        fade(once(flash()), 0.9, 0, 0.55, 0, "OUT")
+        fade(looped(flash()), 0.42, 0, 0.7, 0, "OUT", CURE_PERIOD - 0.7)
+    end
+    if not fx then return end
+    local n = F.chip and 8 or 14
+    for i = 1, n do
+        local m = cureMote(fx, i, n, w, h)
+        -- (A frame that fades IN, at rest full; in it a picture that fades
+        -- OUT, at rest nothing. Behind the face: smoke is large.)
+        local host = CreateFrame("Frame", nil, f)
+        host:SetFrameLevel(F.under)
+        host:SetSize(m.w, m.h)
+        host:SetPoint("CENTER", f, "CENTER", m.x, m.y)
+        local t = host:CreateTexture(nil, "ARTWORK")
+        t:SetAllPoints()
+        t:SetTexture(MEDIA .. m.file)
+        t:SetBlendMode(m.blend)
+        if m.rot then pcall(t.SetRotation, t, m.rot) end
+        t:SetVertexColor(m.r, m.g, m.b)
+        t:SetAlpha(0) -- (after the colour, always: the two are one value)
+        local rest = math.max(0, CURE_PERIOD - m.delay - m.life)
+        local g = looped(host)
+        fade(g, 0, 1, m.life * m.rise, m.delay, "OUT")
+        local mv = g:CreateAnimation("Translation")
+        mv:SetOffset(m.dx, m.dy)
+        mv:SetDuration(m.life)
+        if m.delay > 0 then mv:SetStartDelay(m.delay) end
+        if m.ease then mv:SetSmoothing(m.ease) end
+        if rest > 0 then mv:SetEndDelay(rest) end
+        if m.grow ~= 1 then swell(g, m.grow, m.life, m.delay, m.swell) end
+        fade(looped(t), m.a, 0, m.life, m.delay, m.fall, rest)
+        F.motes[i] = { host = host, move = mv }
+    end
+    -- The pill's width follows its words: the motes are set round it again.
+    function F.reseat(w2)
+        F.w = w2
+        for i, mo in ipairs(F.motes) do
+            local m = cureMote(fx, i, #F.motes, w2, h)
+            mo.host:ClearAllPoints()
+            mo.host:SetPoint("CENTER", f, "CENTER", m.x, m.y)
+            mo.move:SetOffset(m.dx, m.dy)
+        end
+    end
+end
+-- A face handed to the game's aura button f. Returns the first refusal's
+-- words, if any. (What arrives is put in both lists: the game plays the
+-- "assigned" ones a moment BEFORE it shows the button, and whether a group
+-- can start on a thing not yet shown is not known; the "shown" ones are
+-- played right after.)
+local function cureAdopt(f, F)
+    local err
+    local function try(fn, ...)
+        if type(fn) ~= "function" then err = err or "a way is missing" return end
+        local ok, e = pcall(fn, f, ...)
+        if not ok then err = err or tostring(e) end
+    end
+    try(f.SetIcon, F.icon)
+    for _, g in ipairs(F.arrives) do
+        try(f.AddAuraAssignedAnimation, g)
+        try(f.AddAuraShownAnimation, g)
+    end
+    for _, g in ipairs(F.loops) do try(f.AddAuraShownAnimation, g) end
+    return err
+end
+
+function UF:BuildCure()
+    if self.db.cure == false or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
+    local _, cls = UnitClass("player")
+    local list = CURES[cls or ""]
+    if not list then return end
+    if MinimalUIDB then
+        -- (the records of the roads that are closed, and of the first try: done with)
+        for _, k in ipairs({ "cureapi", "cureSurveyDone", "cureagree", "cureways", "curefight", "cureprobe",
+                             "cureerr", "cureerr2", "curediag", "curecontainer" }) do
+            MinimalUIDB[k] = nil
+        end
+    end
+    local function note(str)
+        if not MinimalUIDB then return end
+        local t = type(MinimalUIDB.curecontainer) == "table" and MinimalUIDB.curecontainer or {}
+        MinimalUIDB.curecontainer = t
+        if #t < 40 then t[#t + 1] = (InCombatLockdown() and "[fight] " or "[calm] ") .. tostring(str):sub(1, 400) end
+    end
+    if self.db.cureOld then
+        note("the old way, by your choice (/men cure new changes back)")
+        return self:BuildCureOld()
+    end
+    local okC, cont = pcall(CreateFrame, "AuraContainer", "MeniscusCureAuras", UIParent, "CustomAuraContainerTemplate")
+    if not okC or type(cont) ~= "table" or type(cont.AddAuraSlot) ~= "function" then
+        note("no aura container to be had (" .. tostring(cont) .. "): the old way")
+        return self:BuildCureOld()
+    end
+
+    local typeSpell, spells = {}, {}       -- kind -> spell; the (up to two) spells, left then right
+    local function known(name)
+        local ok, info = pcall(C_Spell.GetSpellInfo, name)
+        if not ok or type(info) ~= "table" or type(info.spellID) ~= "number" then return false end
+        local k
+        if C_SpellBook and C_SpellBook.IsSpellKnown then k = select(2, pcall(C_SpellBook.IsSpellKnown, info.spellID)) end
+        if k == nil and IsSpellKnown then k = select(2, pcall(IsSpellKnown, info.spellID)) end
+        return k ~= false
+    end
+    local function resolve()
+        for k in pairs(typeSpell) do typeSpell[k] = nil end
+        for i = #spells, 1, -1 do spells[i] = nil end
+        for _, e in ipairs(list) do
+            if known(e[1]) then
+                local used = false
+                for i = 2, #e do
+                    if not typeSpell[e[i]] then typeSpell[e[i]] = e[1]; used = true end
+                end
+                if used and #spells < 2 then spells[#spells + 1] = e[1] end
+            end
+        end
+    end
+    resolve()
+    -- Every kind this class has any cure for, in the list's order. A slot
+    -- is made for a kind once you have a cure for it (now, or out of a
+    -- fight after you learn one): what is seen is what the game says you
+    -- can dispel AND is of a kind you hold the spell for, as it was when
+    -- this addon did the reading.
+    local kinds = {}
+    do
+        local seen = {}
+        for _, e in ipairs(list) do
+            for i = 2, #e do
+                if not seen[e[i]] then seen[e[i]] = true; kinds[#kinds + 1] = e[i] end
+            end
+        end
+    end
+    -- What a face says: the cure for its kind, and which button it is on.
+    local function sayFor(kind)
+        local spell = typeSpell[kind]
+        if not spell then return "" end
+        return spell .. ((spells[2] ~= nil and spell == spells[2]) and "   (right-click)" or "")
+    end
+    local function hintFor(kind)
+        local spell = typeSpell[kind]
+        return (spell and spells[2] ~= nil and spell == spells[2]) and "R" or ""
+    end
+
+    local onPress = true
+    if GetCVarBool then
+        local ok, v = pcall(GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and v == false then onPress = false end
+    end
+    local PH, LV = 24, 10
+    local faces, casters, units = {}, {}, {}
+
+    -- One unit's share: a container c, whose slots lie on `anchor` (that
+    -- unit's casting button).
+    local function unitShare(c, unit, anchor, isChip, w, h, level)
+        local U = { c = c, unit = unit, anchor = anchor, chip = isChip, w = w, h = h, level = level, n = 0,
+                    has = {}, on = {}, tried = {} }
+        for _, st in ipairs({ { "size", c.SetSize, 1, 1 }, { "place", c.SetPoint, "CENTER", anchor, "CENTER", 0, 0 },
+                              { "level", c.SetFrameLevel, level }, { "unit", c.SetUnit, unit } }) do
+            local ok, e = pcall(st[2], c, unpack(st, 3))
+            if not ok then U.refused = U.refused or (st[1] .. ": " .. tostring(e)) end
+        end
+        -- (not in Edit Mode's sample auras: a pill would stand there for a made-up debuff)
+        if c.SetEditModePreviewEnabled then pcall(c.SetEditModePreviewEnabled, c, false) end
+        units[#units + 1] = U
+        return U
+    end
+    -- A slot for one kind, dressed as it is made. Returns the face, or
+    -- nil and the refusal's words.
+    local function slotFor(U, kind)
+        U.n = U.n + 1
+        local lv = U.level + 2 * U.n
+        local F, errB, errA
+        local function dress(fr)
+            local okB, eB = pcall(function()
+                fr:SetAllPoints(U.anchor)
+                fr:SetFrameLevel(lv)
+                F = cureFace(fr, { kind = kind, chip = U.chip, w = U.w, h = U.h, level = lv, under = U.level })
+                F.said = F.chip and hintFor(kind) or sayFor(kind)
+                local words = F.text or F.hint
+                words:SetText(F.said)
+            end)
+            if not okB then errB = eB or "?" return end
+            -- (The light and motes apart: if they fail, the face still stands.)
+            local okX, eX = pcall(cureFaceFx, fr, F)
+            if not okX then errB = eX end
+            errA = cureAdopt(fr, F)
+            -- (its tooltip is the game's own, of the debuff itself)
+            if fr.SetTooltipAnchorPoint then
+                pcall(fr.SetTooltipAnchorPoint, fr, U.chip and "ANCHOR_RIGHT" or "ANCHOR_TOP", 0, U.chip and 0 or 6)
+            end
+        end
+        local ok, e = pcall(U.c.AddAuraSlot, U.c, kind, "HARMFUL|RAID", {
+            candidateFilters = { includeDispelTypes = { [kind] = true } },
+            initializeFrame = dress,
+        })
+        if not ok then return nil, "slot " .. kind .. ": " .. tostring(e) end
+        -- (Should the game not have run the dressing as it made the frame:
+        -- on the frame it hands back, which is open to us out of a fight.)
+        if not F and not errB and type(e) == "table" then
+            dress(e)
+            if F then note(kind .. ": dressed after the making, not in it") end
+        end
+        if not F then return nil, "dressing " .. kind .. ": " .. tostring(errB) end
+        faces[#faces + 1] = F
+        return F, (errB and ("light of " .. kind .. ": " .. tostring(errB))) or (errA and ("handing over " .. kind .. ": " .. tostring(errA))) or nil
+    end
+    -- Every unit has a slot for every kind you now have a cure for; one
+    -- whose cure is gone is switched off. Out of a fight only: nothing of
+    -- the game's can be dressed in one.
+    local function slots()
+        for _, U in ipairs(units) do
+            local made, was = 0, U.made or 0
+            for _, kind in ipairs(kinds) do
+                local want = typeSpell[kind] ~= nil
+                -- (once: a slot the game would not make is not asked for again and again)
+                if want and not U.has[kind] and not U.tried[kind] then
+                    U.tried[kind] = true
+                    local F, e = slotFor(U, kind)
+                    if e then U.refused = U.refused or e end
+                    if F then U.has[kind] = true; U.on[kind] = true end
+                end
+                if U.has[kind] and U.on[kind] ~= want then
+                    U.on[kind] = want
+                    if U.c.SetAuraSlotEnabled then pcall(U.c.SetAuraSlotEnabled, U.c, kind, want) end
+                end
+                if U.has[kind] and want then made = made + 1 end
+            end
+            U.made = made
+            if made ~= was or (U.refused and not U.told) then
+                U.told = U.refused ~= nil
+                local wantN = 0
+                for _, kind in ipairs(kinds) do if typeSpell[kind] then wantN = wantN + 1 end end
+                note(tostring(U.unit) .. ": " .. made .. " of " .. wantN .. " faces" .. (U.refused and ("; REFUSED " .. U.refused) or ""))
+            end
+        end
+    end
+
+    -- The casting button, for you: left of your cast bar.
+    local pill = CreateFrame("Button", "MeniscusQuickCure", UIParent, "SecureActionButtonTemplate")
+    pill:SetSize(150, PH)
+    -- (MEDIUM: at HIGH it lay over the full-screen map. Skins.lua puts it
+    -- and the container lower still while that map is open.)
+    pill:SetFrameStrata("MEDIUM")
+    pill:SetFrameLevel(LV + 14)
+    pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
+    pill:SetAttribute("unit", "player")
+    -- (so that the game's button under it still hears the mouse come and go: its tooltip)
+    if pill.SetPropagateMouseMotion then pcall(pill.SetPropagateMouseMotion, pill, true) end
+    if not InCombatLockdown() then pill:Hide() end
+    casters[1] = pill
+    local function seatPill()
+        if InCombatLockdown() then return end
+        pill:ClearAllPoints()
+        -- (Level with your cast bar, its right end a little short of the
+        -- bar's left end. Worked out on the screen, not hung on the bar,
+        -- so that the bar stays free to move in a fight.)
+        local CBm = ns.modules.CastBars
+        local bar = CBm and CBm.player
+        if bar and bar.GetLeft then
+            local okL, left = pcall(bar.GetLeft, bar)
+            local okC, _, cy = pcall(bar.GetCenter, bar)
+            if okL and okC and type(left) == "number" and type(cy) == "number"
+                and not issecretvalue(left) and not issecretvalue(cy) then
+                local k = bar:GetEffectiveScale() / UIParent:GetEffectiveScale()
+                pill:SetPoint("RIGHT", UIParent, "BOTTOMLEFT", left * k - 10, cy * k)
+                return
+            end
+        end
+        local QBm = ns.modules.QuickBuff
+        local qb = _G.MinimalUIQuickBuff
+        local dome = _G.MinimalUI_MinimapDome
+        if dome and dome:IsShown() then
+            pill:SetPoint("BOTTOM", dome, "TOP", 0, 8)
+        elseif qb and QBm and QBm.Place and pcall(QBm.Place) and qb:GetPoint(1) then
+            pill:SetPoint("BOTTOM", qb, "TOP", 0, 6)
+        else
+            pill:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 150)
+        end
+    end
+    -- As wide as the longest thing it may have to say.
+    local hold = CreateFrame("Frame", nil, UIParent)
+    hold:Hide()
+    local ruler = ns:CreateText(hold, 11)
+    local function widthNow()
+        local widest = 0
+        local function measure(str)
+            ruler:SetText(str)
+            local okW, wv = pcall(ruler.GetStringWidth, ruler)
+            if okW and type(wv) == "number" and not issecretvalue(wv) and wv > widest then widest = wv end
+        end
+        if spells[1] then measure(spells[1]) end
+        if spells[2] then
+            measure(spells[2] .. "   (right-click)")
+            measure(spells[1] .. "  /  " .. spells[2])
+        end
+        ruler:SetText("")
+        return math.max(90, math.floor(3 + (PH - 6) + 6 + widest + PH / 2 + 0.5))
+    end
+    local W = widthNow()
+    if not InCombatLockdown() then pill:SetWidth(W) end
+    seatPill()
+    pcall(cont.SetFrameStrata, cont, "MEDIUM")
+    unitShare(cont, "player", pill, false, W, PH, LV)
+    self.cureContainer = cont
+
+    -- The party: a casting button beside each one's bar (their buffs start
+    -- past it), and a container of their own.
+    for i, pf in ipairs(self.party or {}) do
+        if pf.healthPill then
+            local unit = pf.realUnit or pf.unit
+            local b = CreateFrame("Button", "MeniscusCure" .. i, pf, "SecureActionButtonTemplate")
+            b:SetSize(CURE_S, CURE_S)
+            b:SetFrameLevel(pf:GetFrameLevel() + 22)
+            b:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
+            b:SetAttribute("unit", unit)
+            if b.SetPropagateMouseMotion then pcall(b.SetPropagateMouseMotion, b, true) end
+            local skip = pf.orbSide == "RIGHT" and (pf.healthPill:GetHeight() + 4) or 0
+            b:SetPoint("LEFT", pf.healthPill, "RIGHT", 5 + skip, 0)
+            pf.cureSlot = true -- (Auras.lua starts the aura row past it)
+            casters[#casters + 1] = b
+            local okP, pc = pcall(CreateFrame, "AuraContainer", "MeniscusCureAuras" .. i, pf, "CustomAuraContainerTemplate")
+            if okP and type(pc) == "table" then
+                unitShare(pc, unit, b, true, CURE_S, CURE_S, pf:GetFrameLevel() + 6)
+            else
+                note(tostring(unit) .. ": no container (" .. tostring(pc) .. ")")
+            end
+        end
+    end
+
+    -- The slots, now: this is the one moment at which the game lets them be
+    -- dressed whatever else is going on (even a reload in mid-fight).
+    do
+        local ok, e = pcall(slots)
+        if not ok then note("slots: " .. tostring(e)) end
+    end
+
+    -- Spells on the buttons, the pill's width, and what the faces say: out
+    -- of a fight (the buttons are casting buttons; the faces are the
+    -- game's, and closed to us in one).
+    local stale = false
+    local function assign()
+        if InCombatLockdown() then stale = true return end
+        stale = false
+        resolve()
+        for _, b in ipairs(casters) do
+            for n = 1, 2 do
+                b:SetAttribute("type" .. n, spells[n] and "spell" or nil)
+                b:SetAttribute("spell" .. n, spells[n])
+            end
+        end
+        W = widthNow()
+        pill:SetWidth(W)
+        seatPill()
+        -- (a new pill face is made to today's width; the others are refitted below)
+        for _, U in ipairs(units) do
+            if not U.chip then U.w = W end
+        end
+        if not pcall(slots) then stale = true end
+        for _, F in ipairs(faces) do
+            local say = F.chip and hintFor(F.kind) or sayFor(F.kind)
+            if say ~= F.said then
+                local words = F.text or F.hint
+                if pcall(words.SetText, words, say) then F.said = say else stale = true end
+            end
+            if not F.chip and F.reseat and F.w ~= W and not pcall(F.reseat, W) then stale = true end
+        end
+    end
+
+    -- Is the casting pill wanted? In a fight: always (it can't be brought
+    -- out once one is on). Out of one: while you have something a face
+    -- would show for, which can be read then; and where even that is
+    -- refused (auras can be secret out of a fight too), it stays, to be
+    -- safe.
+    local fightOn = false
+    local function wanted()
+        if #spells == 0 then return false end
+        if fightOn or InCombatLockdown() then return true end
+        for idx = 1, 8 do
+            local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", idx, "HARMFUL|RAID")
+            if not ok then return true end
+            if not a then return false end
+            local d = a.dispelName
+            if issecretvalue(d) or (type(d) == "string" and typeSpell[d]) then return true end
+        end
+        return false
+    end
+    local function updatePill()
+        if InCombatLockdown() then return end
+        local want = wanted()
+        if want and not pill:IsShown() then
+            seatPill()
+            pill:Show()
+        elseif not want and pill:IsShown() then
+            pill:Hide()
+        end
+    end
+
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED",
+                         "PLAYER_REGEN_DISABLED", "ENCOUNTER_START" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_AURA", "player")
+    local secretNoted = false
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_REGEN_DISABLED" or e == "ENCOUNTER_START" then
+            -- A fight is starting (the lockdown has not begun yet): the
+            -- casting pill is put in its place for the length of it.
+            fightOn = true
+            if not InCombatLockdown() and #spells > 0 then
+                seatPill()
+                pill:Show()
+            end
+            if not secretNoted then
+                C_Timer.After(1.5, function()
+                    if secretNoted or not InCombatLockdown() then return end
+                    secretNoted = true
+                    local okSec, sec = pcall(function() return C_Secrets.ShouldAurasBeSecret() end)
+                    note("auras secret in a fight: " .. (okSec and tostring(sec) or "could not ask")
+                        .. "; the casting pill is " .. (pill:IsShown() and "there" or "NOT there"))
+                end)
+            end
+            return
+        end
+        if e == "UNIT_AURA" then pcall(updatePill) return end
+        if e == "PLAYER_REGEN_ENABLED" then fightOn = false end
+        if e == "GROUP_ROSTER_UPDATE" then
+            -- (someone else may stand behind "party2" now: look again)
+            for _, U in ipairs(units) do
+                if U.chip and U.c.UpdateAllAuras then pcall(U.c.UpdateAllAuras, U.c) end
+            end
+        end
+        if e ~= "PLAYER_REGEN_ENABLED" or stale then pcall(assign) end
+        pcall(updatePill)
+    end)
+    assign()
+    -- (The cast bar is built after this module: the seat, once more.)
+    C_Timer.After(3, function() pcall(assign); pcall(updatePill) end)
+
+    -- `/men cure show [disease | poison | curse | magic]`: the
+    -- same faces on plain frames, over the pill's place, for a dozen
+    -- seconds. Nothing of the game's is touched: how the light and motes
+    -- LOOK can be judged without a debuff, apart from whether the game
+    -- shows the real thing.
+    local shows, showToken = {}, 0
+    self.curePreview = function(arg)
+        arg = (arg or ""):lower()
+        local kind
+        for k in pairs(CURE_FX) do
+            if arg ~= "" and k:lower():find(arg, 1, true) == 1 then kind = k end
+        end
+        if not kind then kind = typeSpell.Disease and "Disease" or kinds[1] or "Disease" end
+        local key = kind
+        local S = shows[key]
+        if not S then
+            local okI, info = pcall(C_Spell.GetSpellInfo, typeSpell[kind] or spells[1] or "")
+            local pic = okI and type(info) == "table" and info.iconID or 134400
+            S = {}
+            local function sample(isChip, w, h, x)
+                local fr = CreateFrame("Frame", nil, UIParent)
+                fr:SetFrameStrata("HIGH")
+                fr:SetFrameLevel(20)
+                fr:SetSize(w, h)
+                fr:SetPoint("BOTTOMLEFT", pill, "TOPLEFT", x, 44)
+                fr:Hide()
+                local F = cureFace(fr, { kind = kind, chip = isChip, w = w, h = h, level = 20, under = 19 })
+                local okX, e = pcall(cureFaceFx, fr, F)
+                if not okX then ns:Print("Quick Cure sample:", tostring(e)) end
+                F.icon:SetTexture(pic)
+                if F.text then
+                    local say = sayFor(kind)
+                    F.text:SetText(say ~= "" and say or kind)
+                end
+                if F.hint then F.hint:SetText(hintFor(kind)) end
+                S[#S + 1] = { frame = fr, face = F }
+            end
+            sample(false, math.max(W, 150), PH, 0)
+            sample(true, CURE_S, CURE_S, math.max(W, 150) + 30)
+            shows[key] = S
+        end
+        showToken = showToken + 1
+        local mine = showToken
+        for _, other in pairs(shows) do
+            for _, s in ipairs(other) do
+                for _, g in ipairs(s.face.arrives) do g:Stop() end
+                for _, g in ipairs(s.face.loops) do g:Stop() end
+                s.frame:Hide()
+            end
+        end
+        for _, s in ipairs(S) do
+            s.frame:Show()
+            for _, g in ipairs(s.face.arrives) do g:Play() end
+            for _, g in ipairs(s.face.loops) do g:Play() end
+        end
+        ns:Print("Quick Cure sample (" .. key:lower() .. "), 12 seconds: above the pill's place, left of your cast bar.")
+        C_Timer.After(12, function()
+            if mine ~= showToken then return end
+            for _, s in ipairs(S) do
+                for _, g in ipairs(s.face.arrives) do g:Stop() end
+                for _, g in ipairs(s.face.loops) do g:Stop() end
+                s.frame:Hide()
+            end
+        end)
+    end
+end
+
+-- /men cure show [kind]   a sample of the pill and a chip, for 12 seconds
+-- /men cure old | new     the cure display drawn by Meniscus (before 0.1.693), or by the game
+ns.commands.cure = function(rest)
+    rest = (rest or ""):lower()
+    local d = UF.db
+    if rest:find("^old") then
+        d.cureOld = true
+        return ns:Print("Quick Cure: the old display after /reload (it cannot show what is caught in a fight). /men cure new changes back.")
+    elseif rest:find("^new") then
+        d.cureOld = nil
+        return ns:Print("Quick Cure: drawn by the game after /reload.")
+    end
+    if UF.curePreview then
+        UF.curePreview(rest:match("^show%s*(%a*)") or rest)
+    else
+        ns:Print("Quick Cure: no sample (it is off, your class has no cure, or the old display is on: /men cure new).")
+    end
 end
 
 -- ── Party ─────────────────────────────────────────────────────────────────
