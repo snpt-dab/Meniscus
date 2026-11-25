@@ -1469,7 +1469,7 @@ _G["BINDING_NAME_CLICK MeniscusQuickCure:LeftButton"] = "Quick Cure (cure yourse
 -- Each kind of affliction has its own light, and something that comes off
 -- that light (0.1.676, asked for: "disease can be a kind of yellowish-green
 -- smoke that comes off the light pulse"):
---   Disease  a sickly yellow-green light; now and then a faint waft of murky smoke
+--   Disease  a sickly yellow-green light; a thin ring of murky dust off the edge
 --   Poison   a vivid green light; small bubbles, bursting
 --   Curse    a violet light; dark wisps, curling
 --   Magic    a blue light; quick glints
@@ -1569,38 +1569,38 @@ local function cureMotes(host, n)
         local fx = self.fx
         if not fx then return end
         local how = fx.how
-        -- (Smoke is a few puffs only: eight round the pill, four round a chip.)
         local n = #self.tex
-        if how == "smoke" then n = math.min(n, h < 22 and 4 or 8) end
         for i, t in ipairs(self.tex) do
             local r1, r2, r3 = cureRnd(i, pulse), cureRnd(i + 7, pulse), cureRnd(i + 13, pulse)
             local ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
             local a, out, side, s = 0, 0, 0, 8
-            local lift, drift, rot = 0, 0, nil
+            local lift, drift, rot, tall = 0, 0, nil, nil
             if i > n then
                 a = 0
             elseif how == "smoke" then
-                -- A waft (0.1.684: "I like the effect but we have to tone
-                -- it down a ton. Just give it a little pulse with a
-                -- wafting every few seconds." And then: "the smoke looks
-                -- good now, but I'd like it to emanate from all sides, not
-                -- just the top". And: "I'd like for the wafting to happen
-                -- in time with the pulse/flash"). With EVERY pulse of
-                -- light, as it flashes, a few small faint puffs leave the
-                -- edge, one from each stretch of it all the way round,
-                -- drift away from it and a little upward, swell a little,
-                -- and are gone just before the next pulse.
-                local age = since
-                local k = h < 22 and 0.7 or 1 -- (the small chips: smaller still)
-                local u = (age - 0.10 * r3) / (1.9 + 0.2 * r2)
+                -- Dust (0.1.686). The story so far: a billow of thirty
+                -- large puffs was far too much ("tone it down a ton... a
+                -- little pulse with a wafting every few seconds"); a few
+                -- small round puffs, well apart, read as "dots and not
+                -- dust"; it was to "emanate from all sides", and "in time
+                -- with the pulse/flash". So, with every pulse of light: a
+                -- thin ring of dust is kicked off the whole edge. Each
+                -- mote is a puff drawn LONG and lying along the edge, so
+                -- that neighbours run together into one uneven haze (no
+                -- round shapes, nothing standing apart); it is pushed a
+                -- little way out, spreads, lifts slightly and is gone
+                -- before the next pulse. (The offline picture's own sums.)
+                local k = h < 22 and 0.6 or 1 -- (the small chips: less of it)
+                local u = (since - 0.18 * r3) / (1.8 + 0.2 * r2)
                 if u > 0 and u < 1 then
-                    ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
-                    out = (12 + 10 * r3) * (1 - (1 - u) ^ 2) * k
-                    lift = 8 * u ^ 1.5 * k
-                    drift = math.sin(age * 0.9 + r1 * 6.283) * 4 * u * k
-                    s = (22 + 26 * (1 - (1 - u) ^ 2)) * k
-                    rot = r1 * 6.283 + (r3 < 0.5 and -1 or 1) * 0.4 * u
-                    a = 0.55 * math.min(1, u / 0.15) * (1 - u) ^ 1.4
+                    ex, ey, nx, ny = edge((i - 1 + 1.6 * (r1 - 0.5)) / n, w, h)
+                    local e = 1 - (1 - u) ^ 2
+                    out = (4 + (10 + 8 * r3) * e) * k
+                    lift = 6 * u ^ 1.5 * k
+                    s = (34 + (30 + 16 * r2) * e) * k
+                    tall = s * (0.42 + 0.20 * r3)
+                    rot = math.atan2(ny, nx) + math.pi / 2 + (r2 - 0.5) * 0.9
+                    a = 0.34 * math.min(1, u / 0.12) * (1 - u) ^ 1.3
                     -- (A murk of dull yellows and greens, not one colour.)
                     t:SetVertexColor(0.50 + 0.10 * r2, 0.56 + 0.10 * r3, 0.22 + 0.08 * r1)
                 end
@@ -1634,7 +1634,7 @@ local function cureMotes(host, n)
                 end
             end
             if a > 0 then
-                t:SetSize(s, s)
+                t:SetSize(s, tall or s)
                 if rot and t.smoke then pcall(t.SetRotation, t, rot) end
                 t:ClearAllPoints()
                 -- (out along "away"; side across it; lift straight up; drift to one side)
