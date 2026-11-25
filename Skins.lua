@@ -647,9 +647,10 @@ function ns.MapFooter()
     function foot.IsOn() return on end
     local function qbLayer()
         local low = wm:IsShown() and on == false
-        for _, n in ipairs({ "MinimalUIQuickBuff" }) do
+        -- (And the Quick Cure pill, 0.1.684: it and its smoke lay over the map.)
+        for n, usual in pairs({ MinimalUIQuickBuff = "HIGH", MeniscusQuickCure = "MEDIUM" }) do
             local b = _G[n]
-            if b and not InCombatLockdown() then pcall(b.SetFrameStrata, b, low and "LOW" or "HIGH") end
+            if b and not InCombatLockdown() then pcall(b.SetFrameStrata, b, low and "LOW" or usual) end
         end
     end
     wm:HookScript("OnHide", function() pcall(qbLayer) end)

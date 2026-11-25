@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.683.
+Last updated: 2026-11-25, version 0.1.684.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Disease smoke (0.1.683) | `/reload` with a disease on you | Does it now read as smoke billowing up off the pill (soft, large, drifting), with no pinwheels and no dots? Is it behind the pill, not over its text? |
+| 11 | Cure pill (0.1.684) | `/reload`. Get diseased while already in a fight; open the full-screen map with the pill up | Does the pill come up DURING the fight for something caught in it? Is it now left of your cast bar, clear of everything? Smoke from all sides? Under the full-screen map? Then `/reload` |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
@@ -35,6 +35,8 @@ Last updated: 2026-11-25, version 0.1.683.
 
 ## Settled recently
 
+- Disease smoke as a small faint waft: "looks good now" (it was drawn solid by a fault of mine: alpha set to 1 after the colour).
+- Client fact (record of 0.1.682): in a fight every addon look at an aura gained in it is refused ("Auras cannot be accessed when secret while tainted"): by index, by slot, any filter.
 - Quick Cure in a fight: the pill stays and the cure click works (your word, 2026-11-25).
 - Critical hit numbers: 2.3 times was too much; back to 1.55.
 - The rule for buffs (yours, 2026-11-25): under five minutes a ring, five minutes or more the Quick Buff pill. Righteous Fury moved to Quick Buff (offered once you have cast it; click the buff off to stop). Battle Shout is a ring only.

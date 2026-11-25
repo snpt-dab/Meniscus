@@ -1469,7 +1469,7 @@ _G["BINDING_NAME_CLICK MeniscusQuickCure:LeftButton"] = "Quick Cure (cure yourse
 -- Each kind of affliction has its own light, and something that comes off
 -- that light (0.1.676, asked for: "disease can be a kind of yellowish-green
 -- smoke that comes off the light pulse"):
---   Disease  a sickly yellow-green light; murky smoke that billows up and hangs
+--   Disease  a sickly yellow-green light; now and then a faint waft of murky smoke
 --   Poison   a vivid green light; small bubbles, bursting
 --   Curse    a violet light; dark wisps, curling
 --   Magic    a blue light; quick glints
@@ -1526,12 +1526,14 @@ local function cureMotes(host, n)
                     t:SetTexture(MEDIA .. "smoke" .. (1 + i % 4) .. ".tga")
                     t:SetBlendMode("BLEND")
                     t.smoke = true
-                    t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3], 0)
+                    t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3])
+                    t:SetAlpha(0)
                 else
                     local soft = fx.how == "wisps"
                     t:SetTexture(MEDIA .. (soft and "spot.tga" or "circle.tga"))
                     t:SetBlendMode(soft and "BLEND" or "ADD")
-                    t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3], 1)
+                    t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3])
+                    t:SetAlpha(0)
                 end
             end
         end
@@ -1567,10 +1569,9 @@ local function cureMotes(host, n)
         local fx = self.fx
         if not fx then return end
         local how = fx.how
-        -- (Smoke uses every mote; the other kinds under half of them, as
-        -- many as they had before smoke needed more.)
+        -- (Smoke is a few puffs only: eight round the pill, four round a chip.)
         local n = #self.tex
-        if how ~= "smoke" then n = math.max(1, math.floor(n * 0.47 + 0.5)) end
+        if how == "smoke" then n = math.min(n, h < 22 and 4 or 8) end
         for i, t in ipairs(self.tex) do
             local r1, r2, r3 = cureRnd(i, pulse), cureRnd(i + 7, pulse), cureRnd(i + 13, pulse)
             local ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
@@ -1579,34 +1580,30 @@ local function cureMotes(host, n)
             if i > n then
                 a = 0
             elseif how == "smoke" then
-                -- A billow: each puff is nudged off the edge, then RISES,
-                -- swelling to two or three times its size and thinning to
-                -- nothing over three or four seconds; those let go from the
-                -- top rise most, those from underneath hardly. That is
-                -- longer than the pulses are apart, so the puffs take
-                -- turns: half are let go at one pulse and half at the next,
-                -- and one pulse's smoke is still lifting when the next
-                -- comes. (These sums are the offline picture's own.)
-                local turn = i % 2
+                -- A waft (0.1.684: "I like the effect but we have to tone
+                -- it down a ton. Just give it a little pulse with a
+                -- wafting every few seconds." And then: "the smoke looks
+                -- good now, but I'd like it to emanate from all sides, not
+                -- just the top"). At every OTHER pulse of light a few
+                -- small faint puffs leave the edge, one from each stretch
+                -- of it all the way round, drift away from it and a little
+                -- upward, swell a little, and are gone before the next
+                -- waft.
                 local mine, age = pulse, since
-                if pulse % 2 ~= turn then mine, age = pulse - 1, since + CURE_PERIOD end
-                if mine >= 0 then
-                    r1, r2, r3 = cureRnd(i, mine), cureRnd(i + 7, mine), cureRnd(i + 13, mine)
+                if pulse % 2 == 1 then mine, age = pulse - 1, since + CURE_PERIOD end
+                r1, r2, r3 = cureRnd(i, mine), cureRnd(i + 7, mine), cureRnd(i + 13, mine)
+                local k = h < 22 and 0.7 or 1 -- (the small chips: smaller still)
+                local u = (age - 0.5 * r3) / (2.4 + 0.6 * r2)
+                if u > 0 and u < 1 then
                     ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
-                    local k = h < 22 and 0.6 or 1 -- (the small chips: smaller smoke)
-                    local u = (age - 0.55 * r3) / (3.0 + 0.9 * r2)
-                    if u > 0 and u < 1 then
-                        out = (5 + 9 * r2) * (1 - (1 - u) ^ 3) * k
-                        local rise = 0.30 + 0.70 * ((ny + 1) / 2) ^ 1.3
-                        lift = rise * (52 + 26 * r3) * u ^ 1.4 * k
-                        drift = math.sin(age * (0.7 + 0.6 * r3) + r1 * 6.283) * 8 * u * k
-                        s = (38 + (50 + 24 * r2) * (1 - (1 - u) ^ 2)) * k
-                        rot = r1 * 6.283 + (r3 < 0.5 and -1 or 1) * 0.5 * u
-                        a = 0.52 * math.min(1, u / 0.12) * (1 - u) ^ 1.3
-                        -- (Its strength goes in with the colour: a murk
-                        -- of dull yellows and greens, not one colour.)
-                        t:SetVertexColor(0.56 + 0.12 * r2, 0.62 + 0.10 * r3, 0.24 + 0.08 * r1, a)
-                    end
+                    out = (12 + 10 * r3) * (1 - (1 - u) ^ 2) * k
+                    lift = 8 * u ^ 1.5 * k
+                    drift = math.sin(age * 0.9 + r1 * 6.283) * 4 * u * k
+                    s = (22 + 26 * (1 - (1 - u) ^ 2)) * k
+                    rot = r1 * 6.283 + (r3 < 0.5 and -1 or 1) * 0.4 * u
+                    a = 0.55 * math.min(1, u / 0.15) * (1 - u) ^ 1.4
+                    -- (A murk of dull yellows and greens, not one colour.)
+                    t:SetVertexColor(0.50 + 0.10 * r2, 0.56 + 0.10 * r3, 0.22 + 0.08 * r1)
                 end
             elseif how == "bubbles" then
                 local u = (since - 0.14 * r3) / (0.8 + 0.4 * r2)
@@ -1643,12 +1640,18 @@ local function cureMotes(host, n)
                 t:ClearAllPoints()
                 -- (out along "away"; side across it; lift straight up; drift to one side)
                 t:SetPoint("CENTER", host, "CENTER", ex + nx * out - ny * side + drift, ey + ny * out + nx * side + lift)
-                t:SetAlpha(t.smoke and 1 or a)
+                -- (After the colour, always: a texture's alpha and its
+                -- colour's alpha are ONE value. For two versions the
+                -- smoke's strength was put in with its colour and then
+                -- "SetAlpha(1)" came after: every puff was drawn solid,
+                -- never fading. That, more than their number, was the
+                -- yellow cloud; and it was why the offline picture, which
+                -- had the sums right, looked nothing like the game.)
+                t:SetAlpha(a)
                 t.lit = true
             elseif t.lit then
                 t.lit = false
                 t:SetAlpha(0)
-                if t.smoke then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
             end
         end
     end
@@ -1657,7 +1660,6 @@ local function cureMotes(host, n)
             if t.lit then
                 t.lit = false
                 t:SetAlpha(0)
-                if t.smoke then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
             end
         end
     end
@@ -1689,7 +1691,7 @@ local function cureLook(f, PH)
     -- (Behind the pill, so that what comes off its edge does not lie over
     -- its face: smoke is large.)
     fxHost:SetFrameLevel(math.max(0, f:GetFrameLevel() - 1))
-    L.motes = cureMotes(fxHost, 30)
+    L.motes = cureMotes(fxHost, 14)
     local t0, last = 0, -1
     local tint = { 1, 1, 1 }
     function L.arrive() t0 = GetTime() end
@@ -1804,7 +1806,7 @@ function UF:BuildCure()
         local under = CreateFrame("Frame", nil, vis)
         under:SetAllPoints()
         under:SetFrameLevel(math.max(0, vis:GetFrameLevel() - 1)) -- (behind the chip's face)
-        local motes = cureMotes(under, 14)
+        local motes = cureMotes(under, 8)
         local t0 = 0
         vis:SetScript("OnShow", function() t0 = GetTime() end)
         vis:SetScript("OnUpdate", function(self)
@@ -1937,11 +1939,102 @@ function UF:BuildCure()
             wayNote("slots: refused")
         end
         wayNote(listed and "plain list: kinds hidden" or "plain list: refused")
+        if unit == "player" then
+            local a, sure = ownDebuff()
+            if a then
+                wayNote("own frame: a curable kind read")
+                return a
+            end
+            if sure then
+                wayNote("own frame: read, nothing curable")
+                return nil
+            end
+            wayNote("own frame: not to be read")
+        end
         return nil, true
+    end
+    -- 5. (0.1.684) YOU, in a fight. "It's lasting through combat if it's
+    -- already there, but it's not showing up DURING combat as it's
+    -- applied." The record: once a fight is on, this client refuses addon
+    -- code every look at an aura gained in it ("Auras cannot be accessed
+    -- when secret while tainted"), by index, by slot, with any filter. But
+    -- the game's own debuff frame goes on drawing your debuffs, each in a
+    -- border of its kind's colour, and an addon may watch that colour being
+    -- set. So: every debuff button of the game's frame is watched, the
+    -- colour it is given is turned back into a kind (the game's own table
+    -- of them, DebuffTypeColor), and a shown button of a kind you have a
+    -- cure for is "something on you that you can cure". Whether the colour
+    -- arrives as a plain number in a fight is what MinimalUIDB.cureways
+    -- will say ("own frame: ..."). Yourself only: the game draws no such
+    -- frame for the party that an addon can watch, so far as is known.
+    local kindRGB
+    local function kindOfColour(r, g, b)
+        if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return nil end
+        if issecretvalue(r) or issecretvalue(g) or issecretvalue(b) then return "hidden" end
+        if not kindRGB then
+            kindRGB = {}
+            local theirs = type(_G.DebuffTypeColor) == "table" and _G.DebuffTypeColor or nil
+            for kind, d in pairs({ Magic = { 0.20, 0.60, 1.00 }, Curse = { 0.60, 0.00, 1.00 },
+                                   Disease = { 0.60, 0.40, 0.00 }, Poison = { 0.00, 0.60, 0.00 } }) do
+                local c = theirs and theirs[kind]
+                if type(c) == "table" and type(c.r) == "number" and type(c.g) == "number" and type(c.b) == "number" then
+                    d = { c.r, c.g, c.b }
+                end
+                kindRGB[#kindRGB + 1] = { d[1], d[2], d[3], kind }
+            end
+        end
+        for _, e in ipairs(kindRGB) do
+            if math.abs(r - e[1]) < 0.06 and math.abs(g - e[2]) < 0.06 and math.abs(b - e[3]) < 0.06 then return e[4] end
+        end
+        return "other"
+    end
+    local ownChanged -- (set once the pill exists: "look again")
+    local function watchOwn()
+        local fr = _G.DebuffFrame
+        local list = fr and fr.auraFrames
+        if type(list) ~= "table" then return nil end
+        for _, btn in ipairs(list) do
+            local border = btn.DebuffBorder
+            if border and not btn.__muiCureHook and border.SetVertexColor then
+                btn.__muiCureHook = true
+                hooksecurefunc(border, "SetVertexColor", function(_, r, g, b)
+                    btn.__muiCureKind = kindOfColour(r, g, b)
+                    if ownChanged then ownChanged() end
+                end)
+            end
+        end
+        return list
+    end
+    local OWN = {}
+    -- Returns what was found (or nil), and whether the frame could be
+    -- read through: false where a shown button's kind is not known.
+    local function ownDebuff()
+        local list = watchOwn()
+        if not list then return nil, false end
+        local sure = true
+        for _, btn in ipairs(list) do
+            local okS, shown = pcall(btn.IsShown, btn)
+            if not okS or issecretvalue(shown) then
+                sure = false
+            elseif shown then
+                local kind = btn.__muiCureKind
+                if kind == nil or kind == "hidden" then
+                    sure = false
+                elseif typeSpell[kind] then
+                    local okT, tex = pcall(function() return btn.Icon:GetTexture() end)
+                    OWN.icon = okT and tex or nil
+                    OWN.plainIcon = okT and (issecretvalue(tex) or tex ~= nil) or false
+                    OWN.dispelName = kind
+                    return OWN, true
+                end
+            end
+        end
+        return nil, sure
     end
     -- The picture for what was found (a STUB has none: the cure's own).
     local function pictureOf(a)
-        if a ~= STUB then return a.icon end
+        if a == OWN and a.plainIcon then return a.icon end
+        if a ~= STUB and a ~= OWN then return a.icon end
         local okI, info = pcall(C_Spell.GetSpellInfo, spells[1])
         return okI and type(info) == "table" and info.iconID or 134400
     end
@@ -1951,7 +2044,7 @@ function UF:BuildCure()
     -- when you cast a cure by that button (its click is noted, and a cure
     -- cast right after it is taken to have worked).
     local function keep(holder, a)
-        local e = a ~= STUB and a.expirationTime or nil
+        local e = a ~= STUB and a ~= OWN and a.expirationTime or nil
         holder.kept = holder.kept or {}
         holder.kept.e = (type(e) == "number" and not issecretvalue(e) and e > 0) and e or nil
     end
@@ -2004,7 +2097,9 @@ function UF:BuildCure()
     local PH = 24
     local pill = CreateFrame("Button", "MeniscusQuickCure", UIParent, "SecureActionButtonTemplate")
     pill:SetSize(150, PH)
-    pill:SetFrameStrata("HIGH")
+    -- (MEDIUM since 0.1.684: at HIGH it and its smoke lay over the full-screen
+    -- map. Skins.lua also puts it lower still while that map is open.)
+    pill:SetFrameStrata("MEDIUM")
     pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
     pill:SetAttribute("unit", "player")
     pill:Hide()
@@ -2035,6 +2130,24 @@ function UF:BuildCure()
     local function seatPill()
         if InCombatLockdown() then return end
         pill:ClearAllPoints()
+        -- (0.1.684, asked for: "we can probably move that cure pill off to
+        -- the left past the cast bar". Over the map it lay across your
+        -- cast bar and the target's portrait. Now: level with your cast
+        -- bar, its right end a little short of the bar's left end. The
+        -- place is worked out on the screen, not hung on the bar, so that
+        -- the bar stays free to move in a fight.)
+        local CBm = ns.modules.CastBars
+        local bar = CBm and CBm.player
+        if bar and bar.GetLeft then
+            local okL, left = pcall(bar.GetLeft, bar)
+            local okC, _, cy = pcall(bar.GetCenter, bar)
+            if okL and okC and type(left) == "number" and type(cy) == "number"
+                and not issecretvalue(left) and not issecretvalue(cy) then
+                local k = bar:GetEffectiveScale() / UIParent:GetEffectiveScale()
+                pill:SetPoint("RIGHT", UIParent, "BOTTOMLEFT", left * k - 10, cy * k)
+                return
+            end
+        end
         local QBm = ns.modules.QuickBuff
         local qb = _G.MinimalUIQuickBuff
         local dome = _G.MinimalUI_MinimapDome
@@ -2079,6 +2192,7 @@ function UF:BuildCure()
         look.text:SetText("")
         pill:SetWidth(math.max(90, 3 + (PH - 6) + 6 + widest + PH / 2))
         seatPill()
+        pcall(watchOwn)
     end
 
     -- A party member's chip.
@@ -2129,7 +2243,17 @@ function UF:BuildCure()
     -- its place for the fight, was being put away again as "clean, and
     -- not in a fight": found by the offline run before it was ever seen.)
     local fightOn = false
-    local function updatePill()
+    local updatePill
+    local ownQueued = false
+    ownChanged = function()
+        if ownQueued then return end
+        ownQueued = true
+        C_Timer.After(0.05, function()
+            ownQueued = false
+            pcall(updatePill)
+        end)
+    end
+    updatePill = function()
         local fighting = fightOn or InCombatLockdown()
         if #spells == 0 then
             pv:Hide()
