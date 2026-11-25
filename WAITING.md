@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.661.
+Last updated: 2026-11-24, version 0.1.662.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 1 | Buff rings in the chat corner (0.1.661) | `/reload`, cast a seal | Whether the ring sits where the chat panel meets the lower panel and suits you there |
+| 1 | Buff rings (0.1.662) | `/reload`, seal, fight until the seal is about to run out | Whether the ring sits right in the chat corner, and whether it glides to the middle of the screen in its last seconds and goes home when you reseal |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 7 | Combat numbers' height (0.1.657) | Fight | Whether 36 above the target frame sits right |
 | 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |

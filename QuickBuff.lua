@@ -1016,6 +1016,12 @@ end
 -- growing to the right in the order they were cast. (It was a single ring
 -- beside the Quick Buff pill.)
 --
+-- In a fight, a ring that is about to run out (or has) leaves the corner
+-- for the middle of the screen, larger, where it can't be missed, and goes
+-- home when you cast the spell again or the fight ends (0.1.662, asked
+-- for: "much like we move the level-up panel"). The same manner of
+-- travel as that card: gentle at both ends, along a slight arc.
+--
 -- Your buffs can't be read in a fight (asked for by name, the game says
 -- "not there" even right after the cast), so a ring runs off your own
 -- cast, for the time the spell is known to last; out of a fight the buff
@@ -1056,8 +1062,10 @@ local function buildRecast()
         row:ClearAllPoints()
         if x then
             row:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x + 8, y + 8)
+            row.hx, row.hy = x + 8, y + 8
         else
             row:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 190)
+            row.hx, row.hy = UIParent:GetWidth() / 2 - D / 2, 190
         end
     end
     local function disc(parent, size, r, g, b, a, sub)
@@ -1106,11 +1114,43 @@ local function buildRecast()
     local live = {}  -- rings showing, in the order they were first cast
     local pool = {}
     local byFam = {}
-    local function layout()
-        for i, f in ipairs(live) do
+    -- Where a ring is: k = 0 at home in the row, 1 in the middle of the
+    -- screen. Its centre is put on the screen itself, along a curve
+    -- through three points (home, a point lifted above the way, the
+    -- middle), and it grows as it goes.
+    local BIG, TRAVEL = 1.9, 0.9
+    local function place(f, i, mids)
+        local hx = (row.hx or 0) + (i - 1) * (D + GAP) + D / 2
+        local hy = (row.hy or 0) + D / 2
+        local k = f.k or 0
+        if k <= 0 then
+            f:SetScale(1)
             f:ClearAllPoints()
-            f:SetPoint("LEFT", row, "LEFT", (i - 1) * (D + GAP), 0)
+            f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", hx, hy)
+            return
         end
+        local e = k * k * k * (k * (k * 6 - 15) + 10)
+        local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+        local n, slot = mids.n, f.mid or 1
+        local tx = W / 2 + (slot - (n + 1) / 2) * (D * BIG + 14)
+        local ty = H / 2 - 96
+        local dist = math.sqrt((tx - hx) ^ 2 + (ty - hy) ^ 2)
+        local cx, cy = hx + (tx - hx) * 0.72, math.max(hy, ty) + 0.10 * dist
+        local u = 1 - e
+        local x = u * u * hx + 2 * u * e * cx + e * e * tx
+        local y = u * u * hy + 2 * u * e * cy + e * e * ty
+        local sc = 1 + (BIG - 1) * e
+        f:SetScale(sc)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / sc, y / sc)
+    end
+    local mids = { n = 0 }
+    local function layout()
+        mids.n = 0
+        for _, f in ipairs(live) do
+            if f.want then mids.n = mids.n + 1; f.mid = mids.n end
+        end
+        for i, f in ipairs(live) do place(f, i, mids) end
     end
     local function drop(f)
         for i, g in ipairs(live) do
@@ -1118,6 +1158,8 @@ local function buildRecast()
         end
         byFam[f.fam] = nil
         f.cur = nil
+        f.k, f.want = 0, false
+        f:SetScale(1)
         f:Hide()
         pool[#pool + 1] = f
         layout()
@@ -1130,17 +1172,31 @@ local function buildRecast()
     end
     local acc = 0
     row:SetScript("OnUpdate", function(self, dt)
+        local moving = false
+        for _, f in ipairs(live) do
+            local k = f.k or 0
+            local to = f.want and 1 or 0
+            if k ~= to then
+                k = k + (to > k and 1 or -1) * dt / TRAVEL
+                f.k = math.max(0, math.min(1, k))
+                moving = true
+            end
+        end
+        if moving then layout() end
         acc = acc + dt
         if acc < 0.1 then return end
         acc = 0
         if #live == 0 then return self:Hide() end
         seat()
         local now, fighting = GetTime(), InCombatLockdown()
+        local changed = false
         for i = #live, 1, -1 do
             local f = live[i]
             local cur = f.cur
             local left = cur.start + cur.dur - now
             local over = cur.gone and (now - cur.gone) or -left
+            local want = fighting and (cur.gone or left <= math.max(4, cur.dur * 0.15)) and QB.db.recastCentre ~= false or false
+            if want ~= (f.want or false) then f.want = want; changed = true end
             if (left <= 0 or cur.gone) and over >= 6 and not fighting then
                 drop(f)
             elseif left <= 0 or cur.gone then
@@ -1163,6 +1219,7 @@ local function buildRecast()
                 end
             end
         end
+        if changed or not moving then layout() end
     end)
     local function start(name, spellID, dur)
         local fam = family(name)
