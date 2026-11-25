@@ -3313,6 +3313,11 @@ function UF:BuildCure()
                     F.text:SetText(say ~= "" and say or kind)
                 end
                 if F.hint then F.hint:SetText(hintFor(kind)) end
+                -- (which is which: the chip is small enough to be taken for something else)
+                local cap = ns:CreateText(fr, 10)
+                cap:SetTextColor(1, 1, 1, 0.7)
+                cap:SetPoint("BOTTOM", fr, "TOP", 0, 5)
+                cap:SetText(isChip and "on a party member" or "on you")
                 S[#S + 1] = { frame = fr, face = F }
             end
             sample(false, math.max(W, 150), PH, 0)
@@ -3333,7 +3338,7 @@ function UF:BuildCure()
             for _, g in ipairs(s.face.arrives) do g:Play() end
             for _, g in ipairs(s.face.loops) do g:Play() end
         end
-        ns:Print("Quick Cure sample (" .. key:lower() .. "), 12 seconds: above the pill's place, left of your cast bar.")
+        ns:Print("Quick Cure sample (" .. key:lower() .. "), 12 seconds, left of your cast bar: the pill as it shows for you, and the small round one as it sits on a party member's frame.")
         C_Timer.After(12, function()
             if mine ~= showToken then return end
             for _, s in ipairs(S) do

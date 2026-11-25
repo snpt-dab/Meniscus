@@ -511,7 +511,7 @@ check(case, "/men cure old", rt.eval("UFX.db.cureOld"), True)
 rt.execute("NS.commands.cure('new')")
 check(case, "/men cure new", rt.eval("UFX.db.cureOld"), None)
 check(case, "methods used that this stand-in has no rule for (each must be the game's)", sorted(rt.eval("unknown").keys()),
-      ['Button:RegisterForClicks', 'Button:SetPropagateMouseMotion', 'FontString:SetShadowColor', 'FontString:SetShadowOffset',
+      ['Button:RegisterForClicks', 'Button:SetPropagateMouseMotion', 'FontString:SetShadowColor', 'FontString:SetShadowOffset', 'FontString:SetTextColor',
        'FontString:SetWordWrap', 'Frame:RegisterEvent', 'Frame:RegisterUnitEvent', 'Texture:AddMaskTexture', 'Texture:SetBlendMode',
        'Texture:SetRotation', 'Texture:SetTexCoord', 'Texture:SetVertexColor'])
 

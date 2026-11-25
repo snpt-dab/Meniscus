@@ -789,7 +789,6 @@ do
             end
         end
         try("C_Spell.IsSpellInRange 75,target", C_Spell and C_Spell.IsSpellInRange, 75, "target")
-        try("CheckInteractDistance target,4", CheckInteractDistance, "target", 4)
     end
     local function cast(add, try)
         try("UnitCastingInfo target", UnitCastingInfo, "target")
