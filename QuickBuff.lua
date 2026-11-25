@@ -1037,7 +1037,31 @@ local RECAST = {
     ["Battle Shout"] = 120,
     ["Slice and Dice"] = 9,
     ["Mana Shield"] = 60, ["Ice Barrier"] = 60,
+    ["Righteous Fury"] = 1800,
 }
+-- Kept (0.1.667, the player's idea): spells you want up in one role and
+-- not in another, a tank's Righteous Fury. Nothing has to be told what
+-- role you are in: CASTING it once is the "remind me" switch. From then on
+-- its ring stays when it runs out, red, and is back at your next login,
+-- until you say otherwise: by right-clicking the ring away, or by
+-- clicking the buff itself off while it still had time left (seen out of
+-- a fight). Either ends the reminding until you cast it again.
+-- Kept per character in MinimalUIDB.keepBuff.
+local KEEP = { ["Righteous Fury"] = true }
+local function keepBook(create)
+    local db = MinimalUIDB
+    if not db then return nil end
+    if type(db.keepBuff) ~= "table" then
+        if not create then return nil end
+        db.keepBuff = {}
+    end
+    local key = ns:CharKey()
+    if type(db.keepBuff[key]) ~= "table" then
+        if not create then return nil end
+        db.keepBuff[key] = {}
+    end
+    return db.keepBuff[key]
+end
 -- Spells that take one another's place (one seal at a time) share a ring.
 local function family(name) return name:match("^Seal of ") and "Seal" or name end
 local function buildRecast()
@@ -1108,6 +1132,34 @@ local function buildRecast()
         f.secs:SetPoint("TOP", f, "BOTTOM", 0, -1)
         f.secs:SetShadowOffset(1, -1)
         f.secs:SetShadowColor(0, 0, 0, 0.9)
+        -- (0.1.667: each ring says what it is, and a right-click sends it
+        -- away. It still can not cast: only look, and be dismissed.)
+        f:EnableMouse(true)
+        f:SetScript("OnEnter", function(self)
+            local cur = self.cur
+            if not cur then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(cur.name, 1, 1, 1)
+            local left = cur.start + cur.dur - GetTime()
+            if cur.gone or left <= 0 then
+                GameTooltip:AddLine("Run out. Cast it again.", 0.95, 0.45, 0.38)
+            elseif left >= 90 then
+                GameTooltip:AddLine(string.format("%d min left", math.floor(left / 60 + 0.5)), 0.8, 0.8, 0.85)
+            else
+                GameTooltip:AddLine(string.format("%d s left", math.ceil(left)), 0.8, 0.8, 0.85)
+            end
+            if cur.keep then
+                GameTooltip:AddLine("Kept: you are reminded of this one until you dismiss it.", 0.6, 0.6, 0.65, true)
+                GameTooltip:AddLine("Right-click: dismiss, and stop reminding until you next cast it.", 0.6, 0.6, 0.65, true)
+            else
+                GameTooltip:AddLine("Right-click: dismiss.", 0.6, 0.6, 0.65)
+            end
+            GameTooltip:Show()
+        end)
+        f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        f:SetScript("OnMouseUp", function(self, button)
+            if button == "RightButton" and self.dismiss then GameTooltip:Hide(); self.dismiss(self) end
+        end)
         return f
     end
 
@@ -1164,6 +1216,15 @@ local function buildRecast()
         pool[#pool + 1] = f
         layout()
     end
+    local function dismiss(f)
+        local cur = f.cur
+        if cur and cur.keep then
+            local book = keepBook(false)
+            if book then book[cur.name] = nil end
+        end
+        drop(f)
+    end
+    local function lowAt(cur) return math.max(4, math.min(10, cur.dur * 0.15)) end -- (ten seconds at most: a half-hour buff was "running out" for minutes)
     local function look(name)
         local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
         if not ok or secret(a) then return "blind" end
@@ -1198,9 +1259,12 @@ local function buildRecast()
             -- (In a fight or out of one, since 0.1.665: out of a fight it
             -- "seemed to do nothing". There it leaves six seconds after
             -- running out, as before.)
-            local want = (cur.gone or left <= math.max(4, cur.dur * 0.15)) and QB.db.recastCentre ~= false or false
+            local want = (cur.gone or left <= lowAt(cur)) and QB.db.recastCentre ~= false or false
+            -- (A kept one that has run out shows itself in the middle for
+            -- eight seconds, then waits in the corner, red.)
+            if want and cur.keep and (cur.gone or left <= 0) and over >= 8 then want = false end
             if want ~= (f.want or false) then f.want = want; changed = true end
-            if (left <= 0 or cur.gone) and over >= 6 and not fighting then
+            if (left <= 0 or cur.gone) and over >= 6 and not fighting and not cur.keep then
                 drop(f)
             elseif left <= 0 or cur.gone then
                 -- Run out: grey picture, a full red ring, a slow breath.
@@ -1210,7 +1274,7 @@ local function buildRecast()
                 f:SetAlpha(0.72 + 0.28 * math.abs(math.sin(now * 3)))
             else
                 f.icon:SetDesaturated(false)
-                if left <= math.max(4, cur.dur * 0.15) then
+                if left <= lowAt(cur) then
                     f.ring:SetVertexColor(0.95, 0.40, 0.32, 1)
                     f:SetAlpha(0.65 + 0.35 * math.abs(math.sin(now * 4)))
                     f.secs:SetText(math.ceil(left))
@@ -1224,7 +1288,7 @@ local function buildRecast()
         end
         if changed or not moving then layout() end
     end)
-    local function start(name, spellID, dur)
+    local function start(name, spellID, dur, missing)
         local fam = family(name)
         local f = byFam[fam]
         if not f then
@@ -1234,16 +1298,27 @@ local function buildRecast()
             live[#live + 1] = f
             layout()
         end
+        f.dismiss = dismiss
         local cur = { name = name, start = GetTime(), dur = dur }
+        if KEEP[name] then
+            cur.keep = true
+            local book = keepBook(true)
+            if book then book[name] = true end
+        end
+        if missing then -- (a kept one found not on you at login: red from the start, in the corner)
+            cur.start = GetTime() - dur
+            cur.gone = GetTime() - 60
+        end
         f.cur = cur
         local okT, tex = false, nil
         if C_Spell and C_Spell.GetSpellTexture then okT, tex = pcall(C_Spell.GetSpellTexture, spellID) end
         f.icon:SetTexture((okT and tex and not secret(tex)) and tex or 134400)
-        pcall(f.cd.SetCooldown, f.cd, cur.start, dur)
+        if missing then pcall(f.cd.SetCooldown, f.cd, 0, 0) else pcall(f.cd.SetCooldown, f.cd, cur.start, dur) end
         f:SetAlpha(1)
         f:Show()
         seat()
         row:Show()
+        if missing then return end
         -- The buff's own word for how long, where it will say (out of a fight).
         C_Timer.After(0.4, function()
             if f.cur ~= cur then return end
@@ -1264,7 +1339,12 @@ local function buildRecast()
     local checkQueued = false
     ev:SetScript("OnEvent", function(_, e, _, _, spellID)
         if e == "PLAYER_DEAD" then
-            for i = #live, 1, -1 do drop(live[i]) end
+            -- (A kept one is not forgotten by dying: it waits, and is
+            -- looked at again once you are up and out of a fight.)
+            for i = #live, 1, -1 do
+                local f = live[i]
+                if f.cur and f.cur.keep then f.cur.died = true else drop(f) end
+            end
             return
         end
         if e == "PLAYER_REGEN_ENABLED" then
@@ -1283,12 +1363,25 @@ local function buildRecast()
             C_Timer.After(0.2, function()
                 checkQueued = false
                 if InCombatLockdown() then return end
-                for _, f in ipairs(live) do
+                local okD, dead = pcall(UnitIsDeadOrGhost, "player")
+                if not okD or secret(dead) or dead then return end
+                for i = #live, 1, -1 do
+                    local f = live[i]
                     local cur = f.cur
-                    if cur and cur.seen and not cur.gone and look(cur.name) == "not there" then
-                        cur.gone = GetTime()
-                        pcall(f.cd.SetCooldown, f.cd, 0, 0)
+                    -- (One cast in a fight is first seen here, afterwards.)
+                    if cur and not cur.seen and not cur.gone and look(cur.name) == "there" then cur.seen = true end
+                    if cur and (cur.seen or cur.died) and not cur.gone and look(cur.name) == "not there" then
+                        local left = cur.start + cur.dur - GetTime()
+                        if cur.keep and not cur.died and left > 2 then
+                            -- Taken off by hand with time to spare: that is
+                            -- "not now". No more reminding.
+                            dismiss(f)
+                        else
+                            cur.gone = GetTime()
+                            pcall(f.cd.SetCooldown, f.cd, 0, 0)
+                        end
                     end
+                    if cur then cur.died = nil end
                 end
             end)
             return
@@ -1300,6 +1393,27 @@ local function buildRecast()
         local dur = RECAST[name]
         if dur then return start(name, spellID, dur) end
     end)
+    local function restore(tries)
+        local book = keepBook(false)
+        if not book or QB.db.recast == false then return end
+        if InCombatLockdown() then
+            if tries < 20 then C_Timer.After(5, function() restore(tries + 1) end) end
+            return
+        end
+        for name in pairs(book) do
+            if KEEP[name] and RECAST[name] and known(name) and not byFam[family(name)] then
+                local res = look(name)
+                if res == "there" then
+                    start(name, name, RECAST[name])
+                    local f = byFam[family(name)]
+                    if f and f.cur then f.cur.seen = true end
+                elseif res == "not there" then
+                    start(name, name, RECAST[name], true)
+                end
+            end
+        end
+    end
+    C_Timer.After(5, function() pcall(restore, 0) end)
 end
 
 function QB:OnInit(db)
