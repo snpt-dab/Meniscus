@@ -1014,8 +1014,7 @@ end
 --
 -- Your buffs can't be read in a fight, so it runs off your own casts: the
 -- cast starts the ring, for the time the spell is known to last (read from
--- the buff itself when that can be had, a moment after the cast). A seal
--- is spent by Judgement: casting that ends the ring. It is only a picture:
+-- the buff itself when that can be had, a moment after the cast). It is only a picture:
 -- it can't be clicked (a button that casts can't be retargeted in a fight).
 local RECAST = {
     ["Seal of Righteousness"] = 30, ["Seal of the Crusader"] = 30, ["Seal of Command"] = 30,
@@ -1024,7 +1023,12 @@ local RECAST = {
     ["Slice and Dice"] = 9,
     ["Mana Shield"] = 60, ["Ice Barrier"] = 60,
 }
-local RECAST_ENDS = { ["Judgement"] = "Seal" } -- casting this ends any running spell whose name starts so
+-- Casting the key ends any running spell whose name starts with the value.
+-- EMPTY since 0.1.660: it held Judgement = "Seal", the classic rule. In
+-- Forever a seal lasts its full time whatever you judge (the player's own
+-- word, 2026-11-24), so nothing ends a ring early here. Do not bring a
+-- classic rule back without it being seen in this game.
+local RECAST_ENDS = {}
 local function buildRecast()
     local D = 26
     local f = CreateFrame("Frame", "MeniscusRecast", UIParent)
