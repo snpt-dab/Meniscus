@@ -8,9 +8,7 @@ Last updated: 2026-11-24, version 0.1.668.
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 9 | Upgrade arrows for armour-only gains (0.1.668) | `/reload` on the mage, open the bags | Whether the robe and the shoes are now marked as upgrades |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
-| 1 | A character listed twice in item tooltips (0.1.666) | `/reload`, hover an item an alt also holds | Whether each character is listed once, with the right count |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
@@ -32,6 +30,8 @@ Last updated: 2026-11-24, version 0.1.668.
 
 ## Settled recently
 
+- Upgrade arrows for armour-only gains (0.1.668): confirmed.
+- A character listed twice in item tooltips (0.1.666): fixed, confirmed.
 - Map buttons in full screen: fine now.
 - Why a character showed twice in a tooltip: the realm name comes back empty on some logins, so per-character records were kept under two keys. One remembered realm name now; doubled records folded at load (`keymerge` in the record says how many).
 - Combat numbers 36 above the target frame: good. Professions window icons: good for now, may be refined later. Buff ring glides to mid-screen in a fight: seen.
