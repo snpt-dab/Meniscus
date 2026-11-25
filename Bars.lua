@@ -759,6 +759,63 @@ function ns.PetMoodWord(fs, c, i)
 end
 local HAPPY = (Enum and Enum.PowerType and Enum.PowerType.Happiness) or 27
 function ns.PetMoodPct(c) return UnitPowerPercent("pet", HAPPY, false, c) end
+-- (0.1.703) The mood as the game itself tells it: C_PetInfo.GetPetHappiness
+-- gives 1 unhappy, 2 content, 3 happy, then the damage percentage and the
+-- loyalty rate; the game's own stable and character windows read it
+-- (Blizzard_FrameXML/PetHappiness.lua). Returns nil when there is no such
+-- call, no hunter's pet, or the answer is hidden or out of range: then the
+-- curves above do the work, as before. What it said is counted in
+-- MinimalUIDB.petcheck. "/men petmood old" keeps to the curves (the way
+-- back without touching the code); "/men petmood new" changes back.
+function ns.PetMoodNow()
+    local db = MinimalUIDB
+    if db and db.petMoodOld then return nil end
+    local secret = issecretvalue or function() return false end
+    local f = C_PetInfo and C_PetInfo.GetPetHappiness
+    local h, dmg, loy, said
+    if type(f) ~= "function" then
+        said = "no C_PetInfo.GetPetHappiness on this client"
+    else
+        local hunters = true
+        if type(HasPetUI) == "function" then
+            local okU, _, isHunterPet = pcall(HasPetUI)
+            if okU and isHunterPet == false then hunters = false end
+        end
+        local ok, a, b, c = pcall(f)
+        if not hunters then said = "not a hunter's pet"
+        elseif not ok then said = "the call failed: " .. tostring(a)
+        elseif secret(a) then said = "the answer is hidden"
+        elseif type(a) ~= "number" or a < 1 or a > 3 or a ~= math.floor(a) then said = "the answer was " .. tostring(a)
+        else
+            h = a
+            if type(b) == "number" and not secret(b) then dmg = b end
+            if type(c) == "number" and not secret(c) then loy = c end
+            said = "mood " .. a .. " from the game's call"
+        end
+    end
+    if db then
+        if InCombatLockdown() then said = said .. " (in a fight)" end
+        db.petcheck = type(db.petcheck) == "table" and db.petcheck or {}
+        db.petcheck[said] = (db.petcheck[said] or 0) + 1
+    end
+    return h, dmg, loy
+end
+ns.commands.petmood = function(rest)
+    if not MinimalUIDB then return end
+    rest = (rest or ""):lower()
+    if rest:find("^old") then
+        MinimalUIDB.petMoodOld = true
+        ns:Print("Pet mood: worked out the old way (curves on the hidden value). /men petmood new changes back.")
+    elseif rest:find("^new") then
+        MinimalUIDB.petMoodOld = nil
+        ns:Print("Pet mood: asked of the game.")
+    else
+        local h, dmg = ns.PetMoodNow()
+        ns:Print("Pet mood: " .. (MinimalUIDB.petMoodOld and "the old way is on (/men petmood new)."
+            or (h and ("the game says " .. h .. " of 3" .. (dmg and (", damage " .. dmg .. "%") or "") .. ".")
+                or "the game gave no answer; the old way is in use.")) .. "  /men petmood old | new")
+    end
+end
 function ns.PetMoodCurves()
     local max = UnitPowerMax("pet", HAPPY)
     local secret = issecretvalue or function() return false end
@@ -995,6 +1052,16 @@ function Bars:ApplyPetWell()
             paintRing(pct(curves.r), pct(curves.g), pct(curves.b), 1)
         end
         function w.mood()
+            -- The game's own answer first (plain: one word lit, the ring its colour).
+            local h = ns.PetMoodNow()
+            if h then
+                for i = 1, 3 do
+                    wordText[i]:SetTextColor(MOOD[i][2], MOOD[i][3], MOOD[i][4], i == h and 1 or 0)
+                end
+                paintRing(MOOD[h][2] * 0.8, MOOD[h][3] * 0.8, MOOD[h][4] * 0.8, 1)
+                pulse:Show()
+                return
+            end
             curves = ns.PetMoodCurves()
             if curves and pcall(apply) then
                 pulse:Show()

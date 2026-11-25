@@ -710,7 +710,19 @@ local function buildPetFood()
     na:SetFromAlpha(1); na:SetToAlpha(0.25); na:SetDuration(0.9); na:SetSmoothing("IN_OUT")
     local needCurve
     local function nagNow()
-        if InCombatLockdown() or not (ns.PetMoodPct and C_CurveUtil and C_CurveUtil.CreateCurve) then
+        if InCombatLockdown() then nag:Hide() return end
+        -- The game's own answer first (0.1.703): less than happy, the wash is on.
+        local h = ns.PetMoodNow and ns.PetMoodNow()
+        if h then
+            if h < 3 and pcall(nagPaint, 0.95, 0.78, 0.36, 0.3) then
+                nag:Show()
+                if not nagAnim:IsPlaying() then nagAnim:Play() end
+            else
+                nag:Hide()
+            end
+            return
+        end
+        if not (ns.PetMoodPct and C_CurveUtil and C_CurveUtil.CreateCurve) then
             nag:Hide()
             return
         end
@@ -736,6 +748,7 @@ local function buildPetFood()
     for _, e in ipairs({ "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD" }) do pcall(nev.RegisterEvent, nev, e) end
     pcall(nev.RegisterUnitEvent, nev, "UNIT_PET", "player")
     pcall(nev.RegisterUnitEvent, nev, "UNIT_POWER_UPDATE", "pet")
+    pcall(nev.RegisterUnitEvent, nev, "UNIT_HAPPINESS", "pet")
     nev:SetScript("OnEvent", function(_, e, _, token)
         if e == "UNIT_POWER_UPDATE" and type(token) == "string" and token ~= "HAPPINESS" then return end
         if e == "PLAYER_REGEN_DISABLED" then nag:Hide() return end

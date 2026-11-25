@@ -1677,7 +1677,9 @@ local function updatePet(page)
     end
 
     local parts = {}
-    local happy, dmg = call(GetPetHappiness)
+    -- (the game's own answer where it gives one: Bars.lua ns.PetMoodNow)
+    local happy, dmg
+    if ns.PetMoodNow then happy, dmg = ns.PetMoodNow() end
     local h = plain(happy) and HAPPINESS[happy]
     if h then
         local c = h[2]
