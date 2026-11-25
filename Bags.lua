@@ -1445,8 +1445,23 @@ function B:OnInit(db)
     end
     for _, fn in ipairs({ "CloseAllBags", "CloseBackpack" }) do
         if _G[fn] then
+            -- (0.1.712) Not closed here and now: on Escape the game calls
+            -- CloseAllBags FIRST and only then looks for a window to close
+            -- (CloseAllWindows). With ours closed already it found none,
+            -- so the game menu opened as well and Escape had to be pressed
+            -- twice. Left a moment, ours is still up when the game looks:
+            -- the Esc stand-in (Windows.lua) closes the newest window and
+            -- the game counts Escape as used. If that stand-in closed
+            -- something on this press, this close is dropped (one Escape,
+            -- one window); so is it if the bags were opened since.
             hooksecurefunc(fn, function()
-                if not hidingBlizzard and not openedThisFrame() then B:Close() end
+                if hidingBlizzard or openedThisFrame() then return end
+                local at = GetTime()
+                C_Timer.After(0, function()
+                    if (ns.EscClosedAt or -1) >= at then return end
+                    if (B.shownAt or -1) >= at then return end
+                    B:Close()
+                end)
             end)
         end
     end

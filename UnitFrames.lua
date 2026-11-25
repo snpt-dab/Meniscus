@@ -1979,6 +1979,12 @@ function UF:BuildCure()
     pill:SetFrameStrata("MEDIUM")
     pill:SetFrameLevel(LV + 14)
     pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
+    -- (0.1.712) The edge is pinned on the button itself. The game's own
+    -- code (SecureActionButton_OnClick) acts on the press or the release
+    -- by this attribute, and only without it by the setting; the edge above
+    -- was read from the setting once, so changing the setting later left
+    -- the pill deaf until a reload.
+    pill:SetAttribute("useOnKeyDown", onPress)
     pill:SetAttribute("unit", "player")
     -- (So that the game's button under it still hears the mouse come and
     -- go: its tooltip. The game lets this be set out of a fight only.)
@@ -2048,6 +2054,7 @@ function UF:BuildCure()
             b:SetSize(CURE_S, CURE_S)
             b:SetFrameLevel(pf:GetFrameLevel() + 22)
             b:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
+            b:SetAttribute("useOnKeyDown", onPress)
             b:SetAttribute("unit", unit)
             if b.SetPropagateMouseMotion and not InCombatLockdown() then pcall(b.SetPropagateMouseMotion, b, true) end
             local skip = pf.orbSide == "RIGHT" and (pf.healthPill:GetHeight() + 4) or 0

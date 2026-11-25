@@ -424,6 +424,8 @@ function W:OnInit(db)
     table.insert(UISpecialFrames, "MeniscusEscProxy")
     proxy:SetScript("OnHide", function()
         if proxySelf then return end
+        -- (When: Bags.lua asks, so that one Esc closes one window.)
+        ns.EscClosedAt = GetTime()
         -- Esc: close the newest of our windows that can be closed now.
         for i = #stack, 1, -1 do
             local f = stack[i]
