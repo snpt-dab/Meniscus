@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.688.
+Last updated: 2026-11-25, version 0.1.689.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Cure pill for something caught in a fight (0.1.688) | `/reload`. Get diseased while already in a fight, once or twice, then `/reload` | Whether the pill came up during the fight. Either way the record now says exactly what the game’s debuff buttons give up in a fight |
+| 11 | Cure pill for something caught in a fight (0.1.689) | `/reload`, wait ten seconds, get diseased while already in a fight, then `/reload` | Whether the pill came up. The record now writes out the game’s real debuff buttons in full when one appears |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |

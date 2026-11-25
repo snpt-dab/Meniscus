@@ -2036,63 +2036,112 @@ function UF:BuildCure()
         if type(v) == "string" then return v ~= "" and v or "other" end
         return nil
     end
-    local probed = 0
-    local function probe(list)
-        if probed >= 6 or not MinimalUIDB then return end
-        local fighting = InCombatLockdown()
+    -- (0.1.689: the first probe spent its six goes before the disease
+    -- landed, and what it saw shown were not debuffs at all: six frames at
+    -- the end of the list, always shown, with no picture and no border,
+    -- the game's "private aura" places. So: those are left out; a record
+    -- is made only when the number of real debuff buttons shown CHANGES;
+    -- and each real one is written out in full: every name it carries,
+    -- with what is under it where that is a plain word or number. Once,
+    -- out of a fight, the frame itself and its list are written out too.)
+    local function val(v)
+        if v == nil then return "nil" end
+        if issecretvalue(v) then return "HIDDEN" end
+        if type(v) == "string" then return '"' .. v:sub(1, 24) .. '"' end
+        if type(v) == "number" or type(v) == "boolean" then return tostring(v) end
+        return type(v)
+    end
+    local function keysOf(t, max)
         local out = {}
-        local function kindOf(v) return v == nil and "nil" or (issecretvalue(v) and "hidden") or type(v) end
-        local function val(v)
-            if v == nil then return "nil" end
-            if issecretvalue(v) then return "hidden" end
-            if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then return tostring(v) end
-            return type(v)
+        if type(t) ~= "table" then return type(t) end
+        for k, v in pairs(t) do
+            if type(k) == "string" and k:sub(1, 5) ~= "__mui" and #out < (max or 40) then
+                local okV, sv = pcall(val, v)
+                out[#out + 1] = k .. "=" .. (okV and sv or "?")
+            end
         end
-        local nShown = 0
-        for i, btn in ipairs(list) do
-            local okS, shown = pcall(btn.IsShown, btn)
-            if okS and not issecretvalue(shown) and shown then
-                nShown = nShown + 1
-                if nShown <= 3 then
-                    local info = btn.buttonInfo
-                    local keys = {}
-                    if type(info) == "table" then
-                        for k in pairs(info) do
-                            if type(k) == "string" then keys[#keys + 1] = k end
-                        end
-                        table.sort(keys)
-                    end
-                    out[#out + 1] = "button " .. i .. ": colour seen=" .. tostring(btn.__muiCureKind)
-                        .. "; buttonInfo " .. type(info)
-                        .. (type(info) == "table" and (" {" .. table.concat(keys, ",") .. "} debuffType=" .. val(info.debuffType)
-                            .. " dispelName=" .. val(info.dispelName) .. " index=" .. val(info.index)
-                            .. " auraType=" .. val(info.auraType)) or "")
-                        .. "; fields: auraInstanceID=" .. kindOf(btn.auraInstanceID) .. " debuffType=" .. val(btn.debuffType)
-                        .. " unit=" .. val(btn.unit)
-                        .. "; border: " .. (btn.DebuffBorder and "there" or "none")
+        table.sort(out)
+        return "{" .. table.concat(out, ", ") .. "}"
+    end
+    local function isPlace(btn) -- (one of the always-shown places with nothing drawn in it)
+        return btn.isAuraAnchor or (btn.Icon == nil and btn.DebuffBorder == nil)
+    end
+    local function probeNote(str)
+        if not MinimalUIDB then return end
+        local t = type(MinimalUIDB.cureprobe) == "table" and MinimalUIDB.cureprobe or {}
+        MinimalUIDB.cureprobe = t
+        if #t < 12 then t[#t + 1] = (InCombatLockdown() and "[fight] " or "[calm] ") .. str end
+    end
+    local lastShown = -1
+    local function probe(list)
+        local n, first = 0, nil
+        for _, btn in ipairs(list) do
+            if not isPlace(btn) then
+                local okS, shown = pcall(btn.IsShown, btn)
+                if okS and not issecretvalue(shown) and shown then
+                    n = n + 1
+                    first = first or btn
                 end
-            elseif not okS or issecretvalue(shown) then
-                out[#out + 1] = "button " .. i .. ": whether it is shown: " .. (okS and "hidden" or "refused")
+            end
+        end
+        if n == lastShown then return end
+        lastShown = n
+        local line = "real debuff buttons shown: " .. n
+        if first then
+            line = line .. " | first: " .. keysOf(first, 45)
+            line = line .. " | its buttonInfo: " .. keysOf(first.buttonInfo, 30)
+            local border = first.DebuffBorder
+            if border then
+                local okC, r, g, b = pcall(border.GetVertexColor, border)
+                line = line .. " | border colour read back: " .. (okC and (val(r) .. " " .. val(g) .. " " .. val(b)) or "refused")
+                local okA, atlas = pcall(border.GetAtlas, border)
+                line = line .. ", atlas " .. (okA and val(atlas) or "refused")
+                local okSh, sh = pcall(border.IsShown, border)
+                line = line .. ", shown " .. (okSh and val(sh) or "refused")
+            end
+            local okT, tex = pcall(function() return first.Icon and first.Icon:GetTexture() end)
+            line = line .. " | picture: " .. (okT and val(tex) or "refused")
+            if first.symbol or first.Symbol then
+                local sy = first.symbol or first.Symbol
+                local okY, txt = pcall(sy.GetText, sy)
+                line = line .. " | symbol text: " .. (okY and val(txt) or "refused")
             end
         end
         local fr = _G.DebuffFrame
         local ai = fr and fr.auraInfo
-        local first = type(ai) == "table" and ai[1] or nil
-        out[#out + 1] = "shown buttons: " .. nShown .. "; frame.auraInfo " .. type(ai)
-            .. (type(first) == "table" and (" first.debuffType=" .. val(first.debuffType) .. " first.dispelName=" .. val(first.dispelName)) or "")
-        probed = probed + 1
-        local t = type(MinimalUIDB.cureprobe) == "table" and MinimalUIDB.cureprobe or {}
-        MinimalUIDB.cureprobe = t
-        t[#t + 1] = (fighting and "[fight] " or "[calm] ") .. table.concat(out, " | ")
+        if type(ai) == "table" then
+            local cnt, firstInfo = 0, nil
+            for _, v in pairs(ai) do
+                cnt = cnt + 1
+                if type(v) == "table" and not firstInfo then firstInfo = v end
+            end
+            line = line .. " | frame.auraInfo: " .. cnt .. " entries; one of them: " .. keysOf(firstInfo, 30)
+        end
+        probeNote(line)
     end
+    C_Timer.After(8, function()
+        local fr = _G.DebuffFrame
+        if not fr then return probeNote("no DebuffFrame") end
+        local list = fr.auraFrames
+        local places, real = 0, 0
+        if type(list) == "table" then
+            for _, btn in ipairs(list) do
+                if isPlace(btn) then places = places + 1 else real = real + 1 end
+            end
+        end
+        probeNote("the frame: " .. keysOf(fr, 60) .. " | buttons: " .. real .. " real, " .. places .. " places"
+            .. " | button 1: " .. keysOf(type(list) == "table" and list[1] or nil, 45))
+    end)
     ownDebuff = function()
         local list = watchOwn()
         if not list then return nil, false end
-        if InCombatLockdown() then pcall(probe, list) end
+        pcall(probe, list)
         local sure = true
         for _, btn in ipairs(list) do
             local okS, shown = pcall(btn.IsShown, btn)
-            if not okS or issecretvalue(shown) then
+            if isPlace(btn) then
+                -- (not a debuff: one of the game's always-shown places)
+            elseif not okS or issecretvalue(shown) then
                 sure = false
             elseif shown then
                 -- The button's own note first; else the colour it was given.
@@ -2275,7 +2324,7 @@ function UF:BuildCure()
         look.text:SetText("")
         pill:SetWidth(math.max(90, 3 + (PH - 6) + 6 + widest + PH / 2))
         seatPill()
-        pcall(watchOwn)
+        pcall(ownDebuff)
     end
 
     -- A party member's chip.
