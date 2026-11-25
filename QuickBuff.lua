@@ -22,9 +22,22 @@ local MEDIA = "Interface/AddOns/Meniscus/Media/"
 BINDING_HEADER_MINIMALUI = "Meniscus"
 _G["BINDING_NAME_CLICK MinimalUIQuickBuff:LeftButton"] = "Quick Buff (cast next buff)"
 
+-- WHICH OF THE TWO LOOKS AFTER A BUFF (0.1.679, the player's rule: "let's
+-- have a threshold for when one is chosen over the other"). The two had
+-- begun to mix: Righteous Fury, half an hour long, sat among the rings,
+-- and Battle Shout was in both.
+--   under LONG_BUFF seconds   a ring (buildRecast, RECAST): something you
+--                             recast all fight long, watched as it drains
+--   LONG_BUFF or more         the Quick Buff pill (CLASS_BUFFS): put on
+--                             between fights, offered when it is missing
+--                             or nearly out
+-- A buff goes in ONE of the two tables, by how long it lasts.
+local LONG_BUFF = 300
+
 -- self = only on you; any = alternatives (having any counts; best known is
 -- cast); mana = mana users only; tank = tanks (or you when there's none);
--- group = the reagent version.
+-- group = the reagent version; optin = offered only once you have cast it
+-- yourself on this character (see optedIn).
 local CLASS_BUFFS = {
     PRIEST = {
         { name = "Power Word: Fortitude", group = "Prayer of Fortitude" },
@@ -52,14 +65,16 @@ local CLASS_BUFFS = {
     WARLOCK = {
         { name = "Demon Armor", self = true, any = { "Demon Armor", "Demon Skin" } },
     },
-    WARRIOR = { { name = "Battle Shout", self = true } },
+    WARRIOR = {}, -- (Battle Shout lasts two minutes: a ring, by the rule above. It was here too until 0.1.679.)
     HUNTER = {
         { name = "Aspect of the Hawk", self = true,
           any = { "Aspect of the Hawk", "Aspect of the Monkey", "Aspect of the Cheetah", "Aspect of the Pack",
                   "Aspect of the Wild", "Aspect of the Beast", "Aspect of the Viper" } },
         { name = "Trueshot Aura", self = true },
     },
-    PALADIN = {}, -- blessings: see blessingFor
+    -- (Blessings: see blessingFor. Righteous Fury, half an hour: here by
+    -- the rule above, and only for a character that wants it.)
+    PALADIN = { { name = "Righteous Fury", self = true, optin = true } },
 }
 
 -- Paladin blessings by role/class; the first one you know is used.
@@ -281,6 +296,17 @@ local function skipped(name)
     local s = QB.db and QB.db.skip
     return s and s[name] or false
 end
+-- A buff you want in one role and not in another (a tank's Righteous
+-- Fury) is offered only to a character that has asked for it, and the
+-- asking is CASTING it once (the player's idea, 2026-11-25; first built as
+-- a ring that stayed, 0.1.667). It stops being offered when you click the
+-- buff off with time still on it, or switch "Offer ..." off in the
+-- settings. Kept per character in MinimalUIDB.keepBuff.
+local function optedIn(name)
+    local db = MinimalUIDB
+    local t = db and type(db.keepBuff) == "table" and db.keepBuff[ns:CharKey()]
+    return type(t) == "table" and t[name] and true or false
+end
 -- The buffs the pill can offer this character: for the settings list.
 function QB.Offered()
     local out, seen = {}, {}
@@ -332,7 +358,7 @@ local function scan()
     end
     for _, buff in ipairs(CLASS_BUFFS[cls] or {}) do
         local spell, info = bestSpell(buff)
-        if spell and not skipped(buff.name) then
+        if spell and not skipped(buff.name) and (not buff.optin or optedIn(buff.name)) then
             for k in pairs(byGroup) do wipe(byGroup[k]) end
             local need = {}
             for _, u in ipairs(buff.self and SELF or groupUnits()) do
@@ -1037,17 +1063,17 @@ local RECAST = {
     ["Battle Shout"] = 120,
     ["Slice and Dice"] = 9,
     ["Mana Shield"] = 60, ["Ice Barrier"] = 60,
-    ["Righteous Fury"] = 1800,
 }
--- Kept (0.1.667, the player's idea): spells you want up in one role and
--- not in another, a tank's Righteous Fury. Nothing has to be told what
--- role you are in: CASTING it once is the "remind me" switch. From then on
--- its ring stays when it runs out, red, and is back at your next login,
--- until you say otherwise: by right-clicking the ring away, or by
--- clicking the buff itself off while it still had time left (seen out of
--- a fight). Either ends the reminding until you cast it again.
--- Kept per character in MinimalUIDB.keepBuff.
-local KEEP = { ["Righteous Fury"] = true }
+for name, secs in pairs(RECAST) do
+    -- (the rule at the top of this file; a long one here is a mistake)
+    if secs >= LONG_BUFF then RECAST[name] = nil end
+end
+-- Kept rings (0.1.667): a ring that stayed, red, once run out, and came
+-- back at login. Made for Righteous Fury, which since 0.1.679 is the Quick
+-- Buff pill's (it lasts half an hour: see the rule at the top). Nothing is
+-- kept this way now; the list is empty and the ring code that reads it
+-- lies idle.
+local KEEP = {}
 local function keepBook(create)
     local db = MinimalUIDB
     if not db then return nil end
@@ -1477,8 +1503,62 @@ function QB:OnInit(db)
                     if n == name and QB.db then QB.db.imbue = name end
                 end
             end
+            -- Cast it yourself: from now on it is offered when missing.
+            if buff.optin and buff.name == name then
+                local book = keepBook(true)
+                if book and not book[name] then
+                    book[name] = true
+                    ns:Print("Quick Buff will offer " .. name .. " when it is missing. Click the buff off to stop that.")
+                end
+            end
         end
     end)
+    -- Taken off by hand with time to spare: "not now". Seen out of a
+    -- fight only (in one your buffs can't be read), and looked at twice, a
+    -- moment apart, so that dying is not taken for it.
+    local optSeen = {} -- [name] = when it was to run out, as last seen on you
+    local function optLook()
+        if InCombatLockdown() then return end
+        local okD, dead = pcall(UnitIsDeadOrGhost, "player")
+        if not okD or secret(dead) or dead then wipe(optSeen) return end
+        local _, cls = UnitClass("player")
+        for _, buff in ipairs(CLASS_BUFFS[cls or ""] or {}) do
+            if buff.optin and optedIn(buff.name) then
+                local name = buff.name
+                local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
+                if ok and type(a) == "table" then
+                    local e = a.expirationTime
+                    optSeen[name] = (type(e) == "number" and not secret(e)) and e or nil
+                elseif ok and a == nil and optSeen[name] and GetTime() < optSeen[name] - 3 then
+                    optSeen[name] = nil
+                    C_Timer.After(1.5, function()
+                        if InCombatLockdown() then return end
+                        local okD2, dead2 = pcall(UnitIsDeadOrGhost, "player")
+                        if not okD2 or secret(dead2) or dead2 then return end
+                        local ok2, a2 = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
+                        if not ok2 or a2 ~= nil then return end
+                        local book = keepBook(false)
+                        if book and book[name] then
+                            book[name] = nil
+                            dirty = true
+                            ns:Print("Quick Buff will no longer offer " .. name .. " (you took it off). Cast it once to be offered it again.")
+                        end
+                    end)
+                elseif ok and a == nil then
+                    optSeen[name] = nil
+                end
+            end
+        end
+    end
+    local opt = CreateFrame("Frame")
+    pcall(opt.RegisterUnitEvent, opt, "UNIT_AURA", "player")
+    opt:RegisterEvent("PLAYER_DEAD")
+    opt:RegisterEvent("PLAYER_REGEN_ENABLED")
+    opt:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_DEAD" then wipe(optSeen) return end
+        pcall(optLook)
+    end)
+    C_Timer.After(6, function() pcall(optLook) end)
     ev:SetScript("OnEvent", function(_, e, unit)
         if e == "UNIT_AURA" then
             if unit and (unit == "player" or unit:find("^party") or unit:find("^raid")) then dirty = true end

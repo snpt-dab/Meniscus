@@ -120,3 +120,11 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
 - For UIParent (hundreds of children) neither `{ GetChildren() }` nor `select(i, ...)` per child: take the varargs eight at a time with a tail call (Skins.lua `checkTop`).
 - Hidden frames should stop their OnUpdate. TweenColor already snaps when its frame is hidden.
 - Check new recurring work with `/men perf`.
+
+## Buffs: ring or Quick Buff (QuickBuff.lua)
+
+The user's rule (2026-11-25): a buff goes in ONE of the two, by how long it lasts. Under `LONG_BUFF` (300 s): a recast ring (`RECAST`; seals, Slice and Dice, shields, Battle Shout). `LONG_BUFF` or more: the Quick Buff pill (`CLASS_BUFFS`, blessings). Role-only buffs (Righteous Fury) are `optin = true` in `CLASS_BUFFS`: offered only once the character has cast it (`MinimalUIDB.keepBuff[CharKey]`), and no longer after the buff is clicked off with time left. In Forever a seal lasts its full 30 s whatever is judged; nothing ends a ring early.
+
+## Quick Cure (UnitFrames.lua `BuildCure`)
+
+With the cure grid on (default; `db.cureGrid`) it is the only cure control drawn: a row of always-shown secure squares (you, party1-4; unit watch hides empty places), the one form the game allows to be clicked in a fight. The pill stays, undrawn, for the "cast next cure" key. Grid off: the pill out of a fight, chips by the bars and on the map rim, a notice in a fight. Each kind has its own light and motes (`CURE_FX`), kicked outward from the whole edge at each pulse. `MinimalUIDB.curefight` counts what a fight lets be read.

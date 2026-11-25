@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.678.
+Last updated: 2026-11-25, version 0.1.679.
 
 ## Needs you, in game
 
@@ -10,7 +10,7 @@ Last updated: 2026-11-25, version 0.1.678.
 |---|------|-----------|-----------------|
 | 11 | Cure grid (0.1.678) | `/reload`. Only the row of squares should be left (no pill under it, no chip on the map’s rim). Get something curable on you or a party member, out of a fight and in one | Is the grid now the only thing shown? Does a square light and cure on click, in a fight too? Does each pulse kick dust out from all round the square, away from it? Then `/reload` |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
-| 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
+| 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
@@ -35,6 +35,7 @@ Last updated: 2026-11-25, version 0.1.678.
 
 ## Settled recently
 
+- The rule for buffs (yours, 2026-11-25): under five minutes a ring, five minutes or more the Quick Buff pill. Righteous Fury moved to Quick Buff (offered once you have cast it; click the buff off to stop). Battle Shout is a ring only.
 - Roster and the full sheet open and show (tiles, card). The emblem was shown because that character had no race or sex on file yet (not logged in since 0.1.672).
 - Upgrade arrows for armour-only gains (0.1.668): confirmed.
 - A character listed twice in item tooltips (0.1.666): fixed, confirmed.
