@@ -1876,6 +1876,9 @@ function UF:BuildCure()
     -- Which of these answered is counted in MinimalUIDB.cureways, and the
     -- refusal's own words kept in MinimalUIDB.cureerr.)
     local diag, errKept = false, false
+    if MinimalUIDB then
+        MinimalUIDB.cureways, MinimalUIDB.curefight, MinimalUIDB.cureprobe, MinimalUIDB.cureerr = nil, nil, nil, nil
+    end
     local function wayNote(key)
         if not MinimalUIDB then return end
         local t = type(MinimalUIDB.cureways) == "table" and MinimalUIDB.cureways or {}
@@ -2008,7 +2011,10 @@ function UF:BuildCure()
             if border and not btn.__muiCureHook and border.SetVertexColor then
                 btn.__muiCureHook = true
                 hooksecurefunc(border, "SetVertexColor", function(_, r, g, b)
-                    btn.__muiCureKind = kindOfColour(r, g, b)
+                    local kind = kindOfColour(r, g, b)
+                    btn.__muiCureKind = kind
+                    wayNote("border coloured " .. (InCombatLockdown() and "in a fight: " or "out of a fight: ")
+                        .. (kind == nil and "no numbers" or kind == "hidden" and "hidden" or "plain"))
                     if ownChanged then ownChanged() end
                 end)
             end
@@ -2018,16 +2024,83 @@ function UF:BuildCure()
     local OWN = {}
     -- Returns what was found (or nil), and whether the frame could be
     -- read through: false where a shown button's kind is not known.
+    -- (0.1.688: "still not activating during battle when applied". The
+    -- record said only that the frame was "not to be read", not why. So
+    -- the kind is now sought two ways, the border's colour and the
+    -- button's own note of its debuff (buttonInfo.debuffType, as the game's
+    -- code keeps it), and what a shown button would and would not give up
+    -- in a fight is written out in MinimalUIDB.cureprobe.)
+    local function plainKind(v)
+        if v == nil then return nil end
+        if issecretvalue(v) then return "hidden" end
+        if type(v) == "string" then return v ~= "" and v or "other" end
+        return nil
+    end
+    local probed = 0
+    local function probe(list)
+        if probed >= 6 or not MinimalUIDB then return end
+        local fighting = InCombatLockdown()
+        local out = {}
+        local function kindOf(v) return v == nil and "nil" or (issecretvalue(v) and "hidden") or type(v) end
+        local function val(v)
+            if v == nil then return "nil" end
+            if issecretvalue(v) then return "hidden" end
+            if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then return tostring(v) end
+            return type(v)
+        end
+        local nShown = 0
+        for i, btn in ipairs(list) do
+            local okS, shown = pcall(btn.IsShown, btn)
+            if okS and not issecretvalue(shown) and shown then
+                nShown = nShown + 1
+                if nShown <= 3 then
+                    local info = btn.buttonInfo
+                    local keys = {}
+                    if type(info) == "table" then
+                        for k in pairs(info) do
+                            if type(k) == "string" then keys[#keys + 1] = k end
+                        end
+                        table.sort(keys)
+                    end
+                    out[#out + 1] = "button " .. i .. ": colour seen=" .. tostring(btn.__muiCureKind)
+                        .. "; buttonInfo " .. type(info)
+                        .. (type(info) == "table" and (" {" .. table.concat(keys, ",") .. "} debuffType=" .. val(info.debuffType)
+                            .. " dispelName=" .. val(info.dispelName) .. " index=" .. val(info.index)
+                            .. " auraType=" .. val(info.auraType)) or "")
+                        .. "; fields: auraInstanceID=" .. kindOf(btn.auraInstanceID) .. " debuffType=" .. val(btn.debuffType)
+                        .. " unit=" .. val(btn.unit)
+                        .. "; border: " .. (btn.DebuffBorder and "there" or "none")
+                end
+            elseif not okS or issecretvalue(shown) then
+                out[#out + 1] = "button " .. i .. ": whether it is shown: " .. (okS and "hidden" or "refused")
+            end
+        end
+        local fr = _G.DebuffFrame
+        local ai = fr and fr.auraInfo
+        local first = type(ai) == "table" and ai[1] or nil
+        out[#out + 1] = "shown buttons: " .. nShown .. "; frame.auraInfo " .. type(ai)
+            .. (type(first) == "table" and (" first.debuffType=" .. val(first.debuffType) .. " first.dispelName=" .. val(first.dispelName)) or "")
+        probed = probed + 1
+        local t = type(MinimalUIDB.cureprobe) == "table" and MinimalUIDB.cureprobe or {}
+        MinimalUIDB.cureprobe = t
+        t[#t + 1] = (fighting and "[fight] " or "[calm] ") .. table.concat(out, " | ")
+    end
     ownDebuff = function()
         local list = watchOwn()
         if not list then return nil, false end
+        if InCombatLockdown() then pcall(probe, list) end
         local sure = true
         for _, btn in ipairs(list) do
             local okS, shown = pcall(btn.IsShown, btn)
             if not okS or issecretvalue(shown) then
                 sure = false
             elseif shown then
-                local kind = btn.__muiCureKind
+                -- The button's own note first; else the colour it was given.
+                local info = btn.buttonInfo
+                local okK, kind = pcall(function()
+                    return plainKind(type(info) == "table" and (info.debuffType or info.dispelName) or nil)
+                end)
+                if not okK or kind == nil or kind == "hidden" then kind = btn.__muiCureKind end
                 if kind == nil or kind == "hidden" then
                     sure = false
                 elseif typeSpell[kind] then

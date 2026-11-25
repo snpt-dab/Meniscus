@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.687.
+Last updated: 2026-11-25, version 0.1.688.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Cure pill (0.1.687) | `/reload`. Get diseased while already in a fight; open the full-screen map with the pill up | Does the pill come up DURING the fight for something caught in it? Is the dust now a faint, tight puff off the edge with each flash? Is the pill left of your cast bar, and under the full-screen map? Then `/reload` |
+| 11 | Cure pill for something caught in a fight (0.1.688) | `/reload`. Get diseased while already in a fight, once or twice, then `/reload` | Whether the pill came up during the fight. Either way the record now says exactly what the game’s debuff buttons give up in a fight |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
@@ -20,7 +20,7 @@ Last updated: 2026-11-25, version 0.1.687.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
-- `curefight`, `cureways`, `cureerr`: what a fight lets be seen of afflictions, which way of asking answered, and the refusal’s own words (11).
+- `cureways`, `curefight`, `cureprobe`, `cureerr` (fresh each session): which way of asking answered in a fight, whether the debuff border’s colour came plain or hidden, and what a shown debuff button’s fields hold (11).
 - `dolldiag`: for each way of standing a figure up, whether a model came and what the game answered to each piece of gear (10).
 - `figdiag`: the body number this character measured, to check the table of race bodies against (10).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
