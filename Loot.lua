@@ -161,12 +161,17 @@ local function lootRow(i)
     r.box:SetPoint("LEFT", 3, 0)
     r.name = text(r, 12)
     r.name:SetPoint("LEFT", r.box, "RIGHT", 8, 0)
-    r.name:SetPoint("RIGHT", r, "RIGHT", -24, 0)
     r.name:SetJustifyH("LEFT")
     r.name:SetWordWrap(false)
     r.quest = text(r, 14, true, GOLD)
     r.quest:SetPoint("RIGHT", -10, 0)
     r.quest:SetText("!")
+    -- (0.1.664, asked for: what a vendor gives for it, for the whole
+    -- stack, at the row's right end. Nothing where it can't be sold.)
+    r.value = text(r, 11)
+    r.value:SetJustifyH("RIGHT")
+    r.value:SetWordWrap(false)
+    r.name:SetPoint("RIGHT", r.value, "LEFT", -6, 0)
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     r:SetScript("OnEnter", function(self)
         self.ring(unpack(T.accent)); self.fill(0.13, 0.13, 0.15, 1)
@@ -188,9 +193,23 @@ local function lootRow(i)
     return r
 end
 
-local function fillLoot()
+-- What a vendor pays for a loot slot's whole stack: a number, 0 for what
+-- can't be sold, nil while the game does not know the item yet.
+local function slotValue(slot, qty)
+    local link = call(GetLootSlotLink, slot)
+    if type(link) ~= "string" or secret(link) then return 0 end
+    local G = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+    local name, _, _, _, _, _, _, _, _, _, price = call(G, link)
+    if name == nil then return nil end
+    if type(price) ~= "number" or secret(price) then return 0 end
+    return price * ((type(qty) == "number" and not secret(qty) and qty > 1) and qty or 1)
+end
+local valueRetry = false
+local fillLoot
+fillLoot = function()
     local n = call(GetNumLootItems) or 0
     local shown = 0
+    local unknown = false
     for slot = 1, n do
         local tex, item, qty, _, quality, locked, isQuest = call(GetLootSlotInfo, slot)
         if tex then
@@ -208,6 +227,11 @@ local function fillLoot()
             r.ring(r.rr, r.rg, r.rb, 1)
             r.box.ring(q and cr or T.border[1], q and cg or T.border[2], q and cb or T.border[3], 1)
             r.quest:SetShown(isQuest and true or false)
+            local v = slotValue(slot, qty)
+            if v == nil then unknown = true end
+            r.value:SetText((v and v > 0 and ns.Money and ns.Money(v)) or "")
+            r.value:ClearAllPoints()
+            r.value:SetPoint("RIGHT", r, "RIGHT", isQuest and -24 or -10, 0)
             r:ClearAllPoints()
             r:SetPoint("TOPLEFT", win, "TOPLEFT", 8, -(38 + 8 + (shown - 1) * ROW_H))
             r:Show()
@@ -215,6 +239,14 @@ local function fillLoot()
     end
     for i = shown + 1, #rows do rows[i]:Hide() end
     win:SetHeight(38 + 8 + shown * ROW_H + 6)
+    -- (An item the game has not named yet: asked again a moment on, once.)
+    if unknown and not valueRetry then
+        valueRetry = true
+        C_Timer.After(0.4, function()
+            if win and win:IsShown() then pcall(fillLoot) end
+            valueRetry = false
+        end)
+    end
     return shown
 end
 

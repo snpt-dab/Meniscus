@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.662.
+Last updated: 2026-11-24, version 0.1.664.
 
 ## Needs you, in game
 
@@ -11,6 +11,7 @@ Last updated: 2026-11-24, version 0.1.662.
 | 1 | Buff rings (0.1.662) | `/reload`, seal, fight until the seal is about to run out | Whether the ring sits right in the chat corner, and whether it glides to the middle of the screen in its last seconds and goes home when you reseal |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 7 | Combat numbers' height (0.1.657) | Fight | Whether 36 above the target frame sits right |
+| 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
 | 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |
 | 5 | Professions window icons (0.1.655) | `/reload`, open the professions window | Whether the tinted discs, the red crosses for first aid and the crossed hammer and pick in the header suit you |
 | 3 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
