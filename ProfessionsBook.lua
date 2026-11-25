@@ -128,7 +128,7 @@ local LINE_EMBLEM = {
     [185] = { "food",        0.96, 0.78, 0.38 }, -- cooking
     [333] = { "stat_spell",  0.62, 0.60, 0.98 }, -- enchanting
     [202] = { "prof_gear",   0.93, 0.83, 0.35 }, -- engineering
-    [129] = { "prof_aid",    0.86, 0.86, 0.89 }, -- first aid
+    [129] = { "prof_cross",  0.94, 0.40, 0.38 }, -- first aid
     [356] = { "prof_hook",   0.42, 0.72, 0.96 }, -- fishing
     [182] = { "prof_herb",   0.50, 0.84, 0.50 }, -- herbalism
     [165] = { "prof_hide",   0.80, 0.60, 0.42 }, -- leatherworking
@@ -149,22 +149,22 @@ local function setProfIcon(box, line, fallback, learned)
     local r, g, b = em[2], em[3], em[4]
     box.icon:Hide()
     box.paint(T.border[1], T.border[2], T.border[3], 0)
-    box.rim:SetVertexColor(r * 0.62, g * 0.62, b * 0.62, 1)
+    -- (0.1.655: more of each skill's own colour. The ring in full colour,
+    -- the disc washed with it and lighter towards the top, the emblem a
+    -- little larger. First aid joined the family: crosses in red, where
+    -- it was a white case that looked like another program's icon.)
+    box.rim:SetVertexColor(r * 0.85, g * 0.85, b * 0.85, 1)
     box.rim:Show(); box.fill:Show()
-    if em[1] == "prof_aid" then -- (a white case with a red cross on it, as at the trainer)
-        box.glyph:SetSize(size * 0.62, size * 0.62)
-        box.glyph:SetTexture(MEDIA .. "micro_prof_kit.tga")
-        box.glyph:SetVertexColor(T.text[1], T.text[2], T.text[3])
-        box.over:SetTexture(MEDIA .. "micro_prof_aid.tga")
-        box.over:SetVertexColor(0.86, 0.18, 0.16)
-        box.over:Show()
-        box.rim:SetVertexColor(r, g, b, 1)
-    else
-        box.glyph:SetSize(size * 0.54, size * 0.54)
-        box.glyph:SetTexture(MEDIA .. "micro_" .. em[1] .. ".tga")
-        box.glyph:SetVertexColor(r, g, b)
-        box.over:Hide()
+    box.fill:SetVertexColor(1, 1, 1, 1)
+    local lo = CreateColor(0.045 + r * 0.07, 0.045 + g * 0.07, 0.05 + b * 0.07, 1)
+    local hi = CreateColor(0.06 + r * 0.24, 0.06 + g * 0.24, 0.065 + b * 0.24, 1)
+    if not pcall(box.fill.SetGradient, box.fill, "VERTICAL", lo, hi) then
+        box.fill:SetVertexColor(0.05 + r * 0.14, 0.05 + g * 0.14, 0.055 + b * 0.14, 1)
     end
+    box.glyph:SetSize(size * 0.6, size * 0.6)
+    box.glyph:SetTexture(MEDIA .. "micro_" .. em[1] .. ".tga")
+    box.glyph:SetVertexColor(math.min(1, r * 1.08 + 0.04), math.min(1, g * 1.08 + 0.04), math.min(1, b * 1.08 + 0.04))
+    box.over:Hide()
     box.glyph:Show()
 end
 
@@ -448,7 +448,10 @@ function PB:Refresh()
     local a = profData(arch)
     sh:SetSubtitle(a and string.format("Primary professions and secondary skills   ·   %s %s / %s",
         a.name, tostring(a.rank), tostring(a.max)) or "Primary professions and secondary skills")
-    sh:SetIcon((prim[1] and prim[1].icon) or "Interface/Icons/INV_Misc_Book_09")
+    -- (0.1.655: our own mark, a crossed hammer and pick, where it was the
+    -- game's picture of your first profession.)
+    if sh.SetEmblem then sh:SetEmblem(MEDIA .. "micro_prof_tools.tga", T.accent[1], T.accent[2], T.accent[3])
+    else sh:SetIcon((prim[1] and prim[1].icon) or "Interface/Icons/INV_Misc_Book_09") end
 end
 
 local function build()

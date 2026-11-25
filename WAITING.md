@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.654.
+Last updated: 2026-11-24, version 0.1.655.
 
 ## Needs you, in game
 
@@ -10,6 +10,7 @@ Last updated: 2026-11-24, version 0.1.654.
 |---|------|-----------|-----------------|
 | 1 | Crafted upgrades between characters | `/reload`, then `/men alts`. Log in each alt once; on each crafter open each profession window for a few seconds | Whether `/men alts` lists them, and whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |
+| 5 | Professions window icons (0.1.655) | `/reload`, open the professions window | Whether the tinted discs, the red crosses for first aid and the crossed hammer and pick in the header suit you |
 | 3 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
 | 4 | Level-up card reasons | Nothing to test | For each level where something new opens up in this game (a talent point, a new skill rank, mounts, a dungeon): which level and what. The card shown at level-up has a line for it; only level 10 is filled in |
 

@@ -249,6 +249,21 @@ function ns:CreateShell(win, opts)
         lip:Hide()
         flat:Hide()
         icon:SetTexture(texture)
+        icon:SetSize(D - 22, D - 22)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        icon:SetVertexColor(1, 1, 1)
+        icon:Show()
+    end
+    -- One of our own line emblems in the disc, in a colour, where a window
+    -- has no picture of its own worth showing.
+    function S:SetEmblem(texture, r, g, b)
+        model:Hide()
+        lip:Hide()
+        flat:Hide()
+        icon:SetTexture(texture)
+        icon:SetSize((D - 22) * 0.66, (D - 22) * 0.66)
+        icon:SetTexCoord(0, 1, 0, 1)
+        icon:SetVertexColor(r or 1, g or 1, b or 1)
         icon:Show()
     end
     function S:ClearModel() model:ClearModel() end

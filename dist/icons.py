@@ -325,6 +325,16 @@ def icons():
     I['prof_kit'] = (Icon().box(3.6, 7.4, 20.4, 20.0, rad=3.0, fill=True)
                      .line([(9.2, 7.4), (9.2, 4.9), (14.8, 4.9), (14.8, 7.4)], w=1.9))
     I['prof_aid'] = Icon().line([(12, 10.3), (12, 17.1)], w=3.0).line([(8.6, 13.7), (15.4, 13.7)], w=3.0)
+    # (0.1.655: first aid in the family's own manner: one bold cross and a
+    # small one beside it, in one colour, no case)
+    I['prof_cross'] = (Icon().line([(10.4, 8.6), (10.4, 19.4)], w=3.9).line([(5.0, 14.0), (15.8, 14.0)], w=3.9)
+                       .line([(18.3, 4.4), (18.3, 9.0)], w=1.9).line([(16.0, 6.7), (20.6, 6.7)], w=1.9))
+    # the professions window's own mark: a hammer and a pick, crossed
+    def _hm2(a, b, hx=16.6, hy=8.4, k=0.7071):
+        return (hx + (a + b) * k, hy + (b - a) * k)
+    I['prof_tools'] = (Icon().line([_hm2(-13.6, 0), _hm2(0, 0)], w=2.2)
+                       .poly([_hm2(-2.3, 4.2), _hm2(2.3, 4.2), _hm2(2.3, -2.0), _hm2(0.9, -5.4), _hm2(-0.5, -5.4), _hm2(-2.3, -2.0)])
+                       .arc(15.9, 17.4, 11.6, 100, 160, w=2.4).line([(17.6, 19.4), (8.3, 9.4)], w=2.2))
     # engineering: a gear
     g = Icon().ring(12, 12, 4.7, w=2.4)
     for k in range(8):
