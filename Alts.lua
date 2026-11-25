@@ -188,6 +188,18 @@ local function snapshot(fromChange)
         if ok and (plainNum(v) or plainStr(v)) then me[key] = v end
     end
     keep("r", function() local r = UnitRace("player"); return r end)
+    -- (0.1.672, for the full sheet of an alt: race number and sex, to
+    -- stand a model up in its gear; resistances.)
+    keep("ri", function() local _, _, id = UnitRace("player"); return id end)
+    keep("sx", UnitSex, "player")
+    do
+        local rs, all = {}, true
+        for school = 2, 6 do
+            local ok, _, total = pcall(UnitResistance, "player", school)
+            if ok and plainNum(total) then rs[school] = total else all = false end
+        end
+        if all then me.rs = rs end
+    end
     keep("z", function() return (GetRealZoneText and GetRealZoneText()) or GetZoneText() end)
     keep("m", GetMoney)
     keep("hp", UnitHealthMax, "player")

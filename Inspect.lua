@@ -319,12 +319,19 @@ local function makeTile(parent, slotName)
     ns:SetFont(b.ilvl, 9, "OUTLINE", true)
     b.ilvl:SetPoint("TOPRIGHT", -3, -3)
     b:SetScript("OnClick", function(self)
-        local link = call(GetInventoryItemLink, I.unit, self.slot)
+        local link
+        if I.snap then link = I.snapLink(self.slot) else link = call(GetInventoryItemLink, I.unit, self.slot) end
         if link and HandleModifiedItemClick then HandleModifiedItemClick(link) end
     end)
     b:SetScript("OnEnter", function(self)
         ns.TipAnchor(self)
-        local has = I.unit and GameTooltip:SetInventoryItem(I.unit, self.slot)
+        local has
+        if I.snap then
+            local link = I.snapLink(self.slot)
+            has = link and pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+        else
+            has = I.unit and GameTooltip:SetInventoryItem(I.unit, self.slot)
+        end
         if not has then GameTooltip:SetText(_G[self.slotName:upper() .. "SLOT"] or self.slotName) end
         GameTooltip:Show()
     end)
@@ -363,7 +370,106 @@ local function makeModel(page, x1, y1, x2, y2)
     return model
 end
 
+-- ── A saved character (0.1.672) ───────────────────────────────────────────
+-- The same window for one of your own characters as it was last seen
+-- (Alts.lua keeps the record; the Roster tab of the character window opens
+-- this). Tiles from the saved links, the card from the saved numbers. The
+-- figure in the middle is a stand-in: a model of that race and sex put in
+-- the saved gear, where the game will make one (the face and hair are not
+-- on file); else the class emblem.
+function I.snapLink(slot)
+    local g = I.snap and I.snap.ch and I.snap.ch.g
+    local l = type(g) == "table" and g[slot]
+    return type(l) == "string" and l or nil
+end
+local POWER = { MANA = "Mana", RAGE = "Rage", ENERGY = "Energy", FOCUS = "Focus" }
+local function refreshSnap()
+    local snap = I.snap
+    local ch, who = snap.ch, snap.who
+    local A = ns.Alts
+    local sum, n = 0, 0
+    wipe(gearSum)
+    local read = 0
+    for _, b in pairs(tiles) do
+        local link = I.snapLink(b.slot)
+        local tex
+        if link and C_Item and C_Item.GetItemInfoInstant then
+            local _, _, _, _, t = call(C_Item.GetItemInfoInstant, link)
+            tex = t
+        end
+        b.icon:SetTexture(tex or b.empty)
+        b.icon:SetDesaturated(not tex)
+        b.icon:SetAlpha(tex and 1 or 0.3)
+        local q = link and C_Item and C_Item.GetItemQualityByID and call(C_Item.GetItemQualityByID, link)
+        local c = tex and qualityColor(q)
+        if c then b.ring(c.r, c.g, c.b, 1) else b.ring(T.border[1], T.border[2], T.border[3], 1) end
+        b.lvl = tex and not NO_ILVL[b.slotName] and itemLevel(link) or nil
+        b.ilvl:SetText(b.lvl and string.format("%d", b.lvl) or "")
+        if b.lvl then sum, n = sum + b.lvl, n + 1 end
+        local st = link and ns.ItemStats and ns.ItemStats(link)
+        if st then
+            read = read + 1
+            for k, v in pairs(st) do
+                if type(v) == "number" and not secret(v) then gearSum[k] = (gearSum[k] or 0) + v end
+            end
+        end
+    end
+    -- The card: attributes as saved, with the share that is gear; else
+    -- gear alone.
+    local base, gear, res
+    if read > 0 then
+        gear = {}
+        for i = 1, 5 do gear[i] = gearSum[STAT_KEYS[i]] or 0 end
+    end
+    if type(ch.s) == "table" then
+        base = {}
+        for i = 1, 5 do base[i] = math.max(0, (ch.s[i] or 0) - (gear and gear[i] or 0)) end
+    end
+    if type(ch.rs) == "table" then
+        res = ch.rs
+    elseif read > 0 then
+        res = {}
+        for school = 2, 6 do res[school] = gearSum["RESISTANCE" .. school .. "_NAME"] or 0 end
+    end
+    local rows = {}
+    head(rows, "As last seen", "micro_character.tga")
+    stat(rows, "When", A and A.Ago and A.Ago(ch.t) or nil)
+    stat(rows, "Where", ch.z)
+    stat(rows, "Money", ch.m and ns.Money and ns.Money(ch.m) or nil)
+    if ch.xp then stat(rows, "Into this level", ch.xp .. "%" .. ((ch.rx or 0) > 0 and "  (rested)" or "")) end
+    stat(rows, "Health", ch.hp)
+    if ch.mp and ch.mp > 0 then stat(rows, POWER[ch.pt or ""] or "Power", ch.mp) end
+    stat(rows, "Armor", ch.ar or ((gearSum.RESISTANCE0_NAME or 0) > 0 and string.format("%d from gear", gearSum.RESISTANCE0_NAME)) or nil)
+    if not ch.s then note(rows, "Log this character in once for the rest of its sheet") end
+    if type(ch.pr) == "table" and #ch.pr > 0 then
+        head(rows, "Professions", "micro_profession.tga")
+        for i = 1, #ch.pr, 3 do
+            local max = ch.pr[i + 2]
+            stat(rows, ch.pr[i], tostring(ch.pr[i + 1]) .. (max and max > 0 and (" / " .. max) or ""))
+        end
+    end
+    local Cm = ns.modules.Character
+    if win.card and Cm and Cm.FillOtherCard then
+        if win.beast then win.beast:Hide() end
+        win.card:Show()
+        Cm.FillOtherCard(win.card, "none", base, gear, rows, res, nil)
+    end
+    -- Header.
+    local sh = win.shell
+    local cc = ch.c and RAID_CLASS_COLORS and RAID_CLASS_COLORS[ch.c]
+    if cc then sh:SetTitle(who, cc.r, cc.g, cc.b) else sh:SetTitle(who) end
+    sh:SetRing(cc and { cc.r, cc.g, cc.b } or nil)
+    local cls = ch.c and (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[ch.c] or ch.c) or ""
+    sh:SetSubtitle(string.format("Level %s %s %s", tostring(ch.l or "?"), ch.r or "", cls)
+        .. "  \194\183  as of " .. (A and A.Ago and A.Ago(ch.t) or "some time ago"))
+    if n > 0 then sh:SetChip(string.format("Item level %d", math.floor(sum / n + 0.5)), T.accent) else sh:SetChip(nil) end
+end
 function I:Refresh()
+    if win and win:IsShown() and self.snap then
+        local ok, err = pcall(refreshSnap)
+        if not ok and MinimalUIDB then MinimalUIDB.inspectErr = tostring(err) end
+        return
+    end
     if not win or not win:IsShown() or not self.unit then return end
     local unit = self.unit
     local sum, n = 0, 0
@@ -521,6 +627,7 @@ local function build()
     end
 
     win:SetScript("OnHide", function()
+        I.snap = nil
         win.shell:ClearModel()
         win.model:ClearModel()
         local f = _G.InspectFrame
@@ -532,6 +639,10 @@ local function open(unit, mode)
     if not unit or not UnitExists(unit) then return end
     if not win then build() end
     win.setMode(mode or "gear")
+    I.snap = nil
+    if win.doll then win.doll:Hide() end
+    if win.crest then win.crest:Hide(); win.standin:Hide() end
+    win.model:Show()
     local og = UnitGUID(unit)
     if secret(og) or secret(I.guid) or I.guid ~= og then wipe(auraCache) end
     I.unit = unit
@@ -548,6 +659,85 @@ local function open(unit, mode)
     local _, token = UnitClass(unit)
     local cc = token and not secret(token) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
     if cc then win.model.spot:SetVertexColor(cc.r, cc.g, cc.b, 0.16) else win.model.spot:SetVertexColor(1, 1, 1, 0.08) end
+    if not win:IsShown() then win:Show() end
+    I:Refresh()
+end
+
+local CLASS_MARK = { DRUID = 1, HUNTER = 1, MAGE = 1, PALADIN = 1, PRIEST = 1, ROGUE = 1, SHAMAN = 1, WARLOCK = 1, WARRIOR = 1 }
+function I:OpenSnapshot(who, ch)
+    if type(ch) ~= "table" then return end
+    if not win then build() end
+    local f = _G.InspectFrame
+    if f and f:IsShown() then pcall(HideUIPanel, f) end
+    win.setMode("gear")
+    I.unit, I.guid = nil, nil
+    I.snap = { who = who, ch = ch }
+    local mark = MEDIA .. "micro_class_" .. (CLASS_MARK[ch.c or ""] and ch.c:lower() or "other") .. ".tga"
+    local cc = ch.c and RAID_CLASS_COLORS and RAID_CLASS_COLORS[ch.c]
+    local r, g, b = cc and cc.r or 0.8, cc and cc.g or 0.8, cc and cc.b or 0.85
+    if win.shell.SetEmblem then win.shell:SetEmblem(mark, r, g, b) end
+    win.model:ClearModel()
+    win.model:Hide()
+    if win.model.floor then win.model.floor:Hide() end
+    win.model.spot:SetVertexColor(r, g, b, 0.16)
+    -- The stand-in.
+    local how = "no race or sex on file"
+    local shown = false
+    if plain(ch.ri) and plain(ch.sx) and ch.sx >= 2 then
+        if not win.doll then
+            local okD, d = pcall(CreateFrame, "DressUpModel", nil, win.model:GetParent())
+            if okD and d then
+                d:SetAllPoints(win.model)
+                d.facing = 0.52
+                d:EnableMouse(true)
+                d:SetScript("OnMouseDown", function(self, btn) if btn == "LeftButton" then self.dragX = GetCursorPosition() end end)
+                d:SetScript("OnMouseUp", function(self) self.dragX = nil end)
+                d:SetScript("OnHide", function(self) self.dragX = nil end)
+                d:SetScript("OnUpdate", function(self)
+                    if not self.dragX then return end
+                    local x = GetCursorPosition()
+                    self.facing = self.facing + (x - self.dragX) / (UIParent:GetEffectiveScale() * 90)
+                    self.dragX = x
+                    self:SetFacing(self.facing)
+                end)
+                win.doll = d
+            end
+        end
+        local d = win.doll
+        if d and d.SetCustomRace then
+            local ok = pcall(function()
+                d:SetUnit("player")
+                d:SetCustomRace(ch.ri, ch.sx - 2)
+                d:Undress()
+                for _, b2 in pairs(tiles) do
+                    local link = I.snapLink(b2.slot)
+                    if link then d:TryOn(link) end
+                end
+                d.facing = 0.52
+                d:SetFacing(0.52)
+            end)
+            shown = ok
+            how = ok and "stood up and dressed" or "the game refused"
+        else
+            how = "this game has no such model"
+        end
+    end
+    if MinimalUIDB then MinimalUIDB.dolldiag = "stand-in model: " .. how end
+    if win.doll then win.doll:SetShown(shown) end
+    if win.model.floor then win.model.floor:SetShown(shown) end
+    if not win.crest then
+        local page = win.model:GetParent()
+        win.crest = page:CreateTexture(nil, "ARTWORK")
+        win.crest:SetSize(120, 120)
+        win.crest:SetPoint("CENTER", win.model, "CENTER", 0, 10)
+        win.standin = text(page, 10, false, DIM)
+        win.standin:SetPoint("TOP", win.model, "BOTTOM", 0, 22)
+    end
+    win.crest:SetTexture(mark)
+    win.crest:SetVertexColor(r, g, b, 0.85)
+    win.crest:SetShown(not shown)
+    win.standin:SetText(shown and "A stand-in: the race, sex and gear on file; not the face" or "")
+    win.standin:Show()
     if not win:IsShown() then win:Show() end
     I:Refresh()
 end

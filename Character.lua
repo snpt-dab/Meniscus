@@ -1775,6 +1775,16 @@ local function rosterData()
         d[#d + 1] = { kind = "header", text = head, collapsed = not open,
             onClick = function() rosterOpen[who] = not open; C:Refresh() end }
         if open then
+            -- (0.1.672: the whole sheet, laid out as your own is. Yours
+            -- is the Character tab; another's opens in the inspection
+            -- window, from what is on file.)
+            d[#d + 1] = { kind = "stat", wide = true, indent = 12, labelColor = T.accent,
+                label = e.me and "Open your character sheet" or "Open the full sheet", value = "",
+                onClick = function()
+                    if e.me then return C:SetTab("gear") end
+                    local Im = ns.modules.Inspect
+                    if Im and Im.OpenSnapshot then Im:OpenSnapshot(who, ch) end
+                end }
             local rows = {}
             local function stat(label, value)
                 if value ~= nil and value ~= "" then rows[#rows + 1] = { kind = "stat", label = label, value = value } end

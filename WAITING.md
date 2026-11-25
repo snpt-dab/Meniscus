@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.671.
+Last updated: 2026-11-24, version 0.1.672.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 10 | Roster tab (0.1.671) | `/reload`, character window, Roster tab. Open a character, then "In the bags" / "In the bank" | Whether each character shows level, zone, money, attributes, professions, gear and what it carries; what is missing |
+| 10 | Roster and the full sheet of an alt (0.1.672) | `/reload`, character window, Roster tab, open an alt, "Open the full sheet". Log each alt in once first for the fuller record | Whether the gear tiles, attributes and details show; whether a figure stands in the middle dressed in that gear, or only the class emblem; what is missing |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
@@ -19,6 +19,7 @@ Last updated: 2026-11-24, version 0.1.671.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
+- `dolldiag`: whether the game would stand a model up in another character of yours, by race, sex and gear (10).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
 - `grouphp`: the group-damage sums behind a boss's health (5).
 - `instdiag`, `bestiaryTip`: what the game says about creatures inside a dungeon.
