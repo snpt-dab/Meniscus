@@ -125,6 +125,12 @@ ns.commands.name = function(lowerRest, rawRest) ... end    -- /men name
 
 The user's rule (2026-11-25): a buff goes in ONE of the two, by how long it lasts. Under `LONG_BUFF` (300 s): a recast ring (`RECAST`; seals, Slice and Dice, shields, Battle Shout). `LONG_BUFF` or more: the Quick Buff pill (`CLASS_BUFFS`, blessings). Role-only buffs (Righteous Fury) are `optin = true` in `CLASS_BUFFS`: offered only once the character has cast it (`MinimalUIDB.keepBuff[CharKey]`), and no longer after the buff is clicked off with time left. In Forever a seal lasts its full 30 s whatever is judged; nothing ends a ring early.
 
+## Reworks from the source review (2026-11-25): how they are staged
+
+The user's rule: carefully, with a way back flagged at every stage. So for each rework: (1) `git tag -a stage/before-<name>` first, pushed; (2) the new way is added BESIDE the old, used first, falling back to the old when the game gives nothing, with a count of what the game said in the saved record and a chat command that forces the old way (`/men petmood old|new`, `/men cure old|new`); (3) a tag per stage (`stage/<name>-<n>-<what>`); (4) the old code goes only in a last stage of its own, after the user has seen the new way work. The list and its state are in WAITING.md. A call listed in the game's docs may still be missing on this client (docs are shared between flavours): `MinimalUIDB.apicheck` says which exist.
+
+Pets (stages 1-2, 0.1.703-704): `ns.PetMoodNow()` (Bars.lua) asks `C_PetInfo.GetPetHappiness`; Extras.lua `gameSays(id)` asks `C_PetInfo.CanPetEatItem` (a "no" counts only after it has said "yes" to something this session). Both unseen in game.
+
 ## Quick Cure (UnitFrames.lua `BuildCure`)
 
 The user's layout (2026-11-25): a small chip beside each PARTY member's bar (their auras start past it: `f.cureSlot`), and for YOU a pill left of the cast bar. Seen only while there is something curable.

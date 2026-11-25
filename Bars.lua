@@ -805,10 +805,10 @@ ns.commands.petmood = function(rest)
     rest = (rest or ""):lower()
     if rest:find("^old") then
         MinimalUIDB.petMoodOld = true
-        ns:Print("Pet mood: worked out the old way (curves on the hidden value). /men petmood new changes back.")
+        ns:Print("Pet mood and food: worked out the old way (curves on the hidden value, diets learned by feeding). /men petmood new changes back.")
     elseif rest:find("^new") then
         MinimalUIDB.petMoodOld = nil
-        ns:Print("Pet mood: asked of the game.")
+        ns:Print("Pet mood and food: asked of the game.")
     else
         local h, dmg = ns.PetMoodNow()
         ns:Print("Pet mood: " .. (MinimalUIDB.petMoodOld and "the old way is on (/men petmood new)."

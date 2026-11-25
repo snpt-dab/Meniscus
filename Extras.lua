@@ -577,15 +577,72 @@ local function learned(fam, create)
     if create and not db.petFood[fam] then db.petFood[fam] = {} end
     return db.petFood[fam]
 end
+-- (0.1.704) The game's own word on a food: C_PetInfo.CanPetEatItem(itemID),
+-- which its bags use (Blizzard_FrameXMLUtil/ItemUtil.lua). Whether the call
+-- works on this client is not yet seen, so a "no" counts only once it has
+-- said "yes" to something this session (a call that answers no to
+-- everything would otherwise empty the button). true / false / nil (no
+-- word). "/men petmood old" switches it off along with the mood.
+local foodAlive, foodSaid = false, {}
+local function gameSays(id)
+    if MinimalUIDB and MinimalUIDB.petMoodOld then return nil end
+    local f = C_PetInfo and C_PetInfo.CanPetEatItem
+    if type(f) ~= "function" then return nil end
+    local ok, v = pcall(f, id)
+    if not ok or secret(v) or type(v) ~= "boolean" then return nil end
+    if v then foodAlive = true end
+    foodSaid[id] = v
+    if v then return true end
+    return foodAlive and false or nil
+end
+-- What the pet eats, in the game's words ("Meat", "Fish"), or nil.
+local function gameDiet()
+    if MinimalUIDB and MinimalUIDB.petMoodOld then return nil end
+    local f = C_PetInfo and C_PetInfo.GetPetFoodTypes
+    if type(f) ~= "function" then return nil end
+    local ok, t = pcall(f)
+    if not ok or type(t) ~= "table" then return nil end
+    local out = {}
+    for _, s in ipairs(t) do
+        if type(s) == "string" and not secret(s) and s ~= "" then out[#out + 1] = s end
+    end
+    return #out > 0 and table.concat(out, ", ") or nil
+end
 -- true: the pet eats it. false: it doesn't. nil: not known yet.
+-- Order: what feeding it showed, then the game's word, then the starting list.
 local function verdict(fam, id)
     local t = learned(fam)
     local v = t and t[id]
+    local g = gameSays(id)
+    -- (How the game's word sits with what feeding showed and with the
+    -- starting list: MinimalUIDB.petcheck, so the old tables can go once
+    -- it is seen to be right.)
+    if g ~= nil and MinimalUIDB then
+        local known = v
+        if type(known) ~= "boolean" then
+            local diet, kind = DIET[fam], SEED_KIND[id]
+            known = nil
+            if type(v) ~= "number" and diet and kind then known = diet:find(kind, 1, true) ~= nil end
+        end
+        if known ~= nil then
+            local db = MinimalUIDB
+            db.petcheck = type(db.petcheck) == "table" and db.petcheck or {}
+            db.petfoodseen = type(db.petfoodseen) == "table" and db.petfoodseen or {}
+            local key = fam .. ":" .. id
+            if db.petfoodseen[key] ~= g then
+                db.petfoodseen[key] = g
+                local said = "food: the game's word " .. (known == g and "agrees with" or "DISAGREES with") .. " ours"
+                db.petcheck[said] = (db.petcheck[said] or 0) + 1
+                if known ~= g then db.petcheck["food: disagreed on item " .. id .. " for " .. fam] = (g and "game yes" or "game no") end
+            end
+        end
+    end
     if v == true or v == false then return v end
     if type(v) == "number" then
         local l = petLevel()
         if not l or l >= v then return false end
     end
+    if g ~= nil then return g end
     local diet, kind = DIET[fam], SEED_KIND[id]
     if diet and kind then return diet:find(kind, 1, true) ~= nil end
     return nil
@@ -765,6 +822,8 @@ local function buildPetFood()
         else
             GameTooltip:AddLine("Nothing in your bags it eats", 0.95, 0.38, 0.36)
         end
+        local eats = gameDiet()
+        if eats then GameTooltip:AddLine("Eats: " .. eats, 0.6, 0.6, 0.65) end
         if unknown > 0 then
             GameTooltip:AddLine(unknown == 1 and "1 untested food: try feeding it by hand" or (unknown .. " untested foods: try feeding them by hand"),
                                 0.6, 0.6, 0.65)
