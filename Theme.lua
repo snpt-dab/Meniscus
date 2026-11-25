@@ -948,7 +948,11 @@ local function judge(link, who)
         elseif wrongArmor and heavierWorn then res = false
         elseif beats then res, at = true, beatAt
         elseif who and unread then return nil -- (a piece of theirs this game session has not read yet)
-        elseif scored and lowScore then res, at, gain = newScore > lowScore + 0.05, lowAt, newScore - lowScore
+        -- (Any gain counts, since 0.1.668. The margin was 0.05, and for
+        -- a cloth class armour weighs 0.01 a point: a level 2 mage's
+        -- robe with 8 armour over one with 3 scored exactly 0.05 more,
+        -- and shoes with 5 over 2 scored 0.03, so neither was marked.)
+        elseif scored and lowScore then res, at, gain = newScore > lowScore + 0.001, lowAt, newScore - lowScore
         elseif lowest and new > lowest then res, at, gain = true, lvlAt, new - lowest end -- (stats not to be had: by item level)
     end
     if not res then return false end

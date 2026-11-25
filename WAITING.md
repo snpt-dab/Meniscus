@@ -2,12 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.667.
+Last updated: 2026-11-24, version 0.1.668.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 9 | Upgrade arrows for armour-only gains (0.1.668) | `/reload` on the mage, open the bags | Whether the robe and the shoes are now marked as upgrades |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
 | 1 | A character listed twice in item tooltips (0.1.666) | `/reload`, hover an item an alt also holds | Whether each character is listed once, with the right count |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
