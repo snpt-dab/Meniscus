@@ -457,7 +457,7 @@ local PAGES = {
               get = function() return ns.modules.UnitFrames.db.cure ~= false end,
               set = function() local d = ns.modules.UnitFrames.db; d.cure = d.cure == false end },
             { "Cure grid: a square per person, click to cure", kind = "switch", reload = true,
-              note = "Always there, so it works in a fight. Lights when they have something you can cure; drag its grip to move",
+              note = "Always there, so it works in a fight; drag its grip to move. While on, it stands in for the pill, the chips and the notice",
               get = function() return ns.modules.UnitFrames.db.cureGrid ~= false end,
               set = function() local d = ns.modules.UnitFrames.db; d.cureGrid = d.cureGrid == false end },
             { "A notice in a fight when someone can be cured", kind = "switch",

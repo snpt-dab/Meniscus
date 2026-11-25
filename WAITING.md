@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.677.
+Last updated: 2026-11-25, version 0.1.678.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Cure grid, cure light and notice (0.1.677) | `/reload`. A row of small squares sits over the map (you, then the party). Get something curable on you or a party member, out of a fight and in one | Does the square light and does clicking it cure them, in a fight too? Does the pill pulse in the kind’s colour with smoke, bubbles, wisps or glints? Is the grid in a good place (drag its grip)? Then `/reload` |
+| 11 | Cure grid (0.1.678) | `/reload`. Only the row of squares should be left (no pill under it, no chip on the map’s rim). Get something curable on you or a party member, out of a fight and in one | Is the grid now the only thing shown? Does a square light and cure on click, in a fight too? Does each pulse kick dust out from all round the square, away from it? Then `/reload` |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |

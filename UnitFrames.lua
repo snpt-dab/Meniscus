@@ -1472,10 +1472,11 @@ _G["BINDING_NAME_CLICK MeniscusQuickCure:LeftButton"] = "Quick Cure (cast next c
 -- Each kind of affliction has its own light, and something that comes off
 -- that light (0.1.676, asked for: "disease can be a kind of yellowish-green
 -- smoke that comes off the light pulse"):
---   Disease  a sickly yellow-green light; smoke rising and spreading
---   Poison   a vivid green light; small bubbles rising, and bursting
---   Curse    a violet light; dark wisps sinking away under it
---   Magic    a blue light; quick glints around its edge
+--   Disease  a sickly yellow-green light; smoke
+--   Poison   a vivid green light; small bubbles, bursting
+--   Curse    a violet light; dark wisps, curling
+--   Magic    a blue light; quick glints
+-- (each kicked out from all round the edge at every pulse: see Draw)
 -- The ring keeps the kind's usual colour (CURE_TINT, as on the game's own
 -- debuff borders). Where the kind is hidden (in a fight it can be): gold,
 -- and nothing comes off it.
@@ -1517,26 +1518,54 @@ local function cureMotes(host, n)
             end
         end
     end
+    -- (0.1.678, asked for: "like a shoe stepping in dust, to where it pulses
+    -- out from all sides in the direction away from the pill". The motes
+    -- used to rise off the top, or sink under it. Now each pulse kicks them
+    -- out from all round the edge, straight away from it: quick at first
+    -- and slowing, spreading and thinning as dust does. Each kind keeps
+    -- its own stuff: smoke, bubbles that burst, dark wisps that curl,
+    -- glints that twinkle.)
+    -- A place on the edge of a pill w by h (a circle where w = h), by how
+    -- far round it (0..1, from the top's left end, clockwise): where it
+    -- is from the middle, and which way is "away" there.
+    local function edge(frac, w, h)
+        local r = h / 2
+        local straight = math.max(0, w - h)
+        local cap = math.pi * r
+        local at = (frac % 1) * (2 * straight + 2 * cap)
+        if at < straight then return -straight / 2 + at, r, 0, 1 end
+        at = at - straight
+        if at < cap then
+            local th = math.pi / 2 - at / r
+            return straight / 2 + r * math.cos(th), r * math.sin(th), math.cos(th), math.sin(th)
+        end
+        at = at - cap
+        if at < straight then return straight / 2 - at, -r, 0, -1 end
+        at = at - straight
+        local th = -math.pi / 2 - at / r
+        return -straight / 2 + r * math.cos(th), r * math.sin(th), math.cos(th), math.sin(th)
+    end
     function m:Draw(since, pulse, w, h)
         local fx = self.fx
         if not fx then return end
         local how = fx.how
+        local n = #self.tex
         for i, t in ipairs(self.tex) do
             local r1, r2, r3 = cureRnd(i, pulse), cureRnd(i + 7, pulse), cureRnd(i + 13, pulse)
-            local a, x, y, s = 0, 0, 0, 8
+            local ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
+            local a, out, side, s = 0, 0, 0, 8
             if how == "smoke" then
-                local u = (since - 0.05 - 0.35 * r3) / (1.5 + 0.4 * r2)
+                local u = (since - 0.10 * r3) / (1.1 + 0.4 * r2)
                 if u > 0 and u < 1 then
-                    x = (r1 - 0.5) * math.max(4, w - 10) + math.sin(u * 5 + i) * 5 * u
-                    y = h / 2 - 3 + (20 + 12 * r2) * u
-                    s = 11 + 17 * u
-                    a = 0.60 * math.min(1, u / 0.18) * (1 - u) ^ 1.3
+                    out = (16 + 12 * r2) * (1 - (1 - u) ^ 2.4)
+                    s = 9 + 15 * u
+                    a = 0.62 * math.min(1, u / 0.10) * (1 - u) ^ 1.4
                 end
             elseif how == "bubbles" then
-                local u = (since - 0.4 * r3) / (1.0 + 0.4 * r2)
+                local u = (since - 0.14 * r3) / (0.8 + 0.4 * r2)
                 if u > 0 and u < 1 then
-                    x = (r1 - 0.5) * math.max(4, w - 12) + math.sin(u * 9 + i) * 2
-                    y = h / 2 - 2 + (12 + 8 * r2) * u
+                    out = (12 + 10 * r2) * (1 - (1 - u) ^ 2.0)
+                    side = math.sin(u * 9 + i) * 1.5
                     s = 3 + 3 * r2
                     a = 0.85
                     if u > 0.85 then -- it bursts: wider, and gone
@@ -1546,18 +1575,17 @@ local function cureMotes(host, n)
                     end
                 end
             elseif how == "wisps" then
-                local u = (since - 0.05 - 0.3 * r3) / (1.4 + 0.4 * r2)
+                local u = (since - 0.10 * r3) / (1.2 + 0.4 * r2)
                 if u > 0 and u < 1 then
-                    x = (r1 - 0.5) * math.max(4, w - 10) + math.sin(u * 4 + i * 2) * 6 * u
-                    y = -(h / 2 - 3) - (14 + 10 * r2) * u
-                    s = 9 + 12 * u
-                    a = 0.66 * math.min(1, u / 0.2) * (1 - u) ^ 1.2
+                    out = (15 + 11 * r2) * (1 - (1 - u) ^ 2.2)
+                    side = math.sin(u * 4 + i * 2) * 5 * u -- (it curls as it goes)
+                    s = 8 + 11 * u
+                    a = 0.66 * math.min(1, u / 0.12) * (1 - u) ^ 1.2
                 end
             else -- glints
-                local u = (since - 0.9 * r3) / 0.32
+                local u = (since - 0.45 * r3) / 0.42
                 if u > 0 and u < 1 then
-                    x = (r1 - 0.5) * (w + 8)
-                    y = (r2 > 0.5 and 1 or -1) * (h / 2 + 2) + (r2 - 0.5) * 4
+                    out = 3 + (9 + 6 * r2) * u
                     s = (3 + 3 * r1) * (1 + 0.6 * math.sin(math.pi * u))
                     a = 0.95 * math.sin(math.pi * u)
                 end
@@ -1565,7 +1593,8 @@ local function cureMotes(host, n)
             if a > 0 then
                 t:SetSize(s, s)
                 t:ClearAllPoints()
-                t:SetPoint("CENTER", host, "CENTER", x, y)
+                -- (out along "away"; side across it)
+                t:SetPoint("CENTER", host, "CENTER", ex + nx * out - ny * side, ey + ny * out + nx * side)
                 t:SetAlpha(a)
                 t.lit = true
             elseif t.lit then
@@ -1605,7 +1634,7 @@ local function cureLook(f, PH)
     local fxHost = CreateFrame("Frame", nil, f)
     fxHost:SetAllPoints()
     fxHost:SetFrameLevel(f:GetFrameLevel() + 3)
-    L.motes = cureMotes(fxHost, 6)
+    L.motes = cureMotes(fxHost, 14)
     local t0, last = 0, -1
     local tint = { 1, 1, 1 }
     function L.arrive() t0 = GetTime() end
@@ -1712,7 +1741,7 @@ function UF:BuildCure()
         -- (0.1.676: and off each burst, what the kind gives off: see
         -- CURE_FX. The later bursts now come every CURE_PERIOD seconds
         -- from the arrival, so that light and motes keep one clock.)
-        local motes = cureMotes(vis, 4)
+        local motes = cureMotes(vis, 8)
         local t0 = 0
         vis:SetScript("OnShow", function() t0 = GetTime() end)
         vis:SetScript("OnUpdate", function(self)
@@ -1756,7 +1785,17 @@ function UF:BuildCure()
         chips[#chips + 1] = b
         return b
     end
-    for i, f in ipairs(self.party or {}) do
+    -- (0.1.678: with the grid on, it is the ONE thing to be seen and
+    -- clicked. The first sight of it had the grid's lit square and the
+    -- pill under it saying the same thing; and by the bars and on the
+    -- map's rim there would have been chips saying it a third time. So
+    -- with the grid: no chips by the bars, none on the map's rim, no
+    -- notice in a fight, and the pill is not drawn. The pill is still
+    -- THERE, unseen and out of the mouse's way, because the "cast next
+    -- cure" key presses it. With the grid switched off, all of those are
+    -- as they were.)
+    local gridOn = self.db.cureGrid ~= false
+    for i, f in ipairs((not gridOn) and self.party or {}) do
         if f.healthPill then
             local b = chip("MeniscusCure" .. i, f, f.realUnit or f.unit)
             local skip = f.orbSide == "RIGHT" and (f.healthPill:GetHeight() + 4) or 0
@@ -1764,10 +1803,13 @@ function UF:BuildCure()
             f.cureSlot = true -- (Auras.lua starts the aura row past it)
         end
     end
-    local me = chip("MeniscusCureSelf", UIParent, "player")
-    me:SetSize(24, 24)
-    me:SetFrameStrata("MEDIUM")
-    me:SetFrameLevel(6)
+    local me
+    if not gridOn then
+        me = chip("MeniscusCureSelf", UIParent, "player")
+        me:SetSize(24, 24)
+        me:SetFrameStrata("MEDIUM")
+        me:SetFrameLevel(6)
+    end
 
     -- The grid (0.1.677, asked for: "classic had a mod called Decursive...
     -- it would pop up and be clickable at any time, especially useful in
@@ -1786,7 +1828,7 @@ function UF:BuildCure()
     -- afflictions in a fight. This game sometimes refuses (in dungeons it
     -- has); then a square can't light, though it still casts.
     local grid, gridCells = nil, {}
-    if self.db.cureGrid ~= false then
+    if gridOn then
         local G, GAP = 22, 5
         grid = CreateFrame("Frame", "MeniscusCureGrid", UIParent)
         grid:SetSize(12 + 5 * G + 4 * GAP, G)
@@ -1870,19 +1912,21 @@ function UF:BuildCure()
         -- Yours: on the map's rim, the third place up on the right (above
         -- the flask and the mug).
         local dome = _G.MinimalUI_MinimapDome
-        me:ClearAllPoints()
-        local MMm = ns.modules.Minimap
-        local rx, ry
-        if dome and MMm and MMm.RimOffset then rx, ry = MMm.RimOffset(24) end
-        if rx then
-            local R = math.sqrt(rx * rx + ry * ry)
-            local th = math.atan2(ry, rx) + 2 * (24 + 5) / R
-            me:SetPoint("CENTER", dome, "CENTER", R * math.cos(th), R * math.sin(th))
-        else
-            me:SetPoint("BOTTOM", UIParent, "BOTTOM", 180, 150)
+        if me then
+            me:ClearAllPoints()
+            local MMm = ns.modules.Minimap
+            local rx, ry
+            if dome and MMm and MMm.RimOffset then rx, ry = MMm.RimOffset(24) end
+            if rx then
+                local R = math.sqrt(rx * rx + ry * ry)
+                local th = math.atan2(ry, rx) + 2 * (24 + 5) / R
+                me:SetPoint("CENTER", dome, "CENTER", R * math.cos(th), R * math.sin(th))
+            else
+                me:SetPoint("BOTTOM", UIParent, "BOTTOM", 180, 150)
+            end
         end
-        -- The grid: where you dragged it, else over the map, above where
-        -- the pill and its notice sit.
+        -- The grid: where you dragged it, else over the map, where the pill
+        -- sat (it is not drawn while the grid is on).
         if grid then
             grid:SetShown(#spells > 0) -- (no cure learnt yet: nothing to click)
             grid:ClearAllPoints()
@@ -1890,7 +1934,7 @@ function UF:BuildCure()
             if type(pos) == "table" and pos[1] then
                 grid:SetPoint(pos[1], UIParent, pos[2] or pos[1], pos[3] or 0, pos[4] or 0)
             elseif dome and dome:IsShown() then
-                grid:SetPoint("BOTTOM", dome, "TOP", 0, 56)
+                grid:SetPoint("BOTTOM", dome, "TOP", 0, 18)
             else
                 grid:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 210)
             end
@@ -1988,6 +2032,10 @@ function UF:BuildCure()
     pill:SetFrameStrata("HIGH")
     pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
     pill:Hide()
+    if gridOn then
+        pill:SetAlpha(0)
+        pill:EnableMouse(false)
+    end
     local look = cureLook(pill, PH)
     local pFill, pIcon, pText = look.fill, look.icon, look.text
     pill:SetScript("OnEnter", function(self)
@@ -2082,7 +2130,7 @@ function UF:BuildCure()
     nSub:SetShadowColor(0, 0, 0, 0.9)
     local noting = {}
     local function updateNote()
-        if self.db.cureNote == false or not InCombatLockdown() or #spells == 0 then
+        if gridOn or self.db.cureNote == false or not InCombatLockdown() or #spells == 0 then
             if note:IsShown() then note:Hide() end
             noting.unit = nil
             return
