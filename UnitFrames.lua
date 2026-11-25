@@ -1594,15 +1594,25 @@ local function cureMotes(host, n)
                 local u = (since - 0.18 * r3) / (1.8 + 0.2 * r2)
                 if u > 0 and u < 1 then
                     ex, ey, nx, ny = edge((i - 1 + 1.6 * (r1 - 0.5)) / n, w, h)
+                    -- (0.1.687: tighter and fainter. "We'll rely on the
+                    -- flash of the pill to get attention, rather than the
+                    -- affliction's effect. It really should be like
+                    -- stepping through a very dusty attic in the light of
+                    -- a window, with dust billowing up from the footstep
+                    -- (our pill) but gently and in a tight spread." It
+                    -- went 12 to 22 out and to twice its length at a third
+                    -- strength; now it stays within a few points of the
+                    -- edge, swells by half, rises a touch more than it
+                    -- spreads, at half that strength, and paler.)
                     local e = 1 - (1 - u) ^ 2
-                    out = (4 + (10 + 8 * r3) * e) * k
-                    lift = 6 * u ^ 1.5 * k
-                    s = (34 + (30 + 16 * r2) * e) * k
-                    tall = s * (0.42 + 0.20 * r3)
-                    rot = math.atan2(ny, nx) + math.pi / 2 + (r2 - 0.5) * 0.9
-                    a = 0.34 * math.min(1, u / 0.12) * (1 - u) ^ 1.3
-                    -- (A murk of dull yellows and greens, not one colour.)
-                    t:SetVertexColor(0.50 + 0.10 * r2, 0.56 + 0.10 * r3, 0.22 + 0.08 * r1)
+                    out = (2 + (3 + 3 * r3) * e) * k
+                    lift = (4 + 3 * r2) * u ^ 1.3 * k
+                    s = (26 + (10 + 6 * r2) * e) * k
+                    tall = s * (0.40 + 0.18 * r3)
+                    rot = math.atan2(ny, nx) + math.pi / 2 + (r2 - 0.5) * 0.7
+                    a = 0.17 * math.min(1, u / 0.18) * (1 - u) ^ 1.2
+                    -- (Dust with the disease's tint in it: pale, not one colour.)
+                    t:SetVertexColor(0.60 + 0.08 * r2, 0.64 + 0.08 * r3, 0.36 + 0.08 * r1)
                 end
             elseif how == "bubbles" then
                 local u = (since - 0.14 * r3) / (0.8 + 0.4 * r2)
