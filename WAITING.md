@@ -2,13 +2,15 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.655.
+Last updated: 2026-11-24, version 0.1.658.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 1 | Crafted upgrades between characters | `/reload`, then `/men alts`. Log in each alt once; on each crafter open each profession window for a few seconds | Whether `/men alts` lists them, and whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
+| 1 | Seal ring (0.1.658) | `/reload`. Seal up, fight, Judge, seal again, a few times; once cast the seal before the pull and once during the fight | What the ring did after Judgement, and whether Judgement takes your seal off in this game. Then `/reload` |
+| 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
+| 7 | Combat numbers' height (0.1.657) | Fight | Whether 36 above the target frame sits right |
 | 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |
 | 5 | Professions window icons (0.1.655) | `/reload`, open the professions window | Whether the tinted discs, the red crosses for first aid and the crossed hammer and pick in the header suit you |
 | 3 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
@@ -17,6 +19,7 @@ Last updated: 2026-11-24, version 0.1.655.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
+- `sealdiag`: what asking for the seal by name answers after its cast and after Judgement, in and out of a fight (1).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
 - `grouphp`: the group-damage sums behind a boss's health (5).
 - `instdiag`, `bestiaryTip`: what the game says about creatures inside a dungeon.

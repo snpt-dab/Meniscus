@@ -1068,7 +1068,40 @@ local function buildRecast()
     secs:SetShadowOffset(1, -1)
     secs:SetShadowColor(0, 0, 0, 0.9)
 
-    local cur -- { name, start, dur }
+    local cur -- { name, start, dur, spent }
+    -- (0.1.658, rethought. It used to go only by your casts: a seal's cast
+    -- started thirty seconds, and Judgement was TAKEN to spend the seal:
+    -- grey, breathing, gone after six seconds, whatever the seal had
+    -- really done. Now the buff itself is asked for by name, which says
+    -- "there" or "not there" even where nothing about it can be read:
+    --   * a moment after the seal's cast: if it answers "there", the asking
+    --     works in this state (in a fight / out of one) and is believed
+    --     from then on;
+    --   * after Judgement, and whenever your buffs change: "not there"
+    --     from an asking that works means spent; "there" means Judgement
+    --     did not take it, and the ring runs on.
+    -- Only where the asking is blind does the old guess stand. And a spent
+    -- seal no longer leaves after six seconds in a fight: it stays, red
+    -- and grey, until you seal again or the fight ends, since that is when
+    -- the reminder is wanted. What was seen is kept in MinimalUIDB.sealdiag.)
+    local sees = {} -- [in a fight] = true / false: does asking by name work there
+    local function fight() return InCombatLockdown() and true or false end
+    local function diag(what, res, extra)
+        local db = MinimalUIDB
+        if not db then return end
+        db.sealdiag = type(db.sealdiag) == "table" and db.sealdiag or {}
+        local list = db.sealdiag
+        if #list >= 16 then table.remove(list, 1) end
+        list[#list + 1] = date("%H:%M:%S") .. " " .. what .. (fight() and " (in a fight): " or " (out of a fight): ")
+            .. res .. (extra and (", " .. extra) or "")
+    end
+    local function look(name)
+        local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
+        if not ok then return "refused" end
+        if secret(a) then return "hidden" end
+        if type(a) == "table" then return "there", a end
+        return "not there"
+    end
     local function seat()
         f:ClearAllPoints()
         if btn and btn:IsShown() then
@@ -1087,13 +1120,14 @@ local function buildRecast()
         if not cur then return self:Hide() end
         local left = cur.start + cur.dur - GetTime()
         seat()
-        if left <= -6 then cur = nil; return self:Hide() end
-        if left <= 0 then
-            -- Run out: grey picture, red ring, a slow breath.
+        local since = cur.spent and (GetTime() - cur.spent) or -left
+        if (left <= 0 or cur.spent) and since >= 6 and not InCombatLockdown() then cur = nil; return self:Hide() end
+        if left <= 0 or cur.spent then
+            -- Run out or spent: grey picture, a full red ring, a slow breath.
             icon:SetDesaturated(true)
             ring:SetVertexColor(0.92, 0.30, 0.26, 1)
             secs:SetText("")
-            self:SetAlpha(0.55 + 0.35 * math.abs(math.sin(GetTime() * 3)))
+            self:SetAlpha(0.72 + 0.28 * math.abs(math.sin(GetTime() * 3)))
             return
         end
         icon:SetDesaturated(false)
@@ -1118,17 +1152,55 @@ local function buildRecast()
         seat()
         f:SetAlpha(1)
         f:Show()
-        -- The buff's own word for how long, when it will say.
+        -- The buff's own word: is it there, and for how long, when it will say.
         C_Timer.After(0.4, function()
             if not cur or cur.name ~= name then return end
-            local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
-            if not (ok and a) then return end
+            local res, a = look(name)
+            sees[fight()] = res == "there"
+            if res ~= "there" then return diag("after " .. name, res) end
             local e, d = a.expirationTime, a.duration
-            if secret(e) or secret(d) or type(e) ~= "number" or type(d) ~= "number" or d <= 0 then return end
+            if secret(e) or secret(d) or type(e) ~= "number" or type(d) ~= "number" or d <= 0 then
+                -- Its times are hidden: the ring can still be handed the
+                -- buff's own clock to draw from, unread.
+                local drawn = false
+                local G = C_UnitAuras.GetAuraDuration
+                if G and cd.SetCooldownFromDurationObject then
+                    local okD, obj = pcall(G, "player", a.auraInstanceID)
+                    if okD and obj then drawn = pcall(cd.SetCooldownFromDurationObject, cd, obj) end
+                end
+                return diag("after " .. name, res, "times hidden, its own clock " .. (drawn and "drawn" or "not to be had"))
+            end
             cur.start, cur.dur = e - d, d
             pcall(cd.SetCooldown, cd, cur.start, d)
+            diag("after " .. name, res, string.format("lasts %d s", d))
         end)
     end
+    local function spend(why)
+        if not cur or cur.spent then return end
+        cur.spent = GetTime()
+        pcall(cd.SetCooldown, cd, 0, 0)
+    end
+    -- Your buffs changed: is it still there? (Only where asking works.)
+    local checkQueued = false
+    local function check(what)
+        if checkQueued then return end
+        checkQueued = true
+        C_Timer.After(0.15, function()
+            checkQueued = false
+            if not cur or cur.spent or sees[fight()] ~= true then return end
+            local res = look(cur.name)
+            if res == "not there" then
+                diag(what .. ", " .. cur.name, res, "taken as gone")
+                spend()
+            end
+        end)
+    end
+    local au = CreateFrame("Frame")
+    pcall(au.RegisterUnitEvent, au, "UNIT_AURA", "player")
+    au:SetScript("OnEvent", function() if cur and not cur.spent then check("buffs changed") end end)
+    local rg = CreateFrame("Frame")
+    rg:RegisterEvent("PLAYER_REGEN_ENABLED")
+    rg:SetScript("OnEvent", function() if cur and cur.spent then cur.spent = GetTime() end end) -- (six seconds more, then it goes)
     local ev = CreateFrame("Frame")
     pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
     ev:RegisterEvent("PLAYER_DEAD")
@@ -1141,10 +1213,22 @@ local function buildRecast()
         local dur = RECAST[name]
         if dur then return start(name, spellID, dur) end
         local ends = RECAST_ENDS[name]
-        if ends and cur and cur.name:sub(1, #ends) == ends then
-            -- Spent: straight to "run out", so the recast is asked for.
-            cur.start = GetTime() - cur.dur
-            pcall(cd.SetCooldown, cd, 0, 0)
+        if ends and cur and not cur.spent and cur.name:sub(1, #ends) == ends then
+            -- Spent? Ask the buff, a moment on. "There": it was not
+            -- taken, and asking works here. "Not there" where asking
+            -- works: spent. Blind: the old guess, that it is spent.
+            local was = cur
+            C_Timer.After(0.4, function()
+                if cur ~= was or cur.spent then return end
+                local res = look(cur.name)
+                if res == "there" then
+                    sees[fight()] = true
+                    return diag("after " .. name .. ", " .. cur.name, res, "kept running")
+                end
+                diag("after " .. name .. ", " .. cur.name, res,
+                    sees[fight()] == true and "taken as spent" or "asking not proven here: guessed spent")
+                spend()
+            end)
         end
     end)
 end
