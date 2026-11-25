@@ -1702,6 +1702,84 @@ local function updatePet(page)
 end
 
 -- ── Build ─────────────────────────────────────────────────────────────────
+-- ── Roster (0.1.670, asked for) ───────────────────────────────────────────
+-- Every character of yours the addon has seen, each with its sheet as it
+-- stood when it was last played with the addon on: a snapshot, and each
+-- says how old. A character is a heading (click to open); under it, where
+-- it was, what it has, its attributes, its professions and what it wears.
+local rosterOpen = {}
+local POWER_NAME = { MANA = "Mana", RAGE = "Rage", ENERGY = "Energy", FOCUS = "Focus" }
+local STAT_NAME = { "Strength", "Agility", "Stamina", "Intellect", "Spirit" }
+local function rosterData()
+    local d = {}
+    local A = ns.Alts
+    if not (A and A.on and A.Roster) then return d end
+    for _, e in ipairs(A.Roster()) do
+        local ch, who = e.ch, e.who
+        local open = rosterOpen[who]
+        if open == nil then open = e.me end
+        local cls = ch.c and (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[ch.c] or ch.c) or ""
+        local head = A.ClassHex(ch.c) .. who .. "|r   |cff9a9aa5"
+            .. (ch.l and ("level " .. ch.l .. " ") or "") .. (ch.r and (ch.r .. " ") or "") .. cls
+            .. "   \194\183   " .. (e.me and "you, now" or ("seen " .. A.Ago(ch.t))) .. "|r"
+        d[#d + 1] = { kind = "header", text = head, collapsed = not open,
+            onClick = function() rosterOpen[who] = not open; C:Refresh() end }
+        if open then
+            local rows = {}
+            local function stat(label, value)
+                if value ~= nil and value ~= "" then rows[#rows + 1] = { kind = "stat", label = label, value = value } end
+            end
+            stat("Last seen in", ch.z)
+            stat("Money", ch.m and ns.Money and ns.Money(ch.m) or nil)
+            if ch.xp then stat("Into this level", ch.xp .. "%" .. ((ch.rx or 0) > 0 and "  (rested)" or "")) end
+            stat("Health", ch.hp)
+            if ch.mp and ch.mp > 0 then stat(POWER_NAME[ch.pt or ""] or "Power", ch.mp) end
+            stat("Armor", ch.ar)
+            if type(ch.s) == "table" then
+                for i = 1, 5 do stat(STAT_NAME[i], ch.s[i]) end
+            end
+            for i = 1, #rows, 2 do d[#d + 1] = { kind = "pair", a = rows[i], b = rows[i + 1] } end
+            if type(ch.pr) == "table" and #ch.pr > 0 then
+                for i = 1, #ch.pr, 3 do
+                    local name, rank, max = ch.pr[i], ch.pr[i + 1], ch.pr[i + 2]
+                    d[#d + 1] = { kind = "bar", label = name, min = 0, max = math.max(max or 0, 1), value = rank or 0,
+                        text = tostring(rank) .. (max and max > 0 and (" / " .. max) or ""), indent = 12 }
+                end
+            end
+            local any = false
+            for _, slot in ipairs(A.SLOT_ORDER) do
+                local link = type(ch.g) == "table" and ch.g[slot]
+                if type(link) == "string" then
+                    any = true
+                    local name = link:match("%[(.-)%]") or "?"
+                    local icon, q
+                    if C_Item and C_Item.GetItemInfoInstant then
+                        local _, _, _, _, tex = call(C_Item.GetItemInfoInstant, link)
+                        icon = tex
+                    end
+                    if C_Item and C_Item.GetItemQualityByID then q = call(C_Item.GetItemQualityByID, link) end
+                    local qc = plain(q) and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+                    d[#d + 1] = { kind = "stat", icon = icon, indent = 12, label = name,
+                        labelColor = qc and { qc.r, qc.g, qc.b } or T.text,
+                        value = A.SlotName(slot), color = T.textDim,
+                        onClick = function()
+                            if IsModifiedClick and (IsModifiedClick("CHATLINK") or IsModifiedClick("DRESSUP")) and HandleModifiedItemClick then
+                                HandleModifiedItemClick(link)
+                            end
+                        end,
+                        tooltip = function(tip)
+                            if not pcall(tip.SetHyperlink, tip, link) then tip:SetText(name) end
+                        end }
+                end
+            end
+            if not any then
+                d[#d + 1] = { kind = "stat", wide = true, indent = 12, label = "Nothing worn was on file.", value = "" }
+            end
+        end
+    end
+    return d
+end
+
 -- kw: words that identify the matching tab on Blizzard's character screen.
 local TABS = {
     { key = "gear", label = "Character", kw = { "character" } },
@@ -1714,6 +1792,11 @@ local TABS = {
       available = function()
           local A = ns.Alts
           return (A and A.on and C.db and C.db.craftMarks ~= false and A.ForMe().makers > 0) and true or false
+      end },
+    { key = "roster", label = "Roster", kw = {},
+      available = function()
+          local A = ns.Alts
+          return (A and A.on and A.Roster and #A.Roster() > 0) and true or false
       end },
     { key = "currency", label = "Currency", kw = { "currency", "token" },
       available = function()
@@ -1751,6 +1834,7 @@ end
 
 function C:SetTab(key)
     if not pages[key] or not tabAvailable(key) then key = "gear" end
+    if key == "roster" and ns.Alts and ns.Alts.ReadNow then ns.Alts.ReadNow() end -- (your own line: of this minute)
     self.tab = key
     for k, p in pairs(pages) do p:SetShown(k == key) end
     for _, b in ipairs(tabButtons) do b.selected = (b.key == key); b:Repaint() end
@@ -2515,7 +2599,7 @@ local function build()
 
     buildGear(pages.gear)
     buildPet(pages.pet)
-    for _, k in ipairs({ "rep", "skills", "crafts", "currency", "honor", "stats" }) do buildListPage(pages[k]) end
+    for _, k in ipairs({ "rep", "skills", "crafts", "roster", "currency", "honor", "stats" }) do buildListPage(pages[k]) end
     pages.crafts.list.empty:SetText("Nothing your characters can craft beats what you wear.")
 
     win:SetScript("OnShow", function()
@@ -2533,7 +2617,7 @@ local function build()
     end)
 end
 
-local LIST_DATA = { rep = repData, skills = skillsData, crafts = craftsData, currency = currencyData, honor = honorData,
+local LIST_DATA = { rep = repData, skills = skillsData, crafts = craftsData, roster = rosterData, currency = currencyData, honor = honorData,
                     stats = statisticsData }
 
 function C:Refresh()

@@ -180,6 +180,49 @@ local function snapshot(fromChange)
         if n > 0 and n < 15 then me.w = w else me.w = nil end
         if MinimalUIDB then MinimalUIDB.altdiag = "weapon skills read: " .. n .. " of 15 known" end
     end
+    -- (0.1.670, for the Roster tab: the rest of a character's sheet as
+    -- it stood. Each thing is kept only when the game gives it plainly:
+    -- in a fight some of it is hidden, and the last good reading stays.)
+    local function keep(key, fn, ...)
+        local ok, v = pcall(fn, ...)
+        if ok and (plainNum(v) or plainStr(v)) then me[key] = v end
+    end
+    keep("r", function() local r = UnitRace("player"); return r end)
+    keep("z", function() return (GetRealZoneText and GetRealZoneText()) or GetZoneText() end)
+    keep("m", GetMoney)
+    keep("hp", UnitHealthMax, "player")
+    keep("mp", UnitPowerMax, "player")
+    keep("pt", function() local _, token = UnitPowerType("player"); return token end)
+    keep("ar", function() local _, eff = UnitArmor("player"); return eff end)
+    keep("xp", function()
+        local x, mx = UnitXP("player"), UnitXPMax("player")
+        if plainNum(x) and plainNum(mx) and mx > 0 then return math.floor(x / mx * 100 + 0.5) end
+    end)
+    keep("rx", function() local e = GetXPExhaustion and GetXPExhaustion(); return plainNum(e) and e or 0 end)
+    local st, full = {}, true
+    for i = 1, 5 do
+        local ok, _, eff = pcall(UnitStat, "player", i)
+        if ok and plainNum(eff) then st[i] = eff else full = false end
+    end
+    if full then me.s = st end
+    -- Professions and their ranks (primary, then secondary).
+    if GetProfessions and GetProfessionInfo then
+        local okP, a, b, arch, fish, cook, aid = pcall(GetProfessions)
+        if okP then
+            local list = {}
+            for _, idx in ipairs({ a or false, b or false, cook or false, fish or false, aid or false, arch or false }) do
+                if idx then
+                    local okI, name, _, rank, maxRank = pcall(GetProfessionInfo, idx)
+                    if okI and plainStr(name) and plainNum(rank) then
+                        list[#list + 1] = name
+                        list[#list + 1] = rank
+                        list[#list + 1] = plainNum(maxRank) and maxRank or 0
+                    end
+                end
+            end
+            if #list > 0 or not fromChange then me.pr = list end
+        end
+    end
     mark("snapshot", "done")
 end
 local snapN = 0
@@ -408,6 +451,28 @@ function A.Others()
     end
     return n
 end
+
+-- Everyone on file, for the Roster tab: you first, then by level, then
+-- by name. Each: { who, me, ch } (ch is the saved record itself: read it,
+-- do not write to it).
+function A.Roster()
+    local out = {}
+    if not A.on then return out end
+    local book, myName = realmBook()
+    for name, ch in pairs(book or {}) do
+        if type(ch) == "table" then out[#out + 1] = { who = name, me = name == myName, ch = ch } end
+    end
+    table.sort(out, function(x, y)
+        if x.me ~= y.me then return x.me end
+        local lx, ly = x.ch.l or 0, y.ch.l or 0
+        if lx ~= ly then return lx > ly end
+        return x.who < y.who
+    end)
+    return out
+end
+-- Read this character now (the Roster tab asks when it is opened, so that
+-- your own line is of this minute).
+function A.ReadNow() pcall(snapshot, false) end
 
 -- "3 days ago", for how old a character's last reading is.
 function A.Ago(t)
