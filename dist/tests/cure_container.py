@@ -219,6 +219,7 @@ local function auraButton(container)
   local idx = mt.__index
   local extra = {}
   function extra:SetIcon(tex) validate(tex, self, "Texture") self.iconTex = tex end
+  function extra:SetSpellName(fs) validate(fs, self, "FontString") self.nameFs = fs end
   function extra:AddAuraShownAnimation(g) adoptGroup(self, g, self.shownAnims) end
   function extra:AddAuraAssignedAnimation(g) adoptGroup(self, g, self.assignedAnims) end
   function extra:SetTooltipAnchorPoint(point, x, y) assert(point:find("^ANCHOR_")) self.tipAnchor = point end
@@ -254,6 +255,7 @@ local function refresh(c)
       slot.assigned = pick
     end
     if f.iconTex then f.iconTex.texture = pick and pick.icon or nil end
+    if f.nameFs and pick then f.nameFs.text = pick.name end
     f.shown = pick ~= nil
     if f.shown and not was then for _, g in ipairs(f.shownAnims) do g:Play() end
     elseif not f.shown then for _, g in ipairs(f.shownAnims) do g:Stop() end end
@@ -405,6 +407,17 @@ function wordsOf(unit, key)
     end
   end
 end
+-- The name the game wrote on a slot's face (the string handed over with SetSpellName).
+function nameOf(unit, key)
+  for _, c in ipairs(containersByUnit[unit] or {}) do
+    for _, s in ipairs(c.slots) do
+      if s.key == key then
+        local fs = rawget(s.frame, "nameFs")
+        return fs and rawget(fs, "text") or nil
+      end
+    end
+  end
+end
 function pillThere() local p = frames.MeniscusQuickCure; return p ~= nil and p.shown end
 function fire(e, unit) EV.scripts.OnEvent(EV, e, unit) runTimers() end
 '''
@@ -444,11 +457,11 @@ def record(rt):
 
 
 def aura(kind, can=True):
-    return "{ dispelName = %s, icon = 9, canDispel = %s }" % (("'%s'" % kind) if kind else 'nil', 'true' if can else 'false')
+    return "{ dispelName = %s, icon = 9, name = 'Bad %s', canDispel = %s }" % (("'%s'" % kind) if kind else 'nil', kind or 'Thing', 'true' if can else 'false')
 
 
 def fight(rt, case, mine, other, words):
-    """mine: a kind this character cures; other: one it does not; words: what the pill says for `mine`."""
+    """mine: a kind this character cures; other: one it does not; words: what the pill says beside the debuff's name for `mine`."""
     e = rt.eval
     x = rt.execute
     x("fire('PLAYER_ENTERING_WORLD')")
@@ -456,7 +469,7 @@ def fight(rt, case, mine, other, words):
     x("gameAuras('player', { %s }) fire('UNIT_AURA', 'player')" % aura(mine))
     check(case, "afflicted out of a fight: casting pill there, the face seen", (e("pillThere()"), e("seen('player')")), (True, mine))
     check(case, "its light and motes are playing", e("playing('player')") > 0, True)
-    check(case, "what the face says", e("wordsOf('player', '%s')" % mine), words)
+    check(case, "the face says the debuff's name, and which button", (e("nameOf('player', '%s')" % mine), e("wordsOf('player', '%s')" % mine)), ("Bad " + mine, words))
     x("gameAuras('player', {}) fire('UNIT_AURA', 'player')")
     check(case, "cured: both gone", (e("pillThere()"), e("seen('player')")), (False, ""))
     x("fire('PLAYER_REGEN_DISABLED') combat = true")
@@ -489,14 +502,14 @@ check(case, "the record", record(rt), ["[calm] player: 2 of 2 faces", "[calm] pa
 check(case, "slots, for you and for the party member", (rt.eval("slotKeys('player')"), rt.eval("slotKeys('party1')")), ("Poison,Disease", "Poison,Disease"))
 check(case, "the casting buttons", tuple(rt.eval(k) for k in ("frames.MeniscusQuickCure.attr.spell1", "frames.MeniscusQuickCure.attr.unit",
       "frames.MeniscusCure1.attr.spell1", "frames.MeniscusCure1.attr.unit")), ("Purify", "player", "Purify", "party1"))
-fight(rt, case, "Disease", "Magic", "Purify")
+fight(rt, case, "Disease", "Magic", "")
 # ... who learns Cleanse in mid-fight: the new slot waits for the fight's end.
 rt.execute("fire('PLAYER_REGEN_DISABLED') combat = true KNOWN['Cleanse'] = true fire('SPELLS_CHANGED')")
 check(case, "Cleanse learned in a fight: no new slot yet", rt.eval("slotKeys('player')"), "Poison,Disease")
 rt.execute("combat = false fire('PLAYER_REGEN_ENABLED')")
 check(case, "after the fight: a slot for magic, and Cleanse on the buttons",
       (rt.eval("slotKeys('player')"), rt.eval("frames.MeniscusQuickCure.attr.spell1"), rt.eval("wordsOf('player', 'Disease')")),
-      ("Poison,Disease,Magic", "Cleanse", "Cleanse"))
+      ("Poison,Disease,Magic", "Cleanse", ""))
 rt.execute("gameAuras('player', { %s }) fire('UNIT_AURA', 'player')" % aura('Magic'))
 check(case, "magic on you now: seen", rt.eval("seen('player')"), "Magic")
 rt.execute("gameAuras('player', {}) fire('UNIT_AURA', 'player')")
@@ -511,7 +524,7 @@ check(case, "/men cure old", rt.eval("UFX.db.cureOld"), True)
 rt.execute("NS.commands.cure('new')")
 check(case, "/men cure new", rt.eval("UFX.db.cureOld"), None)
 check(case, "methods used that this stand-in has no rule for (each must be the game's)", sorted(rt.eval("unknown").keys()),
-      ['Button:RegisterForClicks', 'Button:SetPropagateMouseMotion', 'FontString:SetShadowColor', 'FontString:SetShadowOffset', 'FontString:SetTextColor',
+      ['Button:RegisterForClicks', 'Button:SetPropagateMouseMotion', 'FontString:SetJustifyH', 'FontString:SetShadowColor', 'FontString:SetShadowOffset', 'FontString:SetTextColor',
        'FontString:SetWordWrap', 'Frame:RegisterEvent', 'Frame:RegisterUnitEvent', 'Texture:AddMaskTexture', 'Texture:SetBlendMode',
        'Texture:SetRotation', 'Texture:SetTexCoord', 'Texture:SetVertexColor'])
 
@@ -521,12 +534,12 @@ rt = start('PRIEST', ['Dispel Magic', 'Cure Disease'])
 check(case, "the record", record(rt), ["[calm] player: 2 of 2 faces", "[calm] party1: 2 of 2 faces"])
 check(case, "left and right", (rt.eval("frames.MeniscusQuickCure.attr.spell1"), rt.eval("frames.MeniscusQuickCure.attr.spell2")), ("Dispel Magic", "Cure Disease"))
 check(case, "the chip marks the right-button kind", (rt.eval("wordsOf('party1', 'Disease')"), rt.eval("wordsOf('party1', 'Magic')")), ("R", ""))
-fight(rt, case, "Disease", "Poison", "Cure Disease   (right-click)")
+fight(rt, case, "Disease", "Poison", "right-click")
 
 # 3. A mage.
 case = "mage, Remove Lesser Curse"
 rt = start('MAGE', ['Remove Lesser Curse'])
-fight(rt, case, "Curse", "Disease", "Remove Lesser Curse")
+fight(rt, case, "Curse", "Disease", "")
 
 # 4. A paladin with nothing learned yet: nothing made, nothing shown, no errors.
 case = "paladin, no cure yet"

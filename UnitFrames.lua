@@ -2734,9 +2734,18 @@ local function cureFace(f, o)
         ns.RoundedRect(f, -7, 1.5, h / 2 - 1.5, 0.06, 0.06, 0.07, 0.97)
         mask:SetSize(h - 6, h - 6)
         mask:SetPoint("LEFT", 3, 0)
-        F.text = ns:CreateText(f, 11)
-        F.text:SetPoint("LEFT", mask, "RIGHT", 6, 0)
+        -- What it says is the DEBUFF's name, written by the game (see
+        -- cureAdopt); F.text, small at the right, only says when the cure
+        -- is on the right button.
+        F.text = ns:CreateText(f, 9)
+        F.text:SetPoint("RIGHT", f, "RIGHT", -(h / 2) + 2, 0)
+        F.text:SetTextColor(1, 1, 1, 0.55)
         F.text:SetWordWrap(false)
+        F.name = ns:CreateText(f, 11)
+        F.name:SetPoint("LEFT", mask, "RIGHT", 6, 0)
+        F.name:SetPoint("RIGHT", F.text, "LEFT", -4, 0)
+        F.name:SetJustifyH("LEFT")
+        F.name:SetWordWrap(false)
     end
     F.icon = f:CreateTexture(nil, "ARTWORK")
     F.icon:SetAllPoints(mask)
@@ -2886,6 +2895,8 @@ local function cureAdopt(f, F)
         if not ok then err = err or tostring(e) end
     end
     try(f.SetIcon, F.icon)
+    -- (the debuff's own name; from here on the string is the game's to write)
+    if F.name then try(f.SetSpellName, F.name) end
     for _, g in ipairs(F.arrives) do
         try(f.AddAuraAssignedAnimation, g)
         try(f.AddAuraShownAnimation, g)
@@ -2959,11 +2970,11 @@ function UF:BuildCure()
             end
         end
     end
-    -- What a face says: the cure for its kind, and which button it is on.
+    -- What a face says besides the debuff's name: which button the cure
+    -- is on, when it is the right one.
     local function sayFor(kind)
         local spell = typeSpell[kind]
-        if not spell then return "" end
-        return spell .. ((spells[2] ~= nil and spell == spells[2]) and "   (right-click)" or "")
+        return (spell and spells[2] ~= nil and spell == spells[2]) and "right-click" or ""
     end
     local function hintFor(kind)
         local spell = typeSpell[kind]
@@ -3007,6 +3018,8 @@ function UF:BuildCure()
                 F.said = F.chip and hintFor(kind) or sayFor(kind)
                 local words = F.text or F.hint
                 words:SetText(F.said)
+                -- (until the game writes the debuff's name, or should it refuse to: the cure's)
+                if F.name then F.name:SetText(typeSpell[kind] or "") end
             end)
             if not okB then errB = eB or "?" return end
             -- (The light and motes apart: if they fail, the face still stands.)
@@ -3118,13 +3131,12 @@ function UF:BuildCure()
             local okW, wv = pcall(ruler.GetStringWidth, ruler)
             if okW and type(wv) == "number" and not issecretvalue(wv) and wv > widest then widest = wv end
         end
+        -- (A debuff's name can't be measured, and in a fight the pill can't
+        -- be resized: room for some eighteen letters, longer names are cut.)
         if spells[1] then measure(spells[1]) end
-        if spells[2] then
-            measure(spells[2] .. "   (right-click)")
-            measure(spells[1] .. "  /  " .. spells[2])
-        end
+        if spells[2] then measure(spells[2]) end
         ruler:SetText("")
-        return math.max(90, math.floor(3 + (PH - 6) + 6 + widest + PH / 2 + 0.5))
+        return math.max(170, math.floor(3 + (PH - 6) + 6 + widest + PH / 2 + 0.5)) + (spells[2] and 52 or 0)
     end
     local W = widthNow()
     if not InCombatLockdown() then pill:SetWidth(W) end
@@ -3308,10 +3320,8 @@ function UF:BuildCure()
                 local okX, e = pcall(cureFaceFx, fr, F)
                 if not okX then ns:Print("Quick Cure sample:", tostring(e)) end
                 F.icon:SetTexture(pic)
-                if F.text then
-                    local say = sayFor(kind)
-                    F.text:SetText(say ~= "" and say or kind)
-                end
+                if F.text then F.text:SetText(sayFor(kind)) end
+                if F.name then F.name:SetText("The " .. kind:lower() .. "'s name") end
                 if F.hint then F.hint:SetText(hintFor(kind)) end
                 -- (which is which: the chip is small enough to be taken for something else)
                 local cap = ns:CreateText(fr, 10)
@@ -3320,8 +3330,8 @@ function UF:BuildCure()
                 cap:SetText(isChip and "on a party member" or "on you")
                 S[#S + 1] = { frame = fr, face = F }
             end
-            sample(false, math.max(W, 150), PH, 0)
-            sample(true, CURE_S, CURE_S, math.max(W, 150) + 30)
+            sample(false, W, PH, 0)
+            sample(true, CURE_S, CURE_S, W + 30)
             shows[key] = S
         end
         showToken = showToken + 1
