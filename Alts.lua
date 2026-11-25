@@ -41,7 +41,7 @@ A.SLOT_ORDER = { 16, 17, 18, 1, 2, 3, 15, 5, 9, 10, 6, 7, 8, 11, 12, 13, 14 }
 
 -- The skill line behind each kind of weapon (item subclass -> skill).
 local WEAPON_SKILL = { [0] = 44, [1] = 172, [2] = 45, [3] = 46, [4] = 54, [5] = 160, [6] = 229, [7] = 43, [8] = 55,
-                       [10] = 136, [13] = 473, [15] = 173, [16] = 176, [18] = 226, [19] = 228 }
+                       [10] = 136, [13] = 162, [15] = 173, [16] = 176, [18] = 226, [19] = 228 }
 -- Where a character's own skills were not to be read: what its class can
 -- ever learn to hold.
 local function set(...)
@@ -217,7 +217,7 @@ local function snapshot(fromChange)
     do
         local rs, all = {}, true
         for school = 2, 6 do
-            local ok, _, total = pcall(UnitResistance, "player", school)
+            local ok, _, _, total = pcall(UnitResistance, "player", school) -- (base, real, EFFECTIVE, bonus: the game shows the third)
             if ok and plainNum(total) then rs[school] = total else all = false end
         end
         if all then me.rs = rs end

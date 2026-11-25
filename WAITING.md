@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.701.
+Last updated: 2026-11-25, version 0.1.702.
 
 ## Needs you, in game
 
@@ -19,6 +19,7 @@ Last updated: 2026-11-25, version 0.1.701.
 
 ## Read from the saved record after your next reload (nothing for you to do)
 
+- `apicheck` (0.1.702): which of the calls the review below wants to build on really exist on this client (the game’s docs are shared between its flavours). Written four seconds after login; one `/reload` after that and it can be read.
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
 - `curecontainer` (fresh each session): for you and each party member, how many faces the game let be made and dressed, any refusal’s words, whether auras were secret in the fight, and each kind of curable debuff that was read on you out of a fight (so that “nothing appeared” can be held against what was there) (11).
 - `dolldiag`: for each way of standing a figure up, whether a model came and what the game answered to each piece of gear (10).
@@ -26,6 +27,21 @@ Last updated: 2026-11-25, version 0.1.701.
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
 - `grouphp`: the group-damage sums behind a boss's health (5).
 - `instdiag`, `bestiaryTip`: what the game says about creatures inside a dungeon.
+
+## Review against the game’s own source (2026-11-25): rework candidates, not started
+
+Read in the source for this build; each still wants `apicheck` or one look in game before it is built on. In the order I would do them:
+
+1. Pet mood and pet food from `C_PetInfo.GetPetHappiness` / `GetPetFoodTypes` / `CanPetEatItem` (Bars.lua mood curves and ticker, Extras.lua learned diets; the Character sheet’s pet row calls a global that is not there).
+2. Party, focus and target aura rows on aura containers (`AddAuraGroup`), so they stay live in a fight; a true seal timer from an aura slot on yourself (`includeSpellIDs` is allowed for your own buffs).
+3. Bestiary in dungeons: the damage meter’s views by number (`Enum.DamageMeterType`, enemy damage taken = 10), each enemy’s creature number from the meter (`sourceCreatureID`), bosses and their health from `ENCOUNTER_END` (`encounterUnitStatus`). Would answer boss health (item 3) without a clean one-kill fight.
+4. The alt’s figure: `actor:SetModelByUnit("player", ..., customRaceID)` then `TryOn` per saved item: right race and gear, but your own sex.
+5. Cast bar "can’t be interrupted" from `UnitCastingInfo`’s own return with `SetVertexColorFromBoolean`, not the hidden target frame’s shield.
+6. Polling replaced by the game’s own signals: menus (`MenuProxy.OnShow`), action range (`ActionButton_UpdateRangeIndicator`, `ACTION_RANGE_CHECK_UPDATE`), group range (`UNIT_IN_RANGE_UPDATE`), list rows in skinned windows (`ScrollUtil.AddAcquiredFrameCallback`), window docking (`UIParentPanelManager.ShowUIPanel`).
+7. Click edge pinned with the `useOnKeyDown` attribute; CLAUDE.md’s note on click edges corrected.
+8. Probe.lua: about a thousand lines of probes whose questions the source answers can go.
+
+Checked and already the right way (do not re-audit): combat log tickets, colours and the logout filter; crit from UNIT_COMBAT’s flag; health and power through percent curves; cast bar timing; the action bars riding the game’s own buttons; bags, merchant, mail, taxi, loot values, tooltips, map buttons; the floating XP line (engine text, no switch); Quick Cure’s slots.
 
 ## Offered, not built
 

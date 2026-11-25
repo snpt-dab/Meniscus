@@ -1302,7 +1302,7 @@ end
 
 local function updateResists(chips, unit)
     for _, chip in ipairs(chips) do
-        local _, totalR = call(UnitResistance, unit or "player", chip.school)
+        local _, _, totalR = call(UnitResistance, unit or "player", chip.school) -- (base, real, EFFECTIVE, bonus)
         chip.value = totalR
         chip.fs:SetText(fmt(totalR, "%d") or "0")
     end
@@ -2461,7 +2461,7 @@ function C.FillOtherCard(card, unit, base, gear, rows, res, buff)
     pcall(updateRadar, card, unit, gear or NO_GEAR)
     local anyRes = res ~= nil
     for _, chip in ipairs(card.resists) do
-        local _, total = call(UnitResistance, unit, chip.school)
+        local _, _, total = call(UnitResistance, unit, chip.school) -- (base, real, EFFECTIVE, bonus)
         if plain(total) and total > 0 then anyRes = true
         else total = res and res[chip.school] or 0 end
         chip.value = total

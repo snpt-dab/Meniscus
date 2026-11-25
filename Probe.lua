@@ -2259,3 +2259,74 @@ do
         end
     end)
 end
+
+-- ── Is it really there? ───────────────────────────────────────────────────
+-- The game's source and generated docs (see CLAUDE.md) are shared between
+-- its flavours: a call listed there may still be missing on this client.
+-- Once per session, a few seconds in: which of the calls that the review of
+-- 2026-11-25 wants to build on exist here. MinimalUIDB.apicheck.
+do
+    local names = {
+        "C_PetInfo.GetPetHappiness", "C_PetInfo.GetPetFoodTypes", "C_PetInfo.CanPetEatItem",
+        "Enum.DamageMeterType", "Enum.DamageMeterType.EnemyDamageTaken", "Enum.DamageMeterType.DamageTaken",
+        "C_DamageMeter.GetCombatSessionFromType", "C_DamageMeter.GetCombatSessionSourceFromType",
+        "C_DeathRecap.GetRecapEvents", "C_Secrets.ShouldUnitIdentityBeSecret", "C_Secrets.HasSecretRestrictions",
+        "C_Secrets.ShouldCooldownsBeSecret", "C_Secrets.GetSpellAuraSecrecy", "C_Secrets.ShouldUnitPowerBeSecret",
+        "C_RestrictedActions.IsAddOnRestrictionActive", "Enum.AddOnRestrictionType", "C_CombatLog.IsCombatLogRestricted",
+        "C_SwingTimer", "C_SkillInfo.GetNumSkillLines", "C_SkillInfo.GetSkillLineInfo",
+        "C_Spell.GetSpellCooldownDuration", "C_ActionBar.GetActionCooldownDuration",
+        "C_SpellBook.GetSpellBookItemCooldownDuration", "C_CurveUtil.EvaluateColorFromBoolean",
+        "C_TooltipInfo.GetTrainerService", "C_TradeSkillUI.GetSkillLineForGear", "C_Item.RequestLoadItemDataByID",
+        "ScrollUtil.AddAcquiredFrameCallback", "EventRegistry.RegisterCallback", "ActionButton_UpdateRangeIndicator",
+        "scrubsecretvalues", "canaccessvalue", "hasanysecretvalues", "GetRealmID", "GetNormalizedRealmName",
+        "C_Ping.SendMacroPing", "PingUtil.SendMacroPing", "C_UnitAuras.GetRefreshCarryOverDuration",
+    }
+    local function find(path)
+        local v = _G
+        for part in path:gmatch("[^.]+") do
+            if type(v) ~= "table" then return nil end
+            v = v[part]
+        end
+        return v
+    end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function()
+        C_Timer.After(4, function()
+            if not MinimalUIDB then return end
+            local out = {}
+            for _, n in ipairs(names) do
+                local v = find(n)
+                out[#out + 1] = n .. ": " .. (v == nil and "MISSING" or (type(v) == "number" and tostring(v) or type(v)))
+            end
+            local function widget(label, obj, methods)
+                for _, m in ipairs(methods) do
+                    out[#out + 1] = label .. ":" .. m .. ": " .. (type(obj[m]) == "function" and "function" or "MISSING")
+                end
+            end
+            local tex = f:CreateTexture()
+            widget("Texture", tex, { "SetVertexColorFromBoolean", "SetAlphaFromBoolean", "SetRadialProgressBarPercent" })
+            local okC, cd = pcall(CreateFrame, "Cooldown", nil, f, "CooldownFrameTemplate")
+            if okC and cd then widget("Cooldown", cd, { "SetCooldownFromDurationObject" }) end
+            local okM, scene = pcall(CreateFrame, "ModelScene", nil, f)
+            if okM and scene and scene.CreateActor then
+                local okA, actor = pcall(scene.CreateActor, scene)
+                if okA and actor then widget("Actor", actor, { "SetModelByUnit", "SetModelByCreatureDisplayID", "TryOn", "SetCustomRace" }) end
+            end
+            local function ask(label, fn, ...)
+                if type(fn) ~= "function" then return end
+                local r = { pcall(fn, ...) }
+                for i = 1, #r do
+                    if issecretvalue and issecretvalue(r[i]) then r[i] = "<secret>" else r[i] = tostring(r[i]) end
+                end
+                out[#out + 1] = label .. " -> " .. table.concat(r, ", ")
+            end
+            ask("C_PetInfo.GetPetHappiness()", find("C_PetInfo.GetPetHappiness"))
+            ask("C_PetInfo.GetPetFoodTypes()", find("C_PetInfo.GetPetFoodTypes"))
+            ask("C_Secrets.ShouldCooldownsBeSecret()", find("C_Secrets.ShouldCooldownsBeSecret"))
+            ask("GetRealmName() is empty", function() return (GetRealmName() or "") == "" end)
+            ask("GetRealmID() is a number above 0", function() local id = GetRealmID and GetRealmID() return type(id) == "number" and id > 0 end)
+            MinimalUIDB.apicheck = out
+        end)
+    end)
+end
