@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.660.
+Last updated: 2026-11-24, version 0.1.661.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 1 | Seal ring (0.1.660) | Seal, fight, Judge | Whether the ring now runs its full 30 s through Judgement |
+| 1 | Buff rings in the chat corner (0.1.661) | `/reload`, cast a seal | Whether the ring sits where the chat panel meets the lower panel and suits you there |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 7 | Combat numbers' height (0.1.657) | Fight | Whether 36 above the target frame sits right |
 | 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |
@@ -19,7 +19,6 @@ Last updated: 2026-11-24, version 0.1.660.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
-- `sealdiag`: what asking for the seal by name answers after its cast and after Judgement, in and out of a fight (1).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
 - `grouphp`: the group-damage sums behind a boss's health (5).
 - `instdiag`, `bestiaryTip`: what the game says about creatures inside a dungeon.
@@ -32,6 +31,7 @@ Last updated: 2026-11-24, version 0.1.660.
 
 ## Settled recently
 
+- Seal ring runs through Judgement: confirmed ("looks good").
 - In Forever, Judgement does NOT take the seal off (your word): the ring no longer ends on Judgement.
 - Seals: asking for the buff by name is blind in a fight ("not there" right after the cast, 3 of 3). Out of a fight it answers, and a seal lasts 30 s.
 - Why nothing was on file for crafted upgrades: `GetRealmName()` answers "" on this client. Fixed in 0.1.654 (realm asked three ways, else one book).

@@ -1004,18 +1004,27 @@ function QB:IsRebuffable(name)
     return false
 end
 
--- ── Recast ring ───────────────────────────────────────────────────────────
+-- ── Recast rings ──────────────────────────────────────────────────────────
 -- The short things you keep up yourself and recast all fight long (a
--- paladin's seal, a warrior's shout): a small disc where the Quick Buff
--- pill sits (beside it, when the pill is up), the spell's picture in a thin
--- gold ring that drains as the spell runs out. Near the end it turns red
--- and breathes; once it has run out it stays a few seconds, grey with a red
--- ring, then goes.
+-- paladin's seal, a warrior's shout): a small disc each, the spell's
+-- picture in a thin gold ring that drains as the spell runs out. Near the
+-- end it turns red and breathes; once it has run out it stays, grey with a
+-- red ring, until you cast it again or the fight is over.
 --
--- Your buffs can't be read in a fight, so it runs off your own casts: the
--- cast starts the ring, for the time the spell is known to last (read from
--- the buff itself when that can be had, a moment after the cast). It is only a picture:
--- it can't be clicked (a button that casts can't be retargeted in a fight).
+-- Where (0.1.661, asked for): in the corner where the chat panel meets the
+-- lower panel, where the mail mark used to sit, one ring per spell,
+-- growing to the right in the order they were cast. (It was a single ring
+-- beside the Quick Buff pill.)
+--
+-- Your buffs can't be read in a fight (asked for by name, the game says
+-- "not there" even right after the cast), so a ring runs off your own
+-- cast, for the time the spell is known to last; out of a fight the buff
+-- itself says how long, and whether it is still there. Nothing ends a ring
+-- early: in Forever a seal lasts its full time whatever you judge (the
+-- player's own word, 2026-11-24; the classic rule, Judgement spends the
+-- seal, was built in until 0.1.660 and was wrong here. Do not bring a
+-- classic rule back without it being seen in this game). A ring is only a
+-- picture: it can't be clicked.
 local RECAST = {
     ["Seal of Righteousness"] = 30, ["Seal of the Crusader"] = 30, ["Seal of Command"] = 30,
     ["Seal of Justice"] = 30, ["Seal of Light"] = 30, ["Seal of Wisdom"] = 30,
@@ -1023,19 +1032,34 @@ local RECAST = {
     ["Slice and Dice"] = 9,
     ["Mana Shield"] = 60, ["Ice Barrier"] = 60,
 }
--- Casting the key ends any running spell whose name starts with the value.
--- EMPTY since 0.1.660: it held Judgement = "Seal", the classic rule. In
--- Forever a seal lasts its full time whatever you judge (the player's own
--- word, 2026-11-24), so nothing ends a ring early here. Do not bring a
--- classic rule back without it being seen in this game.
-local RECAST_ENDS = {}
+-- Spells that take one another's place (one seal at a time) share a ring.
+local function family(name) return name:match("^Seal of ") and "Seal" or name end
 local function buildRecast()
-    local D = 26
-    local f = CreateFrame("Frame", "MeniscusRecast", UIParent)
-    f:SetSize(D, D)
-    f:SetFrameStrata("LOW")
-    f:SetFrameLevel(40)
-    f:Hide()
+    local D, GAP = 26, 8
+    local row = CreateFrame("Frame", "MeniscusRecast", UIParent)
+    row:SetSize(D, D)
+    row:SetFrameStrata("LOW")
+    row:SetFrameLevel(40)
+    row:Hide()
+    local function seat()
+        local B = ns.modules.Bars
+        local plate = B and B.plate
+        local x, y
+        if plate and plate:IsShown() then
+            local well = plate.chatWell
+            local okX, wx = pcall(function() return (well and well:IsShown() and well:GetRight()) or plate:GetLeft() end)
+            local okY, py = pcall(plate.GetTop, plate)
+            if okX and okY and type(wx) == "number" and type(py) == "number" and not secret(wx) and not secret(py) then
+                x, y = wx, py
+            end
+        end
+        row:ClearAllPoints()
+        if x then
+            row:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x + 8, y + 8)
+        else
+            row:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 190)
+        end
+    end
     local function disc(parent, size, r, g, b, a, sub)
         local t = parent:CreateTexture(nil, "ARTWORK", nil, sub or 0)
         t:SetTexture(MEDIA .. "circle.tga")
@@ -1044,262 +1068,177 @@ local function buildRecast()
         t:SetVertexColor(r, g, b, a)
         return t
     end
-    disc(f, D, 0.04, 0.04, 0.05, 1, 0)                 -- the rim
-    local ring = disc(f, D - 2, 0.95, 0.78, 0.36, 1, 1) -- what is left, in gold
-    local cd = CreateFrame("Cooldown", nil, f, "CooldownFrameTemplate")
-    cd:SetPoint("CENTER")
-    cd:SetSize(D - 2, D - 2)
-    pcall(cd.SetSwipeTexture, cd, MEDIA .. "circle.tga")
-    cd:SetSwipeColor(0.10, 0.10, 0.12, 1)
-    cd:SetReverse(true) -- the dark covers what has gone, so the gold is what remains
-    if cd.SetDrawEdge then cd:SetDrawEdge(false) end
-    if cd.SetDrawBling then cd:SetDrawBling(false) end
-    if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
-    local top = CreateFrame("Frame", nil, f)
-    top:SetAllPoints()
-    top:SetFrameLevel(cd:GetFrameLevel() + 2)
-    disc(top, D - 6, 0.05, 0.05, 0.06, 1, 0)
-    local mask = top:CreateMaskTexture()
-    mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    mask:SetSize(D - 8, D - 8)
-    mask:SetPoint("CENTER")
-    local icon = top:CreateTexture(nil, "ARTWORK", nil, 2)
-    icon:SetAllPoints(mask)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    icon:AddMaskTexture(mask)
-    local secs = ns:CreateText(top, 10)
-    secs:SetPoint("TOP", f, "BOTTOM", 0, -1)
-    secs:SetShadowOffset(1, -1)
-    secs:SetShadowColor(0, 0, 0, 0.9)
-
-    local cur -- { name, start, dur, spent }
-    -- (0.1.658, rethought. It used to go only by your casts: a seal's cast
-    -- started thirty seconds, and Judgement was TAKEN to spend the seal:
-    -- grey, breathing, gone after six seconds, whatever the seal had
-    -- really done. Now the buff itself is asked for by name, which says
-    -- "there" or "not there" even where nothing about it can be read:
-    --   * a moment after the seal's cast: if it answers "there", the asking
-    --     works in this state (in a fight / out of one) and is believed
-    --     from then on;
-    --   * after Judgement, and whenever your buffs change: "not there"
-    --     from an asking that works means spent; "there" means Judgement
-    --     did not take it, and the ring runs on.
-    -- Only where the asking is blind does the old guess stand. And a spent
-    -- seal no longer leaves after six seconds in a fight: it stays, red
-    -- and grey, until you seal again or the fight ends, since that is when
-    -- the reminder is wanted. What was seen is kept in MinimalUIDB.sealdiag.)
-    local sees = {} -- [in a fight] = true / false: does asking by name work there
-    local function fight() return InCombatLockdown() and true or false end
-    local function diag(what, res, extra)
-        local db = MinimalUIDB
-        if not db then return end
-        db.sealdiag = type(db.sealdiag) == "table" and db.sealdiag or {}
-        local list = db.sealdiag
-        if #list >= 16 then table.remove(list, 1) end
-        list[#list + 1] = date("%H:%M:%S") .. " " .. what .. (fight() and " (in a fight): " or " (out of a fight): ")
-            .. res .. (extra and (", " .. extra) or "")
+    local function newRing()
+        local f = CreateFrame("Frame", nil, row)
+        f:SetSize(D, D)
+        f:Hide()
+        disc(f, D, 0.04, 0.04, 0.05, 1, 0)                   -- the rim
+        f.ring = disc(f, D - 2, 0.95, 0.78, 0.36, 1, 1)      -- what is left, in gold
+        local cd = CreateFrame("Cooldown", nil, f, "CooldownFrameTemplate")
+        cd:SetPoint("CENTER")
+        cd:SetSize(D - 2, D - 2)
+        pcall(cd.SetSwipeTexture, cd, MEDIA .. "circle.tga")
+        cd:SetSwipeColor(0.10, 0.10, 0.12, 1)
+        cd:SetReverse(true) -- the dark covers what has gone, so the gold is what remains
+        if cd.SetDrawEdge then cd:SetDrawEdge(false) end
+        if cd.SetDrawBling then cd:SetDrawBling(false) end
+        if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+        f.cd = cd
+        local top = CreateFrame("Frame", nil, f)
+        top:SetAllPoints()
+        top:SetFrameLevel(cd:GetFrameLevel() + 2)
+        disc(top, D - 6, 0.05, 0.05, 0.06, 1, 0)
+        local mask = top:CreateMaskTexture()
+        mask:SetTexture(MEDIA .. "circle.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetSize(D - 8, D - 8)
+        mask:SetPoint("CENTER")
+        f.icon = top:CreateTexture(nil, "ARTWORK", nil, 2)
+        f.icon:SetAllPoints(mask)
+        f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        f.icon:AddMaskTexture(mask)
+        f.secs = ns:CreateText(top, 10)
+        f.secs:SetPoint("TOP", f, "BOTTOM", 0, -1)
+        f.secs:SetShadowOffset(1, -1)
+        f.secs:SetShadowColor(0, 0, 0, 0.9)
+        return f
     end
-    -- (0.1.659: the first fights said asking by name is blind in a fight:
-    -- "not there" even right after the seal's cast. So a second witness,
-    -- one the game does show in a fight: whether the spending spell
-    -- (Judgement) can be cast at all. If it needs a seal, it goes
-    -- unusable, and not for want of mana, the moment the seal is gone.
-    -- Whether it does need one is learnt out of a fight, where the buff
-    -- can be seen: no seal on you and Judgement unusable = it does
-    -- (kept in the settings as needsSeal); usable with no seal = it tells
-    -- nothing, and the guess stands.)
-    local function castable(spell)
-        local F = C_Spell and C_Spell.IsSpellUsable
-        if not F then return "no answer" end
-        local ok, u, noMana = pcall(F, spell)
-        if not ok then return "refused" end
-        if secret(u) or secret(noMana) then return "hidden" end
-        if u then return "yes" end
-        return noMana and "no mana" or "no"
+
+    local live = {}  -- rings showing, in the order they were first cast
+    local pool = {}
+    local byFam = {}
+    local function layout()
+        for i, f in ipairs(live) do
+            f:ClearAllPoints()
+            f:SetPoint("LEFT", row, "LEFT", (i - 1) * (D + GAP), 0)
+        end
+    end
+    local function drop(f)
+        for i, g in ipairs(live) do
+            if g == f then table.remove(live, i) break end
+        end
+        byFam[f.fam] = nil
+        f.cur = nil
+        f:Hide()
+        pool[#pool + 1] = f
+        layout()
     end
     local function look(name)
         local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
-        if not ok then return "refused" end
-        if secret(a) then return "hidden" end
+        if not ok or secret(a) then return "blind" end
         if type(a) == "table" then return "there", a end
         return "not there"
     end
-    local function learn()
-        if InCombatLockdown() or not QB.db then return end
-        for ender, prefix in pairs(RECAST_ENDS) do
-            if known(ender) then
-                local on = false
-                for name in pairs(RECAST) do
-                    if name:sub(1, #prefix) == prefix and look(name) ~= "not there" then on = true end
-                end
-                if not on then
-                    local c = castable(ender)
-                    if c == "no" or c == "yes" then
-                        local needs = c == "no"
-                        QB.db.needsSeal = type(QB.db.needsSeal) == "table" and QB.db.needsSeal or {}
-                        if QB.db.needsSeal[ender] ~= needs then
-                            QB.db.needsSeal[ender] = needs
-                            diag("with no " .. prefix .. " on you, " .. ender .. " can be cast", c,
-                                needs and "so it tells when the seal is gone" or "so it tells nothing")
-                        end
-                    end
-                end
-            end
-        end
-    end
-    local function tells(ender) return QB.db and type(QB.db.needsSeal) == "table" and QB.db.needsSeal[ender] == true end
-    local function seat()
-        f:ClearAllPoints()
-        if btn and btn:IsShown() then
-            f:SetPoint("RIGHT", btn, "LEFT", -6, 0)
-        elseif btn and btn:GetNumPoints() > 0 then
-            f:SetPoint("CENTER", btn, "CENTER", 0, 0)
-        else
-            f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 190)
-        end
-    end
     local acc = 0
-    f:SetScript("OnUpdate", function(self, dt)
+    row:SetScript("OnUpdate", function(self, dt)
         acc = acc + dt
         if acc < 0.1 then return end
         acc = 0
-        if not cur then return self:Hide() end
-        if cur.ender and not cur.spent and GetTime() - cur.cast > 0.6 and tells(cur.ender)
-            and castable(cur.ender) == "no" then
-            diag(cur.ender .. " can no longer be cast, " .. cur.name, "no", "taken as gone")
-            cur.spent = GetTime()
-            pcall(cd.SetCooldown, cd, 0, 0)
-        end
-        local left = cur.start + cur.dur - GetTime()
+        if #live == 0 then return self:Hide() end
         seat()
-        local since = cur.spent and (GetTime() - cur.spent) or -left
-        if (left <= 0 or cur.spent) and since >= 6 and not InCombatLockdown() then cur = nil; return self:Hide() end
-        if left <= 0 or cur.spent then
-            -- Run out or spent: grey picture, a full red ring, a slow breath.
-            icon:SetDesaturated(true)
-            ring:SetVertexColor(0.92, 0.30, 0.26, 1)
-            secs:SetText("")
-            self:SetAlpha(0.72 + 0.28 * math.abs(math.sin(GetTime() * 3)))
-            return
-        end
-        icon:SetDesaturated(false)
-        local low = left <= math.max(4, cur.dur * 0.15)
-        if low then
-            ring:SetVertexColor(0.95, 0.40, 0.32, 1)
-            self:SetAlpha(0.65 + 0.35 * math.abs(math.sin(GetTime() * 4)))
-            secs:SetText(math.ceil(left))
-            secs:SetTextColor(0.95, 0.45, 0.38)
-        else
-            ring:SetVertexColor(0.95, 0.78, 0.36, 1)
-            self:SetAlpha(1)
-            secs:SetText("")
+        local now, fighting = GetTime(), InCombatLockdown()
+        for i = #live, 1, -1 do
+            local f = live[i]
+            local cur = f.cur
+            local left = cur.start + cur.dur - now
+            local over = cur.gone and (now - cur.gone) or -left
+            if (left <= 0 or cur.gone) and over >= 6 and not fighting then
+                drop(f)
+            elseif left <= 0 or cur.gone then
+                -- Run out: grey picture, a full red ring, a slow breath.
+                f.icon:SetDesaturated(true)
+                f.ring:SetVertexColor(0.92, 0.30, 0.26, 1)
+                f.secs:SetText("")
+                f:SetAlpha(0.72 + 0.28 * math.abs(math.sin(now * 3)))
+            else
+                f.icon:SetDesaturated(false)
+                if left <= math.max(4, cur.dur * 0.15) then
+                    f.ring:SetVertexColor(0.95, 0.40, 0.32, 1)
+                    f:SetAlpha(0.65 + 0.35 * math.abs(math.sin(now * 4)))
+                    f.secs:SetText(math.ceil(left))
+                    f.secs:SetTextColor(0.95, 0.45, 0.38)
+                else
+                    f.ring:SetVertexColor(0.95, 0.78, 0.36, 1)
+                    f:SetAlpha(1)
+                    f.secs:SetText("")
+                end
+            end
         end
     end)
     local function start(name, spellID, dur)
-        cur = { name = name, start = GetTime(), cast = GetTime(), dur = dur }
-        for ender, prefix in pairs(RECAST_ENDS) do
-            if name:sub(1, #prefix) == prefix and known(ender) then cur.ender = ender end
+        local fam = family(name)
+        local f = byFam[fam]
+        if not f then
+            f = table.remove(pool) or newRing()
+            f.fam = fam
+            byFam[fam] = f
+            live[#live + 1] = f
+            layout()
         end
+        local cur = { name = name, start = GetTime(), dur = dur }
+        f.cur = cur
         local okT, tex = false, nil
         if C_Spell and C_Spell.GetSpellTexture then okT, tex = pcall(C_Spell.GetSpellTexture, spellID) end
-        icon:SetTexture((okT and tex and not secret(tex)) and tex or 134400)
-        pcall(cd.SetCooldown, cd, cur.start, dur)
-        seat()
+        f.icon:SetTexture((okT and tex and not secret(tex)) and tex or 134400)
+        pcall(f.cd.SetCooldown, f.cd, cur.start, dur)
         f:SetAlpha(1)
         f:Show()
-        -- The buff's own word: is it there, and for how long, when it will say.
+        seat()
+        row:Show()
+        -- The buff's own word for how long, where it will say (out of a fight).
         C_Timer.After(0.4, function()
-            if not cur or cur.name ~= name then return end
+            if f.cur ~= cur then return end
             local res, a = look(name)
-            sees[fight()] = res == "there"
-            if res ~= "there" then
-                return diag("after " .. name, res, cur.ender and (cur.ender .. " can be cast: " .. castable(cur.ender)) or nil)
-            end
+            if res ~= "there" then return end
+            cur.seen = not InCombatLockdown()
             local e, d = a.expirationTime, a.duration
-            if secret(e) or secret(d) or type(e) ~= "number" or type(d) ~= "number" or d <= 0 then
-                -- Its times are hidden: the ring can still be handed the
-                -- buff's own clock to draw from, unread.
-                local drawn = false
-                local G = C_UnitAuras.GetAuraDuration
-                if G and cd.SetCooldownFromDurationObject then
-                    local okD, obj = pcall(G, "player", a.auraInstanceID)
-                    if okD and obj then drawn = pcall(cd.SetCooldownFromDurationObject, cd, obj) end
-                end
-                return diag("after " .. name, res, "times hidden, its own clock " .. (drawn and "drawn" or "not to be had"))
-            end
+            if secret(e) or secret(d) or type(e) ~= "number" or type(d) ~= "number" or d <= 0 then return end
             cur.start, cur.dur = e - d, d
-            pcall(cd.SetCooldown, cd, cur.start, d)
-            diag("after " .. name, res, string.format("lasts %d s", d))
+            pcall(f.cd.SetCooldown, f.cd, cur.start, d)
         end)
     end
-    local function spend(why)
-        if not cur or cur.spent then return end
-        cur.spent = GetTime()
-        pcall(cd.SetCooldown, cd, 0, 0)
-    end
-    -- Your buffs changed: is it still there? (Only where asking works.)
-    local checkQueued = false
-    local function check(what)
-        if checkQueued then return end
-        checkQueued = true
-        C_Timer.After(0.15, function()
-            checkQueued = false
-            if not cur or cur.spent or sees[fight()] ~= true then return end
-            local res = look(cur.name)
-            if res == "not there" then
-                diag(what .. ", " .. cur.name, res, "taken as gone")
-                spend()
-            end
-        end)
-    end
-    local au = CreateFrame("Frame")
-    pcall(au.RegisterUnitEvent, au, "UNIT_AURA", "player")
-    au:SetScript("OnEvent", function() if cur and not cur.spent then check("buffs changed") end end)
-    local rg = CreateFrame("Frame")
-    rg:RegisterEvent("PLAYER_REGEN_ENABLED")
-    rg:SetScript("OnEvent", function()
-        if cur and cur.spent then cur.spent = GetTime() end -- (six seconds more, then it goes)
-        C_Timer.After(1.5, function() pcall(learn) end)
-    end)
-    C_Timer.After(8, function() pcall(learn) end)
     local ev = CreateFrame("Frame")
     pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_AURA", "player")
     ev:RegisterEvent("PLAYER_DEAD")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    local checkQueued = false
     ev:SetScript("OnEvent", function(_, e, _, _, spellID)
-        if e == "PLAYER_DEAD" then cur = nil; f:Hide() return end
+        if e == "PLAYER_DEAD" then
+            for i = #live, 1, -1 do drop(live[i]) end
+            return
+        end
+        if e == "PLAYER_REGEN_ENABLED" then
+            -- (six seconds more for what ran out in the fight, then it goes)
+            local now = GetTime()
+            for _, f in ipairs(live) do
+                local cur = f.cur
+                if cur.gone or cur.start + cur.dur <= now then cur.gone = now end
+            end
+            return
+        end
+        if e == "UNIT_AURA" then
+            -- Out of a fight the buff can be seen: clicked off, or replaced.
+            if checkQueued or #live == 0 or InCombatLockdown() then return end
+            checkQueued = true
+            C_Timer.After(0.2, function()
+                checkQueued = false
+                if InCombatLockdown() then return end
+                for _, f in ipairs(live) do
+                    local cur = f.cur
+                    if cur and cur.seen and not cur.gone and look(cur.name) == "not there" then
+                        cur.gone = GetTime()
+                        pcall(f.cd.SetCooldown, f.cd, 0, 0)
+                    end
+                end
+            end)
+            return
+        end
         if QB.db.recast == false then return end
         if secret(spellID) or type(spellID) ~= "number" then return end
         local ok, name = pcall(C_Spell.GetSpellName, spellID)
         if not ok or type(name) ~= "string" or secret(name) then return end
         local dur = RECAST[name]
         if dur then return start(name, spellID, dur) end
-        local ends = RECAST_ENDS[name]
-        if ends and cur and not cur.spent and cur.name:sub(1, #ends) == ends then
-            -- Spent? Ask the buff, a moment on. "There": it was not
-            -- taken, and asking works here. "Not there" where asking
-            -- works: spent. Blind: the old guess, that it is spent.
-            local was = cur
-            C_Timer.After(0.4, function()
-                if cur ~= was or cur.spent then return end
-                local res = look(cur.name)
-                if res == "there" then
-                    sees[fight()] = true
-                    return diag("after " .. name .. ", " .. cur.name, res, "kept running")
-                end
-                local c = castable(name)
-                if tells(name) then
-                    -- Judgement itself says: still castable (or only out
-                    -- of mana) = the seal is still on.
-                    if c == "yes" or c == "no mana" then
-                        return diag("after " .. name .. ", " .. cur.name, res, name .. " can still be cast (" .. c .. "): kept running")
-                    end
-                end
-                diag("after " .. name .. ", " .. cur.name, res,
-                    (sees[fight()] == true and "taken as spent" or "asking not proven here: guessed spent")
-                    .. "; " .. name .. " can be cast: " .. c)
-                spend()
-            end)
-        end
     end)
 end
 
