@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.673.
+Last updated: 2026-11-24, version 0.1.674.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 10 | The figure on another character’s full sheet (0.1.673) | Log an alt in once (with this version), log back, Roster, that alt, "Open the full sheet" | Whether a figure in its gear stands in the middle, or the emblem with a line saying the game would not |
+| 10 | The figure on another character’s full sheet (0.1.674) | `/reload`, Roster, an alt that has been logged in, "Open the full sheet", `/reload` | Whether a figure stands there now. Either way the record says what the game offers |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |

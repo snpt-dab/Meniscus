@@ -641,6 +641,7 @@ local function open(unit, mode)
     win.setMode(mode or "gear")
     I.snap = nil
     if win.doll then win.doll:Hide() end
+    if win.scene then win.scene:Hide() end
     if win.crest then win.crest:Hide(); win.standin:Hide() end
     win.model:Show()
     local og = UnitGUID(unit)
@@ -680,12 +681,37 @@ function I:OpenSnapshot(who, ch)
     win.model:Hide()
     if win.model.floor then win.model.floor:Hide() end
     win.model.spot:SetVertexColor(r, g, b, 0.16)
-    -- The stand-in.
+    -- The stand-in. (0.1.674: the first try, a dress-up model told its
+    -- race, found "no such model" on this client. Three ways are now
+    -- tried in turn, and what each met is written down:
+    --   1. a dress-up model that can be told a race and sex;
+    --   2. a model scene of the game's own dressing-room kind, whose
+    --      figure can be told a race and sex;
+    --   3. where the character is of YOUR race and sex: your own figure,
+    --      undressed and put in its gear.)
     local how = "no race or sex on file"
     local shown = false
+    local notes = {}
+    local function say(str) notes[#notes + 1] = str end
+    local function has(o, m) return o and type(o[m]) == "function" end
+    local function methods(o, list)
+        local out = {}
+        for _, m in ipairs(list) do out[#out + 1] = m .. (has(o, m) and "+" or "-") end
+        return table.concat(out, " ")
+    end
+    local function dress(tryOn)
+        for _, b2 in pairs(tiles) do
+            local link = I.snapLink(b2.slot)
+            if link then pcall(tryOn, link) end
+        end
+    end
+    if win.doll then win.doll:Hide() end
+    if win.scene then win.scene:Hide() end
     if plain(ch.ri) and plain(ch.sx) and ch.sx >= 2 then
-        if not win.doll then
+        if not win.doll and not win.dollTried then
+            win.dollTried = true
             local okD, d = pcall(CreateFrame, "DressUpModel", nil, win.model:GetParent())
+            say("dress-up model made: " .. tostring(okD and d ~= nil))
             if okD and d then
                 d:SetAllPoints(win.model)
                 d.facing = 0.52
@@ -704,26 +730,77 @@ function I:OpenSnapshot(who, ch)
             end
         end
         local d = win.doll
-        if d and d.SetCustomRace then
-            local ok = pcall(function()
+        if d then say("dress-up model: " .. methods(d, { "SetCustomRace", "SetUnit", "Undress", "TryOn", "Dress", "SetItem" })) end
+        say("plain model: " .. methods(win.model, { "SetCustomRace", "SetUnit", "Undress", "TryOn" }))
+        -- 1.
+        if d and has(d, "SetCustomRace") then
+            local ok, err = pcall(function()
                 d:SetUnit("player")
                 d:SetCustomRace(ch.ri, ch.sx - 2)
                 d:Undress()
-                for _, b2 in pairs(tiles) do
-                    local link = I.snapLink(b2.slot)
-                    if link then d:TryOn(link) end
-                end
-                d.facing = 0.52
+                dress(function(l) d:TryOn(l) end)
                 d:SetFacing(0.52)
             end)
-            shown = ok
-            how = ok and "stood up and dressed" or "the game refused"
-        else
-            how = "this game has no such model"
+            say("way 1: " .. (ok and "done" or tostring(err)))
+            if ok then shown = true; d:Show(); how = "way 1" end
         end
+        -- 2.
+        if not shown then
+            local df = _G.DressUpFrame
+            local ds = df and df.ModelScene
+            say("dressing room: frame " .. tostring(df ~= nil) .. ", scene " .. tostring(ds ~= nil)
+                .. (ds and (", scene id " .. tostring(ds.modelSceneID) .. ", " .. methods(ds, { "SetFromModelSceneID", "GetPlayerActor", "CreateActor" })) or ""))
+            if not win.scene and not win.sceneTried then
+                win.sceneTried = true
+                local okS, sc = pcall(CreateFrame, "ModelScene", nil, win.model:GetParent(), "ModelSceneMixinTemplate")
+                say("scene made: " .. tostring(okS and sc ~= nil) .. (okS and "" or (" (" .. tostring(sc) .. ")")))
+                if okS and sc then
+                    sc:SetAllPoints(win.model)
+                    win.scene = sc
+                end
+            end
+            local sc = win.scene
+            if sc then
+                say("scene: " .. methods(sc, { "SetFromModelSceneID", "GetPlayerActor", "CreateActor", "TransitionToModelSceneID" }))
+                local ok, err = pcall(function()
+                    local id = (ds and type(ds.modelSceneID) == "number" and ds.modelSceneID) or 290
+                    if has(sc, "SetFromModelSceneID") then sc:SetFromModelSceneID(id, true) end
+                    local actor = has(sc, "GetPlayerActor") and sc:GetPlayerActor() or nil
+                    if not actor and has(sc, "CreateActor") then actor = sc:CreateActor() end
+                    if not actor then error("no figure in the scene") end
+                    say("figure: " .. methods(actor, { "SetCustomRace", "SetModelByUnit", "Undress", "TryOn", "DressPlayerSlot", "SetYaw" }))
+                    if not has(actor, "SetCustomRace") then error("the figure can not be told a race") end
+                    actor:SetModelByUnit("player", false, true)
+                    actor:SetCustomRace(ch.ri, ch.sx - 2)
+                    if has(actor, "Undress") then actor:Undress() end
+                    dress(function(l) actor:TryOn(l) end)
+                    if has(actor, "SetYaw") then actor:SetYaw(0.52) end
+                end)
+                say("way 2: " .. (ok and "done" or tostring(err)))
+                if ok then shown = true; sc:Show(); how = "way 2" else sc:Hide() end
+            end
+        end
+        -- 3.
+        if not shown and d and has(d, "SetUnit") and has(d, "TryOn") then
+            local _, _, myRace = UnitRace("player")
+            local mySex = UnitSex("player")
+            if plain(myRace) and plain(mySex) and myRace == ch.ri and mySex == ch.sx then
+                local ok, err = pcall(function()
+                    d:SetUnit("player")
+                    if has(d, "Undress") then d:Undress() end
+                    dress(function(l) d:TryOn(l) end)
+                    d:SetFacing(0.52)
+                end)
+                say("way 3: " .. (ok and "done" or tostring(err)))
+                if ok then shown = true; d:Show(); how = "way 3 (your own figure in its gear)" end
+            else
+                say("way 3: not your race and sex")
+            end
+        end
+        if not shown then how = "none of three ways" end
+        how = how .. " | " .. table.concat(notes, " | ")
     end
     if MinimalUIDB then MinimalUIDB.dolldiag = "stand-in model: " .. how end
-    if win.doll then win.doll:SetShown(shown) end
     if win.model.floor then win.model.floor:SetShown(shown) end
     if not win.crest then
         local page = win.model:GetParent()

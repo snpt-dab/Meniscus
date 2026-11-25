@@ -88,7 +88,11 @@ local function ident()
         local mine = bare(realm)
         local fold = {}
         for k, book in pairs(roster) do
-            if k ~= realm and type(k) == "string" and type(book) == "table" and (k == NOREALM or bare(k) == mine) then
+            -- (Or a short form of it: one of the three ways gave only
+            -- the realm name's first word.)
+            local bk = type(k) == "string" and bare(k) or ""
+            if k ~= realm and type(k) == "string" and type(book) == "table"
+                and (k == NOREALM or bk == mine or (#bk >= 4 and mine:sub(1, #bk) == bk)) then
                 fold[#fold + 1] = k
             end
         end
