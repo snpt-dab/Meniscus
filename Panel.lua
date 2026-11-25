@@ -1525,6 +1525,7 @@ ns.commands.help = function()
         "/men bestiary  what you have learned of the creatures you have met",
         "/men bestiary export  set your records down for sharing (then Share Bestiary.bat)",
         "/men bestiary hp <number>  your target's full health, as its frame shows it (replaces the estimate)",
+        "/men poll old | new  the game's own signals for menus and group range, beside our looking (says how often each spoke)",
         "/men cast kick old | new  whether a cast can be interrupted: from the game's unseen bar, or asked of the game (says what happened)",
         "/men bestiary meter old | new  after a fight: read as before 0.1.706, or each enemy asked of the game's meter (says what was learned)",
         "/men blizzbank  the game's own bank window beside ours (and away again)",

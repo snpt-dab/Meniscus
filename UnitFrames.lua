@@ -3997,6 +3997,25 @@ local function applyRange(f)
 end
 
 function UF:StartRangeFade()
+    -- (0.1.710, stage 1 of "polling to events") The game says when a group
+    -- member comes into or goes out of range (UNIT_IN_RANGE_UPDATE): that
+    -- frame is faded at once, instead of up to a fifth of a second later.
+    -- The look five times a second below stays exactly as it was (it also
+    -- does the target and the 3D portraits); how often the game speaks is
+    -- counted (MinimalUIDB.pollcheck) before anything is slowed down.
+    -- "/men poll old" puts the new signals aside.
+    local told = CreateFrame("Frame")
+    if pcall(told.RegisterEvent, told, "UNIT_IN_RANGE_UPDATE") then
+        told:SetScript("OnEvent", function(_, _, unit)
+            if (MinimalUIDB and MinimalUIDB.pollOld) or type(unit) ~= "string" or issecretvalue(unit) then return end
+            for _, f in ipairs(UF.frames) do
+                if f.unit == unit and f:IsShown() then
+                    pcall(applyRange, f)
+                    if ns.PollNote then ns.PollNote("group range: told by the game") end
+                end
+            end
+        end)
+    end
     local acc = 0
     local driver = CreateFrame("Frame")
     driver:SetScript("OnUpdate", function(_, dt)

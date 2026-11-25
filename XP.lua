@@ -688,7 +688,8 @@ local LV_MILESTONE = 10
 -- (Only what is known to be true on this game is listed: a tenth level
 -- with nothing here still gets the dress, without a reason.)
 local LV_WHY = {
-    [10] = "Talents unlocked",
+    -- (HUNTER: the player's word, 2026-11-25)
+    [10] = { "Talents unlocked", HUNTER = "Talents unlocked  \194\183  Pet quest available" },
 }
 local function lvWhy(level)
     local w = LV_WHY[level]

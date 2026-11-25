@@ -143,6 +143,12 @@ Cast bar "can't be interrupted" (0.1.709; CastBars.lua `byTheGame`): the eighth 
 
 Quick Buff and the world map (0.1.709): the pill is in the HIGH layer and drew over the map, so `QB:Refresh` offers nothing while `WorldMapFrame` is shown (hooks on its OnShow / OnHide); in a fight, where the button can't be hidden, its opacity is 0 until the map closes.
 
+Polling to events (stage 1, 0.1.710): `UNIT_IN_RANGE_UPDATE` fades a group frame at once (UnitFrames.lua `StartRangeFade`), and `EventRegistry` "MenuProxy.OnShow" (payload: the menu frame, submenus too) styles a menu as it shows (Skins.lua `skinMenus`). Both BESIDE the existing looks, which are unchanged; `ns.PollNote` counts into `MinimalUIDB.pollcheck`; `/men poll old|new`. Stage 2 slows or drops the looks only after the counts are read. Measured cost of the whole addon: 0.12-0.24 ms a frame, so this is tidiness, not need.
+
+Rings (0.1.710): any spell named "Seal of ..." gets the seals' ring (the user's rule: recast the seal last cast; the `RECAST` names are the classic game's and only one matched here). Length: `QB.db.ringSecs[name]`, learned from the buff out of a fight, else 30 s. `MinimalUIDB.ringdiag` lists seal casts by name and id.
+
+Quest dot on a map pin: tried 2026-11-25, does not mend it (still "invalid", right bearing, wrong height). The dot stays hidden; details in WAITING.md.
+
 Pets (stages 1-2, 0.1.703-704): `ns.PetMoodNow()` (Bars.lua) asks `C_PetInfo.GetPetHappiness`; Extras.lua `gameSays(id)` asks `C_PetInfo.CanPetEatItem` (a "no" counts only after it has said "yes" to something this session). Both unseen in game.
 
 ## Quick Cure (UnitFrames.lua `BuildCure`)

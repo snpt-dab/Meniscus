@@ -1341,7 +1341,7 @@ function scanMenus(self)
         local c = knownMenus[i]
         if c:IsShown() then
             anyOpen = true
-            if not c.__muiStyledOnce then c.__muiStyledOnce = true; styleMenu(c) end
+            if not c.__muiStyledOnce then c.__muiStyledOnce = true; styleMenu(c); ns.PollNote("menus: found by our watcher first") end
         end
     end
     if not anyOpen then self:Hide() end
@@ -1366,7 +1366,43 @@ local function hookSubmenus(desc, depth)
     end
 end
 
+-- (0.1.710, stage 1 of "polling to events") What the game told us in place
+-- of our looking: counted, so that the looking can be slowed or dropped
+-- later on the strength of it. MinimalUIDB.pollcheck; "/men poll".
+function ns.PollNote(what)
+    if not MinimalUIDB then return end
+    local t = MinimalUIDB.pollcheck
+    if type(t) ~= "table" then t = {}; MinimalUIDB.pollcheck = t end
+    t[what] = (t[what] or 0) + 1
+end
+ns.commands = ns.commands or {}
+ns.commands.poll = function(rest)
+    if not MinimalUIDB then return end
+    if rest and rest:find("old") then MinimalUIDB.pollOld = true elseif rest and rest:find("new") then MinimalUIDB.pollOld = nil end
+    ns:Print("The game's own signals for menus and group range: " .. (MinimalUIDB.pollOld and "put aside, only our own looking as before 0.1.710 (/men poll new changes back)."
+        or "in use, beside our own looking (/men poll old puts them aside)."))
+    for what, n in pairs(type(MinimalUIDB.pollcheck) == "table" and MinimalUIDB.pollcheck or {}) do ns:Print("  " .. what .. ": " .. n) end
+end
+local menuSignal
 local function skinMenus()
+    -- Every menu frame, submenus too, says so itself as it is shown
+    -- ("MenuProxy.OnShow", the game's own registry): styled there and then.
+    -- The watcher below still runs while a menu is open; what it finds
+    -- before this did is counted.
+    if not menuSignal and EventRegistry and EventRegistry.RegisterCallback then
+        menuSignal = {}
+        pcall(EventRegistry.RegisterCallback, EventRegistry, "MenuProxy.OnShow", function(_, menu)
+            if MinimalUIDB and MinimalUIDB.pollOld then return end
+            if type(menu) ~= "table" or (menu.IsForbidden and menu:IsForbidden()) then return end
+            if isMenuFrame(menu) then
+                menu.__muiStyledOnce = true
+                safely(styleMenu, menu)
+                ns.PollNote("menus: styled at the game's signal")
+            else
+                ns.PollNote("menus: the signalled frame did not look like a menu yet")
+            end
+        end, menuSignal)
+    end
     -- Newer menu system (MenuUtil / Menu manager).
     if Menu and Menu.GetManager then
         local mgr = Menu.GetManager()

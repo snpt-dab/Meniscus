@@ -1379,6 +1379,10 @@ local function buildRecast()
             local e, d = a.expirationTime, a.duration
             if secret(e) or secret(d) or type(e) ~= "number" or type(d) ~= "number" or d <= 0 then return end
             cur.start, cur.dur = e - d, d
+            if d < LONG_BUFF then
+                if type(QB.db.ringSecs) ~= "table" then QB.db.ringSecs = {} end
+                QB.db.ringSecs[name] = d
+            end
             pcall(f.cd.SetCooldown, f.cd, cur.start, d)
         end)
     end
@@ -1442,6 +1446,22 @@ local function buildRecast()
         local ok, name = pcall(C_Spell.GetSpellName, spellID)
         if not ok or type(name) ~= "string" or secret(name) then return end
         local dur = RECAST[name]
+        -- (0.1.710, the player's rule: the seal to cast again is the seal
+        -- you last cast, whichever it was. Only Seal of Righteousness got a
+        -- ring: the list above holds the classic game's seals by name, and
+        -- this game's are not all called that. So any spell named "Seal of
+        -- ..." gets the seals' ring. How long it lasts is what that buff
+        -- itself last said out of a fight (kept by name), else thirty
+        -- seconds until it has said.)
+        local learned = type(QB.db.ringSecs) == "table" and QB.db.ringSecs[name] or nil
+        if type(learned) == "number" and learned > 0 and learned < LONG_BUFF and (dur or name:find("^Seal of ")) then dur = learned end
+        if not dur and name:find("^Seal of ") then dur = 30 end
+        if MinimalUIDB and name:find("Seal") then
+            local t = type(MinimalUIDB.ringdiag) == "table" and MinimalUIDB.ringdiag or {}
+            MinimalUIDB.ringdiag = t
+            local key = name .. " (" .. spellID .. "): " .. (dur and ("ring, " .. dur .. " s") or "no ring")
+            t[key] = (t[key] or 0) + 1
+        end
         if dur then return start(name, spellID, dur) end
     end)
     local function restore(tries)
