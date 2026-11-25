@@ -1584,16 +1584,15 @@ local function cureMotes(host, n)
                 -- it down a ton. Just give it a little pulse with a
                 -- wafting every few seconds." And then: "the smoke looks
                 -- good now, but I'd like it to emanate from all sides, not
-                -- just the top"). At every OTHER pulse of light a few
-                -- small faint puffs leave the edge, one from each stretch
-                -- of it all the way round, drift away from it and a little
-                -- upward, swell a little, and are gone before the next
-                -- waft.
-                local mine, age = pulse, since
-                if pulse % 2 == 1 then mine, age = pulse - 1, since + CURE_PERIOD end
-                r1, r2, r3 = cureRnd(i, mine), cureRnd(i + 7, mine), cureRnd(i + 13, mine)
+                -- just the top". And: "I'd like for the wafting to happen
+                -- in time with the pulse/flash"). With EVERY pulse of
+                -- light, as it flashes, a few small faint puffs leave the
+                -- edge, one from each stretch of it all the way round,
+                -- drift away from it and a little upward, swell a little,
+                -- and are gone just before the next pulse.
+                local age = since
                 local k = h < 22 and 0.7 or 1 -- (the small chips: smaller still)
-                local u = (age - 0.5 * r3) / (2.4 + 0.6 * r2)
+                local u = (age - 0.10 * r3) / (1.9 + 0.2 * r2)
                 if u > 0 and u < 1 then
                     ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
                     out = (12 + 10 * r3) * (1 - (1 - u) ^ 2) * k
@@ -1881,6 +1880,7 @@ function UF:BuildCure()
         return ok, n
     end
     local STUB = {} -- "something you can cure": no picture, no kind
+    local ownDebuff -- (written further down: the game's own debuff frame, read for you)
     local function afflicted(unit)
         if not UnitExists(unit) then return nil end
         local U = C_UnitAuras
@@ -2008,7 +2008,7 @@ function UF:BuildCure()
     local OWN = {}
     -- Returns what was found (or nil), and whether the frame could be
     -- read through: false where a shown button's kind is not known.
-    local function ownDebuff()
+    ownDebuff = function()
         local list = watchOwn()
         if not list then return nil, false end
         local sure = true

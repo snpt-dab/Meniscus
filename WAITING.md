@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.684.
+Last updated: 2026-11-25, version 0.1.685.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Cure pill (0.1.684) | `/reload`. Get diseased while already in a fight; open the full-screen map with the pill up | Does the pill come up DURING the fight for something caught in it? Is it now left of your cast bar, clear of everything? Smoke from all sides? Under the full-screen map? Then `/reload` |
+| 11 | Cure pill (0.1.685) | `/reload`. Get diseased while already in a fight; open the full-screen map with the pill up | Does the pill come up DURING the fight for something caught in it? Is it left of your cast bar, clear of everything? Does a faint waft leave all sides with each flash? Under the full-screen map? Then `/reload` |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
