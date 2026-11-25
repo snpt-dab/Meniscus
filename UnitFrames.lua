@@ -3201,6 +3201,7 @@ function UF:BuildCure()
     -- refused (auras can be secret out of a fight too), it stays, to be
     -- safe.
     local fightOn = false
+    local told = {}
     local function wanted()
         if #spells == 0 then return false end
         if fightOn or InCombatLockdown() then return true end
@@ -3209,7 +3210,17 @@ function UF:BuildCure()
             if not ok then return true end
             if not a then return false end
             local d = a.dispelName
-            if issecretvalue(d) or (type(d) == "string" and typeSpell[d]) then return true end
+            if issecretvalue(d) or (type(d) == "string" and typeSpell[d]) then
+                -- (Once a session for each kind, in the record: nothing can
+                -- ask the game's face whether it is showing, so that this
+                -- was read is what "nothing appeared" can be held against.)
+                local k = issecretvalue(d) and "a hidden kind" or d
+                if not told[k] then
+                    told[k] = true
+                    note("read on you, out of a fight: " .. k .. " (its face should have shown)")
+                end
+                return true
+            end
         end
         return false
     end

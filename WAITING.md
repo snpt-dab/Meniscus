@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.693.
+Last updated: 2026-11-25, version 0.1.694.
 
 ## Needs you, in game
 
@@ -20,7 +20,7 @@ Last updated: 2026-11-25, version 0.1.693.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
-- `curecontainer` (fresh each session): for you and each party member, how many faces the game let be made and dressed, any refusal’s words, and whether auras were secret in the fight (11).
+- `curecontainer` (fresh each session): for you and each party member, how many faces the game let be made and dressed, any refusal’s words, whether auras were secret in the fight, and each kind of curable debuff that was read on you out of a fight (so that “nothing appeared” can be held against what was there) (11).
 - `dolldiag`: for each way of standing a figure up, whether a model came and what the game answered to each piece of gear (10).
 - `figdiag`: the body number this character measured, to check the table of race bodies against (10).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
