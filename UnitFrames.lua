@@ -2830,36 +2830,16 @@ local function cureFaceFx(f, F)
         -- (the light a little towards white: a flash, not a wash of colour)
         local tr, tg, tb = 1, 1, 1
         if lt then tr, tg, tb = lt[1] + (1 - lt[1]) * 0.3, lt[2] + (1 - lt[2]) * 0.3, lt[3] + (1 - lt[3]) * 0.3 end
-        -- (out: how far past the pill's edge; a halo is the same light, wider)
-        local function flash(out)
+        local function flash()
             local host = CreateFrame("Frame", nil, f)
-            host:SetPoint("TOPLEFT", f, "TOPLEFT", -out, out)
-            host:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", out, -out)
-            host:SetFrameLevel(out > 0 and F.under or F.level + 1)
-            ns.RoundedRect(host, 6, 0, h / 2 + out, tr, tg, tb, 1, "OVERLAY")
+            host:SetAllPoints(f)
+            host:SetFrameLevel(F.level + 1)
+            ns.RoundedRect(host, 6, 0, h / 2, tr, tg, tb, 1, "OVERLAY")
             host:SetAlpha(0)
             return host
         end
-        fade(once(flash(0)), 1, 0, 0.6, 0, "OUT")
-        -- Every pulse: the face goes nearly white, and a halo opens round it.
-        local FL = 0.9
-        fade(looped(flash(0)), 0.85, 0, FL, 0, "OUT", CURE_PERIOD - FL)
-        local gh = looped(flash(5))
-        fade(gh, 0.6, 0, FL, 0, "OUT", CURE_PERIOD - FL)
-        swell(gh, 1.12, FL, 0, "OUT")
-        -- Between pulses the name crackles: three short dips, like static.
-        -- One group, its steps in order, a whole CURE_PERIOD long.
-        if F.name then
-            local gs = looped(F.name)
-            local steps = { { 1, 1, 1.15 }, { 1, 0.55, 0.04 }, { 0.55, 1, 0.05 }, { 1, 1, 0.12 }, { 1, 0.72, 0.03 },
-                            { 0.72, 1, 0.04 }, { 1, 1, 0.22 }, { 1, 0.5, 0.04 }, { 0.5, 1, 0.06 } }
-            local total = 0
-            for _, st in ipairs(steps) do total = total + st[3] end
-            for i, st in ipairs(steps) do
-                local an = fade(gs, st[1], st[2], st[3], 0, nil, i == #steps and (CURE_PERIOD - total) or 0)
-                an:SetOrder(i)
-            end
-        end
+        fade(once(flash()), 0.9, 0, 0.55, 0, "OUT")
+        fade(looped(flash()), 0.42, 0, 0.7, 0, "OUT", CURE_PERIOD - 0.7)
     end
     if not fx then return end
     local n = F.chip and 8 or 14
