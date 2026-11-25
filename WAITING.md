@@ -35,6 +35,8 @@ Last updated: 2026-11-25, version 0.1.695.
 
 ## Settled recently
 
+- CONFIRMED by your eyes (2026-11-25, on 0.1.692): the game’s aura button appeared during a fight the moment the debuff landed. The road works. (What you saw was the first try’s bare square; the rebuilt pill of 0.1.693 onward needs a `/reload` to be seen.)
+- "Interface action failed because of an AddOn" at about 09:11 on 2026-11-25: its details are written at the next reload; read `errors` then.
 - The aura container works on this client (record of 0.1.692): made, given a unit, a slot added for "what you can dispel", its button dressed: every step accepted. The survey it wrote, and then the game’s own source for this build (public: Gethe/wow-ui-source, branch `forever`), gave the rest: slots can be narrowed to a kind of debuff, a button is dressed once as it is made and may not be touched in a fight, and nothing can ask it whether it is shown.
 - CORRECTION (2026-11-25, on re-reading the evidence): "no road is left" was wrong. Every road tried was a way of READING a debuff in a fight, and all of those are closed on purpose (the game’s notes for its 12.1 line, which Forever 1.60 carries). The same change added a way to have auras SHOWN without reading them: an `AuraContainer` given a unit and a filter, drawn by the game itself; the filter `HARMFUL|RAID` is "debuffs you can dispel". Under test from 0.1.692 (item 11). Not yet known to work here.
 - Client fact (record of 0.1.690): asking the game whether a hidden aura passes the dispel filter (`IsAuraFilteredOutByInstanceID`) is refused in a fight with the same words as every other aura call.
