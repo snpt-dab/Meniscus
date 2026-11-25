@@ -476,7 +476,7 @@ local PAGES = {
     { key = "auras", title = "Buffs", groups = {
         { title = "Your buffs", items = {
             { "Recast ring for seals and shouts", kind = "switch",
-              note = "A draining ring where Quick Buff sits; red when nearly out",
+              note = "A draining ring in the corner by the chat panel; red when nearly out",
               get = function() return ns.modules.QuickBuff.db.recast ~= false end,
               set = function() local d = ns.modules.QuickBuff.db; d.recast = d.recast == false end },
             { "Bring a ring to mid-screen when it is running out", kind = "switch",
