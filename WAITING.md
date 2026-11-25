@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.694.
+Last updated: 2026-11-25, version 0.1.695.
 
 ## Needs you, in game
 

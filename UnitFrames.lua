@@ -3073,8 +3073,9 @@ function UF:BuildCure()
     pill:SetFrameLevel(LV + 14)
     pill:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
     pill:SetAttribute("unit", "player")
-    -- (so that the game's button under it still hears the mouse come and go: its tooltip)
-    if pill.SetPropagateMouseMotion then pcall(pill.SetPropagateMouseMotion, pill, true) end
+    -- (So that the game's button under it still hears the mouse come and
+    -- go: its tooltip. The game lets this be set out of a fight only.)
+    if pill.SetPropagateMouseMotion and not InCombatLockdown() then pcall(pill.SetPropagateMouseMotion, pill, true) end
     if not InCombatLockdown() then pill:Hide() end
     casters[1] = pill
     local function seatPill()
@@ -3142,7 +3143,7 @@ function UF:BuildCure()
             b:SetFrameLevel(pf:GetFrameLevel() + 22)
             b:RegisterForClicks(onPress and "AnyDown" or "AnyUp")
             b:SetAttribute("unit", unit)
-            if b.SetPropagateMouseMotion then pcall(b.SetPropagateMouseMotion, b, true) end
+            if b.SetPropagateMouseMotion and not InCombatLockdown() then pcall(b.SetPropagateMouseMotion, b, true) end
             local skip = pf.orbSide == "RIGHT" and (pf.healthPill:GetHeight() + 4) or 0
             b:SetPoint("LEFT", pf.healthPill, "RIGHT", 5 + skip, 0)
             pf.cureSlot = true -- (Auras.lua starts the aura row past it)
