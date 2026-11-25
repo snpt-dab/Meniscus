@@ -3545,6 +3545,32 @@ local function reseatTargetAuras(cont)
 end
 function UF:SeatTargetAuras()
     local root, t = _G.TargetFrame, self.target
+    -- (0.1.705) Our own container, drawn by the game in our look (Auras.lua
+    -- BuildLiveTarget): it takes the seat, and Blizzard's icons stay unseen
+    -- under their ghosted frame. One unbroken run, debuffs first.
+    local AU = ns.modules.Auras
+    local live = AU and AU.liveTarget
+    if live and t then
+        local strip = self.targetStrip
+        pcall(function()
+            live:SetFlowLayoutAnchorPoint(strip and "TOPLEFT" or "BOTTOMLEFT")
+            live:ClearAllPoints()
+            if strip then
+                -- under the pill, from beside the portrait that hangs from its middle
+                live:SetPoint("TOPLEFT", t.healthPill, "BOTTOM", t.avatar.D / 2 + 6, -4)
+            else
+                live:SetPoint("BOTTOMLEFT", t.healthPill, "TOPLEFT", 0, 5)
+            end
+        end)
+        tcSeat = nil
+        if root and root.GetAuraContainer then
+            local okB, cont = pcall(root.GetAuraContainer, root)
+            if okB and type(cont) == "table" and cont.SetAlpha then pcall(cont.SetAlpha, cont, 0) end
+        end
+        self.targetAurasRight = false
+        self.liveTargetCont = live
+        return
+    end
     if not (root and t and root.__muiGhost and root.GetAuraContainer) then return end
     local ok, cont = pcall(root.GetAuraContainer, root)
     if not ok or type(cont) ~= "table" or not cont.SetPoint then return end

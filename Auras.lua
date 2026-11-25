@@ -632,6 +632,154 @@ local function skinBlizzardFrame(frame)
     for _, t in ipairs({ 0.5, 2, 5 }) do C_Timer.After(t, run) end
 end
 
+-- ── Rows drawn by the game (0.1.705) ──────────────────────────────────────
+-- Our own rows above go blind in a fight (an addon may not read an aura
+-- gained in one). The game will DRAW auras for an addon, though: an
+-- "AuraContainer" given a unit and groups of auras, each icon a button of
+-- the game's that we dress ONCE as it is made (picture, ring, timer, count
+-- handed over; from then on the game fills them, and in a fight we may not
+-- touch them). The rules are the game's own code: see CLAUDE.md, Quick Cure.
+--   stage 1: the target (it showed Blizzard's own icons, in Blizzard's look)
+-- Kept beside the old way: where a container can't be had the old way stands,
+-- and "/men buffs old" forces it ("/men buffs live" changes back; /reload).
+-- What the game accepted and refused: MinimalUIDB.liverows.
+local function liveNote(str)
+    if not MinimalUIDB then return end
+    local t = type(MinimalUIDB.liverows) == "table" and MinimalUIDB.liverows or {}
+    MinimalUIDB.liverows = t
+    if #t < 40 then t[#t + 1] = (InCombatLockdown() and "[fight] " or "[calm] ") .. tostring(str):sub(1, 300) end
+end
+local function liveColor(c) return CreateColor(c[1], c[2], c[3], 1) end
+-- One icon, in the look of newIcon above. harmful: its ring takes the
+-- colour of the affliction's kind and it gets the kind's small emblem.
+local function liveDress(size, harmful, said)
+    local STYLE = Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
+    return function(b)
+        local first
+        local function try(what, fn, ...)
+            if type(fn) ~= "function" then first = first or (what .. ": no such way") return end
+            local ok, e = pcall(fn, ...)
+            if not ok then first = first or (what .. ": " .. tostring(e)) end
+        end
+        local okB, eB = pcall(function()
+            b:SetSize(size, size)
+            local inset = 1.5
+            local outer = mask(b)
+            outer:SetAllPoints()
+            local inner = mask(b)
+            inner:SetPoint("TOPLEFT", inset, -inset)
+            inner:SetPoint("BOTTOMRIGHT", -inset, inset)
+            local ring = b:CreateTexture(nil, "BACKGROUND")
+            ring:SetAllPoints()
+            ring:AddMaskTexture(outer)
+            if harmful then
+                ring:SetColorTexture(1, 1, 1, 1)
+                ring:SetVertexColor(DEBUFF[1], DEBUFF[2], DEBUFF[3], 1)
+            else
+                ring:SetColorTexture(unpack(T.border))
+            end
+            local icon = b:CreateTexture(nil, "ARTWORK")
+            icon:SetPoint("TOPLEFT", inset, -inset)
+            icon:SetPoint("BOTTOMRIGHT", -inset, inset)
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            icon:AddMaskTexture(inner)
+            local cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+            cd:SetPoint("TOPLEFT", inset, -inset)
+            cd:SetPoint("BOTTOMRIGHT", -inset, inset)
+            pcall(cd.SetSwipeTexture, cd, ROUND)
+            cd:SetSwipeColor(0, 0, 0, 0.6)
+            cd:SetDrawEdge(false)
+            cd:SetHideCountdownNumbers(true)
+            cd:SetReverse(true)
+            local top = CreateFrame("Frame", nil, b)
+            top:SetAllPoints()
+            top:SetFrameLevel(cd:GetFrameLevel() + 1)
+            local count = top:CreateFontString(nil, "OVERLAY")
+            ns:SetFont(count, math.max(8, math.floor(size * 0.42)), "OUTLINE")
+            count:SetPoint("BOTTOMRIGHT", 1, -1)
+            -- Handed to the game, each on its own: one refusal leaves the rest.
+            try("picture", b.SetIcon, b, icon)
+            try("timer", b.SetDurationCooldown, b, cd)
+            try("count", b.SetApplicationCount, b, count)
+            if harmful and STYLE then
+                local colours = { None = liveColor(DEBUFF) }
+                for k, c in pairs(DISPEL) do colours[k] = liveColor(c) end
+                try("ring by kind", b.AddDispelTypeTexture, b, ring,
+                    { style = STYLE.PreserveAsset, showWhenHarmful = true, showWithoutDispelType = true,
+                      customDispelColorMap = colours })
+                local ks = math.max(9, math.floor(size * 0.5))
+                local back = top:CreateTexture(nil, "OVERLAY", nil, 0)
+                back:SetTexture(MEDIA .. "circle.tga")
+                back:SetVertexColor(0.05, 0.05, 0.06, 0.92)
+                back:SetSize(ks + 2, ks + 2)
+                back:SetPoint("CENTER", b, "BOTTOMLEFT", 3, 3)
+                local kind = top:CreateTexture(nil, "OVERLAY", nil, 1)
+                kind:SetSize(ks, ks)
+                kind:SetPoint("CENTER", back, "CENTER")
+                local dark, assets, kc = {}, {}, {}
+                for k, c in pairs(DISPEL) do
+                    dark[k] = CreateColor(0.05, 0.05, 0.06, 0.92)
+                    assets[k] = { asset = MEDIA .. "micro_dispel_" .. k:lower() .. ".tga" }
+                    kc[k] = liveColor(c)
+                end
+                try("emblem's dot", b.AddDispelTypeTexture, b, back,
+                    { style = STYLE.PreserveAsset, showWhenHarmful = true, customDispelColorMap = dark })
+                try("emblem", b.AddDispelTypeTexture, b, kind,
+                    { style = STYLE.CustomAsset, showWhenHarmful = true, customDispelAssetMap = assets,
+                      customDispelColorMap = kc })
+            end
+            -- (the tooltip is the game's own; clicks go through to what is under)
+            try("tooltip place", b.SetTooltipAnchorPoint, b, "ANCHOR_BOTTOMRIGHT", 0, 0)
+            if b.SetMouseClickEnabled then pcall(b.SetMouseClickEnabled, b, false) end
+        end)
+        if not okB then first = first or ("building: " .. tostring(eB)) end
+        said.made = (said.made or 0) + 1
+        if first and not said.refused then said.refused = first end
+    end
+end
+-- A container for unit on parent with a debuff group and a buff group.
+-- Returns it, or nil and why not.
+local function liveContainer(name, parent, unit, size, gap, maxEach)
+    local okC, c = pcall(CreateFrame, "AuraContainer", name, parent, "CustomAuraContainerTemplate")
+    if not okC or type(c) ~= "table" or type(c.AddAuraGroup) ~= "function" then
+        return nil, "no aura container with groups to be had (" .. tostring(c) .. ")"
+    end
+    local said = {}
+    local ok, e = pcall(function()
+        c:SetFrameLevel(parent:GetFrameLevel() + 8)
+        c:SetSize(size, size)
+        c:SetUnit(unit)
+        if c.SetEditModePreviewEnabled then pcall(c.SetEditModePreviewEnabled, c, false) end
+        -- Debuffs first (they are what needs acting on), then buffs.
+        c:AddAuraGroup("debuffs", "HARMFUL", { maxFrameCount = maxEach, initializeFrame = liveDress(size, true, said),
+            layout = { elementSpacing = gap, groupSpacing = gap * 2, elementWidth = size, elementHeight = size, layoutIndex = 1 } })
+        c:AddAuraGroup("buffs", "HELPFUL", { maxFrameCount = maxEach, initializeFrame = liveDress(size, false, said),
+            layout = { elementSpacing = gap, groupSpacing = gap * 2, elementWidth = size, elementHeight = size, layoutIndex = 2 } })
+    end)
+    if not ok then
+        pcall(c.Hide, c)
+        return nil, "the groups were refused: " .. tostring(e)
+    end
+    liveNote(unit .. ": " .. (said.made or 0) .. " icons dressed" .. (said.refused and ("; REFUSED " .. said.refused) or ""))
+    if (said.made or 0) == 0 then
+        pcall(c.Hide, c)
+        return nil, "no icon was handed to us to dress"
+    end
+    return c
+end
+function A:BuildLiveTarget()
+    if MinimalUIDB then MinimalUIDB.liverows = nil end
+    local UF = ns.modules.UnitFrames
+    local t = UF and UF.target
+    if not t then return end
+    if self.db.liveOld then liveNote("the old way, by your choice (/men buffs live changes back)") return end
+    local c, why = liveContainer("MeniscusTargetAuras", t, "target", 22, 3, 8)
+    if not c then liveNote("target: " .. tostring(why) .. ": the old way") return end
+    self.liveTarget = c
+    -- (UnitFrames seats it, and puts Blizzard's own target icons out of sight.)
+    if UF.SeatTargetAuras then pcall(UF.SeatTargetAuras, UF) end
+end
+
 -- ── Init ──────────────────────────────────────────────────────────────────
 function A:OnInit(db)
     self.db = db
@@ -672,6 +820,9 @@ function A:OnInit(db)
         -- Debuffs first (they are what needs acting on), then buffs.
         table.insert(self.rows, newRow(pf, 8, 18, 1, { HARMFUL, HELPFUL }, rightOf(pf), { "GROUP_ROSTER_UPDATE" }))
     end
+
+    local okL, eL = pcall(self.BuildLiveTarget, self)
+    if not okL then liveNote("target: " .. tostring(eL)) end
 
     if db.playerRows and UF.player then
         local pf = UF.player
@@ -1112,7 +1263,15 @@ ns.commands.buffs = function(rest)
         end
         return
     end
-    ns:Print("/men buffs attach  pin the game's buff frames into the layout (toggle)   /men buffs probe  where they are")
+    -- The target's row: drawn by the game in our look (0.1.705), or as before.
+    if rest and (rest:find("^old") or rest:find("^live")) then
+        A.db.liveOld = rest:find("^old") and true or nil
+        ns.needsReload = true
+        ns:Print(A.db.liveOld and "Target auras: as before 0.1.705 (the game's own icons) after /reload. /men buffs live changes back."
+            or "Target auras: drawn by the game in Meniscus's look after /reload.")
+        return
+    end
+    ns:Print("/men buffs attach  pin the game's buff frames into the layout (toggle)   /men buffs probe  where they are   /men buffs old | live  the target's row as before, or drawn in our look")
 end
 
 -- Player rows sit right of the health pill, or left of the avatar growing
