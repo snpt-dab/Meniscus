@@ -139,6 +139,10 @@ Quest dot trial (0.1.707; Extras.lua `/men dotpin [force]`): the one map pin set
 
 Alts: each character's side is kept as `fa` (0.1.707). Crafted upgrades look within one realm's book, keep bind-on-pickup to its maker, and (0.1.708, the user's rule: opposite sides can't send each other gear) keep to your side: `sameSide(ch)` goes by `fa`, else `C_CreatureInfo.GetFactionInfo(race).groupTag`, and lets an unknown through.
 
+Cast bar "can't be interrupted" (0.1.709; CastBars.lua `byTheGame`): the eighth return of `UnitCastingInfo` (seventh of `UnitChannelInfo`), possibly hidden, handed to `fill:SetVertexColorFromBoolean(value, colorIfTrue, colorIfFalse)` (colour objects). The old look at the game's unseen bar's `BorderShield` stays as the fallback; `/men cast kick old|new`; counts in `MinimalUIDB.castkick`. Unseen in game.
+
+Quick Buff and the world map (0.1.709): the pill is in the HIGH layer and drew over the map, so `QB:Refresh` offers nothing while `WorldMapFrame` is shown (hooks on its OnShow / OnHide); in a fight, where the button can't be hidden, its opacity is 0 until the map closes.
+
 Pets (stages 1-2, 0.1.703-704): `ns.PetMoodNow()` (Bars.lua) asks `C_PetInfo.GetPetHappiness`; Extras.lua `gameSays(id)` asks `C_PetInfo.CanPetEatItem` (a "no" counts only after it has said "yes" to something this session). Both unseen in game.
 
 ## Quick Cure (UnitFrames.lua `BuildCure`)

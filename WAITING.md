@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.708.
+Last updated: 2026-11-25, version 0.1.709.
 
 ## Needs you, in game
 
@@ -12,6 +12,8 @@ Last updated: 2026-11-25, version 0.1.708.
 | 13 | The target’s buffs and debuffs drawn by the game in our look (0.1.705) | `/reload`. Target something with buffs or debuffs, out of a fight and in one (your own debuffs on an enemy will do). Hover an icon. Then `/reload` | Are the icons round with our ring (red for a plain debuff, the kind’s colour with a small emblem for magic, curse, disease, poison), debuffs first then buffs? Do they sit where the target’s icons sat? Do new ones appear and old ones go DURING a fight? Is there a dark sweep for the time left, and a stack number? Does the tooltip show? Can you still click the target frame through them? If anything is off: `/men buffs old`, `/reload` |
 | 12 | Pet mood and pet food asked of the game (0.1.703-704; needs a hunter with a pet out) | `/reload`. Look at the pet’s name pill and the feed button; feed the pet from Content to Happy; hover the feed button; open the character window’s pet page. Then `/reload` | Is the mood word right, and does it change at once when the pet becomes happy (it used to stick until a reload)? Does the feed button count the right foods, and does its tooltip say "Eats: ..."? Does the pet page show the mood? If anything is off: `/men petmood old` goes back to the old way at once |
 | 10 | The figure on another character’s sheet, made from your own figure given its race (0.1.707) | `/reload`, Roster, a character of ANOTHER race, open its sheet. Then one of your own race but the other sex. Then `/reload` | Is there a figure of the right race in that character’s gear (it will have your character’s build and face: the game takes a race, not a sex)? If there is only the class emblem, the game refused, and that is where it stays for now. `/men figure off` shows the emblem always |
+| 15 | Cast bar: "can’t be interrupted" asked of the game (0.1.709) | `/reload`. Target enemies that cast: ordinary ones, and one whose cast can’t be interrupted if you meet one. `/men cast kick` says in chat what the game answered | Is an enemy’s cast amber the moment it starts (no flicker of another colour first), and grey for one that can’t be interrupted? A friendly target’s cast stays the accent colour. If colours go wrong: `/men cast kick old` |
+| 16 | Quick Buff pill and the world map (0.1.709) | With a buff being offered, open the map; close it | Is the pill gone while the map is open, and back when it closes? |
 | 14 | TRIAL: the quest dot on a map pin (0.1.707) | Focus a quest in its own zone (right-click it in the objectives list), clear any map pin of your own, `/men dotpin`. For ten seconds turn right round, then walk toward the place. `/men dotpin` again ends it. Then `/reload` | Is there a dot? Does it stay over one place as you turn? Does it slide to the screen’s edge when the place is behind you? If no dot at all: `/men dotpin`, then `/men dotpin force`, same questions |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | (1) Log in every character once, so each one’s gear is on file. (2) On each character that has a crafting profession, open that profession’s window once (and scroll nowhere: opening is enough), so its recipes are on file. (3) Then on any character open the character window, and on a crafter the profession window | On the character window: a small disc on a gear slot when one of your OTHER characters can craft something better for it, and a "Crafts" tab listing those. On a crafter’s profession window: an arrow on a recipe that would be an upgrade for one of your other characters, and a "For alts" pill that filters to them. Tell me which of the four you see, and whether what they suggest makes sense |
@@ -22,6 +24,7 @@ Last updated: 2026-11-25, version 0.1.708.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `apicheck` (0.1.702): which of the calls the review below wants to build on really exist on this client (the game’s docs are shared between its flavours). Written four seconds after login; one `/reload` after that and it can be read.
+- `castkick`: how each cast’s "can it be interrupted" was answered (15).
 - `dotpin`: what the game’s engine said of the marker during the trial, four times a second (14).
 - `dolldiag`: whether the game made your figure of another race, and what each piece of gear answered (10).
 - `metercheck`: what the game’s meter said of each enemy after each fight, what health was taken from it, and what the old way would have said (3).
@@ -45,7 +48,7 @@ Read in the source for this build; each still wants `apicheck` or one look in ga
 2. IN PROGRESS (stage 1, the target, built: item 13; then focus and party, then the seal timer, each its own stage). Party, focus and target aura rows on aura containers (`AddAuraGroup`), so they stay live in a fight; a true seal timer from an aura slot on yourself (`includeSpellIDs` is allowed for your own buffs).
 3. IN PROGRESS (stage 1 built: item 3. Stage 2, a dungeon creature’s true number from the meter, waits for what `metercheck` says inside a dungeon). Bestiary in dungeons: the damage meter’s views by number (`Enum.DamageMeterType`, enemy damage taken = 10), each enemy’s creature number from the meter (`sourceCreatureID`), bosses and their health from `ENCOUNTER_END` (`encounterUnitStatus`). Would answer boss health (item 3) without a clean one-kill fight.
 4. IN PROGRESS (built 0.1.707: item 10; tags `stage/before-figure-by-race`, `stage/figure-1-by-race`). The alt’s figure: `actor:SetModelByUnit("player", ..., customRaceID)` then `TryOn` per saved item: right race and gear, but your own sex.
-5. Cast bar "can’t be interrupted" from `UnitCastingInfo`’s own return with `SetVertexColorFromBoolean`, not the hidden target frame’s shield.
+5. IN PROGRESS (built 0.1.709: item 15; tags `stage/before-cast-kick`, `stage/cast-kick-1`). Cast bar "can’t be interrupted" from `UnitCastingInfo`’s own return with `SetVertexColorFromBoolean`, not the hidden target frame’s shield.
 6. Polling replaced by the game’s own signals: menus (`MenuProxy.OnShow`), action range (`ActionButton_UpdateRangeIndicator`, `ACTION_RANGE_CHECK_UPDATE`), group range (`UNIT_IN_RANGE_UPDATE`), list rows in skinned windows (`ScrollUtil.AddAcquiredFrameCallback`), window docking (`UIParentPanelManager.ShowUIPanel`).
 7. Click edge pinned with the `useOnKeyDown` attribute; CLAUDE.md’s note on click edges corrected.
 8. Probe.lua: about a thousand lines of probes whose questions the source answers can go.

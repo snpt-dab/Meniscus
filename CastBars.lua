@@ -155,7 +155,51 @@ local function create(parent, unit, below, slot)
             if unit == "target" then return _G.TargetFrameSpellBar or (_G.TargetFrame and _G.TargetFrame.spellbar) end
             return _G.FocusFrameSpellBar or (_G.FocusFrame and _G.FocusFrame.spellbar)
         end
+        -- 0.1.709. The game's own code shows the straight way: whether a
+        -- cast can be interrupted is the eighth thing UnitCastingInfo
+        -- returns (the seventh of UnitChannelInfo), and though it may come
+        -- hidden, a texture can be coloured by a hidden yes-or-no
+        -- (SetVertexColorFromBoolean). So the fill is coloured from that,
+        -- with no look at the game's unseen bar and no waiting for it.
+        -- Beside the old way: used where the game gives an answer and takes
+        -- the colouring; "/men cast kick old" puts it aside. What happened
+        -- is counted in MinimalUIDB.castkick.
+        local GREY = CreateColor(0.46, 0.46, 0.52, 0.95)
+        local AMBER = CreateColor(1.0, 0.76, 0.28, 0.95)
+        local PLAIN = CreateColor(T.accent[1], T.accent[2], T.accent[3], 0.95)
+        local function kickNote(what)
+            if not MinimalUIDB then return end
+            local t = type(MinimalUIDB.castkick) == "table" and MinimalUIDB.castkick or {}
+            MinimalUIDB.castkick = t
+            t[what] = (t[what] or 0) + 1
+        end
+        local function byTheGame(shielded, enemy)
+            if MinimalUIDB and MinimalUIDB.castKickOld then return false end
+            local locked = shielded
+            if locked == nil then
+                local name, _, _, _, _, _, _, ni = UnitCastingInfo(unit)
+                if issecretvalue(name) or name ~= nil then
+                    locked = ni
+                else
+                    local cname, _, _, _, _, _, ci = UnitChannelInfo(unit)
+                    if issecretvalue(cname) or cname ~= nil then locked = ci end
+                end
+            end
+            if locked == nil then kickNote("the game gave no answer: the old way") return false end
+            local tex = h.bar:GetStatusBarTexture()
+            if not (tex and tex.SetVertexColorFromBoolean) then kickNote("no colouring by a yes-or-no here: the old way") return false end
+            local ok = pcall(tex.SetVertexColorFromBoolean, tex, locked, GREY, enemy and AMBER or PLAIN)
+            if not ok then kickNote("the colouring was refused: the old way") return false end
+            kickNote(shielded ~= nil and "told by an event" or (issecretvalue(locked) and "asked: a hidden answer, coloured by it"
+                or (locked and "asked: can't be interrupted" or "asked: can be interrupted")))
+            return true
+        end
         function h.paintKick(shielded)
+            local foe = UnitCanAttack("player", unit)
+            if issecretvalue(foe) then foe = false end
+            local okG, done = pcall(byTheGame, shielded, foe)
+            if okG and done then return end
+            if not okG then kickNote("error: " .. tostring(done):sub(1, 120)) end
             if shielded == nil then
                 local sb = blizzBar()
                 local sh = sb and sb.BorderShield
@@ -261,7 +305,16 @@ function CB:OnInit()
     end
 end
 
-ns.commands.cast = function()
+ns.commands.cast = function(rest)
+    -- "/men cast kick old | new": how "can't be interrupted" is found out
+    local how = type(rest) == "string" and rest:match("^%s*kick%s*(%a*)")
+    if how and MinimalUIDB then
+        if how == "old" then MinimalUIDB.castKickOld = true elseif how == "new" then MinimalUIDB.castKickOld = nil end
+        ns:Print("Cast bars, whether a cast can be interrupted: " .. (MinimalUIDB.castKickOld and "as before 0.1.709, from the game's unseen bar (/men cast kick new changes back)."
+            or "asked of the game (/men cast kick old puts that aside)."))
+        for what, n in pairs(type(MinimalUIDB.castkick) == "table" and MinimalUIDB.castkick or {}) do ns:Print("  " .. what .. ": " .. n) end
+        return
+    end
     for _, k in ipairs({ "player", "target", "focus" }) do
         local h = CB[k]
         ns:Print(k, "cast bar path:", tostring(h and h.path))

@@ -869,7 +869,7 @@ local function buildButton()
         end
         if btn.short ~= short then
             btn.short = short
-            btn:SetAlpha(short and 0.4 or 1)
+            btn:SetAlpha((mapUp() and InCombatLockdown() and 0) or (short and 0.4 or 1))
         end
     end
     local pw = CreateFrame("Frame")
@@ -964,10 +964,35 @@ QB.Place = place
 
 local shown = {}
 local inEncounter = false
+-- (0.1.709) The pill is drawn above the world map (it has to be high up,
+-- or the game's unseen bar holders take its clicks). So while the map is
+-- open the pill stands down, as if there were nothing to offer, and comes
+-- back as the map closes. In a fight it can't be hidden (a casting button):
+-- it is made unseen there, and hidden properly when the fight ends.
+local function mapUp()
+    local wm = _G.WorldMapFrame
+    return wm and wm.IsShown and wm:IsShown() and true or false
+end
+local function mapWatch()
+    local wm = _G.WorldMapFrame
+    if not wm or QB.mapHooked then return end
+    QB.mapHooked = true
+    local function changed()
+        if not btn then return end
+        local up = mapUp()
+        if up and InCombatLockdown() then btn:SetAlpha(0) end
+        if not up then btn:SetAlpha(btn.short and 0.4 or 1) end
+        QB:Refresh()
+    end
+    wm:HookScript("OnShow", changed)
+    wm:HookScript("OnHide", changed)
+end
 function QB:Refresh()
     if not btn or InCombatLockdown() or inEncounter then return end
+    mapWatch()
     scan()
     local c = nextCast
+    if mapUp() then c = nil end
     if not c then
         if btn:IsShown() then btn:Hide() end
         btn:SetAttribute("type", nil)
