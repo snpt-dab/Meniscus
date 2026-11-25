@@ -2,18 +2,16 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.664.
+Last updated: 2026-11-24, version 0.1.665.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 1 | Buff rings (0.1.662) | `/reload`, seal, fight until the seal is about to run out | Whether the ring sits right in the chat corner, and whether it glides to the middle of the screen in its last seconds and goes home when you reseal |
+| 1 | Map buttons in full screen (0.1.665) | Open the map in full screen | Whether the two round buttons are now clear of the top of the screen |
+| 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
-| 7 | Combat numbers' height (0.1.657) | Fight | Whether 36 above the target frame sits right |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
-| 2 | The map's buttons in full screen | Open the map in full screen | Whether the round "make small" and close buttons look right, and the filter button now sits on the map's top right corner, clear of them |
-| 5 | Professions window icons (0.1.655) | `/reload`, open the professions window | Whether the tinted discs, the red crosses for first aid and the crossed hammer and pick in the header suit you |
 | 3 | Boss health from the group's damage | Kill a dungeon boss in a group, with nothing else dying in that fight | Whether its health shows afterwards |
 | 4 | Level-up card reasons | Nothing to test | For each level where something new opens up in this game (a talent point, a new skill rank, mounts, a dungeon): which level and what. The card shown at level-up has a line for it; only level 10 is filled in |
 
@@ -32,6 +30,7 @@ Last updated: 2026-11-24, version 0.1.664.
 
 ## Settled recently
 
+- Combat numbers 36 above the target frame: good. Professions window icons: good for now, may be refined later. Buff ring glides to mid-screen in a fight: seen.
 - Seal ring runs through Judgement: confirmed ("looks good").
 - In Forever, Judgement does NOT take the seal off (your word): the ring no longer ends on Judgement.
 - Seals: asking for the buff by name is blind in a fight ("not there" right after the cast, 3 of 3). Out of a fight it answers, and a seal lasts 30 s.

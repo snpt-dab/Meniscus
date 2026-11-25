@@ -47,6 +47,7 @@ local function skinClose(b)
     local skin = CreateFrame("Frame", nil, b)
     skin:SetSize(20, 20)
     skin:SetPoint("CENTER")
+    b.__muiDisc = skin
     local mask = skin:CreateMaskTexture()
     mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     mask:SetAllPoints()
@@ -86,6 +87,7 @@ local function skinToggle(b, bigger)
     local skin = CreateFrame("Frame", nil, b)
     skin:SetSize(20, 20)
     skin:SetPoint("CENTER")
+    b.__muiDisc = skin
     local mask = skin:CreateMaskTexture()
     mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     mask:SetAllPoints()
@@ -734,6 +736,32 @@ local function skinMap()
         if not (mm.MaximizeButton or mm.MinimizeButton) then
             for i, b in ipairs({ mm:GetChildren() }) do pcall(skinToggle, b, i == 1) end
         end
+    end
+    -- (0.1.665: in full screen the window's top is the screen's top and
+    -- the game sets these buttons a little above it, so the round marks
+    -- were cut off. There they are drawn lower, and the buttons answer
+    -- clicks that far down too. Only the drawing moves: the buttons stay
+    -- where the game puts them.)
+    do
+        local close = wm.CloseButton or (wm.BorderFrame and wm.BorderFrame.CloseButton)
+        local list = { close }
+        if mm then
+            for _, b in ipairs({ mm:GetChildren() }) do list[#list + 1] = b end
+        end
+        local function lower()
+            local dy = (wm.IsMaximized and wm:IsMaximized()) and 11 or 0
+            for _, b in ipairs(list) do
+                local d = b and b.__muiDisc
+                if d then
+                    d:ClearAllPoints()
+                    d:SetPoint("CENTER", b, "CENTER", dy > 0 and -4 or 0, -dy)
+                    if b.SetHitRectInsets then pcall(b.SetHitRectInsets, b, dy > 0 and -4 or 0, 0, 0, -dy) end
+                end
+            end
+        end
+        if foot then foot.modeHooks[#foot.modeHooks + 1] = lower end
+        wm:HookScript("OnShow", lower)
+        lower()
     end
     local tb = wm.WorldMapTrackingOptionsButton
     if not tb and wm.overlayFrames then

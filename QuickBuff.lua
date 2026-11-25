@@ -1016,9 +1016,9 @@ end
 -- growing to the right in the order they were cast. (It was a single ring
 -- beside the Quick Buff pill.)
 --
--- In a fight, a ring that is about to run out (or has) leaves the corner
+-- A ring that is about to run out (or has) leaves the corner
 -- for the middle of the screen, larger, where it can't be missed, and goes
--- home when you cast the spell again or the fight ends (0.1.662, asked
+-- home when you cast the spell again (0.1.662, asked
 -- for: "much like we move the level-up panel"). The same manner of
 -- travel as that card: gentle at both ends, along a slight arc.
 --
@@ -1195,7 +1195,10 @@ local function buildRecast()
             local cur = f.cur
             local left = cur.start + cur.dur - now
             local over = cur.gone and (now - cur.gone) or -left
-            local want = fighting and (cur.gone or left <= math.max(4, cur.dur * 0.15)) and QB.db.recastCentre ~= false or false
+            -- (In a fight or out of one, since 0.1.665: out of a fight it
+            -- "seemed to do nothing". There it leaves six seconds after
+            -- running out, as before.)
+            local want = (cur.gone or left <= math.max(4, cur.dur * 0.15)) and QB.db.recastCentre ~= false or false
             if want ~= (f.want or false) then f.want = want; changed = true end
             if (left <= 0 or cur.gone) and over >= 6 and not fighting then
                 drop(f)

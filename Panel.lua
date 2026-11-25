@@ -480,7 +480,7 @@ local PAGES = {
               get = function() return ns.modules.QuickBuff.db.recast ~= false end,
               set = function() local d = ns.modules.QuickBuff.db; d.recast = d.recast == false end },
             { "Bring a ring to mid-screen when it is running out", kind = "switch",
-              note = "In a fight, for its last seconds and until you cast the spell again.",
+              note = "For its last seconds and until you cast the spell again.",
               get = function() return ns.modules.QuickBuff.db.recastCentre ~= false end,
               set = function() local d = ns.modules.QuickBuff.db; d.recastCentre = d.recastCentre == false end },
             { "Pin the game's buff frames into the layout", kind = "switch", note = "Turning it off needs a reload",
