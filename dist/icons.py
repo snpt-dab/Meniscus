@@ -330,11 +330,12 @@ def icons():
     I['prof_cross'] = (Icon().line([(10.4, 8.6), (10.4, 19.4)], w=3.9).line([(5.0, 14.0), (15.8, 14.0)], w=3.9)
                        .line([(18.3, 4.4), (18.3, 9.0)], w=1.9).line([(16.0, 6.7), (20.6, 6.7)], w=1.9))
     # the professions window's own mark: a hammer and a pick, crossed
-    def _hm2(a, b, hx=16.6, hy=8.4, k=0.7071):
+    def _hm2(a, b, hx=17.9, hy=6.6, k=0.7071):
         return (hx + (a + b) * k, hy + (b - a) * k)
-    I['prof_tools'] = (Icon().line([_hm2(-13.6, 0), _hm2(0, 0)], w=2.2)
-                       .poly([_hm2(-2.3, 4.2), _hm2(2.3, 4.2), _hm2(2.3, -2.0), _hm2(0.9, -5.4), _hm2(-0.5, -5.4), _hm2(-2.3, -2.0)])
-                       .arc(15.9, 17.4, 11.6, 100, 160, w=2.4).line([(17.6, 19.4), (8.3, 9.4)], w=2.2))
+    # (0.1.656: longer handles, smaller heads, out to the edge of the grid)
+    I['prof_tools'] = (Icon().line([_hm2(-18.6, 0), _hm2(0, 0)], w=2.0)
+                       .poly([_hm2(-1.9, 3.6), _hm2(1.9, 3.6), _hm2(1.9, -1.7), _hm2(0.7, -4.6), _hm2(-0.5, -4.6), _hm2(-1.9, -1.7)])
+                       .arc(14.3, 15.6, 11.6, 106, 154, w=2.2).line([(19.4, 19.9), (6.7, 6.9)], w=2.0))
     # engineering: a gear
     g = Icon().ring(12, 12, 4.7, w=2.4)
     for k in range(8):
