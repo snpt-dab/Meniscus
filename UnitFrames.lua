@@ -1469,7 +1469,7 @@ _G["BINDING_NAME_CLICK MeniscusQuickCure:LeftButton"] = "Quick Cure (cure yourse
 -- Each kind of affliction has its own light, and something that comes off
 -- that light (0.1.676, asked for: "disease can be a kind of yellowish-green
 -- smoke that comes off the light pulse"):
---   Disease  a sickly yellow-green light; smoke
+--   Disease  a sickly yellow-green light; murky smoke that swells, turns and hangs
 --   Poison   a vivid green light; small bubbles, bursting
 --   Curse    a violet light; dark wisps, curling
 --   Magic    a blue light; quick glints
@@ -1498,6 +1498,12 @@ local function cureMotes(host, n)
     for i = 1, n do
         local t = host:CreateTexture(nil, "OVERLAY", nil, 2)
         t:SetAlpha(0)
+        local okM, sm = pcall(host.CreateMaskTexture, host)
+        if okM and sm then
+            sm:SetTexture(MEDIA .. "spot.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            sm:SetAllPoints(t)
+            t.sm = sm
+        end
         m.tex[i] = t
     end
     function m:Set(kind)
@@ -1507,11 +1513,28 @@ local function cureMotes(host, n)
         self.fx = fx
         for _, t in ipairs(self.tex) do
             t:SetAlpha(0)
+            if t.masked then
+                t.masked = false
+                pcall(t.RemoveMaskTexture, t, t.sm)
+                pcall(t.SetRotation, t, 0)
+            end
             if fx then
-                local soft = fx.how == "smoke" or fx.how == "wisps"
-                t:SetTexture(MEDIA .. (soft and "spot.tga" or "circle.tga"))
-                t:SetBlendMode(soft and "BLEND" or "ADD")
-                t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3])
+                if fx.how == "smoke" and t.sm then
+                    -- (0.1.681: smoke as the mana orb's mist is made: a
+                    -- patch of the swirling texture seen through a soft
+                    -- round mask, turning and swelling. It was a plain soft
+                    -- dot, and a ring of those read as glowing dots.)
+                    t:SetTexture(MEDIA .. "swirl.tga")
+                    t:SetBlendMode("BLEND")
+                    t:AddMaskTexture(t.sm)
+                    t.masked = true
+                    t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3], 0)
+                else
+                    local soft = fx.how == "smoke" or fx.how == "wisps"
+                    t:SetTexture(MEDIA .. (soft and "spot.tga" or "circle.tga"))
+                    t:SetBlendMode(soft and "BLEND" or "ADD")
+                    t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3], 1)
+                end
             end
         end
     end
@@ -1551,12 +1574,37 @@ local function cureMotes(host, n)
             local r1, r2, r3 = cureRnd(i, pulse), cureRnd(i + 7, pulse), cureRnd(i + 13, pulse)
             local ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
             local a, out, side, s = 0, 0, 0, 8
+            local tall, lift, rot = nil, 0, nil
             if how == "smoke" then
-                local u = (since - 0.10 * r3) / (1.1 + 0.4 * r2)
-                if u > 0 and u < 1 then
-                    out = (16 + 12 * r2) * (1 - (1 - u) ^ 2.4)
-                    s = 9 + 15 * u
-                    a = 0.62 * math.min(1, u / 0.10) * (1 - u) ^ 1.4
+                -- Diseased smoke: it leaves the edge slowly, swells to
+                -- several times its size, turns, lifts a little as it
+                -- thins, and hangs about for longer than the pulses are
+                -- apart. So the motes take turns: half are let go at one
+                -- pulse and half at the next, and the smoke of one pulse is
+                -- still thinning when the next is let go.
+                local turn = i % 2
+                local mine, age = pulse, since
+                if pulse % 2 ~= turn then mine, age = pulse - 1, since + CURE_PERIOD end
+                if mine >= 0 then
+                    r1, r2, r3 = cureRnd(i, mine), cureRnd(i + 7, mine), cureRnd(i + 13, mine)
+                    ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
+                    local life = 3.0 + 0.9 * r2
+                    local u = (age - 0.25 * r3) / life
+                    if u > 0 and u < 1 then
+                        local e = 1 - (1 - u) * (1 - u)
+                        out = 4 + (14 + 12 * r2) * e
+                        side = math.sin(age * (0.8 + 0.8 * r3) + r1 * 6.283) * 7 * u
+                        lift = 9 * u * u
+                        s = 15 + (26 + 12 * r2) * e
+                        tall = s * 0.8
+                        rot = r1 * 6.283 + (r3 < 0.5 and -1 or 1) * (0.35 + 0.5 * r2) * age
+                        a = 0.40 * math.min(1, u / 0.14) * (1 - u) ^ 1.3
+                        -- (A murk of yellows and greens, not one colour.
+                        -- And its strength goes in with the colour: on the
+                        -- mana orb a plain SetAlpha on this texture "didn't
+                        -- take".)
+                        t:SetVertexColor(0.44 + 0.22 * r2, 0.50 + 0.20 * r3, 0.13 + 0.10 * r1, t.masked and a or 1)
+                    end
                 end
             elseif how == "bubbles" then
                 local u = (since - 0.14 * r3) / (0.8 + 0.4 * r2)
@@ -1588,21 +1636,27 @@ local function cureMotes(host, n)
                 end
             end
             if a > 0 then
-                t:SetSize(s, s)
+                t:SetSize(s, tall or s)
+                if rot and t.masked then pcall(t.SetRotation, t, rot) end
                 t:ClearAllPoints()
-                -- (out along "away"; side across it)
-                t:SetPoint("CENTER", host, "CENTER", ex + nx * out - ny * side, ey + ny * out + nx * side)
-                t:SetAlpha(a)
+                -- (out along "away"; side across it; lift straight up)
+                t:SetPoint("CENTER", host, "CENTER", ex + nx * out - ny * side, ey + ny * out + nx * side + lift)
+                t:SetAlpha(t.masked and 1 or a)
                 t.lit = true
             elseif t.lit then
                 t.lit = false
                 t:SetAlpha(0)
+                if t.masked then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
             end
         end
     end
     function m:Off()
         for _, t in ipairs(self.tex) do
-            if t.lit then t.lit = false; t:SetAlpha(0) end
+            if t.lit then
+                t.lit = false
+                t:SetAlpha(0)
+                if t.masked then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
+            end
         end
     end
     return m

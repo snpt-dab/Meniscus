@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.680.
+Last updated: 2026-11-25, version 0.1.681.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Quick Cure: chips by the party, the pill for you (0.1.680) | `/reload`. Nothing cure-related should be on screen while everyone is clean. Get something curable on you, and on a party member, out of a fight and in one | Does the pill come up over the map for you, and cure on click, in a fight too? Does a chip light beside the afflicted party member’s bar and cure them? Does the dust kick out from all sides? Then `/reload` |
+| 11 | Quick Cure (0.1.681) | `/reload`. Get a disease on you (and other kinds when they come) | Does disease now give off murky smoke that swells and hangs, not glowing dots? Do the pill and the party chips light and cure on click, in a fight too? Then `/reload` |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
