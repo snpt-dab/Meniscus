@@ -8,7 +8,7 @@ Last updated: 2026-11-25, version 0.1.690.
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Cure pill for something caught in a fight (0.1.690) | `/reload`, get diseased while already in a fight, then `/reload` | Whether a gold pill (the cure’s own picture, no dust) came up during the fight, and whether it also came up for a debuff you can NOT cure |
+| 11 | Cure pill for something caught in a fight | Your call | The game refuses every road (see Settled). Do you want the fallback: a plain gold pill for ANY debuff caught in a fight, curable or not? |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
@@ -35,6 +35,7 @@ Last updated: 2026-11-25, version 0.1.690.
 
 ## Settled recently
 
+- Client fact (record of 0.1.690): asking the game whether a hidden aura passes the dispel filter (`IsAuraFilteredOutByInstanceID`) is refused in a fight with the same words as every other aura call. No road is left that tells a curable debuff from any other during a fight. What works: something on you or the party BEFORE the fight stays shown through it.
 - Client fact (record of 0.1.689): in a fight the game’s own debuff button holds its list place in the clear and everything else hidden (kind, picture, aura number); the border is not coloured but given a hidden atlas. A debuff’s kind cannot be read in a fight by any road.
 - Disease smoke as a small faint waft: "looks good now" (it was drawn solid by a fault of mine: alpha set to 1 after the colour).
 - Client fact (record of 0.1.682): in a fight every addon look at an aura gained in it is refused ("Auras cannot be accessed when secret while tainted"): by index, by slot, any filter.
