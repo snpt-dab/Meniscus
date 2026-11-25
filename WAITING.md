@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.674.
+Last updated: 2026-11-25, version 0.1.675.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 10 | The figure on another character’s full sheet (0.1.674) | `/reload`, Roster, an alt that has been logged in, "Open the full sheet", `/reload` | Whether a figure stands there now. Either way the record says what the game offers |
+| 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Kept reminder and ring dismiss (0.1.667) | Cast Righteous Fury once. Right-click a ring. Click the Righteous Fury buff off | Whether its ring appears, comes back red after a `/reload` with the buff off, and stops for good after a right-click or after clicking the buff off |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
@@ -19,7 +19,8 @@ Last updated: 2026-11-24, version 0.1.674.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
-- `dolldiag`: whether the game would stand a model up in another character of yours, by race, sex and gear (10).
+- `dolldiag`: for each way of standing a figure up, whether a model came and what the game answered to each piece of gear (10).
+- `figdiag`: the body number this character measured, to check the table of race bodies against (10).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
 - `grouphp`: the group-damage sums behind a boss's health (5).
 - `instdiag`, `bestiaryTip`: what the game says about creatures inside a dungeon.

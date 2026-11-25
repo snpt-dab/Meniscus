@@ -523,9 +523,68 @@ function A.ClassHex(c)
     return string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255)
 end
 
+-- The body this character wears, as the game numbers it (0.1.675): what
+-- another character of yours needs to stand a figure of this one up on its
+-- full sheet (Inspect.lua), since no model here can be told a race and
+-- sex. Measured the way the bestiary measures a creature's look: an unseen
+-- model is shown you and asked what it drew. Kept as `di` (the body) and
+-- `mf` (its model file). Not while a druid or shaman wears another shape.
+local figFrame
+local function measureFigure(tries)
+    tries = tries or 0
+    local book, name = realmBook(false)
+    local me = book and book[name]
+    if type(me) ~= "table" then
+        if tries < 5 then C_Timer.After(10, function() pcall(measureFigure, tries + 1) end) end
+        return
+    end
+    local _, cls = UnitClass("player")
+    if cls == "DRUID" or cls == "SHAMAN" then
+        local okF, form = pcall(GetShapeshiftForm)
+        if not (okF and plainNum(form) and form == 0) then
+            if tries < 20 then C_Timer.After(60, function() pcall(measureFigure, tries + 1) end) end
+            return
+        end
+    end
+    if not figFrame then
+        local ok, m = pcall(CreateFrame, "PlayerModel", nil, UIParent)
+        if not ok or not m then return end
+        m:SetSize(4, 4)
+        m:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+        m:SetAlpha(0)
+        m:EnableMouse(false)
+        figFrame = m
+    end
+    local m = figFrame
+    local function say(str) if MinimalUIDB then MinimalUIDB.figdiag = str end end
+    if type(m.GetDisplayInfo) ~= "function" then return say("own body: the model can not be asked") end
+    m:Show()
+    if not pcall(m.SetUnit, m, "player") then return say("own body: the model would not be shown you") end
+    local n = 0
+    local function read()
+        n = n + 1
+        local okD, d = pcall(m.GetDisplayInfo, m)
+        local okM, mf = false, nil
+        if type(m.GetModelFileID) == "function" then okM, mf = pcall(m.GetModelFileID, m) end
+        local got = okD and plainNum(d) and d > 0
+        if got then me.di = d end
+        if okM and plainNum(mf) and mf > 0 then me.mf = mf end
+        if got or n >= 8 then
+            pcall(m.ClearModel, m)
+            m:Hide()
+            say("own body: number " .. (got and tostring(d) or "not had") .. ", model file " .. tostring(me.mf or "not had")
+                .. ", race " .. tostring(me.ri) .. ", sex " .. tostring(me.sx))
+        else
+            C_Timer.After(0.5, read)
+        end
+    end
+    C_Timer.After(0.5, read)
+end
+
 function A:OnInit(db)
     self.db = db
     A.on = true
+    C_Timer.After(9, function() pcall(measureFigure, 0) end)
     mark("started", date and date("%H:%M:%S") or "yes")
     local ev = CreateFrame("Frame")
     for _, e in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "GET_ITEM_INFO_RECEIVED",

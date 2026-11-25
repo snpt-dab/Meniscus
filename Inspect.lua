@@ -628,6 +628,7 @@ local function build()
 
     win:SetScript("OnHide", function()
         I.snap = nil
+        if I.figureOff then I.figureOff() end
         win.shell:ClearModel()
         win.model:ClearModel()
         local f = _G.InspectFrame
@@ -640,9 +641,7 @@ local function open(unit, mode)
     if not win then build() end
     win.setMode(mode or "gear")
     I.snap = nil
-    if win.doll then win.doll:Hide() end
-    if win.scene then win.scene:Hide() end
-    if win.crest then win.crest:Hide(); win.standin:Hide() end
+    if I.figureOff then I.figureOff() end
     win.model:Show()
     local og = UnitGUID(unit)
     if secret(og) or secret(I.guid) or I.guid ~= og then wipe(auraCache) end
@@ -665,6 +664,321 @@ local function open(unit, mode)
 end
 
 local CLASS_MARK = { DRUID = 1, HUNTER = 1, MAGE = 1, PALADIN = 1, PRIEST = 1, ROGUE = 1, SHAMAN = 1, WARLOCK = 1, WARRIOR = 1 }
+
+-- ── The figure on a saved character's sheet (0.1.675) ─────────────────────
+-- What this client was found to offer (0.1.674's record, 2026-11-25):
+--   * no model, of either kind, can be told a race and sex (SetCustomRace
+--     is missing from the dress-up model and from a model scene's figure);
+--   * a dress-up model takes a unit, a body number (SetDisplayInfo) and
+--     gear (Undress, TryOn); a model scene's figure takes a unit and gear.
+-- And what was seen: for a character of your own race and sex, your own
+-- figure came up, but in YOUR gear: it was set up while the window was
+-- still hidden, and undressed before it had loaded.
+--
+-- So a figure is now stood up one of these ways, in this order:
+--   own      your own figure (the saved character is of your race and
+--            sex), told not to dress itself, then put in the saved gear;
+--   display  a dress-up model given that race and sex's plain body by its
+--            number, then the saved gear;
+--   scene    the same body in a model scene of the dressing-room kind;
+--   file     the body by its model file, where one was measured.
+-- The body's number is the character's own, measured when it is played
+-- (Alts.lua: `di`), else from RACE_BODY: the numbers the classic game data
+-- gives each race and sex. Those are a GUESS for this game until a
+-- character of that race has been measured (MinimalUIDB.figdiag says what
+-- yours measured; compare).
+--
+-- The window is shown FIRST, and the gear goes on when the model says it
+-- has loaded and again a little later (items still arriving answer "data
+-- pending"). Whether gear takes on a body that was not made from a unit is
+-- not known: each try-on's answer is written to MinimalUIDB.dolldiag. A
+-- way that brings no model at all gives way to the next. With more than
+-- one way to hand, a small pill over the figure steps through them and
+-- remembers your pick (db.figurePick), so that the right one can be found
+-- by eye in one sitting.
+local RACE_BODY = { [1] = { 49, 50 }, [2] = { 51, 52 }, [3] = { 53, 54 }, [4] = { 55, 56 },
+                    [5] = { 57, 58 }, [6] = { 59, 60 }, [7] = { 1563, 1564 }, [8] = { 1478, 1479 } }
+local FIG = { serial = 0, notes = {}, ways = {} }
+local function has(o, m) return o ~= nil and type(o[m]) == "function" end
+local function methods(o, list)
+    local out = {}
+    for _, m in ipairs(list) do out[#out + 1] = m .. (has(o, m) and "+" or "-") end
+    return table.concat(out, " ")
+end
+local function figNote(str)
+    local n = FIG.notes
+    if #n < 40 then n[#n + 1] = str end
+    if MinimalUIDB then MinimalUIDB.dolldiag = table.concat(n, " | ") end
+end
+local function bodyOf(ch)
+    if plain(ch.di) and ch.di > 0 then return ch.di, "measured" end
+    local t = plain(ch.ri) and RACE_BODY[ch.ri]
+    local d = t and plain(ch.sx) and t[ch.sx - 1]
+    if d then return d, "from the table" end
+end
+-- The saved gear, armour first, then what is held (ranged before the
+-- hands, so that the hands' weapons are what shows).
+local HELD = { [18] = 101, [16] = 102, [17] = 103 }
+local HAND = { [16] = "MAINHANDSLOT", [17] = "SECONDARYHANDSLOT" }
+local function gearLinks()
+    local out = {}
+    for _, b in pairs(tiles) do
+        local link = I.snapLink(b.slot)
+        if link then out[#out + 1] = { slot = b.slot, link = link, at = HELD[b.slot] or b.slot } end
+    end
+    table.sort(out, function(a, b) return a.at < b.at end)
+    return out
+end
+-- Undress it and put the saved gear on. Returns what the game answered to
+-- each piece, counted ("0 x14" = fourteen taken), whether any piece's
+-- data was still on its way, and whether every piece was taken.
+local PENDING = Enum and Enum.ItemTryOnReason and Enum.ItemTryOnReason.DataPending
+local TAKEN = Enum and Enum.ItemTryOnReason and Enum.ItemTryOnReason.Success
+local function dressWith(obj)
+    if has(obj, "Undress") then pcall(obj.Undress, obj) end
+    local tally, pending, all, n = {}, false, TAKEN ~= nil, 0
+    for _, e in ipairs(gearLinks()) do
+        local ok, res = pcall(obj.TryOn, obj, e.link, HAND[e.slot])
+        local k
+        n = n + 1
+        if not ok then k = "refused"
+        elseif res == nil then k = "no answer"
+        elseif secret(res) then k = "hidden"
+        else
+            k = tostring(res)
+            if PENDING ~= nil and res == PENDING then pending = true end
+        end
+        if not (ok and res ~= nil and not secret(res) and res == TAKEN) then all = false end
+        tally[k] = (tally[k] or 0) + 1
+    end
+    local parts = {}
+    for k, c in pairs(tally) do parts[#parts + 1] = k .. " x" .. c end
+    table.sort(parts)
+    return (#parts > 0 and table.concat(parts, ", ") or "nothing to wear"), pending, all and n > 0
+end
+local function getDoll()
+    if win.doll or FIG.dollTried then return win.doll end
+    FIG.dollTried = true
+    local ok, d = pcall(CreateFrame, "DressUpModel", nil, win.model:GetParent())
+    if not (ok and d) then
+        figNote("no dress-up model: " .. tostring(d))
+        return nil
+    end
+    d:SetAllPoints(win.model)
+    d.facing = 0.52
+    d:EnableMouse(true)
+    d:SetScript("OnMouseDown", function(self, btn) if btn == "LeftButton" then self.dragX = GetCursorPosition() end end)
+    d:SetScript("OnMouseUp", function(self) self.dragX = nil end)
+    d:SetScript("OnHide", function(self) self.dragX = nil end)
+    d:SetScript("OnUpdate", function(self)
+        if not self.dragX then return end
+        local x = GetCursorPosition()
+        self.facing = self.facing + (x - self.dragX) / (UIParent:GetEffectiveScale() * 90)
+        self.dragX = x
+        self:SetFacing(self.facing)
+    end)
+    if not pcall(d.SetScript, d, "OnModelLoaded", function()
+        if FIG.onLoaded then FIG.onLoaded("as it loaded") end
+    end) then
+        figNote("the dress-up model does not say when it has loaded")
+    end
+    figNote("dress-up model: " .. methods(d, { "SetUnit", "SetDisplayInfo", "SetModel", "SetAutoDress", "Undress", "TryOn",
+        "GetModelFileID", "GetDisplayInfo" }))
+    d:Hide()
+    win.doll = d
+    return d
+end
+local function getScene()
+    if win.scene or FIG.sceneTried then return win.scene end
+    FIG.sceneTried = true
+    local ok, sc = pcall(CreateFrame, "ModelScene", nil, win.model:GetParent(), "ModelSceneMixinTemplate")
+    if not (ok and sc) then
+        figNote("no model scene: " .. tostring(sc))
+        return nil
+    end
+    sc:SetAllPoints(win.model)
+    local okS, err = pcall(function()
+        if has(sc, "SetFromModelSceneID") then sc:SetFromModelSceneID(290, true) end
+    end)
+    if not okS then figNote("the dressing-room scene was refused: " .. tostring(err)) end
+    sc:Hide()
+    win.scene = sc
+    return sc
+end
+-- Which ways are open for this character, and its body's number.
+local function waysFor(ch)
+    local ways = {}
+    local d = getDoll()
+    local body, from = bodyOf(ch)
+    local okR, _, _, myRace = pcall(UnitRace, "player")
+    local okS, mySex = pcall(UnitSex, "player")
+    if d and has(d, "SetUnit") and has(d, "TryOn") and plain(ch.ri) and plain(ch.sx)
+        and okR and okS and plain(myRace) and plain(mySex) and myRace == ch.ri and mySex == ch.sx then
+        ways[#ways + 1] = "own"
+    end
+    if body and d and has(d, "SetDisplayInfo") and has(d, "TryOn") then ways[#ways + 1] = "display" end
+    if body and (win.scene or not FIG.sceneTried) then ways[#ways + 1] = "scene" end
+    if plain(ch.mf) and ch.mf > 0 and d and has(d, "SetModel") and has(d, "TryOn") then ways[#ways + 1] = "file" end
+    return ways, body, from
+end
+-- Stand the figure up one way. Returns what to dress, and a function
+-- that says whether a model has come (true / false; nil = can't be told).
+-- Errors where the way is not to be had.
+local function startWay(way, ch, body)
+    if way == "scene" then
+        local sc = getScene()
+        if not sc then error("no model scene") end
+        local actor = has(sc, "GetPlayerActor") and sc:GetPlayerActor() or nil
+        local byHand = false
+        if not actor then
+            actor = FIG.actor or (has(sc, "CreateActor") and sc:CreateActor() or nil)
+            FIG.actor = actor
+            byHand = true
+        end
+        if not actor then error("no figure in the scene") end
+        figNote("scene's figure (" .. (byHand and "made by hand" or "the scene's own") .. "): "
+            .. methods(actor, { "SetModelByCreatureDisplayID", "SetModelByUnit", "Undress", "TryOn", "IsLoaded", "ClearModel" }))
+        if not has(actor, "SetModelByCreatureDisplayID") then error("the scene's figure takes no body number") end
+        if not has(actor, "TryOn") then error("the scene's figure takes no gear") end
+        if has(actor, "SetOnModelLoadedCallback") then
+            pcall(actor.SetOnModelLoadedCallback, actor, function()
+                if FIG.onLoaded then FIG.onLoaded("as it loaded") end
+            end)
+        end
+        sc:Show()
+        if has(actor, "ClearModel") then pcall(actor.ClearModel, actor) end
+        actor:SetModelByCreatureDisplayID(body, false)
+        if has(actor, "SetYaw") then pcall(actor.SetYaw, actor, 0.52) end
+        return actor, function()
+            if has(actor, "IsLoaded") then return actor:IsLoaded() and true or false end
+            return nil
+        end
+    end
+    local d = getDoll()
+    if not d then error("no dress-up model") end
+    d:Show()
+    pcall(d.ClearModel, d)
+    if way == "own" then
+        -- (Told not to dress itself: it came up in your gear, and an
+        -- "undress" sent before it had loaded was lost.)
+        if has(d, "SetAutoDress") then pcall(d.SetAutoDress, d, false) end
+        d:SetUnit("player")
+    elseif way == "display" then
+        d:SetDisplayInfo(body)
+    else
+        d:SetModel(ch.mf)
+    end
+    d.facing = 0.52
+    pcall(d.SetFacing, d, 0.52)
+    return d, function()
+        if not has(d, "GetModelFileID") then return nil end
+        local f = d:GetModelFileID()
+        if secret(f) then return nil end
+        return f ~= nil and f ~= 0
+    end
+end
+local WAY_SAYS = {
+    own = "A stand-in: your own figure, in its gear",
+    display = "A stand-in: its race, sex and gear; not its face",
+    scene = "A stand-in: its race, sex and gear; not its face",
+    file = "A stand-in: its race, sex and gear; not its face",
+}
+-- Away with it (a live unit is shown, or the window closes).
+function I.figureOff()
+    FIG.serial = FIG.serial + 1
+    FIG.onLoaded = nil
+    if not win then return end
+    if win.doll then pcall(win.doll.ClearModel, win.doll); win.doll:Hide() end
+    if win.scene then win.scene:Hide() end
+    if win.figPill then win.figPill:Hide() end
+    if win.crest then win.crest:Hide(); win.standin:Hide() end
+end
+-- Show way number idx of FIG.ways (past the last: the emblem). auto: it
+-- was not asked for by hand, so a way that fails gives way to the next.
+local showWay
+showWay = function(idx, auto)
+    local ch = I.snap and I.snap.ch
+    if not ch then return end
+    FIG.serial = FIG.serial + 1
+    local serial = FIG.serial
+    FIG.onLoaded, FIG.retry = nil, false
+    if win.doll then win.doll:Hide() end
+    if win.scene then win.scene:Hide() end
+    local ways = FIG.ways
+    local way = ways[idx]
+    FIG.idx = idx
+    local shown = false
+    if way then
+        local ok, target, loadedFn = pcall(startWay, way, ch, FIG.body)
+        if ok and target then
+            shown = true
+            -- The gear goes on when the model says it has loaded (twice at
+            -- most: should dressing make it say so again, that would go
+            -- round for ever), at three set moments, and up to four times
+            -- more while items are still arriving. Once a model is there
+            -- and every piece was taken, it is left alone.
+            local passes, loadPasses, retries, done, sawLoad = 0, 0, 0, false, false
+            local pass
+            pass = function(why, fromLoad)
+                if FIG.serial ~= serial or not (win:IsShown() and I.snap) then return nil end
+                if fromLoad then
+                    sawLoad = true
+                    if loadPasses >= 2 then return nil end
+                    loadPasses = loadPasses + 1
+                end
+                local okL, loaded = pcall(loadedFn)
+                if not okL then loaded = nil end
+                if done or passes >= 10 then return loaded end
+                passes = passes + 1
+                local res, pending, all = dressWith(target)
+                figNote(way .. ", " .. why .. ": model " .. (loaded == nil and "can't be told" or (loaded and "there" or "not there"))
+                    .. "; try-on " .. res)
+                if all and loaded then done = true end
+                if pending and not FIG.retry and retries < 4 then
+                    FIG.retry = true
+                    retries = retries + 1
+                    C_Timer.After(1.0, function()
+                        if FIG.serial ~= serial then return end
+                        FIG.retry = false
+                        pass("items were still arriving")
+                    end)
+                end
+                return loaded
+            end
+            FIG.onLoaded = function(why) pass(why, true) end
+            C_Timer.After(0.4, function() pass("0.4 s on") end)
+            C_Timer.After(1.2, function() pass("1.2 s on") end)
+            C_Timer.After(2.6, function()
+                if FIG.serial ~= serial then return end
+                local loaded = pass("2.6 s on")
+                -- (Only where it is sure: asked, the model says it is not
+                -- there, and it never said it had loaded.)
+                if loaded == false and not sawLoad and auto and FIG.serial == serial then
+                    figNote(way .. ": no model came; on to the next")
+                    showWay(idx + 1, true)
+                end
+            end)
+        else
+            figNote(way .. " refused: " .. tostring(target))
+            if auto then return showWay(idx + 1, true) end
+        end
+    end
+    win.crest:SetShown(not shown)
+    if win.model.floor then win.model.floor:SetShown(shown and way ~= "scene") end
+    local why
+    if shown then why = WAY_SAYS[way]
+    elseif #ways == 0 then why = "Log this character in once more and a figure in its gear stands here"
+    else why = "The game would not stand a figure up here" end
+    win.standin:SetText(why)
+    win.standin:Show()
+    if #ways >= 2 then
+        win.figPill:SetLabel(shown and ("Figure " .. idx .. " of " .. #ways) or ("Figure: none of " .. #ways))
+        win.figPill:Show()
+    else
+        win.figPill:Hide()
+    end
+end
+
 function I:OpenSnapshot(who, ch)
     if type(ch) ~= "table" then return end
     if not win then build() end
@@ -681,127 +995,6 @@ function I:OpenSnapshot(who, ch)
     win.model:Hide()
     if win.model.floor then win.model.floor:Hide() end
     win.model.spot:SetVertexColor(r, g, b, 0.16)
-    -- The stand-in. (0.1.674: the first try, a dress-up model told its
-    -- race, found "no such model" on this client. Three ways are now
-    -- tried in turn, and what each met is written down:
-    --   1. a dress-up model that can be told a race and sex;
-    --   2. a model scene of the game's own dressing-room kind, whose
-    --      figure can be told a race and sex;
-    --   3. where the character is of YOUR race and sex: your own figure,
-    --      undressed and put in its gear.)
-    local how = "no race or sex on file"
-    local shown = false
-    local notes = {}
-    local function say(str) notes[#notes + 1] = str end
-    local function has(o, m) return o and type(o[m]) == "function" end
-    local function methods(o, list)
-        local out = {}
-        for _, m in ipairs(list) do out[#out + 1] = m .. (has(o, m) and "+" or "-") end
-        return table.concat(out, " ")
-    end
-    local function dress(tryOn)
-        for _, b2 in pairs(tiles) do
-            local link = I.snapLink(b2.slot)
-            if link then pcall(tryOn, link) end
-        end
-    end
-    if win.doll then win.doll:Hide() end
-    if win.scene then win.scene:Hide() end
-    if plain(ch.ri) and plain(ch.sx) and ch.sx >= 2 then
-        if not win.doll and not win.dollTried then
-            win.dollTried = true
-            local okD, d = pcall(CreateFrame, "DressUpModel", nil, win.model:GetParent())
-            say("dress-up model made: " .. tostring(okD and d ~= nil))
-            if okD and d then
-                d:SetAllPoints(win.model)
-                d.facing = 0.52
-                d:EnableMouse(true)
-                d:SetScript("OnMouseDown", function(self, btn) if btn == "LeftButton" then self.dragX = GetCursorPosition() end end)
-                d:SetScript("OnMouseUp", function(self) self.dragX = nil end)
-                d:SetScript("OnHide", function(self) self.dragX = nil end)
-                d:SetScript("OnUpdate", function(self)
-                    if not self.dragX then return end
-                    local x = GetCursorPosition()
-                    self.facing = self.facing + (x - self.dragX) / (UIParent:GetEffectiveScale() * 90)
-                    self.dragX = x
-                    self:SetFacing(self.facing)
-                end)
-                win.doll = d
-            end
-        end
-        local d = win.doll
-        if d then say("dress-up model: " .. methods(d, { "SetCustomRace", "SetUnit", "Undress", "TryOn", "Dress", "SetItem" })) end
-        say("plain model: " .. methods(win.model, { "SetCustomRace", "SetUnit", "Undress", "TryOn" }))
-        -- 1.
-        if d and has(d, "SetCustomRace") then
-            local ok, err = pcall(function()
-                d:SetUnit("player")
-                d:SetCustomRace(ch.ri, ch.sx - 2)
-                d:Undress()
-                dress(function(l) d:TryOn(l) end)
-                d:SetFacing(0.52)
-            end)
-            say("way 1: " .. (ok and "done" or tostring(err)))
-            if ok then shown = true; d:Show(); how = "way 1" end
-        end
-        -- 2.
-        if not shown then
-            local df = _G.DressUpFrame
-            local ds = df and df.ModelScene
-            say("dressing room: frame " .. tostring(df ~= nil) .. ", scene " .. tostring(ds ~= nil)
-                .. (ds and (", scene id " .. tostring(ds.modelSceneID) .. ", " .. methods(ds, { "SetFromModelSceneID", "GetPlayerActor", "CreateActor" })) or ""))
-            if not win.scene and not win.sceneTried then
-                win.sceneTried = true
-                local okS, sc = pcall(CreateFrame, "ModelScene", nil, win.model:GetParent(), "ModelSceneMixinTemplate")
-                say("scene made: " .. tostring(okS and sc ~= nil) .. (okS and "" or (" (" .. tostring(sc) .. ")")))
-                if okS and sc then
-                    sc:SetAllPoints(win.model)
-                    win.scene = sc
-                end
-            end
-            local sc = win.scene
-            if sc then
-                say("scene: " .. methods(sc, { "SetFromModelSceneID", "GetPlayerActor", "CreateActor", "TransitionToModelSceneID" }))
-                local ok, err = pcall(function()
-                    local id = (ds and type(ds.modelSceneID) == "number" and ds.modelSceneID) or 290
-                    if has(sc, "SetFromModelSceneID") then sc:SetFromModelSceneID(id, true) end
-                    local actor = has(sc, "GetPlayerActor") and sc:GetPlayerActor() or nil
-                    if not actor and has(sc, "CreateActor") then actor = sc:CreateActor() end
-                    if not actor then error("no figure in the scene") end
-                    say("figure: " .. methods(actor, { "SetCustomRace", "SetModelByUnit", "Undress", "TryOn", "DressPlayerSlot", "SetYaw" }))
-                    if not has(actor, "SetCustomRace") then error("the figure can not be told a race") end
-                    actor:SetModelByUnit("player", false, true)
-                    actor:SetCustomRace(ch.ri, ch.sx - 2)
-                    if has(actor, "Undress") then actor:Undress() end
-                    dress(function(l) actor:TryOn(l) end)
-                    if has(actor, "SetYaw") then actor:SetYaw(0.52) end
-                end)
-                say("way 2: " .. (ok and "done" or tostring(err)))
-                if ok then shown = true; sc:Show(); how = "way 2" else sc:Hide() end
-            end
-        end
-        -- 3.
-        if not shown and d and has(d, "SetUnit") and has(d, "TryOn") then
-            local _, _, myRace = UnitRace("player")
-            local mySex = UnitSex("player")
-            if plain(myRace) and plain(mySex) and myRace == ch.ri and mySex == ch.sx then
-                local ok, err = pcall(function()
-                    d:SetUnit("player")
-                    if has(d, "Undress") then d:Undress() end
-                    dress(function(l) d:TryOn(l) end)
-                    d:SetFacing(0.52)
-                end)
-                say("way 3: " .. (ok and "done" or tostring(err)))
-                if ok then shown = true; d:Show(); how = "way 3 (your own figure in its gear)" end
-            else
-                say("way 3: not your race and sex")
-            end
-        end
-        if not shown then how = "none of three ways" end
-        how = how .. " | " .. table.concat(notes, " | ")
-    end
-    if MinimalUIDB then MinimalUIDB.dolldiag = "stand-in model: " .. how end
-    if win.model.floor then win.model.floor:SetShown(shown) end
     if not win.crest then
         local page = win.model:GetParent()
         win.crest = page:CreateTexture(nil, "ARTWORK")
@@ -810,19 +1003,59 @@ function I:OpenSnapshot(who, ch)
         win.standin = text(page, 10, false, DIM)
         win.standin:SetPoint("TOP", win.model, "BOTTOM", 0, 22)
     end
+    if not win.figPill then
+        local page = win.model:GetParent()
+        win.figPill = ns.Pill(page, "Figure", function()
+            local n = #FIG.ways
+            if n == 0 then return end
+            local nextIdx = ((FIG.idx or 0) % n) + 1
+            if (FIG.idx or 0) > n then nextIdx = 1 end
+            if type(I.db.figurePick) ~= "table" then I.db.figurePick = {} end
+            I.db.figurePick[FIG.kind or "other"] = FIG.ways[nextIdx]
+            showWay(nextIdx, false)
+        end, { h = 18, pad = 16, minW = 0, font = 10 })
+        win.figPill:SetPoint("BOTTOM", win.model, "TOP", 0, 3)
+        win.figPill:HookScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Another way of drawing this figure", 1, 1, 1)
+            GameTooltip:AddLine("The game offers several and they do not all work. Your pick is remembered.", 0.6, 0.6, 0.65, true)
+            GameTooltip:Show()
+        end)
+        win.figPill:HookScript("OnLeave", function() GameTooltip:Hide() end)
+        win.figPill:Hide()
+    end
     win.crest:SetTexture(mark)
     win.crest:SetVertexColor(r, g, b, 0.85)
-    win.crest:SetShown(not shown)
-    -- (0.1.673: and with only the emblem, why: the first look at one
-    -- showed the emblem and nothing to say a figure would come.)
-    local why = ""
-    if shown then why = "A stand-in: the race, sex and gear on file; not the face"
-    elseif not (plain(ch.ri) and plain(ch.sx)) then why = "Log this character in once more and a figure in its gear stands here"
-    else why = "The game would not stand a figure up here" end
-    win.standin:SetText(why)
-    win.standin:Show()
+    -- (The window first: a model set up while it was hidden came up
+    -- dressed as you are.)
     if not win:IsShown() then win:Show() end
     I:Refresh()
+    -- (Under guard: the sheet itself must open whatever the figure does.)
+    local okFig, errFig = pcall(function()
+        FIG.notes = {}
+        for _, e in ipairs(gearLinks()) do
+            if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, e.link) end
+        end
+        local ways, body, from = waysFor(ch)
+        FIG.ways, FIG.body = ways, body
+        FIG.kind = (ways[1] == "own") and "same" or "other"
+        figNote("race " .. tostring(ch.ri) .. ", sex " .. tostring(ch.sx) .. ", body " .. tostring(body)
+            .. (from and (" (" .. from .. ")") or "") .. "; ways: " .. (#ways > 0 and table.concat(ways, ", ") or "none"))
+        local pick = type(I.db.figurePick) == "table" and I.db.figurePick[FIG.kind] or nil
+        local idx = 1
+        for i, w in ipairs(ways) do
+            if w == pick then idx = i end
+        end
+        showWay(idx, true)
+    end)
+    if not okFig then
+        figNote("the figure failed: " .. tostring(errFig))
+        if win.doll then win.doll:Hide() end
+        if win.scene then win.scene:Hide() end
+        win.crest:Show()
+        win.standin:SetText("The game would not stand a figure up here")
+        win.standin:Show()
+    end
 end
 
 -- Open on your target, whatever it is (the button by the target frame,
