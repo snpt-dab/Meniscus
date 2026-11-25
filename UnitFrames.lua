@@ -1523,9 +1523,13 @@ local function cureMotes(host, n)
                     -- (0.1.681: smoke as the mana orb's mist is made: a
                     -- patch of the swirling texture seen through a soft
                     -- round mask, turning and swelling. It was a plain soft
-                    -- dot, and a ring of those read as glowing dots.)
+                    -- dot, and a ring of those read as glowing dots.
+                    -- 0.1.682: and LIT as that mist is, the player having
+                    -- meant the wisps at the top of the orb as mana is
+                    -- spent: laid on as light, white-hot for an instant,
+                    -- then its colour, thin enough that many overlap.)
                     t:SetTexture(MEDIA .. "swirl.tga")
-                    t:SetBlendMode("BLEND")
+                    t:SetBlendMode("ADD")
                     t:AddMaskTexture(t.sm)
                     t.masked = true
                     t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3], 0)
@@ -1569,13 +1573,18 @@ local function cureMotes(host, n)
         local fx = self.fx
         if not fx then return end
         local how = fx.how
+        -- (Smoke uses every mote; the other kinds seven in ten of them,
+        -- as many as they had before there were more.)
         local n = #self.tex
+        if how ~= "smoke" then n = math.max(1, math.floor(n * 0.7 + 0.5)) end
         for i, t in ipairs(self.tex) do
             local r1, r2, r3 = cureRnd(i, pulse), cureRnd(i + 7, pulse), cureRnd(i + 13, pulse)
             local ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
             local a, out, side, s = 0, 0, 0, 8
             local tall, lift, rot = nil, 0, nil
-            if how == "smoke" then
+            if i > n then
+                a = 0
+            elseif how == "smoke" then
                 -- Diseased smoke: it leaves the edge slowly, swells to
                 -- several times its size, turns, lifts a little as it
                 -- thins, and hangs about for longer than the pulses are
@@ -1598,12 +1607,14 @@ local function cureMotes(host, n)
                         s = 15 + (26 + 12 * r2) * e
                         tall = s * 0.8
                         rot = r1 * 6.283 + (r3 < 0.5 and -1 or 1) * (0.35 + 0.5 * r2) * age
-                        a = 0.40 * math.min(1, u / 0.14) * (1 - u) ^ 1.3
-                        -- (A murk of yellows and greens, not one colour.
-                        -- And its strength goes in with the colour: on the
-                        -- mana orb a plain SetAlpha on this texture "didn't
-                        -- take".)
-                        t:SetVertexColor(0.44 + 0.22 * r2, 0.50 + 0.20 * r3, 0.13 + 0.10 * r1, t.masked and a or 1)
+                        -- (White-hot as it is let go, then sickly yellows
+                        -- and greens, not one colour. Its strength goes in
+                        -- with the colour: on the mana orb a plain SetAlpha
+                        -- on this texture "didn't take".)
+                        local hot = math.exp(-math.max(0, age - 0.25 * r3) * 6)
+                        a = math.min(1, 0.17 * math.min(1, u / 0.06) * (1 - u) ^ 1.4 * (1 + 2.2 * hot))
+                        local cr, cg, cb = 0.50 + 0.38 * r2, 0.78 + 0.18 * r3, 0.14 + 0.22 * r1
+                        t:SetVertexColor(cr + (1 - cr) * hot, cg + (1 - cg) * hot, cb + (1 - cb) * hot, t.masked and a or 1)
                     end
                 end
             elseif how == "bubbles" then
@@ -1685,7 +1696,7 @@ local function cureLook(f, PH)
     local fxHost = CreateFrame("Frame", nil, f)
     fxHost:SetAllPoints()
     fxHost:SetFrameLevel(f:GetFrameLevel() + 3)
-    L.motes = cureMotes(fxHost, 14)
+    L.motes = cureMotes(fxHost, 20)
     local t0, last = 0, -1
     local tint = { 1, 1, 1 }
     function L.arrive() t0 = GetTime() end
@@ -1797,7 +1808,7 @@ function UF:BuildCure()
         -- (0.1.676: and off each burst, what the kind gives off: see
         -- CURE_FX. The later bursts now come every CURE_PERIOD seconds
         -- from the arrival, so that light and motes keep one clock.)
-        local motes = cureMotes(vis, 8)
+        local motes = cureMotes(vis, 11)
         local t0 = 0
         vis:SetScript("OnShow", function() t0 = GetTime() end)
         vis:SetScript("OnUpdate", function(self)
@@ -1834,20 +1845,58 @@ function UF:BuildCure()
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        b:HookScript("PostClick", function(self) self.clicked = GetTime() end)
         chips[#chips + 1] = b
         return b
     end
     -- Has this unit something we can cure? Returns the aura (its picture and
-    -- kind may be hidden values in combat: they are only handed on).
-    local diag = false
+    -- kind may be hidden values in combat: they are only handed on); or
+    -- nil, and true where the game would not let it be looked at.
+    --
+    -- (0.1.682: "it shows before combat, then when I enter combat it
+    -- vanishes, then comes back when combat is over." The record said why:
+    -- in every fight the asking was refused. It asked by index with the
+    -- game's own "what you can dispel" filter, and this client refuses that
+    -- once a fight is on, though the plain list of harmful things can still
+    -- be read (the aura rows read it all fight long). So, in order:
+    --   1. by index with the dispel filter (out of a fight: the answer);
+    --   2. where that is refused, the plain list of everything harmful,
+    --      each asked its kind: one of a kind you have a cure for is it;
+    --   3. where kinds are hidden, the game's count of dispellable ones
+    --      (by slot): "something you can cure", and no more known;
+    --   4. where nothing answers, what was on them going INTO the fight is
+    --      taken to be there still (see "kept", below).
+    -- Which of these answered is counted in MinimalUIDB.cureways, and the
+    -- refusal's own words kept in MinimalUIDB.cureerr.)
+    local diag, errKept = false, false
+    local function wayNote(key)
+        if not MinimalUIDB then return end
+        local t = type(MinimalUIDB.cureways) == "table" and MinimalUIDB.cureways or {}
+        MinimalUIDB.cureways = t
+        t[key] = (t[key] or 0) + 1
+    end
+    local slotBuf = {}
+    local function packSlots(ok, token, ...)
+        local n = ok and select("#", ...) or 0
+        for i = 1, n do slotBuf[i] = (select(i, ...)) end
+        for i = n + 1, #slotBuf do slotBuf[i] = nil end
+        return ok, n
+    end
+    local STUB = {} -- "something you can cure": no picture, no kind
     local function afflicted(unit)
         if not UnitExists(unit) then return nil end
+        local U = C_UnitAuras
+        local refused = false
         for idx = 1, 8 do
-            local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, idx, "HARMFUL|RAID")
-            -- (In a fight the game can refuse an addon any look at a unit's
-            -- auras: "blind". The caller is told, so it need not pretend
-            -- the unit is clean.)
-            if not ok then return nil, true end
+            local ok, a = pcall(U.GetAuraDataByIndex, unit, idx, "HARMFUL|RAID")
+            if not ok then
+                refused = true
+                if not errKept and MinimalUIDB then
+                    errKept = true
+                    MinimalUIDB.cureerr = tostring(a):sub(1, 200)
+                end
+                break
+            end
             if not a then return nil end
             local d = a.dispelName
             if not diag and MinimalUIDB then
@@ -1858,6 +1907,61 @@ function UF:BuildCure()
             -- own "you can dispel this" filter is taken at its word.
             if issecretvalue(d) or (type(d) == "string" and typeSpell[d]) then return a end
         end
+        if not refused then return nil end
+        -- 2. Everything harmful, each asked its kind.
+        local hidden, listed = false, true
+        for idx = 1, 16 do
+            local ok, a = pcall(U.GetAuraDataByIndex, unit, idx, "HARMFUL")
+            if not ok then listed = false break end
+            if not a then break end
+            local d = a.dispelName
+            if issecretvalue(d) then
+                hidden = true
+            elseif type(d) == "string" and typeSpell[d] then
+                wayNote("plain list: a curable kind read")
+                return a
+            end
+        end
+        if listed and not hidden then
+            wayNote("plain list: read, nothing curable")
+            return nil
+        end
+        -- 3. The game's own count of what you can dispel.
+        if U.GetAuraSlots then
+            local ok, count = packSlots(pcall(U.GetAuraSlots, unit, "HARMFUL|RAID"))
+            if ok then
+                wayNote("slots: " .. (count > 0 and "some" or "none"))
+                if count == 0 then return nil end
+                if U.GetAuraDataBySlot then
+                    local ok2, a = pcall(U.GetAuraDataBySlot, unit, slotBuf[1])
+                    if ok2 and type(a) == "table" then return a end
+                end
+                return STUB
+            end
+            wayNote("slots: refused")
+        end
+        wayNote(listed and "plain list: kinds hidden" or "plain list: refused")
+        return nil, true
+    end
+    -- The picture for what was found (a STUB has none: the cure's own).
+    local function pictureOf(a)
+        if a ~= STUB then return a.icon end
+        local okI, info = pcall(C_Spell.GetSpellInfo, spells[1])
+        return okI and type(info) == "table" and info.iconID or 134400
+    end
+    -- Kept: what a unit was seen to have, for a fight in which it can no
+    -- longer be looked at. { e = when it runs out, where that was read }.
+    -- It ends when the game can be asked again, when its time is up, or
+    -- when you cast a cure by that button (its click is noted, and a cure
+    -- cast right after it is taken to have worked).
+    local function keep(holder, a)
+        local e = a ~= STUB and a.expirationTime or nil
+        holder.kept = holder.kept or {}
+        holder.kept.e = (type(e) == "number" and not issecretvalue(e) and e > 0) and e or nil
+    end
+    local function stillKept(holder)
+        local k = holder.kept
+        return k ~= nil and (k.e == nil or GetTime() < k.e)
     end
     -- What a fight lets be seen of afflictions, counted once per change of
     -- a chip's state (MinimalUIDB.curefight): the open question behind
@@ -1928,6 +2032,7 @@ function UF:BuildCure()
         GameTooltip:Show()
     end)
     pill:SetScript("OnLeave", function() look.fill(0.06, 0.06, 0.07, 0.97); GameTooltip:Hide() end)
+    pill:HookScript("PostClick", function(self) self.clicked = GetTime() end)
     -- Where it sits: over the top of the map, in the middle of the console.
     -- Without the map there: just above the Quick Buff pill, or where it
     -- would be. (Only out of a fight: it is a casting button.)
@@ -1985,14 +2090,21 @@ function UF:BuildCure()
         if #spells == 0 then b.vis:Hide() return end
         local a, blind = afflicted(b.unit)
         if not a then
-            -- (Clean, or the game would not let it be looked at: not shown
-            -- either way.)
+            -- (Could not be looked at, in a fight, and something was on
+            -- them going in: it stays lit.)
+            if blind and InCombatLockdown() and stillKept(b) then
+                fightNote(b, "could not look; kept what was seen before")
+                return
+            end
+            -- (Clean, or could not be looked at with nothing known: not shown.)
             fightNote(b, blind and UnitExists(b.unit) and "could not look" or nil)
+            b.kept = nil
             b.vis:Hide()
             return
         end
+        keep(b, a)
         b.vis:SetAlpha(1)
-        b.icon:SetTexture(a.icon)
+        b.icon:SetTexture(pictureOf(a))
         local d = a.dispelName
         local c, right, kind = nil, false, nil
         if type(d) == "string" and not issecretvalue(d) then
@@ -2037,7 +2149,8 @@ function UF:BuildCure()
             local right = spells[2] ~= nil and spell == spells[2]
             look.quiet = false
             pv:SetAlpha(1)
-            look.icon:SetTexture(a.icon)
+            keep(pill, a)
+            look.icon:SetTexture(pictureOf(a))
             look.icon:SetDesaturated(false)
             look.setKind(kind)
             look.text:SetText(kind and (spell .. (right and "   (right-click)" or ""))
@@ -2047,8 +2160,14 @@ function UF:BuildCure()
             if pv:IsShown() and (pill.kindShown ~= kind or pill.wasQuiet) then look.arrive() end
             pill.kindShown, pill.wasQuiet = kind, false
             if not pv:IsShown() then pv:Show() end
+        elseif blind and fighting and stillKept(pill) then
+            -- Can't be looked at, and something was on you going into
+            -- the fight: it is taken to be there still, as it was shown.
+            fightNote(pill, "could not look; kept what was seen before")
+            if not pv:IsShown() then pv:Show() end
         else
             fightNote(pill, blind and fighting and "could not look" or nil)
+            pill.kept = nil
             if pv:IsShown() then pv:Hide() end
             pill.kindShown, pill.wasQuiet = nil, false
             if not fighting and pill:IsShown() then pill:Hide() end
@@ -2060,7 +2179,28 @@ function UF:BuildCure()
                          "PLAYER_REGEN_DISABLED", "ENCOUNTER_START" }) do
         pcall(ev.RegisterEvent, ev, e)
     end
-    ev:SetScript("OnEvent", function(_, e, unit)
+    pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    ev:SetScript("OnEvent", function(_, e, unit, _, spellID)
+        if e == "UNIT_SPELLCAST_SUCCEEDED" then
+            if type(spellID) ~= "number" or issecretvalue(spellID) then return end
+            local okN, name = pcall(C_Spell.GetSpellName, spellID)
+            if not okN or type(name) ~= "string" or issecretvalue(name) then return end
+            if name ~= spells[1] and name ~= spells[2] then return end
+            -- By which button? The one clicked a moment ago; with none
+            -- (cast from your own bars), it is taken to be for you.
+            local now = GetTime()
+            local who, best = nil, 0
+            if pill.clicked and now - pill.clicked < 2 then who, best = pill, pill.clicked end
+            for _, b in ipairs(chips) do
+                if b.clicked and now - b.clicked < 2 and b.clicked > best then who, best = b, b.clicked end
+            end
+            who = who or pill
+            if who.kept then
+                who.kept = nil
+                if who == pill then pcall(updatePill) else pcall(update, who) end
+            end
+            return
+        end
         if e == "PLAYER_REGEN_DISABLED" or e == "ENCOUNTER_START" then
             -- A fight is starting (the lockdown has not begun yet): the
             -- pill is put in its place for the length of it, since it

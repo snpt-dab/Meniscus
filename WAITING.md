@@ -2,13 +2,14 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.681.
+Last updated: 2026-11-25, version 0.1.682.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Quick Cure (0.1.681) | `/reload`. Get a disease on you (and other kinds when they come) | Does disease now give off murky smoke that swells and hangs, not glowing dots? Do the pill and the party chips light and cure on click, in a fight too? Then `/reload` |
+| 11 | Quick Cure in a fight, and the smoke (0.1.682) | `/reload`. Go into a fight with a disease on you; get one during a fight too if you can | Does the pill now stay through the fight? Does it show for one caught DURING the fight? Does the disease smoke now look like the mana orb’s mist? Then `/reload` |
+| 12 | Critical hit numbers (0.1.682) | Fight until a crit | Whether crits at half as large again are right |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
@@ -20,7 +21,7 @@ Last updated: 2026-11-25, version 0.1.681.
 ## Read from the saved record after your next reload (nothing for you to do)
 
 - `alttrail`: how far the crafted-upgrades snapshot gets, and any failure's message (3).
-- `curefight`: what a fight lets be seen of afflictions (seen with its kind, seen with the kind hidden, or could not look) (11).
+- `curefight`, `cureways`, `cureerr`: what a fight lets be seen of afflictions, which way of asking answered, and the refusal’s own words (11).
 - `dolldiag`: for each way of standing a figure up, whether a model came and what the game answered to each piece of gear (10).
 - `figdiag`: the body number this character measured, to check the table of race bodies against (10).
 - `altdiag`: whether each character's weapon skills can be read by skill number (3).
