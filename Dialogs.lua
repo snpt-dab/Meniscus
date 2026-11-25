@@ -618,7 +618,9 @@ local function rewardCards(list)
         end
         for _, t in ipairs(cards) do
             local it = t.it
-            local why = it.link and ns.ItemUnusable and call(ns.ItemUnusable, it.link)
+            local why, fetching
+            if it.link and ns.ItemUnusable then why, fetching = call(ns.ItemUnusable, it.link) end
+            if fetching then missing = true end -- (asked again in half a second, below)
             local cant = type(why) == "string" or it.usable == false
             -- Armor weight is shown by colouring the armor type's own word,
             -- with no verdict in words: green for the heaviest kind you can

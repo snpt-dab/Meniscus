@@ -879,22 +879,10 @@ local PAGES = {
               end },
             { "Open Blizzard windows", kind = "action", action = "Record", note = "Open the window first",
               run = function() cmd("winprobe", "") end },
-            { "Game Options window", kind = "action", action = "In 6 s", note = "Click, then open Options (Esc > Options)",
-              run = function()
-                  ns:Print("Open the game's Options window now; recording in 6 seconds.")
-                  C_Timer.After(6, function() cmd("optprobe", "") end)
-              end },
-            { "Pet happiness values", kind = "action", action = "Record", run = function() cmd("petprobe", "") end },
             { "Pet mood words", kind = "action", action = "Record", run = function() cmd("moodprobe", "") end },
             { "Target frame", kind = "action", action = "Record", note = "Target something with buffs first",
               run = function() cmd("targetprobe", "") end },
             { "Character window", kind = "action", action = "Record", run = function() cmd("charprobe", "") end },
-            { "UI frames", kind = "action", action = "Record", run = function() cmd("uiprobe", "") end },
-            { "Damage meter", kind = "action", action = "Record", run = function() cmd("dmprobe", "") end },
-            { "Guild window", kind = "action", action = "Record", run = function() cmd("guildprobe", "") end },
-            { "Friends window", kind = "action", action = "Record", run = function() cmd("friendprobe", "") end },
-            { "Item counts", kind = "action", action = "Record", run = function() cmd("countprobe", "") end },
-            { "Main action bar art", kind = "action", action = "Record", run = function() cmd("barprobe", "") end },
         } },
     } },
 }
@@ -1512,7 +1500,6 @@ ns.commands.help = function()
         "/men skillup  show a sample skill-up pill",
         "/men combatprobe  record what the client reveals in combat (also recorded on its own)",
         "/men bug <what went wrong>  save a bug report (on its own: a box to type in; list / clear)",
-        "/men optprobe  record what the game's Options window is made of (open it first)",
         "/men blizzopts  the game's Options window without our skin (and back); needs a reload",
         "/men windows  window docking on / off (reload)",
         "/men levelup  preview the level-up banner",
@@ -1543,7 +1530,7 @@ ns.commands.help = function()
         "/men portrait fit <x|z|dist> <n>  camera for your target's race and gender (yourself with no player targeted); fit clear",
         "/men profile [use | copy | delete <name>]  layouts per character",
         "/men font | orbcolor | rage | energy [drip] | mana [fsr|burst] | combo | reloadbtn | minimap | keyring | errors | chat",
-        "/men probe | uiprobe | charprobe | bars | scales  diagnostics",
+        "/men probe | charprobe | keyprobe [KEY] | under | deepprobe <Frame>  diagnostics",
         "/men perf [report | reset | gc]  resource monitor",
         "/men prof blizz  switch between Meniscus and Blizzard professions windows",
     }

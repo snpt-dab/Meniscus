@@ -604,7 +604,7 @@ function Bars:Arrange()
     local mab = _G.MainActionBar or _G.MainMenuBar
     if mab then
         -- (Forever: the dividers are 12x44 frames from VerticalDividersPool
-        -- and HorizontalDividersPool, children of the bar; /men barprobe.)
+        -- and HorizontalDividersPool, children of the bar.)
         local function noDividers(bar)
             for _, key in ipairs({ "dividersPool", "VerticalDividersPool", "HorizontalDividersPool" }) do
                 local pool = bar[key]

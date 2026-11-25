@@ -988,6 +988,16 @@ end
 -- requirement): returns that red line's text, or nil when nothing is red.
 local scanTip
 local function isRed(r, g, b) return type(r) == "number" and r > 0.9 and g < 0.2 and b < 0.2 end
+-- (0.1.713) While the game is still fetching an item, its tooltip is one
+-- red line, "Retrieving item information": that was taken for the reason
+-- the item can't be used, and a quest reward said "(Can't use · Retrieving
+-- item information)". It is no verdict: nil, and a second value true to say
+-- "ask again in a moment".
+local function fetching(text)
+    if type(text) ~= "string" or issecretvalue(text) then return false end
+    local w = _G.RETRIEVING_ITEM_INFO
+    return text == (type(w) == "string" and w or "Retrieving item information")
+end
 function ns.ItemUnusable(link)
     if type(link) ~= "string" then return nil end
     local TI = _G.C_TooltipInfo
@@ -996,6 +1006,7 @@ function ns.ItemUnusable(link)
         if ok and type(data) == "table" and type(data.lines) == "table" then
             for _, ln in ipairs(data.lines) do
                 local lc, rc = ln.leftColor, ln.rightColor
+                if fetching(ln.leftText) then return nil, true end
                 if lc and isRed(lc.r, lc.g, lc.b) and type(ln.leftText) == "string" and ln.leftText ~= "" then return ln.leftText end
                 if rc and isRed(rc.r, rc.g, rc.b) and type(ln.rightText) == "string" and ln.rightText ~= "" then return ln.rightText end
             end
@@ -1015,6 +1026,7 @@ function ns.ItemUnusable(link)
             if fs then
                 local r, g, b = fs:GetTextColor()
                 local txt = fs:GetText()
+                if type(txt) == "string" and not issecretvalue(txt) and fetching(txt) then return nil, true end
                 if isRed(r, g, b) and type(txt) == "string" and not issecretvalue(txt) and txt ~= "" then return txt end
             end
         end
