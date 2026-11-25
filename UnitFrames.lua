@@ -1741,9 +1741,13 @@ function UF:BuildCure()
         end)
         b.vis, b.ring, b.icon, b.hint, b.burst, b.motes = vis, ring, icon, hint, burst, motes
         b:SetScript("OnEnter", function(self)
-            if not self.vis:IsShown() then return end
+            if not self.vis:IsShown() and not self.grid then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText("Quick Cure", 1, 1, 1)
+            if self.grid then
+                local okN, nm = pcall(UnitName, self.unit)
+                if okN and type(nm) == "string" and not issecretvalue(nm) then GameTooltip:AddLine(nm, 1, 1, 1) end
+            end
             if spells[1] then GameTooltip:AddLine("Left-click: " .. spells[1], 0.8, 0.8, 0.85) end
             if spells[2] then GameTooltip:AddLine("Right-click: " .. spells[2], 0.8, 0.8, 0.85) end
             GameTooltip:Show()
@@ -1764,6 +1768,92 @@ function UF:BuildCure()
     me:SetSize(24, 24)
     me:SetFrameStrata("MEDIUM")
     me:SetFrameLevel(6)
+
+    -- The grid (0.1.677, asked for: "classic had a mod called Decursive...
+    -- it would pop up and be clickable at any time, especially useful in
+    -- combat"). That mod's way is the one way the game allows in a fight,
+    -- then and now: a button for EACH person, there all the time, so that
+    -- nothing has to be shown or aimed once the fight is on. So: a row of
+    -- small squares, you and then the party, always to be seen (dim while
+    -- clean, which also means none of them is a hidden thing to click by
+    -- mistake). One lights in the kind's colour with the affliction's
+    -- picture when its person has something you can cure; click it (left
+    -- or right for a class with two cures) and the cure is cast on them.
+    -- A square for a party place nobody is in is put away by the game
+    -- itself (a unit watch: that works in a fight). Drag the grip at its
+    -- left end to move it, out of a fight.
+    -- What it can NOT promise: classic let an addon read everyone's
+    -- afflictions in a fight. This game sometimes refuses (in dungeons it
+    -- has); then a square can't light, though it still casts.
+    local grid, gridCells = nil, {}
+    if self.db.cureGrid ~= false then
+        local G, GAP = 22, 5
+        grid = CreateFrame("Frame", "MeniscusCureGrid", UIParent)
+        grid:SetSize(12 + 5 * G + 4 * GAP, G)
+        grid:SetFrameStrata("MEDIUM")
+        grid:SetMovable(true)
+        grid:SetClampedToScreen(true)
+        local grip = CreateFrame("Button", nil, grid)
+        grip:SetSize(9, G)
+        grip:SetPoint("LEFT", 0, 0)
+        for k = -1, 1 do
+            local dot = grip:CreateTexture(nil, "ARTWORK")
+            dot:SetTexture(MEDIA .. "circle.tga")
+            dot:SetSize(3, 3)
+            dot:SetPoint("CENTER", 0, k * 5)
+            dot:SetVertexColor(T.textDim[1], T.textDim[2], T.textDim[3], 0.7)
+        end
+        grip:RegisterForDrag("LeftButton")
+        grip:SetScript("OnDragStart", function()
+            if InCombatLockdown() then return end
+            grid:StartMoving()
+        end)
+        grip:SetScript("OnDragStop", function()
+            grid:StopMovingOrSizing()
+            local pt, _, rp, x, y = grid:GetPoint(1)
+            if pt then self.db.cureGridPos = { pt, rp, x, y } end
+        end)
+        grip:SetScript("OnEnter", function(g)
+            GameTooltip:SetOwner(g, "ANCHOR_TOP")
+            GameTooltip:SetText("Cure grid", 1, 1, 1)
+            GameTooltip:AddLine("A square for you and each of your party: it lights when they have something you can cure. Click it to cure them, in a fight or out.", 0.8, 0.8, 0.85, true)
+            GameTooltip:AddLine("Drag here to move it (not in a fight).", 0.6, 0.6, 0.65, true)
+            GameTooltip:Show()
+        end)
+        grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        for i, unit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
+            local b = chip("MeniscusCureGrid" .. i, grid, unit)
+            b.grid = true
+            b:SetSize(G, G)
+            b:SetPoint("LEFT", grid, "LEFT", 12 + (i - 1) * (G + GAP), 0)
+            -- At rest: a dim square, and the first of their name under it.
+            ns.RoundedRect(b, -8, 0, 5, T.border[1], T.border[2], T.border[3], 1)
+            ns.RoundedRect(b, -7, 1, 4, 0.07, 0.07, 0.08, 0.92)
+            local lab = CreateFrame("Frame", nil, b)
+            lab:SetAllPoints()
+            b.label = ns:CreateText(lab, 8)
+            b.label:SetPoint("TOP", b, "BOTTOM", 0, -1)
+            b.label:SetWidth(G + GAP)
+            b.label:SetWordWrap(false)
+            b.label:SetShadowOffset(1, -1)
+            b.label:SetShadowColor(0, 0, 0, 0.9)
+            if unit ~= "player" and RegisterUnitWatch then pcall(RegisterUnitWatch, b) end
+            gridCells[#gridCells + 1] = b
+        end
+    end
+    local function gridNames()
+        for _, b in ipairs(gridCells) do
+            local okN, nm = pcall(UnitName, b.unit)
+            if okN and type(nm) == "string" and not issecretvalue(nm) then
+                b.label:SetText(nm)
+                local _, cls2 = UnitClass(b.unit)
+                local cc = type(cls2) == "string" and not issecretvalue(cls2) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[cls2]
+                if cc then b.label:SetTextColor(cc.r, cc.g, cc.b) else b.label:SetTextColor(T.textDim[1], T.textDim[2], T.textDim[3]) end
+            else
+                b.label:SetText("")
+            end
+        end
+    end
 
     -- Spells on the buttons, and where your own chip sits: out of combat.
     local stale = false
@@ -1790,6 +1880,20 @@ function UF:BuildCure()
             me:SetPoint("CENTER", dome, "CENTER", R * math.cos(th), R * math.sin(th))
         else
             me:SetPoint("BOTTOM", UIParent, "BOTTOM", 180, 150)
+        end
+        -- The grid: where you dragged it, else over the map, above where
+        -- the pill and its notice sit.
+        if grid then
+            grid:SetShown(#spells > 0) -- (no cure learnt yet: nothing to click)
+            grid:ClearAllPoints()
+            local pos = self.db.cureGridPos
+            if type(pos) == "table" and pos[1] then
+                grid:SetPoint(pos[1], UIParent, pos[2] or pos[1], pos[3] or 0, pos[4] or 0)
+            elseif dome and dome:IsShown() then
+                grid:SetPoint("BOTTOM", dome, "TOP", 0, 56)
+            else
+                grid:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 210)
+            end
         end
     end
 
@@ -1831,11 +1935,12 @@ function UF:BuildCure()
         if #spells == 0 then b.vis:Hide() return end
         -- While the pill is up (out of combat) it speaks for everyone: the
         -- chips stay dark, so the same thing isn't shown in two places.
-        if pill and pill:IsShown() then b.vis:Hide() return end
+        -- (Not the grid's squares: they light always, as that is their job.)
+        if pill and pill:IsShown() and not b.grid then b.vis:Hide() return end
         local a, blind = afflicted(b.unit)
         if not a then
             fightNote(b, blind and UnitExists(b.unit) and "could not look" or nil)
-            if blind and InCombatLockdown() and UnitExists(b.unit) then
+            if blind and InCombatLockdown() and UnitExists(b.unit) and not b.grid then
                 -- Can't tell who needs it: the chip shows dim and plain, so
                 -- it can still be found and pressed on your own judgement.
                 local okI, info = pcall(C_Spell.GetSpellInfo, spells[1])
@@ -2039,10 +2144,11 @@ function UF:BuildCure()
         pcall(updatePill)
         updateAll()
         pcall(updateNote)
+        pcall(gridNames)
     end)
     assign()
     -- (The map and its rim are built after this module.)
-    C_Timer.After(3, function() pcall(assign); pcall(updatePill); updateAll() end)
+    C_Timer.After(3, function() pcall(assign); pcall(updatePill); updateAll(); pcall(gridNames) end)
 end
 
 -- ── Party ─────────────────────────────────────────────────────────────────
