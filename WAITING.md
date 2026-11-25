@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-24, version 0.1.665.
+Last updated: 2026-11-24, version 0.1.666.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 1 | Map buttons in full screen (0.1.665) | Open the map in full screen | Whether the two round buttons are now clear of the top of the screen |
+| 1 | A character listed twice in item tooltips (0.1.666) | `/reload`, hover an item an alt also holds | Whether each character is listed once, with the right count |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
 | 6 | Crafted upgrades between characters | This character is on file now (8 gear recipes). Log in each alt once; on each crafter open each profession window | Whether slot discs, the Crafts tab, row arrows and the "For alts" pill show |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
@@ -30,6 +30,8 @@ Last updated: 2026-11-24, version 0.1.665.
 
 ## Settled recently
 
+- Map buttons in full screen: fine now.
+- Why a character showed twice in a tooltip: the realm name comes back empty on some logins, so per-character records were kept under two keys. One remembered realm name now; doubled records folded at load (`keymerge` in the record says how many).
 - Combat numbers 36 above the target frame: good. Professions window icons: good for now, may be refined later. Buff ring glides to mid-screen in a fight: seen.
 - Seal ring runs through Judgement: confirmed ("looks good").
 - In Forever, Judgement does NOT take the seal off (your word): the ring no longer ends on Judgement.

@@ -72,17 +72,10 @@ local NOREALM = "-"
 local function ident()
     local name = UnitName("player")
     if not plainStr(name) then return end
-    local realm
-    for _, fn in ipairs({ GetRealmName, GetNormalizedRealmName }) do
-        if not realm and fn then
-            local ok, r = pcall(fn)
-            if ok and plainStr(r) then realm = r end
-        end
-    end
-    if not realm and UnitFullName then
-        local ok, _, r = pcall(UnitFullName, "player")
-        if ok and plainStr(r) then realm = r end
-    end
+    -- (The one realm name the whole addon goes by: Core's, remembered
+    -- from a login where the game gave it.)
+    local realm = ns.RealmName and ns:RealmName() or nil
+    if not plainStr(realm) then realm = nil end
     local db = MinimalUIDB
     local roster = db and type(db.roster) == "table" and db.roster or nil
     if realm and roster and type(roster[NOREALM]) == "table" then

@@ -41,8 +41,89 @@ local function deepcopy(t)
 end
 ns.deepcopy = deepcopy
 
+-- (0.1.666: GetRealmName() answers the realm on some logins and "" on
+-- others in this client, so everything kept per character was kept twice,
+-- under "Name-Realm" and under "Name-": a tooltip said "X has 8" two times
+-- over. The realm is now remembered once seen (MinimalUIDB.realmName) and
+-- used whenever the game gives none, and the "Name-" records are folded
+-- into "Name-Realm" at load: mergeCharKeys below.)
+local function liveRealm()
+    local ok, r = pcall(GetRealmName)
+    if ok and type(r) == "string" and not (issecretvalue and issecretvalue(r)) and r ~= "" then return r end
+end
+function ns:RealmName()
+    local r = liveRealm()
+    local db = MinimalUIDB
+    if r then
+        if db then db.realmName = r end
+        return r
+    end
+    return db and type(db.realmName) == "string" and db.realmName or ""
+end
 function ns:CharKey()
-    return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+    return (UnitName("player") or "?") .. "-" .. ns:RealmName()
+end
+local function deepmerge(w, l)
+    for k, v in pairs(l) do
+        if w[k] == nil then w[k] = v
+        elseif type(w[k]) == "table" and type(v) == "table" then deepmerge(w[k], v) end
+    end
+    return w
+end
+local function mergeCharKeys(db)
+    local realm = liveRealm() or (type(db.realmName) == "string" and db.realmName ~= "" and db.realmName) or nil
+    if not realm then
+        -- Not seen this session and not remembered: the realm most of
+        -- the kept records carry.
+        local seen, best, bestN = {}, nil, 0
+        for name, t in pairs(db) do
+            if type(t) == "table" and name ~= "profiles" then
+                for k in pairs(t) do
+                    local r = type(k) == "string" and k:match("^[^%-]+%-(.+)$")
+                    if r then
+                        seen[r] = (seen[r] or 0) + 1
+                        if seen[r] > bestN then best, bestN = r, seen[r] end
+                    end
+                end
+            end
+        end
+        realm = best
+    end
+    if not realm then return end
+    db.realmName = realm
+    -- Which of a pair is the newer: the kind of key this login would
+    -- have written, had nothing changed.
+    local bareWins = not liveRealm()
+    local moved, folded = 0, 0
+    for name, t in pairs(db) do
+        if type(t) == "table" and name ~= "profiles" then
+            local bare = {}
+            for k in pairs(t) do
+                if type(k) == "string" and k:match("^[^%-]+%-$") then bare[#bare + 1] = k end
+            end
+            for _, k in ipairs(bare) do
+                local nk = k .. realm
+                local a, b = t[k], t[nk]
+                if b == nil then
+                    t[nk] = a
+                    moved = moved + 1
+                else
+                    folded = folded + 1
+                    local w, l = a, b
+                    if not bareWins then w, l = b, a end
+                    if type(w) == "table" and type(l) == "table" and name ~= "inv" then
+                        t[nk] = deepmerge(w, l) -- (what you own is taken whole from the newer: a sum of two bags would be wrong)
+                    else
+                        t[nk] = w
+                    end
+                end
+                t[k] = nil
+            end
+        end
+    end
+    if moved + folded > 0 then
+        db.keymerge = date("%Y-%m-%d %H:%M") .. ": " .. moved .. " records renamed, " .. folded .. " doubled ones folded"
+    end
 end
 
 local function activateProfile()
@@ -163,6 +244,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON then
         MinimalUIDB = MinimalUIDB or {}
         merge(MinimalUIDB, defaults)
+        pcall(mergeCharKeys, MinimalUIDB)
         activateProfile()
         pcall(applyDefaultRevs, MinimalUIDB)
     elseif event == "PLAYER_LOGIN" then
