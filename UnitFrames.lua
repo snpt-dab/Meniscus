@@ -1469,7 +1469,7 @@ _G["BINDING_NAME_CLICK MeniscusQuickCure:LeftButton"] = "Quick Cure (cure yourse
 -- Each kind of affliction has its own light, and something that comes off
 -- that light (0.1.676, asked for: "disease can be a kind of yellowish-green
 -- smoke that comes off the light pulse"):
---   Disease  a sickly yellow-green light; murky smoke that swells, turns and hangs
+--   Disease  a sickly yellow-green light; murky smoke that billows up and hangs
 --   Poison   a vivid green light; small bubbles, bursting
 --   Curse    a violet light; dark wisps, curling
 --   Magic    a blue light; quick glints
@@ -1498,12 +1498,6 @@ local function cureMotes(host, n)
     for i = 1, n do
         local t = host:CreateTexture(nil, "OVERLAY", nil, 2)
         t:SetAlpha(0)
-        local okM, sm = pcall(host.CreateMaskTexture, host)
-        if okM and sm then
-            sm:SetTexture(MEDIA .. "spot.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            sm:SetAllPoints(t)
-            t.sm = sm
-        end
         m.tex[i] = t
     end
     function m:Set(kind)
@@ -1511,30 +1505,30 @@ local function cureMotes(host, n)
         self.kind = kind
         local fx = kind and CURE_FX[kind] or nil
         self.fx = fx
-        for _, t in ipairs(self.tex) do
+        for i, t in ipairs(self.tex) do
             t:SetAlpha(0)
-            if t.masked then
-                t.masked = false
-                pcall(t.RemoveMaskTexture, t, t.sm)
+            if t.smoke then
+                t.smoke = false
                 pcall(t.SetRotation, t, 0)
             end
             if fx then
-                if fx.how == "smoke" and t.sm then
-                    -- (0.1.681: smoke as the mana orb's mist is made: a
-                    -- patch of the swirling texture seen through a soft
-                    -- round mask, turning and swelling. It was a plain soft
-                    -- dot, and a ring of those read as glowing dots.
-                    -- 0.1.682: and LIT as that mist is, the player having
-                    -- meant the wisps at the top of the orb as mana is
-                    -- spent: laid on as light, white-hot for an instant,
-                    -- then its colour, thin enough that many overlap.)
-                    t:SetTexture(MEDIA .. "swirl.tga")
-                    t:SetBlendMode("ADD")
-                    t:AddMaskTexture(t.sm)
-                    t.masked = true
+                if fx.how == "smoke" then
+                    -- SMOKE, from scratch (0.1.683). Two tries at it went
+                    -- wrong: soft dots in a ring read as glowing dots, and
+                    -- patches of the mana orb's swirl, turning, read as
+                    -- "weird pinwheels" (a turning PATTERN is what the eye
+                    -- catches). So the puffs are now drawn for the job
+                    -- (dist/smoke.py: Media/smoke1..4.tga): each a billow
+                    -- of soft lobes run together, with no pattern in it,
+                    -- laid on as haze (not as light), large, many, and
+                    -- overlapping; they hardly turn at all. The look was
+                    -- judged in an offline picture before it went in.
+                    t:SetTexture(MEDIA .. "smoke" .. (1 + i % 4) .. ".tga")
+                    t:SetBlendMode("BLEND")
+                    t.smoke = true
                     t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3], 0)
                 else
-                    local soft = fx.how == "smoke" or fx.how == "wisps"
+                    local soft = fx.how == "wisps"
                     t:SetTexture(MEDIA .. (soft and "spot.tga" or "circle.tga"))
                     t:SetBlendMode(soft and "BLEND" or "ADD")
                     t:SetVertexColor(fx.mote[1], fx.mote[2], fx.mote[3], 1)
@@ -1573,48 +1567,45 @@ local function cureMotes(host, n)
         local fx = self.fx
         if not fx then return end
         local how = fx.how
-        -- (Smoke uses every mote; the other kinds seven in ten of them,
-        -- as many as they had before there were more.)
+        -- (Smoke uses every mote; the other kinds under half of them, as
+        -- many as they had before smoke needed more.)
         local n = #self.tex
-        if how ~= "smoke" then n = math.max(1, math.floor(n * 0.7 + 0.5)) end
+        if how ~= "smoke" then n = math.max(1, math.floor(n * 0.47 + 0.5)) end
         for i, t in ipairs(self.tex) do
             local r1, r2, r3 = cureRnd(i, pulse), cureRnd(i + 7, pulse), cureRnd(i + 13, pulse)
             local ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
             local a, out, side, s = 0, 0, 0, 8
-            local tall, lift, rot = nil, 0, nil
+            local lift, drift, rot = 0, 0, nil
             if i > n then
                 a = 0
             elseif how == "smoke" then
-                -- Diseased smoke: it leaves the edge slowly, swells to
-                -- several times its size, turns, lifts a little as it
-                -- thins, and hangs about for longer than the pulses are
-                -- apart. So the motes take turns: half are let go at one
-                -- pulse and half at the next, and the smoke of one pulse is
-                -- still thinning when the next is let go.
+                -- A billow: each puff is nudged off the edge, then RISES,
+                -- swelling to two or three times its size and thinning to
+                -- nothing over three or four seconds; those let go from the
+                -- top rise most, those from underneath hardly. That is
+                -- longer than the pulses are apart, so the puffs take
+                -- turns: half are let go at one pulse and half at the next,
+                -- and one pulse's smoke is still lifting when the next
+                -- comes. (These sums are the offline picture's own.)
                 local turn = i % 2
                 local mine, age = pulse, since
                 if pulse % 2 ~= turn then mine, age = pulse - 1, since + CURE_PERIOD end
                 if mine >= 0 then
                     r1, r2, r3 = cureRnd(i, mine), cureRnd(i + 7, mine), cureRnd(i + 13, mine)
                     ex, ey, nx, ny = edge((i - 1 + 0.8 * r1) / n, w, h)
-                    local life = 3.0 + 0.9 * r2
-                    local u = (age - 0.25 * r3) / life
+                    local k = h < 22 and 0.6 or 1 -- (the small chips: smaller smoke)
+                    local u = (age - 0.55 * r3) / (3.0 + 0.9 * r2)
                     if u > 0 and u < 1 then
-                        local e = 1 - (1 - u) * (1 - u)
-                        out = 4 + (14 + 12 * r2) * e
-                        side = math.sin(age * (0.8 + 0.8 * r3) + r1 * 6.283) * 7 * u
-                        lift = 9 * u * u
-                        s = 15 + (26 + 12 * r2) * e
-                        tall = s * 0.8
-                        rot = r1 * 6.283 + (r3 < 0.5 and -1 or 1) * (0.35 + 0.5 * r2) * age
-                        -- (White-hot as it is let go, then sickly yellows
-                        -- and greens, not one colour. Its strength goes in
-                        -- with the colour: on the mana orb a plain SetAlpha
-                        -- on this texture "didn't take".)
-                        local hot = math.exp(-math.max(0, age - 0.25 * r3) * 6)
-                        a = math.min(1, 0.17 * math.min(1, u / 0.06) * (1 - u) ^ 1.4 * (1 + 2.2 * hot))
-                        local cr, cg, cb = 0.50 + 0.38 * r2, 0.78 + 0.18 * r3, 0.14 + 0.22 * r1
-                        t:SetVertexColor(cr + (1 - cr) * hot, cg + (1 - cg) * hot, cb + (1 - cb) * hot, t.masked and a or 1)
+                        out = (5 + 9 * r2) * (1 - (1 - u) ^ 3) * k
+                        local rise = 0.30 + 0.70 * ((ny + 1) / 2) ^ 1.3
+                        lift = rise * (52 + 26 * r3) * u ^ 1.4 * k
+                        drift = math.sin(age * (0.7 + 0.6 * r3) + r1 * 6.283) * 8 * u * k
+                        s = (38 + (50 + 24 * r2) * (1 - (1 - u) ^ 2)) * k
+                        rot = r1 * 6.283 + (r3 < 0.5 and -1 or 1) * 0.5 * u
+                        a = 0.52 * math.min(1, u / 0.12) * (1 - u) ^ 1.3
+                        -- (Its strength goes in with the colour: a murk
+                        -- of dull yellows and greens, not one colour.)
+                        t:SetVertexColor(0.56 + 0.12 * r2, 0.62 + 0.10 * r3, 0.24 + 0.08 * r1, a)
                     end
                 end
             elseif how == "bubbles" then
@@ -1647,17 +1638,17 @@ local function cureMotes(host, n)
                 end
             end
             if a > 0 then
-                t:SetSize(s, tall or s)
-                if rot and t.masked then pcall(t.SetRotation, t, rot) end
+                t:SetSize(s, s)
+                if rot and t.smoke then pcall(t.SetRotation, t, rot) end
                 t:ClearAllPoints()
-                -- (out along "away"; side across it; lift straight up)
-                t:SetPoint("CENTER", host, "CENTER", ex + nx * out - ny * side, ey + ny * out + nx * side + lift)
-                t:SetAlpha(t.masked and 1 or a)
+                -- (out along "away"; side across it; lift straight up; drift to one side)
+                t:SetPoint("CENTER", host, "CENTER", ex + nx * out - ny * side + drift, ey + ny * out + nx * side + lift)
+                t:SetAlpha(t.smoke and 1 or a)
                 t.lit = true
             elseif t.lit then
                 t.lit = false
                 t:SetAlpha(0)
-                if t.masked then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
+                if t.smoke then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
             end
         end
     end
@@ -1666,7 +1657,7 @@ local function cureMotes(host, n)
             if t.lit then
                 t.lit = false
                 t:SetAlpha(0)
-                if t.masked then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
+                if t.smoke then t:SetVertexColor(0.5, 0.6, 0.2, 0) end
             end
         end
     end
@@ -1695,8 +1686,10 @@ local function cureLook(f, PH)
     L.flash = ns.RoundedRect(f, 6, 0, PH / 2, 1, 1, 1, 0, "OVERLAY")
     local fxHost = CreateFrame("Frame", nil, f)
     fxHost:SetAllPoints()
-    fxHost:SetFrameLevel(f:GetFrameLevel() + 3)
-    L.motes = cureMotes(fxHost, 20)
+    -- (Behind the pill, so that what comes off its edge does not lie over
+    -- its face: smoke is large.)
+    fxHost:SetFrameLevel(math.max(0, f:GetFrameLevel() - 1))
+    L.motes = cureMotes(fxHost, 30)
     local t0, last = 0, -1
     local tint = { 1, 1, 1 }
     function L.arrive() t0 = GetTime() end
@@ -1808,7 +1801,10 @@ function UF:BuildCure()
         -- (0.1.676: and off each burst, what the kind gives off: see
         -- CURE_FX. The later bursts now come every CURE_PERIOD seconds
         -- from the arrival, so that light and motes keep one clock.)
-        local motes = cureMotes(vis, 11)
+        local under = CreateFrame("Frame", nil, vis)
+        under:SetAllPoints()
+        under:SetFrameLevel(math.max(0, vis:GetFrameLevel() - 1)) -- (behind the chip's face)
+        local motes = cureMotes(under, 14)
         local t0 = 0
         vis:SetScript("OnShow", function() t0 = GetTime() end)
         vis:SetScript("OnUpdate", function(self)

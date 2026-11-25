@@ -1385,8 +1385,8 @@ local function buildNumbers()
         f.back:SetShown(not small and not pillOn)
         spawned = spawned + 1
         f.serial = spawned
-        -- (A critical: 2.3 times a hit's size. It was 1.55 until 0.1.682: "for crits, let's increase the FCT font size by about 50%".)
-        local scale = (crit and 2.3 or (small and 0.85 or 1)) * sizeMul()
+        -- (A critical: 1.55 times a hit's size. 2.3 was tried for one version, 0.1.682, and was "a bit too much".)
+        local scale = (crit and 1.55 or (small and 0.85 or 1)) * sizeMul()
         f.small = small and true or false
         f.burst:SetVertexColor(r + (1 - r) * 0.70, g + (1 - g) * 0.70, b + (1 - b) * 0.70, 1)
         f.burst:SetAlpha(0)

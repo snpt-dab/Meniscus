@@ -2,14 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.682.
+Last updated: 2026-11-25, version 0.1.683.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 11 | Quick Cure in a fight, and the smoke (0.1.682) | `/reload`. Go into a fight with a disease on you; get one during a fight too if you can | Does the pill now stay through the fight? Does it show for one caught DURING the fight? Does the disease smoke now look like the mana orb’s mist? Then `/reload` |
-| 12 | Critical hit numbers (0.1.682) | Fight until a crit | Whether crits at half as large again are right |
+| 11 | Disease smoke (0.1.683) | `/reload` with a disease on you | Does it now read as smoke billowing up off the pill (soft, large, drifting), with no pinwheels and no dots? Is it behind the pill, not over its text? |
 | 10 | The figure on another character’s full sheet (0.1.675) | `/reload`, Roster, another character, "Open the full sheet". A small "Figure 1 of N" pill sits over the figure: click through the ways. Then `/reload` | For each way: is there a figure, is it the right race and sex, and is it wearing that character’s gear (not yours, not nothing)? |
 | 7 | Righteous Fury through Quick Buff (0.1.679) | `/reload`. With Righteous Fury off, out of a fight | Does the Quick Buff pill offer it (it should, since you have cast it before)? After clicking the buff off with time left, does it stop offering, with a line in chat? Do seals still get their ring, and Righteous Fury none? |
 | 2 | Buff ring out of a fight (0.1.665) | Let a seal run out with no fight | Whether it glides to mid-screen for its last seconds |
@@ -36,6 +35,8 @@ Last updated: 2026-11-25, version 0.1.682.
 
 ## Settled recently
 
+- Quick Cure in a fight: the pill stays and the cure click works (your word, 2026-11-25).
+- Critical hit numbers: 2.3 times was too much; back to 1.55.
 - The rule for buffs (yours, 2026-11-25): under five minutes a ring, five minutes or more the Quick Buff pill. Righteous Fury moved to Quick Buff (offered once you have cast it; click the buff off to stop). Battle Shout is a ring only.
 - Roster and the full sheet open and show (tiles, card). The emblem was shown because that character had no race or sex on file yet (not logged in since 0.1.672).
 - Upgrade arrows for armour-only gains (0.1.668): confirmed.
