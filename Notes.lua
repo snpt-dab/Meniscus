@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [723] = {
+        "Tooltips: a second try at saying what a grimoire's spell does (the first showed nothing). It appears a moment after you hover.",
+    },
     [722] = {
         "Tooltips: an item that teaches a spell (a pet grimoire, say) also says what that spell does, where the game will tell us.",
     },

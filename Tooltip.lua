@@ -364,71 +364,101 @@ local function markStats(tip)
     return changed
 end
 
--- (0.1.722) An item that teaches a spell (a grimoire, a book) says only
--- "Use: Teaches X": what X does is added under it. Which spell is taught is
--- asked three ways, since none is yet seen to work on this client: a number
--- on the tooltip's own "teaches" line, the item's first triggered spell,
--- the item's use spell. A description that is itself only "Teaches ..." (the
--- use spell's) is passed over. What each way gave: MinimalUIDB.teachdiag.
-local taughtSaid = {}
+-- (0.1.722, redone 0.1.723) An item that teaches a spell (a grimoire, a
+-- book) says only "Use: Teaches Imp Blood Pact (Rank 1)": what the spell does
+-- is added under it. The game names only the spell that does the teaching
+-- (seen 2026-11-26: the tooltip line's spellID, the item's triggered spell
+-- and its use spell are all that one, described "Teaches ..."). So the
+-- taught spell is found by its name: the spell numbers are walked once per
+-- name (a few thousand a frame) for spells called that, with or without the
+-- leading word ("Imp"), and the one of the same rank whose description is
+-- not itself "Teaches ..." is used. English wording. What was found:
+-- MinimalUIDB.teachdiag.
+local taughtSaid, taughtBusy = {}, false
+local SCAN_TO, SCAN_STEP = 40000, 4000
 local function plain(v) return type(v) == "string" and not issecretvalue(v) and v ~= "" and v or nil end
+local function teachNote(key, note)
+    local db = MinimalUIDB
+    if not db then return end
+    db.teachdiag = type(db.teachdiag) == "table" and db.teachdiag or {}
+    local n = 0
+    for _ in pairs(db.teachdiag) do n = n + 1 end
+    if db.teachdiag[tostring(key)] or n < 20 then db.teachdiag[tostring(key)] = note end
+end
+local function taughtLines(tip, text)
+    tip:AddLine(" ")
+    tip:AddLine(text, 0.78, 0.78, 0.82, true)
+end
+-- Among the spells of that name: the rank asked for, described, not a teacher.
+local function settle(key, ids, rank, tip, try)
+    local best, any, waiting = nil, nil, false
+    for _, id in ipairs(ids) do
+        local okD, d = pcall(C_Spell.GetSpellDescription, id)
+        d = okD and plain(d) or nil
+        local okS, sub = pcall(C_Spell.GetSpellSubtext, id)
+        sub = okS and plain(sub) or nil
+        if not d then
+            waiting = true
+            if C_Spell.RequestLoadSpellData then pcall(C_Spell.RequestLoadSpellData, id) end
+        elseif not d:find("^Teach") then
+            any = any or d
+            if not best and rank and sub == rank then best = d end
+        end
+    end
+    if not best and waiting and try < 6 then
+        C_Timer.After(0.3, function() settle(key, ids, rank, tip, try + 1) end)
+        return
+    end
+    taughtBusy = false
+    local text = best or any
+    taughtSaid[key] = text or false
+    teachNote(key, #ids .. " spells of that name; " .. (best and "rank matched" or any and "rank NOT matched, first used" or "none described"))
+    if text and tip:IsShown() then
+        local ok, _, link = pcall(tip.GetItem, tip)
+        if ok and plain(link) and link:find("item:" .. key .. ":", 1, true) then
+            taughtLines(tip, text)
+            pcall(tip.Show, tip)
+        end
+    end
+end
+local function scan(key, names, rank, tip)
+    taughtBusy = true
+    local ids, at = {}, 1
+    local getName = C_Spell.GetSpellName
+    local function step()
+        local to = math.min(at + SCAN_STEP - 1, SCAN_TO)
+        for id = at, to do
+            local ok, n = pcall(getName, id)
+            if ok and n and not issecretvalue(n) and names[n] and #ids < 40 then ids[#ids + 1] = id end
+        end
+        at = to + 1
+        if at <= SCAN_TO then C_Timer.After(0, step) else settle(key, ids, rank, tip, 0) end
+    end
+    step()
+end
 local function taught(tip, data)
     if type(data) ~= "table" or type(data.lines) ~= "table" then return end
+    if not (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellDescription and C_Spell.GetSpellSubtext) then return end
     local LT = Enum and Enum.TooltipDataLineType
     local learnType = LT and LT.ItemSpellTriggerLearn
-    local line
+    local said
     for _, ln in ipairs(data.lines) do
         local lt = plain(ln.leftText)
-        if (learnType and ln.type == learnType) or (lt and lt:find("^[^:]+: Teach")) then line = ln break end
+        local what = lt and lt:match("^[^:]+: (Teach.+)$")
+        if what or (learnType and ln.type == learnType and lt) then said = what or lt break end
     end
-    if not line then return end
-    local itemID = type(data.id) == "number" and data.id or nil
-    local key = itemID or plain(line.leftText) or "?"
+    local key = type(data.id) == "number" and data.id or nil
+    if not (said and key) then return end
     local text = taughtSaid[key]
-    if text == nil then
-        local tries, notes = {}, {}
-        for _, k in ipairs({ "spellID", "tooltipID", "id" }) do
-            if type(line[k]) == "number" then tries[#tries + 1] = { "line." .. k, line[k] } end
-        end
-        if itemID and C_Item then
-            if C_Item.GetFirstTriggeredSpellForItem then
-                local okQ, q = pcall(C_Item.GetItemQualityByID, itemID)
-                local ok, id = pcall(C_Item.GetFirstTriggeredSpellForItem, itemID, okQ and type(q) == "number" and q or 1)
-                if ok and type(id) == "number" then tries[#tries + 1] = { "triggered", id } end
-            end
-            if C_Item.GetItemSpell then
-                local ok, _, id = pcall(C_Item.GetItemSpell, itemID)
-                if ok and type(id) == "number" then tries[#tries + 1] = { "use spell", id } end
-            end
-        end
-        local waiting = false
-        for _, t in ipairs(tries) do
-            local ok, d = pcall(C_Spell.GetSpellDescription, t[2])
-            d = ok and plain(d) or nil
-            notes[#notes + 1] = t[1] .. " " .. t[2] .. ": " .. (d and d:sub(1, 60) or "nothing")
-            if not d then
-                waiting = true
-                if C_Spell.RequestLoadSpellData then pcall(C_Spell.RequestLoadSpellData, t[2]) end
-            elseif not text and not d:find("^Teach") then
-                text = d
-            end
-        end
-        if MinimalUIDB then
-            local db = MinimalUIDB
-            db.teachdiag = type(db.teachdiag) == "table" and db.teachdiag or {}
-            local n = 0
-            for _ in pairs(db.teachdiag) do n = n + 1 end
-            if db.teachdiag[tostring(key)] or n < 20 then
-                db.teachdiag[tostring(key)] = #notes > 0 and table.concat(notes, " | ") or "no way gave a spell"
-            end
-        end
-        -- (Kept once there is an answer, or once nothing is still loading.)
-        if text or not waiting then taughtSaid[key] = text or false end
-    end
-    if text then
-        tip:AddLine(" ")
-        tip:AddLine(text, 0.78, 0.78, 0.82, true)
-    end
+    if text then return taughtLines(tip, text) end
+    if text == false or taughtBusy then return end
+    local name, rank = said:match("^Teach%a* (.-) %((.-)%)%.?$")
+    if not name then name = said:match("^Teach%a* (.-)%.?$") end
+    if not plain(name) then taughtSaid[key] = false return end
+    local names = { [name] = true }
+    local rest = name:match("^%S+ (.+)$")
+    if rest then names[rest] = true end
+    scan(key, names, rank, tip)
 end
 
 local function onItem(tip, data)
