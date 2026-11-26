@@ -1034,6 +1034,52 @@ function ns.ItemUnusable(link)
     return nil
 end
 
+-- (0.1.719) What an item's tooltip says under its name, for showing on a
+-- card without a mouseover: a list of { text, r, g, b } (a line's right half
+-- joined on), blank lines left out. nil, true while the game is still
+-- fetching the item. Read from a tooltip of our own, so nothing another
+-- addon (or this one) hangs on the game's tooltip is in it.
+function ns.ItemLines(link, most)
+    if type(link) ~= "string" then return nil end
+    local out = {}
+    local function add(lt, rt, r, g, b)
+        if type(lt) ~= "string" or issecretvalue(lt) then return end
+        if type(rt) == "string" and not issecretvalue(rt) and rt:gsub("%s", "") ~= "" then lt = lt .. "    " .. rt end
+        if lt:gsub("%s", "") == "" then return end
+        if most and #out >= most then return end
+        out[#out + 1] = { lt, type(r) == "number" and r or 1, type(g) == "number" and g or 1, type(b) == "number" and b or 1 }
+    end
+    local TI = _G.C_TooltipInfo
+    if TI and TI.GetHyperlink then
+        local ok, data = pcall(TI.GetHyperlink, link)
+        if ok and type(data) == "table" and type(data.lines) == "table" then
+            for i, ln in ipairs(data.lines) do
+                if fetching(ln.leftText) then return nil, true end
+                local c = ln.leftColor
+                if i > 1 then add(ln.leftText, ln.rightText, c and c.r, c and c.g, c and c.b) end
+            end
+            return out
+        end
+    end
+    if not scanTip then
+        local ok, tip = pcall(CreateFrame, "GameTooltip", "MeniscusItemScan", UIParent, "GameTooltipTemplate")
+        if not ok then return nil end
+        scanTip = tip
+    end
+    scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+    if not pcall(scanTip.SetHyperlink, scanTip, link) then return nil end
+    for i = 1, scanTip:NumLines() do
+        local L, R = _G["MeniscusItemScanTextLeft" .. i], _G["MeniscusItemScanTextRight" .. i]
+        local lt = L and L:GetText()
+        if type(lt) == "string" and not issecretvalue(lt) and fetching(lt) then return nil, true end
+        if i > 1 and L then
+            local r, g, b = L:GetTextColor()
+            add(lt, R and R:IsShown() and R:GetText() or nil, r, g, b)
+        end
+    end
+    return out
+end
+
 -- The heaviest armor this character can wear, as the item subclass number
 -- (1 cloth, 2 leather, 3 mail, 4 plate). Read from the armor proficiencies
 -- the character actually knows; if those can't be read, from the class

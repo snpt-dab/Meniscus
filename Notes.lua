@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [719] = {
+        "Professions: the recipe card shows what the made item does (its tooltip text), without a mouseover.",
+    },
     [718] = {
         "Combat numbers: a heal of yours on someone you aren't targeting (a party member, say) now shows as a green number. Settings, Combat, \"Your heals on others\" turns it off.",
         "Level-up card: level 13 says the Dungeon Finder has opened.",

@@ -518,6 +518,11 @@ local function buildDetail()
     d.desc:SetJustifyH("LEFT")
     d.desc:SetSpacing(2)
     pcall(d.desc.SetMaxLines, d.desc, 4)
+    -- (0.1.719) What the made item's own tooltip says, on the card.
+    d.item = text(d, 11, false)
+    d.item:SetWidth(DETAIL_W - 32)
+    d.item:SetJustifyH("LEFT")
+    d.item:SetSpacing(3)
     d.section = text(d, 10, true, T.textDim)
     d.section:SetText("REAGENTS")
 
@@ -561,7 +566,7 @@ end
 
 local missingNames = false
 local nameTries = 0
-local DETAIL_PARTS = { "box", "name", "sub", "info", "desc", "section" }
+local DETAIL_PARTS = { "box", "name", "sub", "info", "desc", "item", "section" }
 local RING_SHORT = { 0.42, 0.20, 0.20, 1 }
 function showDetail()
     if not win or not win:IsShown() then return end
@@ -629,7 +634,33 @@ function showDetail()
     d.info:SetPoint("TOPLEFT", d, "TOPLEFT", 16, y)
     if #lines > 0 then y = y - d.info:GetStringHeight() - 10 end
 
+    -- The made item's tooltip, under its name: what it does, without a
+    -- mouseover. (A recipe that makes no item has none; its description
+    -- below covers it.)
+    local itemText, itemWait = nil, false
+    do
+        local out = call(TU.GetRecipeOutputItemData, e.id)
+        local link = type(out) == "table" and str(out.hyperlink) or str(call(TU.GetRecipeItemLink, e.id))
+        if link and ns.ItemLines then
+            local got, wait = ns.ItemLines(link, 14)
+            itemWait = wait and true or false
+            if got and #got > 0 then
+                local parts = {}
+                for _, ln in ipairs(got) do
+                    parts[#parts + 1] = string.format("|cff%02x%02x%02x%s|r", math.floor(ln[2] * 255 + 0.5), math.floor(ln[3] * 255 + 0.5), math.floor(ln[4] * 255 + 0.5), ln[1])
+                end
+                itemText = table.concat(parts, "\n")
+            end
+        end
+    end
+    d.item:SetText(itemText or "")
+    d.item:ClearAllPoints()
+    d.item:SetPoint("TOPLEFT", d, "TOPLEFT", 16, y)
+    if itemText then y = y - d.item:GetStringHeight() - 14 end
+
     local desc = str(call(TU.GetRecipeDescription, e.id, {}))
+    -- (Not twice, when the description is the item's own "Use:" line.)
+    if desc and itemText and itemText:find(desc, 1, true) then desc = nil end
     d.desc:SetText(desc or "")
     d.desc:ClearAllPoints()
     d.desc:SetPoint("TOPLEFT", d, "TOPLEFT", 16, y)
@@ -639,7 +670,7 @@ function showDetail()
     d.section:SetPoint("TOPLEFT", d, "TOPLEFT", 16, y)
     d.section:SetShown(#list > 0)
     y = y - 18
-    missingNames = false
+    missingNames = itemWait
     for i, t in ipairs(d.tiles) do
         local rg = list[i]
         if rg then
