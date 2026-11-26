@@ -88,6 +88,25 @@ def count(draws, font_part, text_part=None):
 
 results = []
 
+# (0.1.718) Heals from their own lines.
+results.append(scenario('H1. a heal on a party member out of view: no report, drawn from its line', r'''
+WORLD.combat = true; fire("PLAYER_REGEN_DISABLED")
+line("heal")
+run(1.5)
+''', expect=lambda n, d: (count(d, 'digits', '|Ky') == 1, "one number, from the heal's line")))
+results.append(scenario('H2. a heal on yourself: reported, its line not drawn again', r'''
+WORLD.combat = true; fire("PLAYER_REGEN_DISABLED")
+line("heal")
+run(0.1)
+hit("player", 40, 2, "", "HEAL")
+run(1.5)
+''', expect=lambda n, d: (count(d, 'digits', '|Ky') == 0, 'nothing from the line')))
+results.append(scenario('H3. idle (no fight, no helping spell): a heal line is not drawn', r'''
+WORLD.combat = false
+line("heal")
+run(1.5)
+''', expect=lambda n, d: (count(d, 'digits', '|Ky') == 0, 'nothing drawn')))
+
 # A. alone, a plain swing kills, and the game never reports the hit
 results.append(scenario('A. alone: a swing kills, no hit is ever reported', r'''
 mob("nameplate1", "wolf"); WORLD.units.target = "wolf"

@@ -20,6 +20,10 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [718] = {
+        "Combat numbers: a heal of yours on someone you aren't targeting (a party member, say) now shows as a green number. Settings, Combat, \"Your heals on others\" turns it off.",
+        "Level-up card: level 13 says the Dungeon Finder has opened.",
+    },
     [717] = {
         "New: this window. After an update it lists what changed since the version you had.",
         "Bestiary: a creature's attacks on you are now learned from the game's damage meter (they were not being picked up).",

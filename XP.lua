@@ -690,6 +690,8 @@ local LV_MILESTONE = 10
 local LV_WHY = {
     -- (HUNTER: the player's word, 2026-11-25)
     [10] = { "Talents unlocked", HUNTER = "Talents unlocked  \194\183  Pet quest available" },
+    -- (the player's word, 2026-11-25)
+    [13] = "Dungeon Finder unlocked",
 }
 local function lvWhy(level)
     local w = LV_WHY[level]

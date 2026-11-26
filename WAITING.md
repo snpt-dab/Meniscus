@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.717.
+Last updated: 2026-11-25, version 0.1.718.
 
 ## Needs you, in game
 
@@ -17,11 +17,12 @@ Last updated: 2026-11-25, version 0.1.717.
 | 21 | The game’s refusals in a fight (0.1.716) | `/reload`, play with fights as usual (target things, mouse over the bars in a fight). Then `/reload` | Nothing to look for on screen unless a bar, a spell flyout or the micro menu sits wrong; the saved errors tell the rest |
 | 22 | Patch notes window (0.1.717) | QUIT the game and start it again (a new file: `/reload` is not enough). It should open by itself a few seconds after login, once. `/men notes` opens it again | Does it list the changes since 0.1.703, scroll with the wheel, and stay away after "Got it"? Looks: header band, text, footer |
 | 23 | A creature’s attacks on you, from the meter (0.1.717) | Fight a few things that hit you. Then `/reload` | Bestiary entries gain the attacks used on you; `metercheck` tells me how it went |
+| 24 | Your heals on others as numbers (0.1.718) | In a group, heal a party member you are NOT targeting (a mouseover or party-frame click heal) during a fight; also heal yourself | A green number near where your hits show for the heal on the other player; a heal on yourself shown once, not twice. If a heal on yourself doubles, say so |
 | 17 | Menus and group range told by the game (0.1.710) | Nothing special: open some right-click menus with submenus; be in a group with someone going in and out of range. `/men poll` says how often the game spoke | Any menu that flashes in the game’s own look before ours, or a group frame that fades late or not at all. `/men poll old` if anything is off |
 | 6 | Crafted upgrades between characters | (1) Log in every character once, so each one’s gear is on file. (2) On each character that has a crafting profession, open that profession’s window once (and scroll nowhere: opening is enough), so its recipes are on file. (3) Then on any character open the character window, and on a crafter the profession window | On the character window: a small disc on a gear slot when one of your OTHER characters can craft something better for it, and a "Crafts" tab listing those. On a crafter’s profession window: an arrow on a recipe that would be an upgrade for one of your other characters, and a "For alts" pill that filters to them. Tell me which of the four you see, and whether what they suggest makes sense |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
 | 3 | Dungeon creatures and bosses from the game’s meter (0.1.706, 0.1.715) | A dungeon in a group: trash and a boss. Then `/reload` | In the bestiary: a health and rank Boss for the boss; the dungeon’s creatures listed once each, with kills AND loot on the same entry (not one entry for the name and another for the loot) |
-| 4 | Level-up card reasons (level 10: talents; hunters also "Pet quest available", 0.1.710) | Nothing to test | For each level where something new opens up in this game (a talent point, a new skill rank, mounts, a dungeon): which level and what. The card shown at level-up has a line for it; only level 10 is filled in |
+| 4 | Level-up card reasons (10: talents, hunters also the pet quest; 13: Dungeon Finder, 0.1.718) | Nothing to test | For each level where something new opens up in this game (a talent point, a new skill rank, mounts, a dungeon): which level and what. The card shown at level-up has a line for it; only level 10 is filled in |
 
 ## Read from the saved record after your next reload (nothing for you to do)
 
@@ -64,7 +65,6 @@ Checked and already the right way (do not re-audit): combat log tickets, colours
 
 - A "mail to this alt" hint at the mailbox for crafted pieces flagged for an alt.
 - Level and rank of dungeon creatures from nameplates seen to die.
-- Heal numbers from log lines.
 
 ## The quest dot (hidden since 0.1.604): what the game’s source shows
 

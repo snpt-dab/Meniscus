@@ -1503,6 +1503,8 @@ local function buildNumbers()
     end
     local guess = NP.db.numbersMine ~= false
     local hits, heals, dots = {}, {}, {}   -- when each allowance runs out; plate -> when your effect went on
+    local lastHelp = -99                   -- when you last cast a helping spell
+    local selfHeals = {}                   -- when a heal on YOU was reported (the last few)
     local function helpful(spellID)
         local f = C_Spell and C_Spell.IsSpellHelpful
         local ok, h = pcall(f or _G.IsHelpfulSpell, spellID)
@@ -1640,6 +1642,7 @@ local function buildNumbers()
             end
             if helpful(spellID) then
                 heals[#heals + 1] = now + 1.2
+                lastHelp = now
                 return
             end
             local ok, can = pcall(UnitCanAttack, "player", "target")
@@ -2083,8 +2086,44 @@ local function buildNumbers()
     -- Without one it rises from where your target's numbers do (hang: or,
     -- with numbers set to show over the enemy, from the nameplate of the
     -- enemy you were attacking as the blow was struck).
+    -- (0.1.718) A heal of yours with no report behind it: one on somebody
+    -- who is neither you, your target, nor under a nameplate (a party
+    -- member, mostly). Its line is drawn as its number too, in the heals'
+    -- green, where your numbers go when they have no nameplate. A heal on
+    -- yourself is reported, and already shown from that: its line is spent
+    -- on the report, not drawn again. Not while idle: in a fight, or within
+    -- a quarter of a minute of a helping spell of yours.
+    local function healLineDraw(L, why)
+        if NP.db.numbersHealsOut == false then return false end
+        local now = GetTime()
+        if now - loadedAt < 10 then return false end
+        for i = #selfHeals, 1, -1 do
+            if selfHeals[i] >= L.t - 0.5 then
+                table.remove(selfHeals, i)
+                L.drawn = true
+                note(string.format("  engine: a %s line is the heal on you just reported: not drawn again", L.kind))
+                return true
+            end
+        end
+        if not (fighting(now) or now - lastHelp < 15) then return false end
+        local x, y = railSpot(nil, false)
+        if not x then return false end
+        showUnit = nil
+        local tick = L.kind == "healtick"
+        local f = show(nil, x, y, L.msg, tick and 0.42 or 0.38, tick and 0.80 or 0.92, tick and 0.64 or 0.54, false, tick or nil, nil, nil, true)
+        if not f then return false end
+        L.drawn = true
+        note(string.format("  engine: a %s line drawn as its own number (%s)", L.kind, why))
+        lineSeen(f, L.msg)
+        return true
+    end
     local function lineDraw(L, h, why, hang)
-        if L.drawn or not (textOK and L.msg) or KCLASS[L.kind] ~= "wound" then return false end
+        if L.drawn or not (textOK and L.msg) then return false end
+        if KCLASS[L.kind] == "heal" then
+            if h then return false end
+            return healLineDraw(L, why)
+        end
+        if KCLASS[L.kind] ~= "wound" then return false end
         local now = GetTime()
         if now - loadedAt < 10 then return false end
         local rel, x, y, crit, school, pet, unit = nil, nil, nil, false, nil, false, nil
@@ -2399,7 +2438,9 @@ local function buildNumbers()
             C_Timer.After(0.02, mark)
             return
         end
-        local L = { t = now, kind = kind, life = KSLOW[kind] and 1.6 or 0.15, msg = msg }
+        -- (A heal's line waits longer: the report of a heal on yourself
+        -- must have had time to come before the line is drawn by itself.)
+        local L = { t = now, kind = kind, life = KSLOW[kind] and 1.6 or (KCLASS[kind] == "heal" and 0.45 or 0.15), msg = msg }
         -- (A line printed just behind the kill notice is of that moment too:
         -- the notice has been seen to come before the blow's own line.)
         local atKill = cls == "wound" and now - lastKillAt <= 0.05
@@ -2945,6 +2986,10 @@ local function buildNumbers()
         local onRail, key = false, nil
         local petShown = false
         if mine then
+            if action == "HEAL" then
+                selfHeals[#selfHeals + 1] = GetTime()
+                if #selfHeals > 8 then table.remove(selfHeals, 1) end
+            end
             -- What you take already rises out of the health orb, when that
             -- is on (Extras: orbText): not shown a second time here.
             local EX = ns.modules.Extras
