@@ -1060,7 +1060,17 @@ function Bars:ApplyPetWell()
             for i = 1, 3 do ns.PetMoodWord(wordText[i], curves, i) end
             paintRing(pct(curves.r), pct(curves.g), pct(curves.b), 1)
         end
+        local _, myClass = UnitClass("player")
         function w.mood()
+            -- (0.1.728) Only a hunter's pet has a mood. A warlock's demon was
+            -- given a word too (the game answers for it all the same): no
+            -- word and its own colour for anything that is not a hunter's.
+            if myClass ~= "HUNTER" then
+                for i = 1, 3 do wordText[i]:SetTextColor(0, 0, 0, 0) end
+                local c = w.baseRing
+                if c then paintRing(c[1], c[2], c[3], 1) end
+                return
+            end
             -- The game's own answer first (plain: one word lit, the ring its colour).
             local h = ns.PetMoodNow()
             if h then
