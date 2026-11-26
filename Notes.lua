@@ -101,6 +101,7 @@ ns.NOTES = {
 }
 -- Versions with nothing a player would notice: [number] = true.
 ns.NOTES_QUIET = {
+    [727] = true,
 }
 
 local W, FOOTER_H, MAX_LIST = 480, 52, 380
