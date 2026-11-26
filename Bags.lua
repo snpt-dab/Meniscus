@@ -666,7 +666,26 @@ local function unusable(bag, slot, link)
                 if l.leftColor ~= nil or l.rightColor ~= nil then coloured = true end
                 local lt = l.leftText
                 local skip = type(lt) == "string" and not secret(lt) and (lt == KNOWN or lt:find(DURABLE, 1, true) == 1)
-                if not skip and (isRed(l.leftColor) or isRed(l.rightColor)) then verdict = true end
+                -- (0.1.721) Still being fetched: one red line that is no
+                -- verdict (as on quest rewards, 0.1.713). Asked again.
+                if type(lt) == "string" and not secret(lt) and lt == (_G.RETRIEVING_ITEM_INFO or "Retrieving item information") then
+                    return false
+                end
+                if not skip and (isRed(l.leftColor) or isRed(l.rightColor)) then
+                    verdict = true
+                    -- Which red line said so, by its words: MinimalUIDB.cantwhy
+                    -- (items washed red that the player could equip, 2026-11-26).
+                    local db = MinimalUIDB
+                    if db then
+                        db.cantwhy = type(db.cantwhy) == "table" and db.cantwhy or {}
+                        local rt = l.rightText
+                        local said = (isRed(l.leftColor) and type(lt) == "string" and not secret(lt) and lt)
+                            or (type(rt) == "string" and not secret(rt) and ("(right) " .. rt)) or "?"
+                        local n = 0
+                        for _ in pairs(db.cantwhy) do n = n + 1 end
+                        if db.cantwhy[said] or n < 40 then db.cantwhy[said] = link:match("item:(%d+)") or "?" end
+                    end
+                end
             end
         end
         sure = coloured
