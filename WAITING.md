@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.723.
+Last updated: 2026-11-25, version 0.1.724.
 
 ## Needs you, in game
 
@@ -21,6 +21,7 @@ Last updated: 2026-11-25, version 0.1.723.
 | 25 | Recipe card shows the item's description (0.1.719) | Open a profession, pick recipes: a potion, a piece of gear, an enchant | The item's tooltip text (Use line, stats) under the name, above REAGENTS; nothing doubled; tiles not pushed off the card for long gear tooltips |
 | 26 | Feed button keeps buff food (0.1.720) | Hover the feed button with buff food and plain food in the bags | "Click to feed" names a plain food; "Buff food kept for you: N"; with only buff food left, nothing is fed. Say if a plain food is wrongly kept or a buff food offered |
 | 27 | What a grimoire teaches (0.1.723: found by the spell's name) | Hover a grimoire at the vendor twice, then /reload | The spell's description under the tooltip; if not, I read `teachdiag` |
+| 28 | Mail To box fills whole names (0.1.724) | Type the start of an alt's name, a friend's, a guild member's | Both names filled in, the rest selected; sendable as it stands. Then /reload so I can read `mailwiden` |
 | 17 | Menus and group range told by the game (0.1.710) | Nothing special: open some right-click menus with submenus; be in a group with someone going in and out of range. `/men poll` says how often the game spoke | Any menu that flashes in the game’s own look before ours, or a group frame that fades late or not at all. `/men poll old` if anything is off |
 | 6 | Crafted upgrades between characters | (1) Log in every character once, so each one’s gear is on file. (2) On each character that has a crafting profession, open that profession’s window once (and scroll nowhere: opening is enough), so its recipes are on file. (3) Then on any character open the character window, and on a crafter the profession window | On the character window: a small disc on a gear slot when one of your OTHER characters can craft something better for it, and a "Crafts" tab listing those. On a crafter’s profession window: an arrow on a recipe that would be an upgrade for one of your other characters, and a "For alts" pill that filters to them. Tell me which of the four you see, and whether what they suggest makes sense |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |

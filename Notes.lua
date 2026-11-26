@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [724] = {
+        "Mail: the To box fills in a character's whole name, not the first name alone.",
+    },
     [723] = {
         "Tooltips: a second try at saying what a grimoire's spell does (the first showed nothing). It appears a moment after you hover.",
     },

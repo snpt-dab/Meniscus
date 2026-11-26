@@ -686,7 +686,7 @@ local function suggestName(typed)
         for r, names in pairs(chars) do
             for n in pairs(names) do
                 local full = (r == realm) and n or (n .. "-" .. r)
-                if not (r == realm and n == me) and startsWith(full, lq) then return full end
+                if not (r == realm and (n == me or n:find(me .. " ", 1, true) == 1)) and startsWith(full, lq) then return full end
             end
         end
     end
@@ -721,6 +721,29 @@ local function suggestName(typed)
     end
 end
 
+-- (0.1.724) Forever names have a second name and mail wants both ("First
+-- Last"); a first name alone can't be sent to. Our own lists held first
+-- names only (UnitName's first value), so the box filled in half a name and
+-- the player had to go to the end and press Space for the game to add the
+-- rest. A suggestion with no second name is now put to the game's own list
+-- with that space already on it, and what comes back is used.
+local function widen(name)
+    if type(name) ~= "string" or secret(name) or name:find(" ", 1, true) then return name end
+    local list = _G.AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.MAIL
+    if not (_G.GetAutoCompleteResults and type(list) == "table") then return name end
+    local ask = name .. " "
+    local res = call(GetAutoCompleteResults, ask, 1, #ask, true, list.include, list.exclude)
+    local first = type(res) == "table" and res[1]
+    local full = type(first) == "table" and first.name or first
+    if MinimalUIDB then
+        MinimalUIDB.mailwiden = type(MinimalUIDB.mailwiden) == "table" and MinimalUIDB.mailwiden or {}
+        local k = startsWith(full, ask:lower()) and "second name added by the game's list" or "the game's list had no second name"
+        MinimalUIDB.mailwiden[k] = (MinimalUIDB.mailwiden[k] or 0) + 1
+    end
+    if startsWith(full, ask:lower()) then return full end
+    return name
+end
+
 -- Runs when the To text changes by typing. Completes only when the text got
 -- longer than what was last typed, so deleting never re-completes.
 function ML.CompleteName(self, userInput)
@@ -746,7 +769,7 @@ function ML.CompleteName(self, userInput)
     local prev = self.typed or ""
     self.typed = t
     if t == "" or prev:sub(1, #t) == t then return end
-    local name = short(suggestName(t))
+    local name = short(widen(suggestName(t)))
     if not name or #name <= #t then return end
     ML.toCompletions = (ML.toCompletions or 0) + 1
     self:SetText(name)
@@ -1065,11 +1088,19 @@ local function ghost(f)
 end
 
 function ML:OnInit(db)
-    local me, realm = UnitName("player"), myRealm()
+    local me, second = UnitName("player")
+    local realm = myRealm()
     if MinimalUIDB and type(me) == "string" and not secret(me) and realm ~= "" then
         MinimalUIDB.chars = MinimalUIDB.chars or {}
         MinimalUIDB.chars[realm] = MinimalUIDB.chars[realm] or {}
-        MinimalUIDB.chars[realm][me] = true
+        -- (0.1.724) Kept with its second name, which is what mail is sent
+        -- to; the first name alone, kept until now, is dropped.
+        local full = me
+        if type(second) == "string" and not secret(second) and second ~= "" and not sameRealm(second) then
+            full = me .. " " .. second
+            MinimalUIDB.chars[realm][me] = nil
+        end
+        MinimalUIDB.chars[realm][full] = true
     end
     self.db = db
     ghost(_G.MailFrame)
