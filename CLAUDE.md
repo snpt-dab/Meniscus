@@ -153,6 +153,8 @@ Rings (0.1.710): any spell named "Seal of ..." gets the seals' ring (the user's 
 
 Quest dot on a map pin: tried 2026-11-25, does not mend it (still "invalid", right bearing, wrong height). The dot stays hidden; details in WAITING.md.
 
+Bestiary stage 2 (0.1.715; `readEnemies`): a meter line carries a creature's number AND name, so a record known by name alone (made-up number below zero) or by number alone is made one there (`setName`, which folds). Outdoors the meter always gives both; inside a dungeon it is unseen. Polling to events: stage 2 was judged not worth building (see WAITING.md item 6).
+
 Pets (stages 1-2, 0.1.703-704): `ns.PetMoodNow()` (Bars.lua) asks `C_PetInfo.GetPetHappiness`; Extras.lua `gameSays(id)` asks `C_PetInfo.CanPetEatItem` (a "no" counts only after it has said "yes" to something this session). Both unseen in game.
 
 ## Quick Cure (UnitFrames.lua `BuildCure`)

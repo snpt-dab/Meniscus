@@ -1034,12 +1034,6 @@ local function readEnemies(kills)
     local list = type(ses) == "table" and type(ses.combatSources) == "table" and ses.combatSources or nil
     if not list then meterCheck("enemy view: nothing given") return nil end
     if #list == 0 then meterCheck("enemy view: empty") return nil end
-    local nKill, lvlOf = {}, {}
-    for _, k in ipairs(kills) do
-        local id = mergedTo[k.id] or k.id
-        nKill[id] = (nKill[id] or 0) + 1
-        lvlOf[id] = k.lvl or lvlOf[id]
-    end
     -- (first, who each line is about, and how many lines each creature has)
     local rows, nLine = {}, {}
     for _, src in ipairs(list) do
@@ -1047,10 +1041,33 @@ local function readEnemies(kills)
             if secret(src.totalAmount) then return "hidden" end
             local cid = plain(src.sourceCreatureID) and src.sourceCreatureID > 0 and src.sourceCreatureID or npcOf(src.sourceGUID)
             local name = str(src.name) and src.name or nil
+            -- (0.1.715, stage 2) A creature that is in the book by its name
+            -- alone (killed in a dungeon, where nothing else says which it
+            -- is) or by its number alone (looted, not yet named): the meter
+            -- gives both on one line, so the two are made one here and now,
+            -- without waiting for a corpse to be looted and for the way out
+            -- of the dungeon. Two creatures of one name: the first met keeps it.
+            if cid and name then
+                local byName, numbered = idByName(name), record(cid)
+                if (byName and byName < 0) or (numbered and not numbered.n) then
+                    numbered = numbered or record(cid, true)
+                    if numbered and not numbered.n then
+                        setName(cid, name)
+                        meterCheck("known by name or number alone: made one by the meter", "the meter says " .. name .. " is #" .. cid
+                            .. (byName and byName < 0 and ": what was kept under its name is now under its number" or ": the numbered record has its name"))
+                    end
+                end
+            end
             local rid = recOfSource(cid, name)
             rows[#rows + 1] = { src = src, cid = cid, name = name, rid = rid }
             if rid then nLine[rid] = (nLine[rid] or 0) + 1 end
         end
+    end
+    local nKill, lvlOf = {}, {}
+    for _, k in ipairs(kills) do
+        local id = mergedTo[k.id] or k.id
+        nKill[id] = (nKill[id] or 0) + 1
+        lvlOf[id] = k.lvl or lvlOf[id]
     end
     local learned = false
     for _, row in ipairs(rows) do

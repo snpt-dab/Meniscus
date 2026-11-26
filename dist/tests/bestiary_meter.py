@@ -192,6 +192,15 @@ fight({}, { mine = 300, theirs = 900, enc = { 0, { { creatureID = 202, creatureN
 GROUPED = false''')
 check('a boss not killed: no health taken', ev('health(202)'), '')
 check('  but what it would come to is written down', ev('said("makes about 2000")'), True)
+# 12. (0.1.715) Known by name alone, as a dungeon's creatures are: the meter's line gives its number.
+rt.execute('''fight({ "Ghoul" }, { mine = 500, enemies = { { sourceCreatureID = 300, name = "Ghoul", totalAmount = 500, deathTimeSeconds = 5 } } })''')
+check('a creature known by name: now under its number', ev('MinimalUIDB.bestiary[300] and MinimalUIDB.bestiary[300].n'), 'Ghoul')
+check('  nothing left under a made-up number', ev('(function() for id, r in pairs(MinimalUIDB.bestiary) do if id < 0 and r.n == "Ghoul" then return false end end return true end)()'), True)
+check('  its kill and its health came with it', (ev('MinimalUIDB.bestiary[300].k'), ev('health(300)')), (1, '500'))
+# 13. Known by number alone (looted, not named): the meter's line names it.
+rt.execute('''MinimalUIDB.bestiary[301] = { k = 0 }
+fight({ "Wight" }, { mine = 640, enemies = { { sourceCreatureID = 301, name = "Wight", totalAmount = 640, deathTimeSeconds = 5 } } })''')
+check('a creature known by number: named, with its kill', (ev('MinimalUIDB.bestiary[301].n'), ev('health(301)')), ('Wight', '640'))
 check('nothing went wrong in the reading', ev('MinimalUIDB.metercheck.n["enemy view: error"]'), None)
 
 print()
