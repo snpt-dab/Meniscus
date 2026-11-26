@@ -1116,10 +1116,26 @@ end
 -- What hit you: each attack in a "damage taken" line, with the creature
 -- that made it (by name). Returns whether any was named.
 local function creditHits(taken, tag)
-    local got = false
+    -- (0.1.717) It named nothing in 69 fights: the attacker was looked for
+    -- in "creatureName", which the game's own meter uses for a PET's name.
+    -- For "damage taken" its code reads the attacker from the details that
+    -- come with each attack (combatSpellDetails.unitName, with whether it
+    -- is a creature). That first; a player's attacks are left out.
+    local got, seenAny = false, false
     for _, sp in ipairs(type(taken) == "table" and type(taken.combatSpells) == "table" and taken.combatSpells or {}) do
         local sid = sp.spellID
-        local who = str(sp.creatureName) and sp.creatureName or nil
+        local det = type(sp.combatSpellDetails) == "table" and sp.combatSpellDetails or nil
+        local who
+        if det and str(det.unitName) then
+            local player = det.isMob == false and str(det.unitClassFilename) and det.isPet ~= true
+            if not player then who = det.unitName end
+        end
+        who = who or (str(sp.creatureName) and sp.creatureName) or nil
+        if not who and not seenAny then
+            seenAny = true
+            meterCheck(nil, tag .. ": an attack on you with nobody named (spell " .. tostring(plain(sid) and sid or "?") .. "; details "
+                .. (det and ("unitName " .. (secret(det.unitName) and "hidden" or ("'" .. tostring(det.unitName) .. "'")) .. " creature " .. tostring(det.isMob)) or "none") .. ")")
+        end
         if who then
             got = true
             meterLog(tag .. ": hit by " .. who .. " spell " .. tostring(plain(sid) and sid or "?") .. " total "

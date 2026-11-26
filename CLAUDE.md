@@ -20,6 +20,12 @@ SavedVariables: `_forever_/WTF/Account/<ACCOUNT>/SavedVariables/Meniscus.lua` (M
 - **Line endings are LF.** Patch scripts must write with `open(p, 'w', encoding='utf-8', newline='
 ')`; plain `open(p, 'w')` on Windows writes CRLF and makes every line show as changed.
 
+## Patch notes (the user's rule, 2026-11-25)
+- Every version gets an entry in `Notes.lua`: `ns.NOTES[<n>] = { "..." }` for version 0.1.<n> (the number `dist/build.py` is about to stamp: commits so far + 1), or `ns.NOTES_QUIET[<n>] = true` when a player would notice nothing (tests, notes, a tool of ours). `dist/build.py` refuses to build without one.
+- Write for a tester: what is different on screen or in behaviour, one line each, plain words, no code names, no names of people. Say "Fixed" only for what was seen broken.
+- The window (`MinimalUINotes`) shows, once after an update, every entry above `MinimalUIDB.notesSeen` (account-wide: the last version whose notes were closed) up to the running version, newest first; "Got it" moves the number up. A first install shows nothing. `/men notes [all]` looks back.
+- Never renumber or delete an old entry: a tester may be updating across it. If a commit is amended or history changes the count, fix the numbers before pushing.
+
 ## When to ask for the bigger model
 The user runs day-to-day sessions on Opus and switches to Fable for harder work. You cannot switch models yourself. If you are not Fable and one of these is true, stop and say so in one or two lines ("This is one for Fable: <reason>"), before doing the work, and let the user decide:
 - The request is a performance pass, a cleanup / refactor pass across files, or a new module or Blizzard-window takeover.

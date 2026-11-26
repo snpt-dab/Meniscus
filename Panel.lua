@@ -1512,6 +1512,7 @@ ns.commands.help = function()
         "/men bestiary  what you have learned of the creatures you have met",
         "/men bestiary export  set your records down for sharing (then Share Bestiary.bat)",
         "/men bestiary hp <number>  your target's full health, as its frame shows it (replaces the estimate)",
+        "/men notes [all]  what changed in the last ten versions (all: every version with notes)",
         "/men anchorflag old | new  whether the game's Edit Mode flag is taken down after our own moves of its frames (says what happened)",
         "/men poll old | new  the game's own signals for menus and group range, beside our looking (says how often each spoke)",
         "/men cast kick old | new  whether a cast can be interrupted: from the game's unseen bar, or asked of the game (says what happened)",

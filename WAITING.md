@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.716.
+Last updated: 2026-11-25, version 0.1.717.
 
 ## Needs you, in game
 
@@ -15,6 +15,8 @@ Last updated: 2026-11-25, version 0.1.716.
 | 19 | Quest reward that is still loading (0.1.713) | Open quests you have not seen before, with item rewards | No more "(Can’t use · Retrieving item information)"; a true "Can’t use" with its reason still shows, within half a second |
 | 20 | A whisper in its own tab (0.1.714) | `/reload`, then have a whisper open as its own tab (as in your picture) | No black block hanging over the left edge; the tab plain with the underline when selected; the typing field like the others, inside the wing. Also a whisper tab opened DURING a fight: is its typing field in place once the fight ends? |
 | 21 | The game’s refusals in a fight (0.1.716) | `/reload`, play with fights as usual (target things, mouse over the bars in a fight). Then `/reload` | Nothing to look for on screen unless a bar, a spell flyout or the micro menu sits wrong; the saved errors tell the rest |
+| 22 | Patch notes window (0.1.717) | QUIT the game and start it again (a new file: `/reload` is not enough). It should open by itself a few seconds after login, once. `/men notes` opens it again | Does it list the changes since 0.1.703, scroll with the wheel, and stay away after "Got it"? Looks: header band, text, footer |
+| 23 | A creature’s attacks on you, from the meter (0.1.717) | Fight a few things that hit you. Then `/reload` | Bestiary entries gain the attacks used on you; `metercheck` tells me how it went |
 | 17 | Menus and group range told by the game (0.1.710) | Nothing special: open some right-click menus with submenus; be in a group with someone going in and out of range. `/men poll` says how often the game spoke | Any menu that flashes in the game’s own look before ours, or a group frame that fades late or not at all. `/men poll old` if anything is off |
 | 6 | Crafted upgrades between characters | (1) Log in every character once, so each one’s gear is on file. (2) On each character that has a crafting profession, open that profession’s window once (and scroll nowhere: opening is enough), so its recipes are on file. (3) Then on any character open the character window, and on a crafter the profession window | On the character window: a small disc on a gear slot when one of your OTHER characters can craft something better for it, and a "Crafts" tab listing those. On a crafter’s profession window: an arrow on a recipe that would be an upgrade for one of your other characters, and a "For alts" pill that filters to them. Tell me which of the four you see, and whether what they suggest makes sense |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |

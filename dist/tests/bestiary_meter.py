@@ -201,6 +201,13 @@ check('  its kill and its health came with it', (ev('MinimalUIDB.bestiary[300].k
 rt.execute('''MinimalUIDB.bestiary[301] = { k = 0 }
 fight({ "Wight" }, { mine = 640, enemies = { { sourceCreatureID = 301, name = "Wight", totalAmount = 640, deathTimeSeconds = 5 } } })''')
 check('a creature known by number: named, with its kill', (ev('MinimalUIDB.bestiary[301].n'), ev('health(301)')), ('Wight', '640'))
+# 14. (0.1.717) What hit you, as the game gives it: the attacker in each attack's details, not in "creatureName".
+rt.execute('''fight({ "Boar" }, { mine = 200, enemies = { { sourceCreatureID = 101, name = "Boar", totalAmount = 200, deathTimeSeconds = 5 } },
+    taken = { ["Player-1-0001"] = { combatSpells = {
+        { spellID = 6603, creatureName = "", totalAmount = 30, combatSpellDetails = { unitName = "Boar", isMob = true, isPet = false, unitClassFilename = "" } },
+        { spellID = 5, creatureName = "", totalAmount = 9, combatSpellDetails = { unitName = "Rival", isMob = false, isPet = false, unitClassFilename = "ROGUE" } } } } } })''')
+check('the attacker named in the details: in the book', ev('MinimalUIDB.bestiary[101].c and MinimalUIDB.bestiary[101].c.Melee'), 6603)
+check('  a player who hit you is left out', ev('MinimalUIDB.bestiary[101].c.Rend'), None)
 check('nothing went wrong in the reading', ev('MinimalUIDB.metercheck.n["enemy view: error"]'), None)
 
 print()

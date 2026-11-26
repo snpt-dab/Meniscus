@@ -7,6 +7,13 @@ import os, re, zipfile, glob, subprocess
 # compares the whole string.
 n_commits = int(subprocess.check_output(['git', 'rev-list', '--count', 'HEAD']).decode().strip())
 ver = '0.1.%d' % (n_commits + 1)
+# Patch notes (Notes.lua): every version has an entry a player can read, or
+# is listed as having nothing to notice. No entry, no build.
+import sys
+notes = open('Notes.lua', encoding='utf-8').read()
+if not re.search(r'^\s*\[%d\]\s*=' % (n_commits + 1), notes, flags=re.M):
+    sys.exit('Notes.lua has no entry for %s: add [%d] = { "what a player will notice" } to ns.NOTES, or [%d] = true to ns.NOTES_QUIET.'
+             % (ver, n_commits + 1, n_commits + 1))
 toc = open('Meniscus.toc', encoding='utf-8').read()
 toc = re.sub(r'(## Version:\s*)\S+', lambda m: m.group(1) + ver, toc)
 open('Meniscus.toc', 'w', encoding='utf-8', newline='\n').write(toc)
