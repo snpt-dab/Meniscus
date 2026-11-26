@@ -332,6 +332,52 @@ do
             store[key] = { count = 1, stack = debugstack(2, 12, 0), time = date("%H:%M:%S") }
         end
     end)
+
+    -- (0.1.716) Why the game refused to move its stance bar in a fight, 663
+    -- times in an evening, and to show bar buttons under the mouse, and
+    -- blamed this addon. Its chat window, minimap, bag bar, buff frames and
+    -- the rest are "Edit Mode systems", and on those SetPoint is the game's
+    -- own wrapper, which ends by raising a flag on the Edit Mode manager
+    -- ("an anchor changed"). Whenever one of OUR modules put such a frame
+    -- back in its place, the flag was raised by us, and so carried our
+    -- mark. The manager reads the flag every frame and then runs every
+    -- system's "anchor changed" code: with our mark on it, what that code
+    -- wrote on the action bars (their flyout direction) was marked too, and
+    -- from then on the bars' own layout code counted as ours wherever it
+    -- read that, which in a fight means refused.
+    -- So: after any raising of that flag, if it carries an addon's mark it
+    -- is taken down again (a field set to nothing carries no mark). The
+    -- game's own raisings are left alone. All that is skipped is the game
+    -- recomputing flyout directions for a move of ours, which moved none of
+    -- its bars. "/men anchorflag old" puts this aside (after a /reload);
+    -- what happened is counted in MinimalUIDB.anchorflag.
+    local EM = _G.EditModeManagerFrame
+    local note = function(what)
+        local t = MinimalUIDB and (type(MinimalUIDB.anchorflag) == "table" and MinimalUIDB.anchorflag or {})
+        if not t then return end
+        MinimalUIDB.anchorflag = t
+        t[what] = (t[what] or 0) + 1
+    end
+    if type(EM) == "table" and type(EM.OnEditModeSystemAnchorChanged) == "function" and type(issecurevariable) == "function" then
+        hooksecurefunc(EM, "OnEditModeSystemAnchorChanged", function(self)
+            if MinimalUIDB and MinimalUIDB.anchorFlagOld then return end
+            local ok, clean = pcall(issecurevariable, self, "editModeSystemAnchorDirty")
+            if not ok then return note("could not ask whose the flag is") end
+            if clean then return note("raised by the game: left alone") end
+            self.editModeSystemAnchorDirty = nil
+            note("raised by an addon's move: taken down")
+        end)
+    else
+        C_Timer.After(5, function() note("no Edit Mode manager, or no way to ask whose a field is: nothing done") end)
+    end
+end
+ns.commands = ns.commands or {}
+ns.commands.anchorflag = function(rest)
+    if not MinimalUIDB then return end
+    if rest and rest:find("old") then MinimalUIDB.anchorFlagOld = true elseif rest and rest:find("new") then MinimalUIDB.anchorFlagOld = nil end
+    ns:Print("The Edit Mode anchor flag after our own moves: " .. (MinimalUIDB.anchorFlagOld and "left as it is, as before 0.1.716 (/men anchorflag new, then /reload)."
+        or "taken down (/men anchorflag old, then /reload, puts that aside)."))
+    for what, n in pairs(type(MinimalUIDB.anchorflag) == "table" and MinimalUIDB.anchorflag or {}) do ns:Print("  " .. what .. ": " .. n) end
 end
 
 -- /men profile                 list profiles (current marked)

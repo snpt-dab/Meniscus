@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-25, version 0.1.715.
+Last updated: 2026-11-25, version 0.1.716.
 
 ## Needs you, in game
 
@@ -14,6 +14,7 @@ Last updated: 2026-11-25, version 0.1.715.
 | 15 | Cast bar: "can’t be interrupted" asked of the game (0.1.709) | `/reload`. Target enemies that cast: ordinary ones, and one whose cast can’t be interrupted if you meet one. `/men cast kick` says in chat what the game answered | Is an enemy’s cast amber the moment it starts (no flicker of another colour first), and grey for one that can’t be interrupted? A friendly target’s cast stays the accent colour. If colours go wrong: `/men cast kick old` |
 | 19 | Quest reward that is still loading (0.1.713) | Open quests you have not seen before, with item rewards | No more "(Can’t use · Retrieving item information)"; a true "Can’t use" with its reason still shows, within half a second |
 | 20 | A whisper in its own tab (0.1.714) | `/reload`, then have a whisper open as its own tab (as in your picture) | No black block hanging over the left edge; the tab plain with the underline when selected; the typing field like the others, inside the wing. Also a whisper tab opened DURING a fight: is its typing field in place once the fight ends? |
+| 21 | The game’s refusals in a fight (0.1.716) | `/reload`, play with fights as usual (target things, mouse over the bars in a fight). Then `/reload` | Nothing to look for on screen unless a bar, a spell flyout or the micro menu sits wrong; the saved errors tell the rest |
 | 17 | Menus and group range told by the game (0.1.710) | Nothing special: open some right-click menus with submenus; be in a group with someone going in and out of range. `/men poll` says how often the game spoke | Any menu that flashes in the game’s own look before ours, or a group frame that fades late or not at all. `/men poll old` if anything is off |
 | 6 | Crafted upgrades between characters | (1) Log in every character once, so each one’s gear is on file. (2) On each character that has a crafting profession, open that profession’s window once (and scroll nowhere: opening is enough), so its recipes are on file. (3) Then on any character open the character window, and on a crafter the profession window | On the character window: a small disc on a gear slot when one of your OTHER characters can craft something better for it, and a "Crafts" tab listing those. On a crafter’s profession window: an arrow on a recipe that would be an upgrade for one of your other characters, and a "For alts" pill that filters to them. Tell me which of the four you see, and whether what they suggest makes sense |
 | 8 | Vendor value on loot rows (0.1.664) | Loot a corpse | Whether each sellable item shows its value at the right of its row |
@@ -25,6 +26,7 @@ Last updated: 2026-11-25, version 0.1.715.
 - `apicheck` (0.1.702): which of the calls the review below wants to build on really exist on this client (the game’s docs are shared between its flavours). Written four seconds after login; one `/reload` after that and it can be read.
 - `pollcheck`: how often the game’s own signals spoke for menus and group range, and what our watcher still found first (17).
 - `ringdiag`: each seal cast, by name and number, and whether it got a ring (2).
+- `anchorflag`: how often the Edit Mode flag was raised by the game and by us (21); `errors` should no longer hold `StanceBar:SetPointBase()` or `MultiBarBottomLeftButton...:SetShown()`.
 - `castkick`: how each cast’s "can it be interrupted" was answered (15).
 - `dotpin`: what the game’s engine said of the marker during the trial, four times a second (14).
 - `dolldiag`: whether the game made your figure of another race, and what each piece of gear answered (10).
@@ -73,9 +75,9 @@ Built 0.1.707 as a trial: `/men dotpin` (item 14); `/men dotpin force` adds lead
 
 **The trial’s result (2026-11-25, your report and `dotpin`): lead 1 does not mend it.** With the marker following a map pin the engine still rates the place “invalid” every time (state 0 in all forty readings), so the dot shows only when forced. Its place across the screen is right and follows your turning; its height is not (the marker sat near the top of the screen for a place 164 yards off): a pin has no height, and nor, evidently, does a quest’s spot any more. That is the same half-answer the dot had before it was hidden (right bearing, wrong height, which 0.1.5xx papered over by lifting it to the horizon). What worked before the game’s patch was the engine placing the marker itself; nothing in the game’s interface code brings that back. The dot stays hidden; the trial command stays for when the game changes.
 
-## Found in the saved errors, not yet looked into (2026-11-25)
+## The game’s refusals in a fight, blamed on this addon (looked into 2026-11-25, 0.1.716)
 
-The game refused two things in a fight and blamed this addon: moving its stance bar (663 times in one evening, from its pet bar’s own update) and showing or hiding buttons of the lower left bar as the mouse came onto one (3 times). Nothing was seen to go wrong on screen. Both mean something of ours has marked the game’s bar code as touched by an addon; finding what is a job of its own.
+The game refused to move its stance bar (663 times in one evening) and to show buttons of the lower left bar under the mouse (3 times). Cause, by the game’s own code: whenever one of our modules puts one of the game’s frames back in its place (chat, minimap, bag bar, buffs), the game’s anchoring wrapper raises a flag that then carried our mark into its action-bar layout. 0.1.716 takes the flag down again after our own moves. Reasoned, not yet seen to cure it: after a session with fights, the saved errors should have neither refusal, and `anchorflag` says how often the flag was taken down. `/men anchorflag old` then `/reload` if any bar, flyout or the micro menu behaves oddly.
 
 ## Settled recently
 
