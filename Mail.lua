@@ -673,6 +673,19 @@ local function short(name)
     return name
 end
 
+-- (0.1.725) The game's own list of names. Asked through C_AutoComplete,
+-- which is what its mail box uses; the old global of the same name is only
+-- there when a compatibility addon of the game's is loaded, and here it is
+-- not, so this list was never being asked at all.
+local function gameNames(typed)
+    local list = _G.AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.MAIL
+    local f = (C_AutoComplete and C_AutoComplete.GetAutoCompleteResults) or _G.GetAutoCompleteResults
+    if not (f and type(list) == "table") then return nil end
+    local res = call(f, typed, 1, #typed, true, list.include, list.exclude)
+    local first = type(res) == "table" and res[1]
+    return type(first) == "table" and first.name or first
+end
+
 local function startsWith(name, lq)
     return type(name) == "string" and not secret(name) and #name > #lq and name:lower():sub(1, #lq) == lq
 end
@@ -712,13 +725,8 @@ local function suggestName(typed)
         end
     end
     -- The client's own list (recently seen players, etc.).
-    local list = _G.AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.MAIL
-    if _G.GetAutoCompleteResults and type(list) == "table" then
-        local res = call(GetAutoCompleteResults, typed, 1, #typed, true, list.include, list.exclude)
-        local first = type(res) == "table" and res[1]
-        local name = type(first) == "table" and first.name or first
-        if startsWith(name, lq) then return name end
-    end
+    local name = gameNames(typed)
+    if startsWith(name, lq) then return name end
 end
 
 -- (0.1.724) Forever names have a second name and mail wants both ("First
@@ -729,15 +737,15 @@ end
 -- with that space already on it, and what comes back is used.
 local function widen(name)
     if type(name) ~= "string" or secret(name) or name:find(" ", 1, true) then return name end
-    local list = _G.AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.MAIL
-    if not (_G.GetAutoCompleteResults and type(list) == "table") then return name end
     local ask = name .. " "
-    local res = call(GetAutoCompleteResults, ask, 1, #ask, true, list.include, list.exclude)
-    local first = type(res) == "table" and res[1]
-    local full = type(first) == "table" and first.name or first
+    -- (Friends and guild first, which do hold both names: that is where the
+    -- second name came from when the player pressed Space by hand. Then the
+    -- game's list.)
+    local full = suggestName(ask)
+    if not startsWith(full, ask:lower()) then full = gameNames(ask) end
     if MinimalUIDB then
         MinimalUIDB.mailwiden = type(MinimalUIDB.mailwiden) == "table" and MinimalUIDB.mailwiden or {}
-        local k = startsWith(full, ask:lower()) and "second name added by the game's list" or "the game's list had no second name"
+        local k = startsWith(full, ask:lower()) and "second name found" or "no second name to be had"
         MinimalUIDB.mailwiden[k] = (MinimalUIDB.mailwiden[k] or 0) + 1
     end
     if startsWith(full, ask:lower()) then return full end
