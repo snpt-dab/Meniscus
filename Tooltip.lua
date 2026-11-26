@@ -364,7 +364,75 @@ local function markStats(tip)
     return changed
 end
 
-local function onItem(tip)
+-- (0.1.722) An item that teaches a spell (a grimoire, a book) says only
+-- "Use: Teaches X": what X does is added under it. Which spell is taught is
+-- asked three ways, since none is yet seen to work on this client: a number
+-- on the tooltip's own "teaches" line, the item's first triggered spell,
+-- the item's use spell. A description that is itself only "Teaches ..." (the
+-- use spell's) is passed over. What each way gave: MinimalUIDB.teachdiag.
+local taughtSaid = {}
+local function plain(v) return type(v) == "string" and not issecretvalue(v) and v ~= "" and v or nil end
+local function taught(tip, data)
+    if type(data) ~= "table" or type(data.lines) ~= "table" then return end
+    local LT = Enum and Enum.TooltipDataLineType
+    local learnType = LT and LT.ItemSpellTriggerLearn
+    local line
+    for _, ln in ipairs(data.lines) do
+        local lt = plain(ln.leftText)
+        if (learnType and ln.type == learnType) or (lt and lt:find("^[^:]+: Teach")) then line = ln break end
+    end
+    if not line then return end
+    local itemID = type(data.id) == "number" and data.id or nil
+    local key = itemID or plain(line.leftText) or "?"
+    local text = taughtSaid[key]
+    if text == nil then
+        local tries, notes = {}, {}
+        for _, k in ipairs({ "spellID", "tooltipID", "id" }) do
+            if type(line[k]) == "number" then tries[#tries + 1] = { "line." .. k, line[k] } end
+        end
+        if itemID and C_Item then
+            if C_Item.GetFirstTriggeredSpellForItem then
+                local okQ, q = pcall(C_Item.GetItemQualityByID, itemID)
+                local ok, id = pcall(C_Item.GetFirstTriggeredSpellForItem, itemID, okQ and type(q) == "number" and q or 1)
+                if ok and type(id) == "number" then tries[#tries + 1] = { "triggered", id } end
+            end
+            if C_Item.GetItemSpell then
+                local ok, _, id = pcall(C_Item.GetItemSpell, itemID)
+                if ok and type(id) == "number" then tries[#tries + 1] = { "use spell", id } end
+            end
+        end
+        local waiting = false
+        for _, t in ipairs(tries) do
+            local ok, d = pcall(C_Spell.GetSpellDescription, t[2])
+            d = ok and plain(d) or nil
+            notes[#notes + 1] = t[1] .. " " .. t[2] .. ": " .. (d and d:sub(1, 60) or "nothing")
+            if not d then
+                waiting = true
+                if C_Spell.RequestLoadSpellData then pcall(C_Spell.RequestLoadSpellData, t[2]) end
+            elseif not text and not d:find("^Teach") then
+                text = d
+            end
+        end
+        if MinimalUIDB then
+            local db = MinimalUIDB
+            db.teachdiag = type(db.teachdiag) == "table" and db.teachdiag or {}
+            local n = 0
+            for _ in pairs(db.teachdiag) do n = n + 1 end
+            if db.teachdiag[tostring(key)] or n < 20 then
+                db.teachdiag[tostring(key)] = #notes > 0 and table.concat(notes, " | ") or "no way gave a spell"
+            end
+        end
+        -- (Kept once there is an answer, or once nothing is still loading.)
+        if text or not waiting then taughtSaid[key] = text or false end
+    end
+    if text then
+        tip:AddLine(" ")
+        tip:AddLine(text, 0.78, 0.78, 0.82, true)
+    end
+end
+
+local function onItem(tip, data)
+    pcall(taught, tip, data)
     -- (First, and whatever follows: the "Equipped" comparison tooltips
     -- can't say which item they hold, and gave up below before this ran.)
     pcall(markStats, tip)
@@ -435,7 +503,7 @@ function TT:OnInit(db)
     end
     if TooltipDataProcessor and Enum and Enum.TooltipDataType then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tip) pcall(onUnit, tip) end)
-        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tip) pcall(onItem, tip) end)
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tip, data) pcall(onItem, tip, data) end)
     else
         GameTooltip:HookScript("OnTooltipSetUnit", function(tip) pcall(onUnit, tip) end)
         GameTooltip:HookScript("OnTooltipSetItem", function(tip) pcall(onItem, tip) end)

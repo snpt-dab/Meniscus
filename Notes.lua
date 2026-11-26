@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [722] = {
+        "Tooltips: an item that teaches a spell (a pet grimoire, say) also says what that spell does, where the game will tell us.",
+    },
     [721] = {
         "Bags: an item still loading is no longer washed red as if you couldn't use it.",
     },
