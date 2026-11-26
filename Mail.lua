@@ -737,6 +737,10 @@ end
 -- with that space already on it, and what comes back is used.
 local function widen(name)
     if type(name) ~= "string" or secret(name) or name:find(" ", 1, true) then return name end
+    -- (0.1.726) A name still wearing a realm ("First-Realm", which is how
+    -- an alt comes out of our list when the realm is spelt another way)
+    -- was asked for as "First-Realm " and nothing has that. Asked bare.
+    name = name:match("^([^%-]+)%-") or name
     local ask = name .. " "
     -- (Friends and guild first, which do hold both names: that is where the
     -- second name came from when the player pressed Space by hand. Then the
@@ -745,7 +749,7 @@ local function widen(name)
     if not startsWith(full, ask:lower()) then full = gameNames(ask) end
     if MinimalUIDB then
         MinimalUIDB.mailwiden = type(MinimalUIDB.mailwiden) == "table" and MinimalUIDB.mailwiden or {}
-        local k = startsWith(full, ask:lower()) and "second name found" or "no second name to be had"
+        local k = startsWith(full, ask:lower()) and "second name found (0.1.726)" or "no second name to be had (0.1.726)"
         MinimalUIDB.mailwiden[k] = (MinimalUIDB.mailwiden[k] or 0) + 1
     end
     if startsWith(full, ask:lower()) then return full end
@@ -1104,6 +1108,12 @@ function ML:OnInit(db)
         -- (0.1.724) Kept with its second name, which is what mail is sent
         -- to; the first name alone, kept until now, is dropped.
         local full = me
+        -- (0.1.726: the second value was not there at this point; the
+        -- game's "First Last" is asked for as well.)
+        if not (type(second) == "string" and not secret(second) and second ~= "") then
+            local both = call(_G.GetUnitName, "player", true)
+            second = type(both) == "string" and not secret(both) and both:match("^" .. me:gsub("%p", "%%%0") .. " (.+)$") or nil
+        end
         if type(second) == "string" and not secret(second) and second ~= "" and not sameRealm(second) then
             full = me .. " " .. second
             MinimalUIDB.chars[realm][me] = nil

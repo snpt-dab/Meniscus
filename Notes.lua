@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [726] = {
+        "Mail: a third fix for the To box filling in a first name alone.",
+    },
     [725] = {
         "Mail: a second fix for the To box filling in a first name alone.",
     },
