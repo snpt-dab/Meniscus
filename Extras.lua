@@ -654,14 +654,41 @@ local function isFood(id)
     return ok and classID == 0 and subID == 5
 end
 
+-- (0.1.720) Food that gives you a buff is yours, not the pet's: the feed
+-- button never offers it. Told from the item's own tooltip: plain food only
+-- "Restores N health over N sec. Must remain seated while eating."; a buff
+-- food goes on about becoming well fed and what you gain. true / false, or
+-- nil while the game is still fetching the item (not offered until known).
+local buffSaid = {}
+local function buffFood(id)
+    local v = buffSaid[id]
+    if v ~= nil then return v end
+    if not ns.ItemLines then return false end
+    local lines, wait = ns.ItemLines("item:" .. id)
+    if wait or not lines or #lines == 0 then return nil end
+    v = false
+    for _, ln in ipairs(lines) do
+        local s = ln[1]:lower()
+        if s:find("well fed", 1, true) or s:find("increas", 1, true) or s:find("you will", 1, true) or s:find(" gain", 1, true) then
+            v = true
+            break
+        end
+    end
+    buffSaid[id] = v
+    return v
+end
+
 -- Bags: feedings of good food, the food to use (lowest level first, so the
--- good stuff is kept), and how many foods are still unknown.
+-- good stuff is kept), how many foods are still unknown, how many buff
+-- foods it would eat are being kept back, and whether any food's tooltip
+-- was still loading.
 local foodSeen = {}
 local function surveyFood()
     local fam = petFamily()
     wipe(foodSeen)
     local good, unknown, best, bestLevel = 0, 0, nil, nil
-    if not fam then return 0, 0, nil end
+    local kept, waiting = 0, false
+    if not fam then return 0, 0, nil, 0, false end
     for bag = 0, (_G.NUM_BAG_SLOTS or 4) do
         local n = call(CC.GetContainerNumSlots or _G.GetContainerNumSlots, bag)
         for slot = 1, (num(n) and n or 0) do
@@ -670,7 +697,10 @@ local function surveyFood()
             if num(id) and isFood(id) then
                 local v = verdict(fam, id)
                 local count = num(info.stackCount) and info.stackCount or 1
-                if v == true then
+                local buff = v == true and buffFood(id)
+                if v == true and buff ~= false then
+                    if buff then kept = kept + count else waiting = true end
+                elseif v == true then
                     good = good + count
                     local _, _, _, _, minLevel = call((C_Item and C_Item.GetItemInfo) or _G.GetItemInfo, id)
                     minLevel = num(minLevel) and minLevel or 0
@@ -682,7 +712,7 @@ local function surveyFood()
             end
         end
     end
-    return good, unknown, best
+    return good, unknown, best, kept, waiting
 end
 
 local function buildPetFood()
@@ -706,8 +736,9 @@ local function buildPetFood()
     text:SetJustifyH("CENTER")
     btn:Hide()
 
-    local good, unknown, best = 0, 0, nil
+    local good, unknown, best, kept = 0, 0, nil, 0
     local placed, wantMacro = false, nil
+    local again = 0
     local function feedName()
         local f = C_Spell and C_Spell.GetSpellName
         local n = f and call(f, FEED_PET)
@@ -747,9 +778,17 @@ local function buildPetFood()
         end
     end
     local function refresh()
-        good, unknown, best = surveyFood()
+        local waiting
+        good, unknown, best, kept, waiting = surveyFood()
         show()
         apply()
+        -- (A food whose tooltip was still loading: look again shortly.)
+        if waiting and again < 6 then
+            again = again + 1
+            C_Timer.After(1, function() pcall(refresh) end)
+        elseif not waiting then
+            again = 0
+        end
     end
     -- The pet is less than happy (Content or Unhappy): a gold wash breathes
     -- over the button, out of combat, until it is fed. The mood is a hidden
@@ -821,6 +860,9 @@ local function buildPetFood()
             GameTooltip:AddLine(good == 1 and "1 feeding left" or (good .. " feedings left"), 0.6, 0.6, 0.65)
         else
             GameTooltip:AddLine("Nothing in your bags it eats", 0.95, 0.38, 0.36)
+        end
+        if kept > 0 then
+            GameTooltip:AddLine("Buff food kept for you: " .. kept, 0.6, 0.6, 0.65)
         end
         local eats = gameDiet()
         if eats then GameTooltip:AddLine("Eats: " .. eats, 0.6, 0.6, 0.65) end

@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [720] = {
+        "Hunter pets: the feed button never uses food that gives you a buff. Its tooltip says how many such foods are being kept for you.",
+    },
     [719] = {
         "Professions: the recipe card shows what the made item does (its tooltip text), without a mouseover.",
     },
