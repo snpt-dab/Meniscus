@@ -956,6 +956,22 @@ end
 -- Blizzard lays the frame out afresh (which puts its own value back) ours
 -- is restored. What the frame offers is noted in MinimalUIDB.buffwrap.
 local wraps, rooms, wrapping = {}, {}, false
+-- (0.1.734) The game's debuff frame keeps six empty places among its
+-- buttons for auras an addon may not see (privateAuraAnchor1..6): shown,
+-- sized like an icon, laid out after the real debuffs, drawing nothing.
+-- With one debuff on you they filled the rest of the first row and half a
+-- second one, the block was measured two rows tall, and standing that
+-- block on the room's floor lifted the real debuff a row: out of the
+-- panel's top, over the buffs. They are left out of every measurement.
+local function placeholder(fr, b)
+    if b.anchorID ~= nil then return true end
+    for i = 1, 8 do
+        local a = fr["privateAuraAnchor" .. i]
+        if a == nil then return false end
+        if a == b then return true end
+    end
+    return false
+end
 local wrapTo
 local targets, alignSoon -- filled in and defined further down (alignment)
 local function applyWrap(fr)
@@ -1015,7 +1031,7 @@ wrapTo = function(fr, room)
     local pitch, width
     local first
     for _, b in ipairs(fr.auraFrames or {}) do
-        if b:IsShown() and b:GetLeft() then
+        if b:IsShown() and b:GetLeft() and not placeholder(fr, b) then
             local k = b:GetEffectiveScale() / ui
             width = b:GetWidth() * k
             if first then
@@ -1061,7 +1077,7 @@ local function alignNow(fr)
     local ui = UIParent:GetEffectiveScale()
     local l, r, top, bot
     for _, b in ipairs(fr.auraFrames or {}) do
-        if b:IsShown() and b:GetLeft() then
+        if b:IsShown() and b:GetLeft() and not placeholder(fr, b) then
             local k = b:GetEffectiveScale() / ui
             local bl, br, bt, bb = b:GetLeft() * k, b:GetRight() * k, b:GetTop() * k, b:GetBottom() * k
             if not l or bl < l then l = bl end

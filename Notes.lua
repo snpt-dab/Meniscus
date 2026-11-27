@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [734] = {
+        "Your debuffs: a debuff on you stood a row too high, over your buffs and out of the panel's top. It now stands at the bottom of the space beside your portrait.",
+    },
     [733] = {
         "Hearthstone disc: moved from under the cast bar to just outside the map's rim, low on the left.",
     },

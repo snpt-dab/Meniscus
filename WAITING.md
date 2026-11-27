@@ -2,12 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.733.
+Last updated: 2026-11-26, version 0.1.734.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 35 | A debuff on you stood over your buffs (0.1.734) | `/reload`, get a debuff (a poison will do) | Does it stand along the bottom of the space beside your portrait, under the buffs, inside the panel? |
 | 34 | Crafted weapons for the others (0.1.733 writes down why each was or was not offered) | On the paladin: `/reload`, open Blacksmithing, click through the dagger recipes, `/reload` | Nothing to look at: I read `altwhy` and say why the druid was or was not offered them |
 | 33 | Roster figure of the other sex: the game takes a race, not a sex | On a sheet of an alt of the other sex, click the small pill over the figure to step through the other ways | Does any way show the right sex IN its gear? Name it and it becomes the first choice for such alts. If none: wrong-sex figure, or the class emblem? |
 | 32 | Hearthstone disc beside the map rim (moved 0.1.733: it lay under the cast bar) | `/reload`. Look just outside the rim, low on the left | Is it clear of everything now (the panel's edge, the queue eye when you are queued, the pet)? |
