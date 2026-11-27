@@ -3003,6 +3003,72 @@ dmDriver:SetScript("OnUpdate", function(_, dt)
     end
 end)
 
+-- ── What of ours the meter has picked up (0.1.730) ────────────────────────
+-- In a dungeon the meter's figures are hidden values, which the game's own
+-- code may compare only while nothing of an addon's has been read on the
+-- way: 979 errors in one run said something of ours is read there. Which
+-- field is not in the error, so every field reachable from the meter is
+-- asked (issecurevariable) and the ones that are ours are written to
+-- MinimalUIDB.dmtaint: path, kind of value, whose. Our own __mui marks are
+-- left out (the game never reads them). Swept a few seconds after login and
+-- after each of the first fights, when rows exist. Remove once the cause is
+-- fixed.
+do
+    local sweeps = 0
+    local function sweep(tag)
+        local root = _G.DamageMeter
+        if not (root and type(issecurevariable) == "function" and MinimalUIDB) or sweeps >= 6 then return end
+        sweeps = sweeps + 1
+        local out = MinimalUIDB.dmtaint
+        if type(out) ~= "table" or out.v ~= ns.version then out = { v = ns.version, list = {}, n = 0 } end
+        MinimalUIDB.dmtaint = out
+        local seen, tables, kept = {}, 0, 0
+        for _ in pairs(out.list) do kept = kept + 1 end
+        local walk
+        walk = function(t, path, depth)
+            if seen[t] or tables >= 4000 then return end
+            seen[t] = true
+            tables = tables + 1
+            for k, v in pairs(t) do
+                local name = type(k) == "string" and k or "#"
+                if type(k) == "string" and not k:find("^__mui") then
+                    local ok, clean, who = pcall(issecurevariable, t, k)
+                    if ok and not clean then
+                        local key = path .. "." .. k .. " (" .. type(v) .. ", " .. tostring(who) .. ")"
+                        if not out.list[key] and kept < 150 then out.list[key] = tag; kept = kept + 1 end
+                    end
+                end
+                if type(v) == "table" and depth < 7 and not (type(k) == "string" and k:find("^__mui")) then
+                    walk(v, path .. "." .. name, depth + 1)
+                end
+            end
+            -- Children that no field names.
+            if depth < 7 and type(rawget(t, 0)) == "userdata" and type(t.GetChildren) == "function" then
+                local ok, kids = pcall(function() return { t:GetChildren() } end)
+                if ok then
+                    for _, c in ipairs(kids) do
+                        if type(c) == "table" and not c.__muiDMOurs then walk(c, path .. "/", depth + 1) end
+                    end
+                end
+            end
+        end
+        local ok, err = pcall(walk, root, "meter", 0)
+        out.n = (out.n or 0) + 1
+        out.tables = tables
+        if not ok then out.err = tostring(err) end
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_ENTERING_WORLD" then
+            C_Timer.After(8, function() sweep("login") end)
+        else
+            C_Timer.After(1, function() sweep("fight") end)
+        end
+    end)
+end
+
 -- Some of these load on demand (flight map): skin them when they arrive.
 local lod = CreateFrame("Frame")
 lod:RegisterEvent("ADDON_LOADED")
