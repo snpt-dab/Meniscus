@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [736] = {
+        "Map discs rearranged: food and drink low on the left with the flask above it; the hearthstone low on the right with professions above it. The queue eye now stands just outside the rim on the left.",
+    },
     [734] = {
         "Your debuffs: a debuff on you stood a row too high, over your buffs and out of the panel's top. It now stands at the bottom of the space beside your portrait.",
     },

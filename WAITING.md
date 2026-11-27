@@ -2,7 +2,7 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.735.
+Last updated: 2026-11-26, version 0.1.736.
 
 ## Needs you, in game
 
@@ -11,7 +11,7 @@ Last updated: 2026-11-26, version 0.1.735.
 | 35 | A debuff on you stood over your buffs (0.1.734) | `/reload`, get a debuff (a poison will do) | Does it stand along the bottom of the space beside your portrait, under the buffs, inside the panel? |
 | 34 | Crafted weapons for the others (0.1.733 writes down why each was or was not offered) | On the paladin: `/reload`, open Blacksmithing, click through the dagger recipes, `/reload` | Nothing to look at: I read `altwhy` and say why the druid was or was not offered them |
 | 33 | Roster figure of the other sex: the game takes a race, not a sex | On a sheet of an alt of the other sex, click the small pill over the figure to step through the other ways | Does any way show the right sex IN its gear? Name it and it becomes the first choice for such alts. If none: wrong-sex figure, or the class emblem? |
-| 32 | Hearthstone disc beside the map rim (moved 0.1.733: it lay under the cast bar) | `/reload`. Look just outside the rim, low on the left | Is it clear of everything now (the panel's edge, the queue eye when you are queued, the pet)? |
+| 32 | Map discs in your layout (0.1.736): left food then flask, right hearthstone then professions; the queue eye outside the rim on the left | `/reload`. Open each row; queue for a dungeon | Is each where you asked, do the rows open clear of the map (left ones leftward, professions rightward), and is the queue eye clear of the food disc and everything else? |
 | 31 | Fishing card drags Fishing (0.1.731) | `/reload`, K, drag the Fishing card to a bar; click the card | The bar gets Fishing (casts a line), not Bait and Tackle |
 | 30 | Damage meter errors in a dungeon (979 in one run; the first check wandered off the meter, the second stays on it, 0.1.733) | `/reload`, fight one thing anywhere (no dungeon needed), wait a few seconds, `/reload` | Nothing to look at: I read `dmtaint` and fix from that |
 | 13 | The target’s buffs and debuffs drawn by the game in our look (0.1.705) | `/reload`. Target something with buffs or debuffs, out of a fight and in one (your own debuffs on an enemy will do). Hover an icon. Then `/reload` | Are the icons round with our ring (red for a plain debuff, the kind’s colour with a small emblem for magic, curse, disease, poison), debuffs first then buffs? Do they sit where the target’s icons sat? Do new ones appear and old ones go DURING a fight? Is there a dark sweep for the time left, and a stack number? Does the tooltip show? Can you still click the target frame through them? If anything is off: `/men buffs old`, `/reload` |

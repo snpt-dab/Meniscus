@@ -751,8 +751,11 @@ function MM:BuildQueue(h)
         if on then
             local rx, ry = MM.RimOffset(S)
             if rx then
+                -- (0.1.736: the food disc has the rim's lowest place on
+                -- this side now; the eye stands one disc further out.)
+                local k = 1 + (S + 4) / math.sqrt(rx * rx + ry * ry)
                 disc:ClearAllPoints()
-                disc:SetPoint("CENTER", h, "CENTER", -rx, ry)
+                disc:SetPoint("CENTER", h, "CENTER", -rx * k, ry * k)
             end
             strip(); seat()
             C_Timer.After(5, function() pcall(probe) end)

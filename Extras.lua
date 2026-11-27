@@ -4146,12 +4146,11 @@ local function buildHearth(slot)
             -- (0.1.733: two places up the rim it lay under the cast bar,
             -- which sits on the dome's top. It now stands OUTSIDE the rim,
             -- beside the lowest place: a second ring, one disc further out.)
-            local R = math.sqrt(rx * rx + ry * ry)
-            local th = math.atan2(ry, rx)
-            local R2 = R + S + 4
-            b:SetPoint("CENTER", dome, "CENTER", -R2 * math.cos(th), R2 * math.sin(th))
+            -- (0.1.736, the player's layout: on the rim itself, lowest
+            -- place on the RIGHT, where the flask was.)
+            b:SetPoint("CENTER", dome, "CENTER", rx, ry)
         else
-            b:SetPoint("BOTTOM", UIParent, "BOTTOM", -180, 150)
+            b:SetPoint("BOTTOM", UIParent, "BOTTOM", 120, 150)
         end
         b:SetShown(kind ~= nil)
         update()
@@ -4199,6 +4198,12 @@ local function buildHearth(slot)
     C_Timer.After(8, soon)
 end
 
+-- The discs on the map's rim (the player's layout, 0.1.736):
+--   left   food and drink lowest, the flask above it
+--   right  the hearthstone lowest, professions above it
+-- Each takes the lowest place when the one below it is switched off. The
+-- queue eye, which had the lowest place on the left, stands outside the
+-- rim there (Minimap.lua).
 function EX:OnInit(db)
     self.db = db
     pcall(buildRetrack)
@@ -4207,19 +4212,20 @@ function EX:OnInit(db)
     if db.talentMark ~= false then pcall(buildTalentMark) end
     if db.potions ~= false then
         local ok, err = pcall(buildFlyout, { name = "MeniscusPotions", row = "MeniscusPotionRow", btn = "MeniscusPotion",
-            glyph = "micro_potion.tga", title = "Potions", is = isPotion, rank = potionRank, slot = 0, label = "potion row" })
+            glyph = "micro_potion.tga", title = "Potions", is = isPotion, rank = potionRank,
+            slot = db.food ~= false and 1 or 0, side = -1, label = "potion row" })
         if not ok and MinimalUIDB then MinimalUIDB.potionErr = tostring(err) end
     end
     if db.food ~= false then
         local ok, err = pcall(buildFlyout, { name = "MeniscusFood", row = "MeniscusFoodRow", btn = "MeniscusFoodItem",
             glyph = "micro_mug.tga", title = "Food and drink", is = isFood, rank = foodRank,
-            slot = db.potions ~= false and 1 or 0, label = "food row" })
+            slot = 0, side = -1, label = "food row" })
         if not ok and MinimalUIDB then MinimalUIDB.foodErr = tostring(err) end
     end
     if db.profFly ~= false then
         local ok, err = pcall(buildFlyout, { name = "MeniscusProfs", row = "MeniscusProfRow", btn = "MeniscusProfBtn",
-            glyph = "micro_profession.tga", title = "Professions", spells = profSpells, slot = 1, side = -1,
-            label = "profession row" })
+            glyph = "micro_profession.tga", title = "Professions", spells = profSpells,
+            slot = db.hearth ~= false and 1 or 0, side = 1, label = "profession row" })
         if not ok and MinimalUIDB then MinimalUIDB.profErr = tostring(err) end
     end
     if db.hearth ~= false then
