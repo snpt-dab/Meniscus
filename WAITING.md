@@ -2,15 +2,17 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.732.
+Last updated: 2026-11-26, version 0.1.733.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 32 | Hearthstone disc on the map rim (0.1.732; new picture file, needs the game closed and started again) | Restart the game. Look above the professions disc on the map's left; hover it; click it; watch it after use | Is the blue swirl there and clear of the other marks on the rim? Does a click start the hearthstone cast? Minutes left over a dimmed swirl afterwards? Tooltip names your home? If there is no disc at all, say so: I read `hearthdiag` |
+| 34 | Crafted weapons for the others (0.1.733 writes down why each was or was not offered) | On the paladin: `/reload`, open Blacksmithing, click through the dagger recipes, `/reload` | Nothing to look at: I read `altwhy` and say why the druid was or was not offered them |
+| 33 | Roster figure of the other sex: the game takes a race, not a sex | On a sheet of an alt of the other sex, click the small pill over the figure to step through the other ways | Does any way show the right sex IN its gear? Name it and it becomes the first choice for such alts. If none: wrong-sex figure, or the class emblem? |
+| 32 | Hearthstone disc beside the map rim (moved 0.1.733: it lay under the cast bar) | `/reload`. Look just outside the rim, low on the left | Is it clear of everything now (the panel's edge, the queue eye when you are queued, the pet)? |
 | 31 | Fishing card drags Fishing (0.1.731) | `/reload`, K, drag the Fishing card to a bar; click the card | The bar gets Fishing (casts a line), not Bait and Tackle |
-| 30 | Damage meter errors in a dungeon (979 in one run; a check that names the cause, 0.1.730) | `/reload`, fight one thing anywhere (no dungeon needed), wait a few seconds, `/reload` | Nothing to look at: I read `dmtaint` and fix from that |
+| 30 | Damage meter errors in a dungeon (979 in one run; the first check wandered off the meter, the second stays on it, 0.1.733) | `/reload`, fight one thing anywhere (no dungeon needed), wait a few seconds, `/reload` | Nothing to look at: I read `dmtaint` and fix from that |
 | 13 | The target’s buffs and debuffs drawn by the game in our look (0.1.705) | `/reload`. Target something with buffs or debuffs, out of a fight and in one (your own debuffs on an enemy will do). Hover an icon. Then `/reload` | Are the icons round with our ring (red for a plain debuff, the kind’s colour with a small emblem for magic, curse, disease, poison), debuffs first then buffs? Do they sit where the target’s icons sat? Do new ones appear and old ones go DURING a fight? Is there a dark sweep for the time left, and a stack number? Does the tooltip show? Can you still click the target frame through them? If anything is off: `/men buffs old`, `/reload` |
 | 12 | Pet mood and pet food asked of the game (0.1.703-704; needs a hunter with a pet out) | `/reload`. Look at the pet’s name pill and the feed button; feed the pet from Content to Happy; hover the feed button; open the character window’s pet page. Then `/reload` | Is the mood word right, and does it change at once when the pet becomes happy (it used to stick until a reload)? Does the feed button count the right foods, and does its tooltip say "Eats: ..."? Does the pet page show the mood? If anything is off: `/men petmood old` goes back to the old way at once |
 | 10 | The figure on another character’s sheet, made from your own figure given its race (0.1.707) | `/reload`, Roster, a character of ANOTHER race, open its sheet. Then one of your own race but the other sex. Then `/reload` | Is there a figure of the right race in that character’s gear (it will have your character’s build and face: the game takes a race, not a sex)? If there is only the class emblem, the game refused, and that is where it stays for now. `/men figure off` shows the emblem always |

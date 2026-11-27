@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [733] = {
+        "Hearthstone disc: moved from under the cast bar to just outside the map's rim, low on the left.",
+    },
     [732] = {
         "Hearthstone: a small disc with the blue swirl on the map's left rim uses your hearthstone, so it no longer needs an action bar slot. While it cools it shows the minutes left; the tooltip names your home. It can be given a key (Key Bindings, AddOns). Settings, \"Hearthstone on the map\" turns it off. The swirl needs the game closed and started again to show.",
     },

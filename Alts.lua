@@ -481,9 +481,29 @@ function A.ForAlts(item)
     for altName, ch in pairs(book) do
         if altName ~= myName and type(ch) == "table" and type(ch.g) == "table" and plainStr(ch.c) and plainNum(ch.l) and sameSide(ch) then
             local can, soon = usableBy(ch, minLevel, classID, subID)
+            -- (0.1.733, MinimalUIDB.altwhy: for a weapon, what was decided
+            -- for each of the others, by class and level only: no names.)
+            local function why(word)
+                if classID ~= 2 or not MinimalUIDB then return end
+                local t = MinimalUIDB.altwhy
+                if type(t) ~= "table" then t = {}; MinimalUIDB.altwhy = t end
+                local key = tostring(item) .. " (kind " .. tostring(subID) .. ", needs level " .. tostring(minLevel) .. ") for " .. ch.c .. " " .. ch.l
+                if t[key] == nil then
+                    local n = 0
+                    for _ in pairs(t) do n = n + 1 end
+                    if n >= 80 then return end
+                end
+                t[key] = word
+            end
+            if not can then
+                why((plainNum(minLevel) and minLevel > ch.l + AHEAD) and "left out: more than " .. AHEAD .. " levels away"
+                    or "left out: cannot hold this kind")
+            end
             if can then
                 local okJ, res, slot, gain = pcall(ns.JudgeUpgrade, link, ch)
                 if not okJ then res = false end
+                why(res == nil and "waiting for its gear to be read" or (res and ("upgrade, slot " .. tostring(slot) .. ", gain " .. tostring(gain))
+                    or "not better than what is worn"))
                 if res == nil then
                     pending = true
                     askGear(altName, ch)

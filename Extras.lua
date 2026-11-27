@@ -4027,8 +4027,8 @@ local function buildRetrack()
 end
 
 -- ── Hearthstone on the map's rim (0.1.732) ────────────────────────────────
--- A disc of its own, further up the rim from the professions disc, so the
--- stone needs no action bar slot. One press uses it: there is no row to
+-- A disc of its own beside the map's left rim, so the stone needs no
+-- action bar slot. One press uses it: there is no row to
 -- open. While it cools the swirl dims under a sweep and the time left is
 -- written over it. How this client keeps the stone is not assumed: in your
 -- bags (used as a thing), else as a toy, else as a spell of yours; what was
@@ -4143,11 +4143,15 @@ local function buildHearth(slot)
             local rx, ry
             if MMm and MMm.RimOffset then rx, ry = MMm.RimOffset(S) end
             if not rx then rx = dome:GetWidth() / 2 * 0.7071; ry = rx end
+            -- (0.1.733: two places up the rim it lay under the cast bar,
+            -- which sits on the dome's top. It now stands OUTSIDE the rim,
+            -- beside the lowest place: a second ring, one disc further out.)
             local R = math.sqrt(rx * rx + ry * ry)
-            local th = math.atan2(ry, rx) + slot * (S + 5) / R
-            b:SetPoint("CENTER", dome, "CENTER", -R * math.cos(th), R * math.sin(th))
+            local th = math.atan2(ry, rx)
+            local R2 = R + S + 4
+            b:SetPoint("CENTER", dome, "CENTER", -R2 * math.cos(th), R2 * math.sin(th))
         else
-            b:SetPoint("BOTTOM", UIParent, "BOTTOM", -(120 + slot * 30), 150)
+            b:SetPoint("BOTTOM", UIParent, "BOTTOM", -180, 150)
         end
         b:SetShown(kind ~= nil)
         update()

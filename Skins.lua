@@ -3021,9 +3021,23 @@ do
         sweeps = sweeps + 1
         local out = MinimalUIDB.dmtaint
         if type(out) ~= "table" or out.v ~= ns.version then out = { v = ns.version, list = {}, n = 0 } end
+        out.err = nil
         MinimalUIDB.dmtaint = out
         local seen, tables, kept = {}, 0, 0
         for _ in pairs(out.list) do kept = kept + 1 end
+        -- A frame is ours to enter only if the meter is it or above it;
+        -- a plain table (no frame) always is.
+        local function inside(t)
+            if type(rawget(t, 0)) ~= "userdata" then return true end
+            local p = t
+            for _ = 1, 14 do
+                if p == root then return true end
+                local okP, up = pcall(function() return p:GetParent() end)
+                if not okP or type(up) ~= "table" then return false end
+                p = up
+            end
+            return false
+        end
         local walk
         walk = function(t, path, depth)
             if seen[t] or tables >= 4000 then return end
@@ -3038,8 +3052,14 @@ do
                         if not out.list[key] and kept < 150 then out.list[key] = tag; kept = kept + 1 end
                     end
                 end
-                if type(v) == "table" and depth < 7 and not (type(k) == "string" and k:find("^__mui")) then
-                    walk(v, path .. "." .. name, depth + 1)
+                -- (0.1.733: the first sweep wandered through the meter's
+                -- Edit Mode link into every other frame of the game and was
+                -- then stopped by a table that may not be read. A frame is
+                -- now entered only if it is the meter's own, and a refusal
+                -- ends that branch alone.)
+                if type(v) == "table" and depth < 7 and not (type(k) == "string" and k:find("^__mui")) and inside(v) then
+                    local okW, errW = pcall(walk, v, path .. "." .. name, depth + 1)
+                    if not okW then out.refused = (out.refused or 0) + 1; out.err = path .. "." .. name .. ": " .. tostring(errW) end
                 end
             end
             -- Children that no field names.
@@ -3047,7 +3067,7 @@ do
                 local ok, kids = pcall(function() return { t:GetChildren() } end)
                 if ok then
                     for _, c in ipairs(kids) do
-                        if type(c) == "table" and not c.__muiDMOurs then walk(c, path .. "/", depth + 1) end
+                        if type(c) == "table" and not c.__muiDMOurs then pcall(walk, c, path .. "/", depth + 1) end
                     end
                 end
             end
