@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [731] = {
+        "Professions window: the Fishing card now casts and drags Fishing itself, not Bait and Tackle.",
+    },
     [730] = {
         "Damage meter: in a dungeon the game's meter threw a flood of errors (\"Your AddOns are experiencing a large number of errors\"). Not fixed yet: this build records what is needed to find the cause.",
     },

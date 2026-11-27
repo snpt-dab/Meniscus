@@ -253,11 +253,18 @@ local pendingRefresh = false
 
 local function fillAbilities(c, p)
     local combat = InCombatLockdown()
-    -- The card opens the profession: its first active ability.
-    local main
+    -- The card opens the profession: the ability that bears its name
+    -- (Fishing lists "Bait and Tackle" first here, and the card cast and
+    -- dragged that: 0.1.731), else its first active ability.
+    local main, first
+    local pname = p and str(p.name)
     for _, a in ipairs(p and p.abilities or {}) do
-        if not a.passive then main = a; break end
+        if not a.passive then
+            first = first or a
+            if pname and str(a.name) == pname then main = a; break end
+        end
     end
+    main = main or first
     c.main = main
     if not combat then
         c:SetAttribute("type1", main and "spell" or nil)

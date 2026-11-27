@@ -2,12 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.730.
+Last updated: 2026-11-26, version 0.1.731.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 31 | Fishing card drags Fishing (0.1.731) | `/reload`, K, drag the Fishing card to a bar; click the card | The bar gets Fishing (casts a line), not Bait and Tackle |
 | 30 | Damage meter errors in a dungeon (979 in one run; a check that names the cause, 0.1.730) | `/reload`, fight one thing anywhere (no dungeon needed), wait a few seconds, `/reload` | Nothing to look at: I read `dmtaint` and fix from that |
 | 13 | The target’s buffs and debuffs drawn by the game in our look (0.1.705) | `/reload`. Target something with buffs or debuffs, out of a fight and in one (your own debuffs on an enemy will do). Hover an icon. Then `/reload` | Are the icons round with our ring (red for a plain debuff, the kind’s colour with a small emblem for magic, curse, disease, poison), debuffs first then buffs? Do they sit where the target’s icons sat? Do new ones appear and old ones go DURING a fight? Is there a dark sweep for the time left, and a stack number? Does the tooltip show? Can you still click the target frame through them? If anything is off: `/men buffs old`, `/reload` |
 | 12 | Pet mood and pet food asked of the game (0.1.703-704; needs a hunter with a pet out) | `/reload`. Look at the pet’s name pill and the feed button; feed the pet from Content to Happy; hover the feed button; open the character window’s pet page. Then `/reload` | Is the mood word right, and does it change at once when the pet becomes happy (it used to stick until a reload)? Does the feed button count the right foods, and does its tooltip say "Eats: ..."? Does the pet page show the mood? If anything is off: `/men petmood old` goes back to the old way at once |
