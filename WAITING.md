@@ -2,12 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.731.
+Last updated: 2026-11-26, version 0.1.732.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 32 | Hearthstone disc on the map rim (0.1.732; new picture file, needs the game closed and started again) | Restart the game. Look above the professions disc on the map's left; hover it; click it; watch it after use | Is the blue swirl there and clear of the other marks on the rim? Does a click start the hearthstone cast? Minutes left over a dimmed swirl afterwards? Tooltip names your home? If there is no disc at all, say so: I read `hearthdiag` |
 | 31 | Fishing card drags Fishing (0.1.731) | `/reload`, K, drag the Fishing card to a bar; click the card | The bar gets Fishing (casts a line), not Bait and Tackle |
 | 30 | Damage meter errors in a dungeon (979 in one run; a check that names the cause, 0.1.730) | `/reload`, fight one thing anywhere (no dungeon needed), wait a few seconds, `/reload` | Nothing to look at: I read `dmtaint` and fix from that |
 | 13 | The target’s buffs and debuffs drawn by the game in our look (0.1.705) | `/reload`. Target something with buffs or debuffs, out of a fight and in one (your own debuffs on an enemy will do). Hover an icon. Then `/reload` | Are the icons round with our ring (red for a plain debuff, the kind’s colour with a small emblem for magic, curse, disease, poison), debuffs first then buffs? Do they sit where the target’s icons sat? Do new ones appear and old ones go DURING a fight? Is there a dark sweep for the time left, and a stack number? Does the tooltip show? Can you still click the target frame through them? If anything is off: `/men buffs old`, `/reload` |

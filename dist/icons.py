@@ -161,6 +161,11 @@ def icons():
     I['mug'] = (Icon().box(5.6, 8.6, 14.6, 19.6, rad=1.6, w=2.0)
                 .arc(14.8, 13.8, 3.5, -78, 78, w=2.0)
                 .dot(7.3, 7.4, 2.0).dot(10.1, 6.4, 2.2).dot(12.9, 7.4, 2.0))
+    # the hearthstone's swirl: a spiral wound from the middle outward
+    # (clockwise, the tail ending low on the left, as the stone's rune does)
+    I['hearth'] = Icon().line([(12.2 + (1.7 + 6.6 * t) * math.cos(math.radians(745 - 520 * t)),
+                                11.8 - (1.7 + 6.6 * t) * math.sin(math.radians(745 - 520 * t)))
+                               for t in [i / 60.0 for i in range(61)]], w=3.1)
     # ── who someone is: class, faction, race (player tooltips) ──
     # One plain emblem each, in the set's stroke: what the class is known
     # by, a banner shape for the faction, a sign for the race.

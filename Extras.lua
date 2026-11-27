@@ -4026,6 +4026,175 @@ local function buildRetrack()
     end)
 end
 
+-- ── Hearthstone on the map's rim (0.1.732) ────────────────────────────────
+-- A disc of its own, further up the rim from the professions disc, so the
+-- stone needs no action bar slot. One press uses it: there is no row to
+-- open. While it cools the swirl dims under a sweep and the time left is
+-- written over it. How this client keeps the stone is not assumed: in your
+-- bags (used as a thing), else as a toy, else as a spell of yours; what was
+-- found is in MinimalUIDB.hearthdiag. Nothing found, no disc.
+_G["BINDING_NAME_CLICK MeniscusHearth:LeftButton"] = "Hearthstone"
+local function buildHearth(slot)
+    local S, ID, SPELL = 24, num(_G.HEARTHSTONE_ITEM_ID) and _G.HEARTHSTONE_ITEM_ID or 6948, 8690
+    local b = CreateFrame("Button", "MeniscusHearth", UIParent, "SecureActionButtonTemplate")
+    b:SetSize(S, S)
+    b:RegisterForClicks("AnyDown", "AnyUp")
+    b:SetFrameStrata("MEDIUM")
+    b:SetFrameLevel(6)
+    b:Hide()
+    local ring = b:CreateTexture(nil, "BACKGROUND")
+    ring:SetAllPoints()
+    ring:SetTexture(MEDIA .. "circle.tga")
+    ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+    local fill = b:CreateTexture(nil, "BORDER")
+    fill:SetPoint("TOPLEFT", 1.5, -1.5)
+    fill:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    fill:SetTexture(MEDIA .. "circle.tga")
+    fill:SetVertexColor(0.06, 0.06, 0.07, 1)
+    local glyph = b:CreateTexture(nil, "ARTWORK")
+    glyph:SetSize(17, 17)
+    glyph:SetPoint("CENTER")
+    glyph:SetTexture(MEDIA .. "micro_hearth.tga")
+    glyph:SetVertexColor(0.45, 0.80, 0.98, 1)
+    local cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+    cd:SetAllPoints(fill)
+    pcall(cd.SetSwipeTexture, cd, MEDIA .. "circle.tga")
+    pcall(cd.SetSwipeColor, cd, 0, 0, 0, 0.65)
+    pcall(cd.SetDrawEdge, cd, false)
+    pcall(cd.SetHideCountdownNumbers, cd, true)
+    local over = CreateFrame("Frame", nil, b)
+    over:SetAllPoints()
+    over:SetFrameLevel(cd:GetFrameLevel() + 1)
+    local left = ns:CreateText(over, 10)
+    left:SetPoint("CENTER", 0, 0)
+    left:SetShadowOffset(1, -1)
+    left:SetShadowColor(0, 0, 0, 0.9)
+
+    local kind -- "item" | "toy" | "spell" | nil
+    local function find()
+        local bags = itemCount(ID)
+        local toy = type(PlayerHasToy) == "function" and call(PlayerHasToy, ID) or false
+        if secret(toy) then toy = false end
+        local known = false
+        for _, f in ipairs({ _G.IsPlayerSpell or false, _G.IsSpellKnown or false, C_SpellBook and C_SpellBook.IsSpellKnown or false }) do
+            local v = type(f) == "function" and call(f, SPELL)
+            if v and not secret(v) then known = true end
+        end
+        if MinimalUIDB then
+            MinimalUIDB.hearthdiag = "in bags " .. tostring(bags) .. ", toy " .. tostring(toy and true or false)
+                .. ", spell " .. tostring(known) .. ", item number " .. tostring(ID)
+        end
+        return (bags > 0 and "item") or (toy and "toy") or (known and "spell") or nil
+    end
+    -- Seconds left (with the start and length), or nil when it is ready.
+    local function remaining()
+        local start, dur
+        if kind == "spell" then
+            local ok, c = pcall(C_Spell.GetSpellCooldown, SPELL)
+            if ok and type(c) == "table" then start, dur = c.startTime, c.duration end
+        else
+            local f = CC.GetItemCooldown or _G.GetItemCooldown
+            if f then
+                local ok, s, d = pcall(f, ID)
+                if ok then start, dur = s, d end
+            end
+        end
+        if not (num(start) and num(dur)) or dur <= 2 or start <= 0 then return nil end
+        local rem = start + dur - GetTime()
+        if rem <= 0 then return nil end
+        return rem, start, dur
+    end
+    local cooling = false
+    local function update()
+        local rem, start, dur = remaining()
+        cooling = rem ~= nil
+        if rem then
+            pcall(cd.SetCooldown, cd, start, dur)
+            glyph:SetAlpha(0.3)
+            left:SetText(rem >= 60 and math.ceil(rem / 60) or (math.ceil(rem) .. "s"))
+        else
+            pcall(cd.Clear, cd)
+            glyph:SetAlpha(1)
+            left:SetText("")
+        end
+    end
+    local acc = 0
+    over:SetScript("OnUpdate", function(_, dt)
+        if not cooling then return end
+        acc = acc + dt
+        if acc < 1 then return end
+        acc = 0
+        update()
+    end)
+
+    local stale = false
+    local function place()
+        if InCombatLockdown() then stale = true return end
+        stale = false
+        kind = find()
+        b:SetAttribute("type", kind)
+        b:SetAttribute("item", kind == "item" and ("item:" .. ID) or nil)
+        b:SetAttribute("toy", kind == "toy" and ID or nil)
+        b:SetAttribute("spell", kind == "spell" and SPELL or nil)
+        local dome = _G.MinimalUI_MinimapDome
+        b:ClearAllPoints()
+        if dome then
+            local MMm = ns.modules.Minimap
+            local rx, ry
+            if MMm and MMm.RimOffset then rx, ry = MMm.RimOffset(S) end
+            if not rx then rx = dome:GetWidth() / 2 * 0.7071; ry = rx end
+            local R = math.sqrt(rx * rx + ry * ry)
+            local th = math.atan2(ry, rx) + slot * (S + 5) / R
+            b:SetPoint("CENTER", dome, "CENTER", -R * math.cos(th), R * math.sin(th))
+        else
+            b:SetPoint("BOTTOM", UIParent, "BOTTOM", -(120 + slot * 30), 150)
+        end
+        b:SetShown(kind ~= nil)
+        update()
+    end
+    b:SetScript("OnEnter", function(self)
+        ring:SetVertexColor(T.accent[1], T.accent[2], T.accent[3], 1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Hearthstone", 1, 1, 1)
+        local home = type(GetBindLocation) == "function" and call(GetBindLocation)
+        if type(home) == "string" and not secret(home) and home ~= "" then
+            GameTooltip:AddLine("Home: " .. home, T.text[1], T.text[2], T.text[3])
+        end
+        local rem = remaining()
+        if rem then
+            GameTooltip:AddLine(rem >= 60 and ("Ready in " .. math.ceil(rem / 60) .. " min") or ("Ready in " .. math.ceil(rem) .. " sec"),
+                0.6, 0.6, 0.65)
+        else
+            GameTooltip:AddLine("Click to go home", 0.6, 0.6, 0.65)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        ring:SetVertexColor(T.border[1], T.border[2], T.border[3], 1)
+        GameTooltip:Hide()
+    end)
+
+    local due = false
+    local function soon()
+        if due then return end
+        due = true
+        C_Timer.After(0.3, function() due = false; ns.Timed("hearth disc", function() pcall(place) end) end)
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "BAG_UPDATE_COOLDOWN",
+                         "SPELL_UPDATE_COOLDOWN", "HEARTHSTONE_BOUND", "TOYS_UPDATED" }) do
+        pcall(ev.RegisterEvent, ev, e)
+    end
+    ev:SetScript("OnEvent", function(_, e)
+        if e == "BAG_UPDATE_COOLDOWN" or e == "SPELL_UPDATE_COOLDOWN" then pcall(update) return end
+        if e == "PLAYER_REGEN_ENABLED" and not stale then return end
+        soon()
+    end)
+    ns.AfterInit(function() pcall(place) end)
+    C_Timer.After(2, soon)
+    C_Timer.After(8, soon)
+end
+
 function EX:OnInit(db)
     self.db = db
     pcall(buildRetrack)
@@ -4048,6 +4217,10 @@ function EX:OnInit(db)
             glyph = "micro_profession.tga", title = "Professions", spells = profSpells, slot = 1, side = -1,
             label = "profession row" })
         if not ok and MinimalUIDB then MinimalUIDB.profErr = tostring(err) end
+    end
+    if db.hearth ~= false then
+        local ok, err = pcall(buildHearth, db.profFly ~= false and 2 or 1)
+        if not ok and MinimalUIDB then MinimalUIDB.hearthErr = tostring(err) end
     end
     if db.reactive ~= false then pcall(buildReactive) end
     if db.usage ~= false then pcall(buildUsage) end
