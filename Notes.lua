@@ -121,6 +121,7 @@ ns.NOTES = {
 ns.NOTES_QUIET = {
     [727] = true,
     [729] = true,
+    [735] = true,
 }
 
 local W, FOOTER_H, MAX_LIST = 480, 52, 380
