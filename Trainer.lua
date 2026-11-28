@@ -773,9 +773,27 @@ local function ghostApply(self)
         -- windows while it is the one in charge.)
         if not self.__muiStrata then self.__muiStrata = self:GetFrameStrata() end
         pcall(self.SetFrameStrata, self, "HIGH")
+        -- (0.1.748, the real cause of the empty list, read off the two
+        -- screenshots: the game gives the list and its scroll bar a layer
+        -- of their own, HIGH, above the window's. Lifting the window to
+        -- HIGH put them in the SAME layer as the window's own panels, and
+        -- which came out on top was luck: empty on the first open, with no
+        -- scroll arrows either, full after a click raised it. They go one
+        -- layer above the window again.)
+        for _, k in ipairs({ "ScrollBox", "ScrollBar" }) do
+            local part = self[k]
+            if part and part.SetFrameStrata then
+                if not part.__muiStrata then part.__muiStrata = part:GetFrameStrata() end
+                pcall(part.SetFrameStrata, part, "DIALOG")
+            end
+        end
         pcall(self.Raise, self)
     else
         if self.__muiStrata then pcall(self.SetFrameStrata, self, self.__muiStrata) end
+        for _, k in ipairs({ "ScrollBox", "ScrollBar" }) do
+            local part = self[k]
+            if part and part.__muiStrata then pcall(part.SetFrameStrata, part, part.__muiStrata) end
+        end
         self:SetAlpha(0); self:SetScale(0.001); self:EnableMouse(false)
     end
 end
