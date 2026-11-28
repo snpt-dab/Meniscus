@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.742.
+Last updated: 2026-11-26, version 0.1.743.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 42 | "Can be crafted for this slot later" in a slot's tooltip (0.1.742) | `/reload`, hover an empty slot on the low character | Does it list pieces with the level each needs? If still nothing, say which slot: I read `craftwhy` |
+| 42 | Empty slot had no tooltip (fixed 0.1.743); "can be crafted later" lines (0.1.742) | `/reload`, take the mage's trousers off, hover the empty slot | Does the tooltip come, with the slot's name and the craftable pieces? |
 | 41 | Craft mark beside the slot; none on empty slots (0.1.741 moves it and writes down why) | `/reload`, open the character window with a slot empty | Is the mark clear of everything beside each slot (left column, right column, under the weapons)? Say which slot is empty and what you expected for it: I read `craftwhy` |
 | 40 | Bag gear that upgrades another character of yours (0.1.740) | `/reload`, open the bags with unbound gear in them; hover a blue arrow | Are the right pieces marked? Does the tooltip name who and the change? Anything marked that the alt plainly would not want, or missed? |
 | 39 | Stat pictures in item tooltips (0.1.739) | `/reload`, hover a weapon or armour piece you could wear | Do the pictures sit level with the words now? Does the equipped card's list of changes carry them too? |

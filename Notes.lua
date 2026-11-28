@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [743] = {
+        "Fixed: an empty gear slot in the character window showed no tooltip, so nothing said what could be crafted for it. It now names the slot and lists the craftable pieces like any other slot.",
+    },
     [742] = {
         "Character window: a slot with nothing craftable for it yet now says in its tooltip what your characters could craft for it later, with the level each piece needs (nearest three). This shows on empty slots too.",
     },

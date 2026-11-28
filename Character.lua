@@ -520,8 +520,16 @@ local function makeTile(parent, slotName)
     end
     b:SetScript("OnEnter", function(self)
         ns.TipAnchor(self)
-        local has = GameTooltip:SetInventoryItem("player", self.slot)
-        if not has then GameTooltip:SetText(_G[self.slotName:upper() .. "SLOT"] or self.slotName) end
+        -- (0.1.743: an empty slot showed no tooltip at all, seen in game.
+        -- Asking the tooltip for a slot with nothing in it puts the tooltip
+        -- away and drops its owner, so the slot's name and everything added
+        -- after it went nowhere. An empty slot is no longer asked for, and
+        -- the tooltip is stood up again should the game say "nothing".)
+        local has = GetInventoryItemTexture("player", self.slot) and GameTooltip:SetInventoryItem("player", self.slot) or false
+        if not has then
+            ns.TipAnchor(self)
+            GameTooltip:SetText(_G[self.slotName:upper() .. "SLOT"] or self.slotName, 1, 1, 1)
+        end
         local a = self.advice
         if a then
             GameTooltip:AddLine(" ")
