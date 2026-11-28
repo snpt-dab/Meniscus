@@ -241,7 +241,17 @@ local function ccLabel(info)
     parts[#parts + 1] = (BTN_NAME[b:upper()] or BTN_NAME[MOUSE_TO[b] or ""] or b) .. " click"
     return table.concat(parts, " + ")
 end
--- spell id (and spell name, so a newer rank still shows it) -> its label
+-- (0.1.737) A binding is to ONE rank (the spell's number), and the game
+-- casts that rank: "Rank 2", or nil for a spell without ranks or one whose
+-- words have not arrived yet.
+local function ccRank(id)
+    if not (id and C_Spell and C_Spell.GetSpellSubtext) then return nil end
+    local ok, t = pcall(C_Spell.GetSpellSubtext, id)
+    if ok and type(t) == "string" and not secret(t) and t ~= "" then return t end
+    return nil
+end
+-- spell id -> its label; spell name -> its label WITH the rank bound, for a
+-- card that stands for the spell but is not the rank bound (ranks folded).
 local ccCache
 local function ccMap()
     if ccCache then return ccCache end
@@ -251,10 +261,24 @@ local function ccMap()
             local label = ccLabel(info)
             ccCache[info.actionID] = label
             local ok, n = pcall(C_Spell.GetSpellName, info.actionID)
-            if ok and type(n) == "string" and not secret(n) then ccCache[n] = label end
+            if ok and type(n) == "string" and not secret(n) then
+                local rk = ccRank(info.actionID)
+                ccCache[n] = rk and (label .. " (" .. rk .. ")") or label
+            end
         end
     end
     return ccCache
+end
+-- With every rank shown, only the rank bound carries the label.
+local function ccCardLabel(e)
+    local m = ccMap()
+    return (e.spellID and m[e.spellID]) or (not S.db.allRanks and m[e.name]) or ""
+end
+-- "Holy Light (Rank 2)" for a spell picked in the book.
+local function ccPickName(pick)
+    if pick.id then return pick.name end
+    local rk = ccRank(pick.spellID) or (type(pick.sub) == "string" and not secret(pick.sub) and pick.sub ~= "" and pick.sub) or nil
+    return rk and (pick.name .. " (" .. rk .. ")") or pick.name
 end
 local ccPick -- the spell chosen in the book, waiting for its button
 
@@ -277,8 +301,7 @@ local function paintCard(c, e)
     c.icon:SetDesaturated(future)
     c.icon:SetAlpha(future and 0.45 or 1)
     c.name:SetTextColor(unpack(future and T.textDim or T.text))
-    local m = ccMap()
-    c.bind:SetText((e.spellID and m[e.spellID]) or m[e.name] or "")
+    c.bind:SetText(ccCardLabel(e))
 end
 
 local function fillCard(c, e)
@@ -305,8 +328,7 @@ local function fillCard(c, e)
     c.icon:SetDesaturated(future)
     c.icon:SetAlpha(future and 0.45 or 1)
     c.name:SetTextColor(unpack(future and T.textDim or T.text))
-    local m = ccMap()
-    c.bind:SetText((e.spellID and m[e.spellID]) or m[e.name] or "")
+    c.bind:SetText(ccCardLabel(e))
     local picked = S.bindMode and ccPick and ccPick.spellID ~= nil and ccPick.spellID == e.spellID
     c.ring(picked and T.accent[1] or T.border[1], picked and T.accent[2] or T.border[2], picked and T.accent[3] or T.border[3], 1)
     -- (While click casting is being set up, a click picks the spell.)
@@ -427,7 +449,7 @@ local function ccPaint(note, bad)
     if not ccPanel then return end
     local p = ccPanel
     if ccPick then
-        p.boxText:SetText("Press a mouse button here\nfor " .. ccPick.name)
+        p.boxText:SetText("Press a mouse button here\nfor " .. ccPickName(ccPick))
         p.boxRing(T.accent[1], T.accent[2], T.accent[3], 1)
     else
         p.boxText:SetText("Click a spell in the book first")
@@ -443,7 +465,7 @@ local function ccPaint(note, bad)
         local on = ccPick and ccPick.id == it.id
         r.name:SetTextColor(unpack(on and T.accent or T.text))
     end
-    local n = 0
+    local n, late = 0, false
     for _, info in ipairs(list) do
         if type(info) == "table" and info.type == SPELL_TYPE and info.actionID and n < #p.rows then
             n = n + 1
@@ -451,17 +473,34 @@ local function ccPaint(note, bad)
             local okN, name = pcall(C_Spell.GetSpellName, info.actionID)
             local okT, tex = pcall(C_Spell.GetSpellTexture, info.actionID)
             r.icon:SetTexture(okT and tex or 134400)
-            r.name:SetText(okN and type(name) == "string" and not secret(name) and name or ("Spell " .. tostring(info.actionID)))
+            name = okN and type(name) == "string" and not secret(name) and name or ("Spell " .. tostring(info.actionID))
+            -- (0.1.737: the rank this click casts, after the name.)
+            local rk = ccRank(info.actionID)
+            if not rk and C_Spell.IsSpellDataCached and call(C_Spell.IsSpellDataCached, info.actionID) == false then
+                late = true
+                if C_Spell.RequestLoadSpellData then pcall(C_Spell.RequestLoadSpellData, info.actionID) end
+            end
+            r.plain = name
+            r.full = rk and (name .. " (" .. rk .. ")") or name
+            r.name:SetText(rk and (name .. "  |cff8c8c94" .. rk .. "|r") or name)
             r.label:SetText(ccLabel(info))
             r.spellID = info.actionID
             r:Show()
         end
     end
     for i = n + 1, #p.rows do p.rows[i]:Hide() end
+    -- A rank whose words had not arrived: once more, shortly.
+    if late and not p.again then
+        p.again = true
+        C_Timer.After(0.6, function()
+            if ccPanel and ccPanel:IsShown() then ccPaint(note, bad) end
+            p.again = false
+        end)
+    end
 end
 local function ccBuild()
     local p = CreateFrame("Frame", nil, win)
-    local PW, IN = 268, 16
+    local PW, IN = 308, 16 -- (0.1.737: wider, for the rank after each name)
     p:SetSize(PW, 442)
     p:SetPoint("TOPLEFT", win, "TOPRIGHT", 10, 0)
     p:EnableMouse(true)
@@ -499,7 +538,7 @@ local function ccBuild()
         if not ccPick then return ccPaint("Click a spell in the book first.", true) end
         local err, took = ccSet(ccPick, button)
         if err then return ccPaint(err, true) end
-        local done = ccPick.id and (ccPick.name .. " has moved.") or (ccPick.name .. " is bound.")
+        local done = ccPick.id and (ccPick.name .. " has moved.") or (ccPickName(ccPick) .. " is bound.")
         if took then done = done .. " (It took that click from " .. took .. ".)" end
         ccPick = nil
         ccPaint(done)
@@ -551,12 +590,21 @@ local function ccBuild()
         r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         r.name = text(r, 11)
         r.name:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
-        r.name:SetWidth(96)
         r.name:SetJustifyH("LEFT")
         r.name:SetWordWrap(false)
+        -- A name cut short by a long combination is whole in the tooltip.
+        r:EnableMouse(true)
+        r:SetScript("OnEnter", function(self)
+            if not self.full then return end
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(self.full, 1, 1, 1)
+            GameTooltip:AddLine(self.label:GetText() or "", 0.8, 0.8, 0.85)
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
         local x = closeButton(r, function()
             if InCombatLockdown() then return ccPaint("Not during a fight.", true) end
-            local nm = r.name:GetText() or "That spell"
+            local nm = r.full or "That spell"
             ccClear(r.spellID)
             ccPaint(nm .. " is unbound.")
             S:Refresh()
@@ -566,6 +614,7 @@ local function ccBuild()
         r.label = text(r, 10, false, T.textDim)
         r.label:SetPoint("RIGHT", x, "LEFT", -6, 0)
         r.label:SetJustifyH("RIGHT")
+        r.name:SetPoint("RIGHT", r.label, "LEFT", -8, 0)
         r:Hide()
         p.rows[i] = r
     end

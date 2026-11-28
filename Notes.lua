@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [737] = {
+        "Click casting: each binding now shows the rank it casts (\"Holy Light  Rank 2\"), in the list, in the box while you bind, and on the spell's card when the rank bound is not the one shown. The side panel is a little wider for it.",
+    },
     [736] = {
         "Map discs rearranged: food and drink low on the left with the flask above it; the hearthstone low on the right with professions above it. The queue eye now stands just outside the rim on the left.",
     },
