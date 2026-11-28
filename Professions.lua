@@ -653,7 +653,8 @@ function showDetail()
                     local t = ln[1]
                     if type(t) == "string" and ns.StatMarkByName and not t:find("|T", 1, true) then
                         local stat = t:match("^[+-]?[%d,%.]+%s+(.+)$") or t:match("^%([%d,%.]+%s+(.+)%)$")
-                        local mark = stat and ns.StatMarkByName(stat, 14, 1)
+                        -- (0.1.745: two pixels lower than in a tooltip; seen sitting high here.)
+                        local mark = stat and ns.StatMarkByName(stat, 14, -1)
                         if mark then ln[1] = mark .. " " .. t end
                     end
                     parts[#parts + 1] = string.format("|cff%02x%02x%02x%s|r", math.floor(ln[2] * 255 + 0.5), math.floor(ln[3] * 255 + 0.5), math.floor(ln[4] * 255 + 0.5), ln[1])

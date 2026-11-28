@@ -693,7 +693,14 @@ end
 local function ghostApply(self)
     if TR.pass then
         self:SetAlpha(1); self:SetScale(1); self:EnableMouse(true)
+        -- (0.1.745, seen in game: it opened BEHIND our spell book, which
+        -- is where Beast Training is cast from. It is lifted over our
+        -- windows while it is the one in charge.)
+        if not self.__muiStrata then self.__muiStrata = self:GetFrameStrata() end
+        pcall(self.SetFrameStrata, self, "HIGH")
+        pcall(self.Raise, self)
     else
+        if self.__muiStrata then pcall(self.SetFrameStrata, self, self.__muiStrata) end
         self:SetAlpha(0); self:SetScale(0.001); self:EnableMouse(false)
     end
 end

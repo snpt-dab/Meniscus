@@ -2,14 +2,14 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-28, version 0.1.744.
+Last updated: 2026-11-28, version 0.1.745.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 44 | Beast Training opens nothing (0.1.744 writes down what the game does) | On the hunter: `/reload`, cast Beast Training once, wait three seconds, `/reload` | Nothing to look at: I read `beastdiag` |
-| 43 | Stat pictures on the recipe card (0.1.744) | `/reload`, open a profession, pick a piece of gear | Pictures before "55 Armor", "+1 Agility"; level with the words? |
+| 44 | Beast Training: the game's own window (`ClassTrainerFrame`, read from `beastdiag`), lifted over the spell book (0.1.745) | `/reload`, cast Beast Training from the spell book | Is it in front now? Does teaching the pet work? Do you want it in our look, or left as the game draws it? |
+| 43 | Stat pictures on the recipe card, two pixels lower (0.1.745) | `/reload`, open a profession, pick a piece of gear | Level with the words now? |
 | 30 | Damage meter errors in a dungeon (979 in one run). Two sweeps (0.1.742, 0.1.743) found nothing of ours on the meter; the error record was wiped by later logins, so since 0.1.744 the last six sessions' errors are kept | Run a dungeon as usual; any `/reload` or logout afterwards will do, in any order | Nothing to look at: I read `errorsPast` |
 | 37 | Click bindings follow a trained rank (0.1.738) | `/reload` once now (it notes each spell's newest rank), then train a new rank of a bound spell | Does chat say the binding now casts the new rank, and the list show it? Does a binding on a lower rank stay? |
 | 33 | Roster figure of the other sex: the game takes a race, not a sex | On a sheet of an alt of the other sex, click the small pill over the figure to step through the other ways | Does any way show the right sex IN its gear? Name it and it becomes the first choice for such alts. If none: wrong-sex figure, or the class emblem? |
