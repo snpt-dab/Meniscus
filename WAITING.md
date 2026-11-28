@@ -2,12 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.739.
+Last updated: 2026-11-26, version 0.1.740.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 40 | Bag gear that upgrades another character of yours (0.1.740) | `/reload`, open the bags with unbound gear in them; hover a blue arrow | Are the right pieces marked? Does the tooltip name who and the change? Anything marked that the alt plainly would not want, or missed? |
 | 39 | Stat pictures in item tooltips (0.1.739) | `/reload`, hover a weapon or armour piece you could wear | Do the pictures sit level with the words now? Does the equipped card's list of changes carry them too? |
 | 38 | Reminder ring lower (0.1.738: 190 under the middle, was 96) | `/reload`, let a seal run low | Is that the right height, or how much further? |
 | 37 | Click bindings follow a trained rank (0.1.738) | `/reload` once now (it notes each spell's newest rank), then train a new rank of a bound spell | Does chat say the binding now casts the new rank, and the list show it? Does a binding on a lower rank stay? |

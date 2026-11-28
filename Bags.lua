@@ -341,6 +341,17 @@ local function newButton(bag, slot)
         else GameTooltip:SetOwner(self, "ANCHOR_RIGHT") end
         if itemInfo(self.bag, self.slot) then GameTooltip:SetBagItem(self.bag, self.slot) end
         if self.dropWorth and B.DropLine then B.DropLine(self.dropWorth, self.dropRank) end
+        if self.alts and ns.Alts then
+            local A = ns.Alts
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("An upgrade for:", 0.45, 0.70, 1.00)
+            for _, a in ipairs(self.alts) do
+                GameTooltip:AddLine(A.ClassHex(a.c) .. a.who .. "|r   " .. A.SlotName(a.slot)
+                    .. (a.soon and ("   |cffe0b060from level " .. a.soon .. "|r") or ""), 1, 1, 1)
+                local line = ns.CompareWith and ns.CompareWith(a.link, a.worn)
+                if line then GameTooltip:AddLine(line) end
+            end
+        end
         GameTooltip:Show()
         if self.glow:IsShown() and C_NewItems and C_NewItems.RemoveNewItem then
             pcall(C_NewItems.RemoveNewItem, self.bag, self.slot)
@@ -415,6 +426,29 @@ local function newButton(bag, slot)
     upArrow:SetPoint("BOTTOMRIGHT", -2, 2)
     upf:Hide()
     b.up, b.upBack = upf, upf
+    -- (0.1.740, asked for) An upgrade for another character of yours, by
+    -- the same judging as crafted upgrades (Alts.lua): the same badge in
+    -- blue, in the same corner. Yours comes first: a piece that is an
+    -- upgrade for you shows the green one only.
+    local altf = CreateFrame("Frame", nil, over)
+    altf:SetSize(16, 16)
+    altf:SetPoint("CENTER", b, "BOTTOMLEFT", 5, 5)
+    local aRim = altf:CreateTexture(nil, "OVERLAY", nil, 0)
+    aRim:SetTexture(MEDIA .. "circle.tga")
+    aRim:SetVertexColor(0.04, 0.04, 0.05, 1)
+    aRim:SetAllPoints()
+    local aDisc = altf:CreateTexture(nil, "OVERLAY", nil, 1)
+    aDisc:SetTexture(MEDIA .. "circle.tga")
+    aDisc:SetVertexColor(0.45, 0.70, 1.00, 1)
+    aDisc:SetPoint("TOPLEFT", 1.5, -1.5)
+    aDisc:SetPoint("BOTTOMRIGHT", -1.5, 1.5)
+    local aArrow = altf:CreateTexture(nil, "OVERLAY", nil, 2)
+    aArrow:SetTexture(MEDIA .. "micro_up.tga")
+    aArrow:SetVertexColor(0.03, 0.08, 0.20, 1)
+    aArrow:SetPoint("TOPLEFT", 2, -2)
+    aArrow:SetPoint("BOTTOMRIGHT", -2, 2)
+    altf:Hide()
+    b.alt = altf
     -- Cheapest to throw away (bags full): the same badge in red with the
     -- arrow pointing down, on the bottom-right corner.
     local dropf = CreateFrame("Frame", nil, over)
@@ -739,6 +773,14 @@ local function updateButton(b)
         b.ilvl:SetText(lvl and string.format("%d", lvl) or "")
         local up = lvl and ns.IsUpgrade and ns.IsUpgrade(link) or false
         b.up:SetShown(up); b.upBack:SetShown(up)
+        -- For one of your others: gear that is not bound to you. (Judged
+        -- by the item's number, as a recipe's product is: a piece with a
+        -- random "of the ..." ending is judged without that ending.)
+        local A = ns.Alts
+        local alts = lvl and A and A.on and A.ForAlts and B.db.forAlts ~= false and not info.isBound
+            and num(info.itemID) and A.ForAlts(info.itemID) or nil
+        b.alts = alts or nil
+        b.alt:SetShown(alts ~= nil and not up)
         b.dropWorth = dropSet[b.bag * 1000 + b.slot]
         b.dropRank = dropRank[b.bag * 1000 + b.slot]
         b.drop:SetShown(b.dropWorth ~= nil)
@@ -764,6 +806,8 @@ local function updateButton(b)
         b.bang:Hide()
         b.ilvl:SetText("")
         b.up:Hide(); b.upBack:Hide()
+        b.alts = nil
+        b.alt:Hide()
         b.dropWorth = nil
         b.drop:Hide()
         b.glow:Hide()
@@ -1437,6 +1481,8 @@ end
 
 function B:OnInit(db)
     self.db = db
+    -- (An answer about the others that had to wait for the game: look again.)
+    if ns.Alts and ns.Alts.Listen then ns.Alts.Listen(function() pcall(B.Refresh, B) end) end
     local aim = CreateFrame("Frame")
     for _, e in ipairs({ "CURRENT_SPELL_CAST_CHANGED", "CURSOR_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
         pcall(aim.RegisterEvent, aim, e)
