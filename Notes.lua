@@ -164,6 +164,7 @@ ns.NOTES = {
 }
 -- Versions with nothing a player would notice: [number] = true.
 ns.NOTES_QUIET = {
+    [750] = true,
     [727] = true,
     [729] = true,
     [735] = true,

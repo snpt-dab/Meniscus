@@ -2,13 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-28, version 0.1.749.
+Last updated: 2026-11-28, version 0.1.750.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
-| 44 | Beast Training: the game's own window lifted over the spell book (0.1.745) and recoloured to our look (0.1.746, a first pass made without seeing it) | `/reload`, cast Beast Training from the spell book; pick rows, scroll, teach something | The look is seen (2026-11-28, your screenshot: good). The empty list is mended (0.1.748, your word). 0.1.749 centres the title and gives the names their full width: title in the middle? Names whole? Does teaching still work? |
+| 44 | Beast Training: the game's own window lifted over the spell book (0.1.745) and recoloured to our look (0.1.746, a first pass made without seeing it) | `/reload`, cast Beast Training from the spell book; pick rows, scroll, teach something | The look is seen (2026-11-28, your screenshot: good). The empty list is mended and the title centred (your word). Names still cut on rows not yet clicked: 0.1.750 writes down what the width pass sees. `/reload`, cast Beast Training, leave it open five seconds WITHOUT clicking a row, `/reload`: I read `petrowdiag` Does teaching still work? |
 | 43 | Stat pictures on the recipe card, two pixels lower (0.1.745) | `/reload`, open a profession, pick a piece of gear | Level with the words now? |
 | 30 | Damage meter errors in a dungeon (979 in one run). Two sweeps (0.1.742, 0.1.743) found nothing of ours on the meter; the error record was wiped by later logins, so since 0.1.744 the last six sessions' errors are kept | Run a dungeon as usual; any `/reload` or logout afterwards will do, in any order | Nothing to look at: I read `errorsPast` |
 | 37 | Click bindings follow a trained rank (0.1.738) | `/reload` once now (it notes each spell's newest rank), then train a new rank of a bound spell | Does chat say the binding now casts the new rank, and the list show it? Does a binding on a lower rank stay? |

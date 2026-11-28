@@ -725,11 +725,30 @@ end
 -- width it measured in its own typeface; in ours the words are wider. The
 -- width is set again from the words as they are drawn now, up to the room
 -- the row has beside the cost; the rank after it takes what is left.
+-- (0.1.750: it did not take on every row, seen in game, and reading the
+-- code does not say why. So each pass writes what it found and did, row by
+-- row, into MinimalUIDB.petrowdiag: to be read, then removed.)
+local petLog, petLogN = nil, 0
+local function petNote(s)
+    if not petLog or #petLog >= 60 then return end
+    petLog[#petLog + 1] = s
+end
 local function petRowWidths(b)
     local name, sub = b.name, b.nameSubText
-    if not (name and name.GetUnboundedStringWidth and b.GetWidth) then return end
+    if petLog then
+        local ok, line = pcall(function()
+            return string.format("row '%s' w %.1f | name w %.1f unbounded %s truncated %s | rank '%s' shown %s w %.1f unbounded %s",
+                tostring(name and name:GetText()), b:GetWidth() or -1,
+                name and name:GetWidth() or -1, tostring(name and name.GetUnboundedStringWidth and name:GetUnboundedStringWidth()),
+                tostring(name and name.IsTruncated and name:IsTruncated()),
+                tostring(sub and sub:GetText()), tostring(sub and sub:IsShown()), sub and sub:GetWidth() or -1,
+                tostring(sub and sub.GetUnboundedStringWidth and sub:GetUnboundedStringWidth()))
+        end)
+        petNote(ok and line or ("row: could not be read: " .. tostring(line)))
+    end
+    if not (name and name.GetUnboundedStringWidth and b.GetWidth) then petNote("  left: no name or no measure") return end
     local room = b:GetWidth() - 48 - 52
-    if type(room) ~= "number" or (issecretvalue and issecretvalue(room)) or room < 40 then return end
+    if type(room) ~= "number" or (issecretvalue and issecretvalue(room)) or room < 40 then petNote("  left: room " .. tostring(room)) return end
     local want = math.min(name:GetUnboundedStringWidth() + 1, room)
     if math.abs((name:GetWidth() or 0) - want) > 0.5 then name:SetWidth(want) end
     if sub and sub.GetUnboundedStringWidth and sub:IsShown() then
@@ -763,7 +782,18 @@ local function petDress(f)
     local sb = f.ScrollBox
     if sb and sb.ForEachFrame then
         pcall(sb.ForEachFrame, sb, petDressRow)
-        pcall(sb.ForEachFrame, sb, petRowWidths)
+        -- The record: the 1st, 5th and 15th pass after each open.
+        petLogN = petLogN + 1
+        if MinimalUIDB and (petLogN == 1 or petLogN == 5 or petLogN == 15) then
+            if petLogN == 1 or type(MinimalUIDB.petrowdiag) ~= "table" then MinimalUIDB.petrowdiag = { "version " .. tostring(ns.version) } end
+            petLog = MinimalUIDB.petrowdiag
+            petNote("pass " .. petLogN .. " at " .. date("%H:%M:%S"))
+        else
+            petLog = nil
+        end
+        local okW, errW = pcall(sb.ForEachFrame, sb, petRowWidths)
+        if not okW then petNote("the pass failed: " .. tostring(errW)) end
+        petLog = nil
     end
     if f.skillStepButton then pcall(petDressRow, f.skillStepButton) end
 end
@@ -788,6 +818,7 @@ local function passNow()
     return (okN and not npc and TR.db and TR.db.petBlizz ~= false) and true or false
 end
 local function ghostApply(self)
+    petLogN = 0
     -- (0.1.747, seen in game: the first Beast Training after a reload came
     -- up as an empty window; closed and cast again, it was full. The
     -- game's trainer window is loaded on that first use, and it was put
