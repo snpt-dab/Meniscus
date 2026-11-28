@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [754] = {
+        "Pet training window: a row is picked as you press the mouse button, not when you let go, and its mark shows at once.",
+    },
     [753] = {
         "Pet training window: the first row shows the tint when picked (second try: the restyle was taking our own tint for the game's row art).",
     },

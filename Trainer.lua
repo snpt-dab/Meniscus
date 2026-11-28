@@ -695,9 +695,22 @@ end
 -- or moved, and teaching stays the game's own click. The rows are made
 -- anew as the list scrolls, so they are gone over a few times a second
 -- while the window shows.
+local petRowWidths
 local function petDressRow(b)
     if b.__muiPetRow then return end
     b.__muiPetRow = true
+    -- (0.1.754, asked for: a row is picked as the button goes DOWN, not
+    -- when it comes up, and marked at once and not at the next pass. The
+    -- game's own click still does the picking; it is only heard earlier.
+    -- Picking a row is not a guarded act; teaching is the Train button's.)
+    if b.selectedTex and b.RegisterForClicks and b.HookScript then
+        pcall(b.RegisterForClicks, b, "LeftButtonDown")
+        pcall(b.HookScript, b, "OnClick", function()
+            local f = _G.ClassTrainerFrame
+            local sb = f and f.ScrollBox
+            if sb and sb.ForEachFrame and petRowWidths then pcall(sb.ForEachFrame, sb, petRowWidths) end
+        end)
+    end
     local function grey(t, r, g, bl, a)
         if t and t.SetDesaturated then
             pcall(t.SetDesaturated, t, true)
@@ -734,7 +747,7 @@ end
 -- gold glow that our recolouring leaves all but unseen. Ours: an accent
 -- wash over the row and a bar down its left, shown while the game's mark
 -- is.
-local function petRowWidths(b)
+function petRowWidths(b)
     local name, sub = b.name, b.nameSubText
     if name and name.SetWidth and b.GetWidth then
         local room = b:GetWidth() - 48 - 52
