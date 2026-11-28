@@ -647,6 +647,15 @@ function showDetail()
             if got and #got > 0 then
                 local parts = {}
                 for _, ln in ipairs(got) do
+                    -- (0.1.744, asked for: a stat line gets its picture in
+                    -- front, as in item tooltips. "55 Armor", "+1 Agility",
+                    -- "(6.9 damage per second)".)
+                    local t = ln[1]
+                    if type(t) == "string" and ns.StatMarkByName and not t:find("|T", 1, true) then
+                        local stat = t:match("^[+-]?[%d,%.]+%s+(.+)$") or t:match("^%([%d,%.]+%s+(.+)%)$")
+                        local mark = stat and ns.StatMarkByName(stat, 14, 1)
+                        if mark then ln[1] = mark .. " " .. t end
+                    end
                     parts[#parts + 1] = string.format("|cff%02x%02x%02x%s|r", math.floor(ln[2] * 255 + 0.5), math.floor(ln[3] * 255 + 0.5), math.floor(ln[4] * 255 + 0.5), ln[1])
                 end
                 itemText = table.concat(parts, "\n")
@@ -1016,8 +1025,79 @@ ns.commands.prof = function(rest)
     end
 end
 
+-- (0.1.744) Beast Training was said to open nothing, with the sound of a
+-- window opening. What the game does for it is not in its interface source
+-- (the old "craft" window's show function is called there but defined
+-- nowhere), so the next cast writes down what happens in the two seconds
+-- after it: MinimalUIDB.beastdiag. To be removed once it is understood.
+local function beastWatch()
+    local f = CreateFrame("Frame")
+    local log, open
+    local EV = { "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE", "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_LIST_UPDATE",
+                 "TRADE_SKILL_DATA_SOURCE_CHANGED", "PET_STABLE_SHOW", "TRAINER_SHOW", "PET_BAR_UPDATE", "ADDON_LOADED",
+                 "UI_ERROR_MESSAGE", "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" }
+    for _, e in ipairs(EV) do pcall(f.RegisterEvent, f, e) end
+    pcall(f.RegisterUnitEvent, f, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    f:SetScript("OnEvent", function(_, e, a, b, c)
+        if e == "UNIT_SPELLCAST_SUCCEEDED" then
+            local ok, n = pcall(C_Spell.GetSpellName, c)
+            if not (ok and type(n) == "string" and not issecretvalue(n) and n:find("Beast Training", 1, true)) then return end
+            log = { "cast " .. tostring(c) .. " at " .. date("%H:%M:%S") .. ", version " .. tostring(ns.version) }
+            if MinimalUIDB then MinimalUIDB.beastdiag = log end
+            open = true
+            C_Timer.After(2, function()
+                open = false
+                local function say(s) log[#log + 1] = s end
+                for _, g in ipairs({ "ShowCraftFrame", "CraftFrame_LoadUI", "GetNumCrafts", "GetCraftInfo", "GetCraftDisplaySkillLine",
+                                     "CloseCraft", "DoCraft" }) do
+                    say("global " .. g .. ": " .. type(_G[g]))
+                end
+                for _, g in ipairs({ "CraftFrame", "ProfessionsFrame", "TradeSkillFrame", "ClassTrainerFrame", "PetStableFrame" }) do
+                    local fr = _G[g]
+                    local okS, shown = pcall(function() return fr and fr:IsShown() end)
+                    local okA, al = pcall(function() return fr and fr:GetAlpha() end)
+                    say("frame " .. g .. ": " .. (fr and ("shown " .. tostring(okS and shown) .. ", alpha " .. tostring(okA and al)) or "none"))
+                end
+                say("ours shown: " .. tostring(win and win:IsShown() or false) .. ", tradeOpen " .. tostring(tradeOpen))
+                for _, k in ipairs({ "IsNPCCrafting", "IsTradeSkillReady", "GetBaseProfessionInfo", "GetChildProfessionInfo" }) do
+                    local fn = TU and TU[k]
+                    if type(fn) == "function" then
+                        local okC, r = pcall(fn)
+                        if okC and type(r) == "table" then
+                            r = "name " .. tostring(r.professionName) .. ", id " .. tostring(r.professionID) .. ", parent " .. tostring(r.parentProfessionName)
+                        end
+                        say("TradeSkillUI." .. k .. ": " .. tostring(r))
+                    else
+                        say("TradeSkillUI." .. k .. ": missing")
+                    end
+                end
+                if type(_G.GetNumCrafts) == "function" then
+                    local okN, nC = pcall(_G.GetNumCrafts)
+                    say("GetNumCrafts(): " .. tostring(okN and nC))
+                end
+                local okK, kids = pcall(function() return { UIParent:GetChildren() } end)
+                local nShown = 0
+                for _, k in ipairs(okK and kids or {}) do
+                    local okF, nm, w, h = pcall(function()
+                        if k:IsForbidden() or not k:IsShown() then return nil end
+                        return k:GetName(), k:GetWidth(), k:GetHeight()
+                    end)
+                    if okF and nm and type(w) == "number" and not issecretvalue(w) and w > 250 and h > 250 and w < 1200 and nShown < 25 then
+                        nShown = nShown + 1
+                        say("showing: " .. nm .. " " .. math.floor(w) .. "x" .. math.floor(h))
+                    end
+                end
+            end)
+        elseif open and log and #log < 60 then
+            log[#log + 1] = "event " .. e .. " " .. tostring(type(a) == "string" and not issecretvalue(a) and a or type(a) == "number" and a or "")
+                .. " " .. tostring(type(b) == "string" and not issecretvalue(b) and b or "")
+        end
+    end)
+end
+
 function P:OnInit(db)
     self.db = db
+    pcall(beastWatch)
     db.collapsed = db.collapsed or {}
     -- (an item of another character's gear arrived from the game: the marks may change)
     if ns.Alts and ns.Alts.Listen then ns.Alts.Listen(function() P:QueueRefresh() end) end

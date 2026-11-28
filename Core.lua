@@ -313,6 +313,16 @@ do
     f:SetScript("OnEvent", function(_, _, name)
         if name ~= ns.name then return end
         MinimalUIDB = MinimalUIDB or {}
+        -- (0.1.744: the last sessions' errors are kept in errorsPast, six
+        -- deep. Twice the record asked for was gone because the player had
+        -- logged another character in before it was read.)
+        local old = MinimalUIDB.errors
+        if type(old) == "table" and next(old) then
+            local past = MinimalUIDB.errorsPast
+            if type(past) ~= "table" then past = {}; MinimalUIDB.errorsPast = past end
+            table.insert(past, 1, { v = MinimalUIDB.lastVersion, at = date("%m-%d %H:%M"), e = old })
+            while #past > 6 do table.remove(past) end
+        end
         MinimalUIDB.errors = {} -- fresh log each session
         for k, v in pairs(pending) do MinimalUIDB.errors[k] = v end
     end)

@@ -476,10 +476,7 @@ local function makeTile(parent, slotName)
     b.dura:SetPoint("BOTTOMLEFT", b.duraBg, "BOTTOMLEFT")
     b.dura:SetHeight(3)
     -- One of your characters can craft something better for this slot
-    -- (Alts.lua): a small disc BESIDE the tile, on its outer side (0.1.741,
-    -- asked for: it marks the slot, not the piece in it; it was on the
-    -- tile's top left corner, over the picture). Placed in applyCrafts,
-    -- once the tile knows its side.
+    -- (Alts.lua): a small disc on the tile's top left corner.
     b.craftRim = over:CreateTexture(nil, "OVERLAY", nil, 3)
     b.craftRim:SetTexture(MEDIA .. "circle.tga")
     b.craftRim:SetVertexColor(0.04, 0.04, 0.05, 1)
@@ -845,10 +842,8 @@ local function applyCrafts()
         b.crafts = t
         b.craftsLater = cm and cm.later and cm.later[b.slot] or nil
         if b.craftMark then
-            b.craftRim:ClearAllPoints()
-            if b.side == "left" then b.craftRim:SetPoint("TOPRIGHT", b, "TOPLEFT", -2, -1)
-            elseif b.side == "right" then b.craftRim:SetPoint("TOPLEFT", b, "TOPRIGHT", 2, -1)
-            else b.craftRim:SetPoint("TOP", b, "BOTTOM", 0, -2) end
+            -- (0.1.744: back on the tile's top left corner. It stood beside
+            -- the tile for three versions; the player liked the corner better.)
             b.craftRim:SetShown(t ~= nil)
             b.craftMark:SetShown(t ~= nil)
             if t then

@@ -20,6 +20,10 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [744] = {
+        "Professions window: an item's stat lines on the recipe card carry the small stat pictures, as in item tooltips.",
+        "Character window: the \"can be crafted for this slot\" mark is back on the corner of the slot.",
+    },
     [743] = {
         "Fixed: an empty gear slot in the character window showed no tooltip, so nothing said what could be crafted for it. It now names the slot and lists the craftable pieces like any other slot.",
     },
