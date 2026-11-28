@@ -1979,6 +1979,12 @@ local OTHERS = {
     -- (PvP, currency, statistics) get the generic treatment.
     CharacterFrame = { strip = true, big = true, deep = true },
     TradeFrame = { strip = true, big = true, deep = true },        -- trading with another player
+    -- (0.1.746) The game's trainer window. An NPC's list is drawn by our
+    -- own window (this one is kept unseen then); a list opened by a spell
+    -- of yours (a hunter's Beast Training) stays the game's, because
+    -- teaching from ours was refused: so it gets our look in place. Its
+    -- rows are recoloured in Trainer.lua (petDress).
+    ClassTrainerFrame = { strip = true, deep = true },
 }
 local function skinOthers()
     for n, opts in pairs(OTHERS) do

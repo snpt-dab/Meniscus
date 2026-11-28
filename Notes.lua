@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [746] = {
+        "Beast Training: the game's pet training window is drawn in our dark look (the same window, recoloured; teaching works as before).",
+    },
     [745] = {
         "Beast Training: the game's pet training window now opens in front of the spell book instead of behind it.",
         "Professions window: the stat pictures on the recipe card sit two pixels lower, level with the words.",

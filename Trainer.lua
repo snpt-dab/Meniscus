@@ -690,8 +690,68 @@ end
 -- in charge. Teaching a pet from our window raised the game's "blocked from
 -- an action" box: what the game's window does there is evidently more than
 -- the plain "buy" an addon may make from a click.
+-- (0.1.746, asked for) The game's window in our look, for as long as it is
+-- the one in charge. Recolouring only: nothing of the game's is replaced
+-- or moved, and teaching stays the game's own click. The rows are made
+-- anew as the list scrolls, so they are gone over a few times a second
+-- while the window shows.
+local function petDressRow(b)
+    if b.__muiPetRow then return end
+    b.__muiPetRow = true
+    local function grey(t, r, g, bl, a)
+        if t and t.SetDesaturated then
+            pcall(t.SetDesaturated, t, true)
+            pcall(t.SetVertexColor, t, r, g, bl, a or 1)
+        end
+    end
+    if b.GetNormalTexture then grey(b:GetNormalTexture(), 0.30, 0.30, 0.34) end
+    if b.GetHighlightTexture then grey(b:GetHighlightTexture(), 0.55, 0.55, 0.60, 0.6) end
+    grey(b.selectedTex, T.accent[1], T.accent[2], T.accent[3])
+    for _, k in ipairs({ "LeftPiece", "RightPiece", "CenterPiece" }) do grey(b[k], 0.32, 0.32, 0.36) end
+    for _, k in ipairs({ "name", "Label" }) do
+        local fs = b[k]
+        if fs and fs.SetTextColor then
+            pcall(fs.SetTextColor, fs, T.text[1], T.text[2], T.text[3])
+            pcall(fs.SetShadowColor, fs, 0, 0, 0, 0)
+        end
+    end
+    for _, k in ipairs({ "subText", "nameSubText" }) do
+        local fs = b[k]
+        if fs and fs.SetTextColor then pcall(fs.SetTextColor, fs, T.textDim[1], T.textDim[2], T.textDim[3]) end
+    end
+    if b.icon and b.icon.SetTexCoord then pcall(b.icon.SetTexCoord, b.icon, 0.08, 0.92, 0.08, 0.92) end
+end
+local function petDress(f)
+    if not f.__muiPetOnce then
+        f.__muiPetOnce = true
+        for _, o in ipairs({ f.BG, _G.ClassTrainerFrameMoneyBg }) do
+            if o and o.SetAlpha then pcall(o.SetAlpha, o, 0) end
+        end
+        local tp = f.trainingPoints and f.trainingPoints.text
+        if tp and tp.SetTextColor then pcall(tp.SetTextColor, tp, T.textDim[1], T.textDim[2], T.textDim[3]) end
+    end
+    local sb = f.ScrollBox
+    if sb and sb.ForEachFrame then pcall(sb.ForEachFrame, sb, petDressRow) end
+    if f.skillStepButton then pcall(petDressRow, f.skillStepButton) end
+end
+local function petTicker(f)
+    if f.__muiPetTick then return end
+    local t = CreateFrame("Frame", nil, f)
+    f.__muiPetTick = t
+    local acc = 1
+    t:SetScript("OnUpdate", function(_, dt)
+        if not TR.pass then return end
+        acc = acc + dt
+        if acc < 0.2 then return end
+        acc = 0
+        ns.Timed("pet training look", petDress, f)
+    end)
+end
+
 local function ghostApply(self)
     if TR.pass then
+        pcall(petTicker, self)
+        pcall(petDress, self)
         self:SetAlpha(1); self:SetScale(1); self:EnableMouse(true)
         -- (0.1.745, seen in game: it opened BEHIND our spell book, which
         -- is where Beast Training is cast from. It is lifted over our
