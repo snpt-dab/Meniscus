@@ -721,9 +721,39 @@ local function petDressRow(b)
     end
     if b.icon and b.icon.SetTexCoord then pcall(b.icon.SetTexCoord, b.icon, 0.08, 0.92, 0.08, 0.92) end
 end
+-- (0.1.749, seen in game: "Great Stami...") The game cuts each name to the
+-- width it measured in its own typeface; in ours the words are wider. The
+-- width is set again from the words as they are drawn now, up to the room
+-- the row has beside the cost; the rank after it takes what is left.
+local function petRowWidths(b)
+    local name, sub = b.name, b.nameSubText
+    if not (name and name.GetUnboundedStringWidth and b.GetWidth) then return end
+    local room = b:GetWidth() - 48 - 52
+    if type(room) ~= "number" or (issecretvalue and issecretvalue(room)) or room < 40 then return end
+    local want = math.min(name:GetUnboundedStringWidth() + 1, room)
+    if math.abs((name:GetWidth() or 0) - want) > 0.5 then name:SetWidth(want) end
+    if sub and sub.GetUnboundedStringWidth and sub:IsShown() then
+        local left = room - want - 5
+        if left >= 20 then
+            local sw = math.min(sub:GetUnboundedStringWidth() + 1, left)
+            if math.abs((sub:GetWidth() or 0) - sw) > 0.5 then sub:SetWidth(sw) end
+        end
+    end
+end
 local function petDress(f)
     if not f.__muiPetOnce then
         f.__muiPetOnce = true
+        -- (0.1.749, asked for: the name in the middle of the window. The
+        -- game's title leaves room on the left for a portrait we no longer
+        -- show, so it sat right of the middle, and high.)
+        local tc = f.TitleContainer
+        if tc and tc.ClearAllPoints then
+            pcall(function()
+                tc:ClearAllPoints()
+                tc:SetPoint("TOPLEFT", f, "TOPLEFT", 34, -5)
+                tc:SetPoint("TOPRIGHT", f, "TOPRIGHT", -34, -5)
+            end)
+        end
         for _, o in ipairs({ f.BG, _G.ClassTrainerFrameMoneyBg }) do
             if o and o.SetAlpha then pcall(o.SetAlpha, o, 0) end
         end
@@ -731,7 +761,10 @@ local function petDress(f)
         if tp and tp.SetTextColor then pcall(tp.SetTextColor, tp, T.textDim[1], T.textDim[2], T.textDim[3]) end
     end
     local sb = f.ScrollBox
-    if sb and sb.ForEachFrame then pcall(sb.ForEachFrame, sb, petDressRow) end
+    if sb and sb.ForEachFrame then
+        pcall(sb.ForEachFrame, sb, petDressRow)
+        pcall(sb.ForEachFrame, sb, petRowWidths)
+    end
     if f.skillStepButton then pcall(petDressRow, f.skillStepButton) end
 end
 local function petTicker(f)

@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [749] = {
+        "Pet training window: the pet's name is centred in the title, and skill names are no longer cut short (\"Great Stami...\").",
+    },
     [748] = {
         "Fixed (second try): the pet training window opening with an empty list. The list was there, drawn underneath the window's own panel.",
     },
