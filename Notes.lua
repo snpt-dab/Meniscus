@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [741] = {
+        "Character window: the small mark for \"one of your characters can craft something for this slot\" now stands beside the slot, on its outer side, instead of over the item's picture.",
+    },
     [740] = {
         "Bags: gear that would be an upgrade for another character of yours (same realm and side, not bound to you) gets a blue arrow in the corner, judged the same way as crafted upgrades. The tooltip says who it is for and what it would change. A piece that is an upgrade for you keeps the green arrow. Settings, \"Mark upgrades for your other characters\" turns it off.",
     },

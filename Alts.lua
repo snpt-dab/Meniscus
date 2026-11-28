@@ -367,26 +367,49 @@ local function levelLine(why, minLevel)
     end
     return why:find("%f[%d]" .. minLevel .. "%f[%D]") ~= nil and why:lower():find("level", 1, true) ~= nil
 end
+-- (0.1.741, MinimalUIDB.craftwhy: the mark was said not to come for empty
+-- slots. For a craftable piece that goes in a slot of yours that is EMPTY,
+-- what was decided and why. Item names only. Rewritten each session.)
+local craftwhy
+local function whyMine(name, loc, minLevel, word)
+    if not MinimalUIDB then return end
+    local slots = ns.EquipSlots and ns.EquipSlots[loc]
+    if type(slots) ~= "table" then return end
+    local bare
+    for _, s in ipairs(slots) do
+        if not GetInventoryItemLink("player", s) then bare = s break end
+    end
+    if not bare then return end
+    if not craftwhy then craftwhy = { n = 0 }; MinimalUIDB.craftwhy = craftwhy end
+    local key = name .. " (slot " .. bare .. ", needs level " .. tostring(minLevel) .. ")"
+    if craftwhy[key] == nil then
+        if craftwhy.n >= 80 then return end
+        craftwhy.n = craftwhy.n + 1
+    end
+    craftwhy[key] = word
+end
 local function judgeMine(item, who, lvl)
-    local name, link, quality, minLevel, _, icon, _, _, bind = itemInfo(item)
+    local name, link, quality, minLevel, loc, icon, _, _, bind = itemInfo(item)
     if not name then return nil end
     local res, slot, gain = ns.JudgeUpgrade(link)
-    if res == nil then waiting = true return nil end
-    if not res then return false end
+    if res == nil then waiting = true whyMine(name, loc, minLevel, "its figures have not come yet") return nil end
+    if not res then whyMine(name, loc, minLevel, "judged no better than what is worn") return false end
     local from = {}
     for _, m in ipairs(who) do
         if m.me or bind ~= 1 then from[#from + 1] = m end
     end
-    if #from == 0 then return false end
+    if #from == 0 then whyMine(name, loc, minLevel, "binds to its maker, who is not you") return false end
     local soon
     local why = ns.ItemUnusable(link)
     if why then
         if plainNum(minLevel) and plainNum(lvl) and minLevel > lvl and minLevel - lvl <= AHEAD and levelLine(why, minLevel) then
             soon = minLevel
         else
+            whyMine(name, loc, minLevel, "you can't use it: " .. tostring(why))
             return false
         end
     end
+    whyMine(name, loc, minLevel, "marked, slot " .. tostring(slot))
     return { item = item, link = link, name = name, icon = icon, q = quality, slot = slot, gain = gain or 0, soon = soon, from = from }
 end
 
