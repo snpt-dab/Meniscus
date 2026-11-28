@@ -748,7 +748,22 @@ local function petTicker(f)
     end)
 end
 
+-- Is this list one a spell of yours opened (no NPC in front of you)?
+local function passNow()
+    local okN, npc = pcall(UnitExists, "npc")
+    if issecretvalue and issecretvalue(npc) then npc = true end
+    return (okN and not npc and TR.db and TR.db.petBlizz ~= false) and true or false
+end
 local function ghostApply(self)
+    -- (0.1.747, seen in game: the first Beast Training after a reload came
+    -- up as an empty window; closed and cast again, it was full. The
+    -- game's trainer window is loaded on that first use, and it was put
+    -- away (shrunk to nothing) the moment it loaded, because "is this a
+    -- pet's list" was only decided a frame later; it was then brought
+    -- back, but its list had been laid out while it was nothing wide and
+    -- stayed empty. Whose list it is is now decided right here, so a
+    -- pet's list is never shrunk at all.)
+    TR.pass = passNow()
     if TR.pass then
         pcall(petTicker, self)
         pcall(petDress, self)

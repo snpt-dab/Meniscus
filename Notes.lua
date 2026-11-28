@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [747] = {
+        "Fixed: the first Beast Training after logging in or reloading opened as an empty window.",
+    },
     [746] = {
         "Beast Training: the game's pet training window is drawn in our dark look (the same window, recoloured; teaching works as before).",
     },
