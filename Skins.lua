@@ -1774,7 +1774,12 @@ local function deepRow(f)
                 m:SetTexture(ROUND_TGA, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
                 m:SetAllPoints(r)
                 r:AddMaskTexture(m)
-            elseif r:GetDrawLayer() ~= "HIGHLIGHT" and rw >= w * 0.8 and rh >= h * 0.6 then
+            -- (0.1.753: not a texture one of our modules put on the row and
+            -- listed in __muiOwn. The pet training window's picked-row wash
+            -- is row-sized, was there when the first row was dressed, and
+            -- was taken for the game's plate: read here, in the code.)
+            elseif r:GetDrawLayer() ~= "HIGHLIGHT" and rw >= w * 0.8 and rh >= h * 0.6
+                    and not (f.__muiOwn and f.__muiOwn[r]) then
                 fade(r); found = true
             end
         end
