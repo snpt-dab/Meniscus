@@ -552,6 +552,21 @@ local function makeTile(parent, slotName)
             end
             if #crafts > 3 then GameTooltip:AddLine("and " .. (#crafts - 3) .. " more, on the Crafts tab", 0.6, 0.6, 0.65) end
         end
+        -- (0.1.742) Nothing you could wear yet, but something is coming:
+        -- the nearest few, with the level each needs. No mark on the slot.
+        local later = not crafts and self.craftsLater
+        if later then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Can be crafted for this slot later:", 0.6, 0.6, 0.65)
+            for i = 1, math.min(#later, 3) do
+                local v = later[i]
+                local m = v.from[1]
+                local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[v.q or 1]
+                GameTooltip:AddDoubleLine(v.name .. "  (level " .. v.later .. ")",
+                    (m.me and "you" or m.who) .. ", " .. tostring(m.prof),
+                    qc and qc.r or 1, qc and qc.g or 1, qc and qc.b or 1, 0.6, 0.6, 0.65)
+            end
+        end
         GameTooltip:Show()
         noCompare()
         self:SetScript("OnUpdate", noCompare)
@@ -820,6 +835,7 @@ local function applyCrafts()
     for _, b in ipairs(tiles) do
         local t = cm and cm.bySlot[b.slot] or nil
         b.crafts = t
+        b.craftsLater = cm and cm.later and cm.later[b.slot] or nil
         if b.craftMark then
             b.craftRim:ClearAllPoints()
             if b.side == "left" then b.craftRim:SetPoint("TOPRIGHT", b, "TOPLEFT", -2, -1)

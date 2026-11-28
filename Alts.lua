@@ -404,6 +404,12 @@ local function judgeMine(item, who, lvl)
     if why then
         if plainNum(minLevel) and plainNum(lvl) and minLevel > lvl and minLevel - lvl <= AHEAD and levelLine(why, minLevel) then
             soon = minLevel
+        elseif plainNum(minLevel) and plainNum(lvl) and minLevel > lvl and levelLine(why, minLevel) then
+            -- (0.1.742) Too many levels away for a mark, but worth a line
+            -- in the slot's tooltip: what is coming, and from when.
+            whyMine(name, loc, minLevel, "later: more than " .. AHEAD .. " levels away")
+            return { item = item, link = link, name = name, icon = icon, q = quality, slot = slot, gain = gain or 0,
+                     later = minLevel, from = from }
         else
             whyMine(name, loc, minLevel, "you can't use it: " .. tostring(why))
             return false
@@ -413,7 +419,7 @@ local function judgeMine(item, who, lvl)
     return { item = item, link = link, name = name, icon = icon, q = quality, slot = slot, gain = gain or 0, soon = soon, from = from }
 end
 
-local EMPTY = { bySlot = {}, list = {}, pending = false, makers = 0 }
+local EMPTY = { bySlot = {}, list = {}, later = {}, pending = false, makers = 0 }
 local ORDER_OF = {}
 for i, slot in ipairs(A.SLOT_ORDER) do ORDER_OF[slot] = i end
 local function byGain(a, b)
@@ -430,7 +436,7 @@ function A.ForMe()
     if not A.on then return EMPTY end
     if mine then return mine end
     if not makers then buildMakers() end
-    local out = { bySlot = {}, list = {}, pending = false, makers = 0 }
+    local out = { bySlot = {}, list = {}, later = {}, pending = false, makers = 0 }
     local lvl = UnitLevel("player")
     for item, who in pairs(makers) do
         out.makers = out.makers + 1
@@ -442,6 +448,11 @@ function A.ForMe()
         end
         if v == nil then
             out.pending = true
+        elseif v and v.later then
+            local slot = v.slot or 0
+            local t = out.later[slot]
+            if not t then t = {}; out.later[slot] = t end
+            t[#t + 1] = v
         elseif v then
             out.list[#out.list + 1] = v
             local slot = v.slot or 0
@@ -452,6 +463,9 @@ function A.ForMe()
     end
     table.sort(out.list, bySlotThenGain)
     for _, t in pairs(out.bySlot) do table.sort(t, byGain) end
+    for _, t in pairs(out.later) do
+        table.sort(t, function(a, b) if a.later ~= b.later then return a.later < b.later end return a.name < b.name end)
+    end
     mine = out
     return out
 end
