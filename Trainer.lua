@@ -721,41 +721,52 @@ local function petDressRow(b)
     end
     if b.icon and b.icon.SetTexCoord then pcall(b.icon.SetTexCoord, b.icon, 0.08, 0.92, 0.08, 0.92) end
 end
--- (0.1.749, seen in game: "Great Stami...") The game cuts each name to the
--- width it measured in its own typeface; in ours the words are wider. The
--- width is set again from the words as they are drawn now, up to the room
--- the row has beside the cost; the rank after it takes what is left.
--- (0.1.750: it did not take on every row, seen in game, and reading the
--- code does not say why. So each pass writes what it found and did, row by
--- row, into MinimalUIDB.petrowdiag: to be read, then removed.)
-local petLog, petLogN = nil, 0
-local function petNote(s)
-    if not petLog or #petLog >= 60 then return end
-    petLog[#petLog + 1] = s
-end
+-- Names cut short ("Great Stami...", seen in game 0.1.748-749). The game
+-- gives each name a fixed width, measured when the row is filled. Read
+-- from the record (petrowdiag, 0.1.750): the width asked for was right
+-- every time, the words' own, and yet rows showed cut until clicked; so
+-- the measure a row gives can be out of date when its typeface has just
+-- been changed, and a fixed width from it cuts the words. No fixed width,
+-- then: width 0 lets a line be as wide as its words (as the game's own
+-- plain version of this window has it), the rank following on. Only a
+-- name longer than the row's room is held to that room.
+-- And the selected row (0.1.751, asked for): the game's own mark is a
+-- gold glow that our recolouring leaves all but unseen. Ours: an accent
+-- wash over the row and a bar down its left, shown while the game's mark
+-- is.
 local function petRowWidths(b)
     local name, sub = b.name, b.nameSubText
-    if petLog then
-        local ok, line = pcall(function()
-            return string.format("row '%s' w %.1f | name w %.1f unbounded %s truncated %s | rank '%s' shown %s w %.1f unbounded %s",
-                tostring(name and name:GetText()), b:GetWidth() or -1,
-                name and name:GetWidth() or -1, tostring(name and name.GetUnboundedStringWidth and name:GetUnboundedStringWidth()),
-                tostring(name and name.IsTruncated and name:IsTruncated()),
-                tostring(sub and sub:GetText()), tostring(sub and sub:IsShown()), sub and sub:GetWidth() or -1,
-                tostring(sub and sub.GetUnboundedStringWidth and sub:GetUnboundedStringWidth()))
-        end)
-        petNote(ok and line or ("row: could not be read: " .. tostring(line)))
+    if name and name.SetWidth and b.GetWidth then
+        local room = b:GetWidth() - 48 - 52
+        local need = name.GetUnboundedStringWidth and name:GetUnboundedStringWidth()
+        if type(room) == "number" and type(need) == "number" and room > 40 and need > room then
+            name:SetWidth(room)
+        else
+            name:SetWidth(0)
+        end
+        if sub and sub.SetWidth then sub:SetWidth(0) end
     end
-    if not (name and name.GetUnboundedStringWidth and b.GetWidth) then petNote("  left: no name or no measure") return end
-    local room = b:GetWidth() - 48 - 52
-    if type(room) ~= "number" or (issecretvalue and issecretvalue(room)) or room < 40 then petNote("  left: room " .. tostring(room)) return end
-    local want = math.min(name:GetUnboundedStringWidth() + 1, room)
-    if math.abs((name:GetWidth() or 0) - want) > 0.5 then name:SetWidth(want) end
-    if sub and sub.GetUnboundedStringWidth and sub:IsShown() then
-        local left = room - want - 5
-        if left >= 20 then
-            local sw = math.min(sub:GetUnboundedStringWidth() + 1, left)
-            if math.abs((sub:GetWidth() or 0) - sw) > 0.5 then sub:SetWidth(sw) end
+    local st = b.selectedTex
+    if st and st.IsShown and b.CreateTexture then
+        local on = st:IsShown() and true or false
+        if on and not b.__muiSel then
+            local wash = b:CreateTexture(nil, "BACKGROUND", nil, 7)
+            wash:SetPoint("TOPLEFT", 2, -2)
+            wash:SetPoint("BOTTOMRIGHT", -2, 2)
+            wash:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.20)
+            local bar = b:CreateTexture(nil, "OVERLAY", nil, 6)
+            bar:SetPoint("TOPLEFT", 1, -5)
+            bar:SetPoint("BOTTOMLEFT", 1, 5)
+            bar:SetWidth(3)
+            bar:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+            b.__muiSel, b.__muiSelBar = wash, bar
+            -- (so the deep pass leaves them be)
+            b.__muiOwn = b.__muiOwn or {}
+            b.__muiOwn[wash], b.__muiOwn[bar] = true, true
+        end
+        if b.__muiSel then
+            b.__muiSel:SetShown(on)
+            b.__muiSelBar:SetShown(on)
         end
     end
 end
@@ -782,18 +793,7 @@ local function petDress(f)
     local sb = f.ScrollBox
     if sb and sb.ForEachFrame then
         pcall(sb.ForEachFrame, sb, petDressRow)
-        -- The record: the 1st, 5th and 15th pass after each open.
-        petLogN = petLogN + 1
-        if MinimalUIDB and (petLogN == 1 or petLogN == 5 or petLogN == 15) then
-            if petLogN == 1 or type(MinimalUIDB.petrowdiag) ~= "table" then MinimalUIDB.petrowdiag = { "version " .. tostring(ns.version) } end
-            petLog = MinimalUIDB.petrowdiag
-            petNote("pass " .. petLogN .. " at " .. date("%H:%M:%S"))
-        else
-            petLog = nil
-        end
-        local okW, errW = pcall(sb.ForEachFrame, sb, petRowWidths)
-        if not okW then petNote("the pass failed: " .. tostring(errW)) end
-        petLog = nil
+        pcall(sb.ForEachFrame, sb, petRowWidths)
     end
     if f.skillStepButton then pcall(petDressRow, f.skillStepButton) end
 end
@@ -805,7 +805,7 @@ local function petTicker(f)
     t:SetScript("OnUpdate", function(_, dt)
         if not TR.pass then return end
         acc = acc + dt
-        if acc < 0.2 then return end
+        if acc < 0.1 then return end
         acc = 0
         ns.Timed("pet training look", petDress, f)
     end)
@@ -818,7 +818,6 @@ local function passNow()
     return (okN and not npc and TR.db and TR.db.petBlizz ~= false) and true or false
 end
 local function ghostApply(self)
-    petLogN = 0
     -- (0.1.747, seen in game: the first Beast Training after a reload came
     -- up as an empty window; closed and cast again, it was full. The
     -- game's trainer window is loaded on that first use, and it was put
