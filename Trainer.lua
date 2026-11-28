@@ -750,7 +750,12 @@ local function petRowWidths(b)
     if st and st.IsShown and b.CreateTexture then
         local on = st:IsShown() and true or false
         if on and not b.__muiSel then
-            local wash = b:CreateTexture(nil, "BACKGROUND", nil, 7)
+            -- (0.1.752, seen in game: no wash on the first row. That row is
+            -- picked as the window opens, so its wash existed when the
+            -- window was first stripped of its background art, and went
+            -- with it. It is drawn a layer up, under the picture and words,
+            -- where the bar, which survived, also is safe.)
+            local wash = b:CreateTexture(nil, "ARTWORK", nil, -8)
             wash:SetPoint("TOPLEFT", 2, -2)
             wash:SetPoint("BOTTOMRIGHT", -2, 2)
             wash:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.20)
