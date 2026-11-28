@@ -20,6 +20,9 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [739] = {
+        "Item tooltips: the small stat pictures on the \"Instead of ...\" lines now sit level with the words, and the gains and losses on the \"currently equipped\" card beside it carry the same pictures.",
+    },
     [738] = {
         "Click casting: a binding on a spell's newest rank moves to the next rank when you train it, and says so in chat. A binding you put on a lower rank stays on that rank.",
         "The reminder ring for a short buff that is running out now stands lower on the screen, nearer the target's bar.",

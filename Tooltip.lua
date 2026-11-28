@@ -331,18 +331,38 @@ end
 -- equipped:"). Only the text of lines it has already written is changed.
 -- Returns true if anything was.
 local function markStats(tip)
-    if not (TT.db and TT.db.statMarks == true) then return false end -- (off unless asked for: words by default)
+    -- (off unless asked for: words by default. 0.1.739, asked for: the
+    -- gains and losses the game lists on the "currently equipped" card get
+    -- the emblem in front whatever the switch says, the word kept, like
+    -- our own "Instead of ..." lines beside it.)
+    local all = TT.db and TT.db.statMarks == true
     local name = tip.GetName and tip:GetName()
     if not name or not ns.StatMarkByName then return false end
     local changed = false
+    local delta = false -- past the game's "If you replace this item..." line
     local n = tip:NumLines() or 0
     for i = 2, n do
         local fs = _G[name .. "TextLeft" .. i]
         local text = fs and fs:GetText()
+        if type(text) == "string" and not issecretvalue(text) and text == "If equipped:" then delta = true end
         if type(text) == "string" and not issecretvalue(text) and text ~= "" and not text:find("|T", 1, true) then
-            if _G.ITEM_DELTA_DESCRIPTION and text == _G.ITEM_DELTA_DESCRIPTION then
-                fs:SetText("If equipped:")
-                changed = true
+            if (_G.ITEM_DELTA_DESCRIPTION and text == _G.ITEM_DELTA_DESCRIPTION)
+                or (_G.ITEM_DELTA_MULTIPLE_COMPARISON_DESCRIPTION and text == _G.ITEM_DELTA_MULTIPLE_COMPARISON_DESCRIPTION) then
+                delta = true
+                if all and text == _G.ITEM_DELTA_DESCRIPTION then
+                    fs:SetText("If equipped:")
+                    changed = true
+                end
+            elseif not all then
+                if delta then
+                    local plain = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                    local stat = plain:match("^[+-]?[%d,%.]+%s+(.+)$")
+                    local mark = stat and ns.StatMarkByName(stat, 14, 1)
+                    if mark then
+                        fs:SetText(mark .. " " .. text)
+                        changed = true
+                    end
+                end
             else
                 -- "+47 Armor", "-2 Stamina", "65 Armor" (colour codes kept).
                 local plain = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")

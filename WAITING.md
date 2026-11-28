@@ -2,12 +2,13 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.738.
+Last updated: 2026-11-26, version 0.1.739.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 39 | Stat pictures in item tooltips (0.1.739) | `/reload`, hover a weapon or armour piece you could wear | Do the pictures sit level with the words now? Does the equipped card's list of changes carry them too? |
 | 38 | Reminder ring lower (0.1.738: 190 under the middle, was 96) | `/reload`, let a seal run low | Is that the right height, or how much further? |
 | 37 | Click bindings follow a trained rank (0.1.738) | `/reload` once now (it notes each spell's newest rank), then train a new rank of a bound spell | Does chat say the binding now casts the new rank, and the list show it? Does a binding on a lower rank stay? |
 | 36 | Click casting shows the rank bound (0.1.737) | `/reload`, spell book, Click casting | Does each line under "Your bindings" show its rank after the name? Is anything cut off or crowded in the wider panel? |

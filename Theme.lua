@@ -1138,7 +1138,8 @@ function ns.AddCompare(tip, link)
                     return (d > 0 and "+" or "-") .. ((a % 1 > 0.05) and string.format("%.1f", a) or string.format("%d", a + 0.5))
                 end
                 -- (In a tooltip there is room for the word too: emblem, number, name.)
-                local function row(e) return (ns.StatMark(e[1], 16) or "") .. " " .. fmt(e[2]) .. " " .. statLabel(e[1]) end
+                -- (0.1.739: 14 and a pixel up; at 16 with the usual drop it sat under the words.)
+                local function row(e) return (ns.StatMark(e[1], 14, 1) or "") .. " " .. fmt(e[2]) .. " " .. statLabel(e[1]) end
                 for _, e in ipairs(gains) do tip:AddLine(row(e), 0.45, 0.85, 0.50) end
                 for _, e in ipairs(losses) do tip:AddLine(row(e), 0.90, 0.45, 0.45) end
                 if #gains == 0 and #losses == 0 then tip:AddLine("Same stats", 0.85, 0.85, 0.88) end
