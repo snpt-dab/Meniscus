@@ -1239,6 +1239,77 @@ local function buildToggle()
     end)
 end
 
+-- ── Click casting: a binding follows the rank you train (0.1.738) ─────────
+-- The player's rule: a binding on the NEWEST rank moves to the next one
+-- when it is trained; a binding put on a lower rank on purpose stays.
+-- Which is which needs no flag: the newest rank of each spell is kept per
+-- character (MinimalUIDB.ccTop), and when the book shows a newer one, only
+-- a binding that was on the old newest is moved. A rank whose words have
+-- not arrived (rank 0) decides nothing.
+local topId, topR, ccMoves = {}, {}, {}
+local function ccFollow()
+    if not ccAvailable() or not MinimalUIDB or InCombatLockdown() then return end
+    wipe(topId); wipe(topR); wipe(ccMoves)
+    for _, tab in ipairs(tabList()) do
+        if tab.bank == BANK_PLAYER then
+            for idx = tab.first, tab.first + tab.count - 1 do
+                local info = call(SB.GetSpellBookItemInfo, idx, tab.bank)
+                if type(info) == "table" and info.name and not secret(info.name) and info.itemType == TYPE_SPELL
+                    and not info.isPassive then
+                    local id, r = info.spellID or info.actionID, rankOf(info.subName)
+                    if num(id) and r > 0 and r >= (topR[info.name] or 0) then topId[info.name], topR[info.name] = id, r end
+                end
+            end
+        end
+    end
+    if type(MinimalUIDB.ccTop) ~= "table" then MinimalUIDB.ccTop = {} end
+    local key = ns:CharKey()
+    if type(MinimalUIDB.ccTop[key]) ~= "table" then MinimalUIDB.ccTop[key] = {} end
+    local mine = MinimalUIDB.ccTop[key]
+    local any = false
+    for name, id in pairs(topId) do
+        local was = mine[name]
+        if type(was) == "table" and was.id ~= id and topR[name] > (was.r or 0) then ccMoves[was.id] = name; any = true end
+    end
+    if any then
+        local out, said = {}, nil
+        for _, i in ipairs(ccProfile()) do
+            if type(i) == "table" then
+                local name = i.type == SPELL_TYPE and ccMoves[i.actionID]
+                if name then
+                    out[#out + 1] = { type = i.type, actionID = topId[name], button = i.button, modifiers = i.modifiers }
+                    said = said or {}
+                    said[#said + 1] = name .. " now casts Rank " .. topR[name]
+                else
+                    out[#out + 1] = i
+                end
+            end
+        end
+        if said then
+            local ok = pcall(CBn.SetProfileByInfo, out)
+            if not ok then return end -- (asked again at the next change)
+            ccCache = nil
+            ns:Print("Click casting: " .. table.concat(said, ", ") .. ".")
+        end
+    end
+    for name, id in pairs(topId) do
+        local was = mine[name]
+        if type(was) ~= "table" then mine[name] = { id = id, r = topR[name] }
+        elseif topR[name] >= (was.r or 0) then was.id, was.r = id, topR[name] end
+    end
+    return any
+end
+local ccDue = false
+local function ccFollowSoon()
+    if ccDue then return end
+    ccDue = true
+    C_Timer.After(1, function()
+        ccDue = false
+        local ok, moved = pcall(ccFollow)
+        if ok and moved and S.Refresh and win and win:IsShown() and not InCombatLockdown() then S:Refresh() end
+    end)
+end
+
 function S:OnInit(db)
     self.db = db
     hookUtil()
@@ -1253,6 +1324,9 @@ function S:OnInit(db)
     end
     ev:SetScript("OnEvent", function(_, event)
         if event == "ADDON_LOADED" then hookUtil(); hookFrame(); hookMicro(); hookBinding(); return end
+        if event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" or event == "PLAYER_REGEN_ENABLED" then
+            ccFollowSoon()
+        end
         if event == "PLAYER_REGEN_ENABLED" then
             if pending.hide then pending.hide = false; if win then win:Hide() end end
             if pending.refresh then S:Refresh() end

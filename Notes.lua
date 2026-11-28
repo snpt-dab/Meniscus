@@ -20,6 +20,10 @@ local T = ns.Theme
 -- "/men notes all" shows every one there is.
 
 ns.NOTES = {
+    [738] = {
+        "Click casting: a binding on a spell's newest rank moves to the next rank when you train it, and says so in chat. A binding you put on a lower rank stays on that rank.",
+        "The reminder ring for a short buff that is running out now stands lower on the screen, nearer the target's bar.",
+    },
     [737] = {
         "Click casting: each binding now shows the rank it casts (\"Holy Light  Rank 2\"), in the list, in the box while you bind, and on the spell's card when the rank bound is not the one shown. The side panel is a little wider for it.",
     },

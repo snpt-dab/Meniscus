@@ -1236,7 +1236,8 @@ local function buildRecast()
         local W, H = UIParent:GetWidth(), UIParent:GetHeight()
         local n, slot = mids.n, f.mid or 1
         local tx = W / 2 + (slot - (n + 1) / 2) * (D * BIG + 14)
-        local ty = H / 2 - 96
+        -- (0.1.738, asked for: lower, nearer the target's bar. Was 96.)
+        local ty = H / 2 - 190
         local dist = math.sqrt((tx - hx) ^ 2 + (ty - hy) ^ 2)
         local cx, cy = hx + (tx - hx) * 0.72, math.max(hy, ty) + 0.10 * dist
         local u = 1 - e

@@ -2,12 +2,14 @@
 
 What is built but not yet seen in game, and what each needs. Kept current as we work; newest state first in each line.
 
-Last updated: 2026-11-26, version 0.1.737.
+Last updated: 2026-11-26, version 0.1.738.
 
 ## Needs you, in game
 
 | # | What | What to do | What to tell me |
 |---|------|-----------|-----------------|
+| 38 | Reminder ring lower (0.1.738: 190 under the middle, was 96) | `/reload`, let a seal run low | Is that the right height, or how much further? |
+| 37 | Click bindings follow a trained rank (0.1.738) | `/reload` once now (it notes each spell's newest rank), then train a new rank of a bound spell | Does chat say the binding now casts the new rank, and the list show it? Does a binding on a lower rank stay? |
 | 36 | Click casting shows the rank bound (0.1.737) | `/reload`, spell book, Click casting | Does each line under "Your bindings" show its rank after the name? Is anything cut off or crowded in the wider panel? |
 | 35 | A debuff on you stood over your buffs (0.1.734) | `/reload`, get a debuff (a poison will do) | Does it stand along the bottom of the space beside your portrait, under the buffs, inside the panel? |
 | 34 | Crafted weapons for the others (0.1.733 writes down why each was or was not offered) | On the paladin: `/reload`, open Blacksmithing, click through the dagger recipes, `/reload` | Nothing to look at: I read `altwhy` and say why the druid was or was not offered them |
